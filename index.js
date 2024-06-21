@@ -9,7 +9,7 @@ const errorMiddleware=require("./middleware/error");
 const userRoutes=require("./routes/userRoutes");
 // Connect to MongoDB
 app.use(bodyParser.json());
-mongoose.connect('mongodb://localhost:27017/mydatabase')
+mongoose.connect(process.env.DB_URI)
   .then(() => console.log('MongoDB Connected'))
   .catch(err => console.log(err));
 
