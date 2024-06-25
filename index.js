@@ -8,6 +8,8 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const errorMiddleware=require("./middleware/error");
 const userRoutes=require("./routes/userRoutes");
+const adminRoutes=require("./routes/adminRoutes");
+const productRoutes=require("./routes/productRoutes");
 // Connect to MongoDB
 app.use(cors());
 app.use(bodyParser.json());
@@ -17,6 +19,8 @@ mongoose.connect(process.env.DB_URI)
 
 // Define routes
 app.use('/api/v1/user',userRoutes);
+app.use('/api/v1/admin',adminRoutes);
+app.use('/api/v1/product',productRoutes);
 app.get('/', (req, res) => {
   res.send('Hello World!');
 });

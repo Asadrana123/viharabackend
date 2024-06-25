@@ -1,51 +1,128 @@
 const mongoose = require("mongoose");
 const productSchema = new mongoose.Schema({
-    productName:{type:String,required:true},
-    referenceNumber: { type: String, required: true },
-    categories: { type: String, required: true },
-    auctionStartDate: { type: Date, required: true },
-    auctionStartTime: { type: String, required: true },
-    auctionEndDate: { type: Date, required: true },
-    auctionEndTime: { type: String, required: true },
-    basePrice: { type: Number, required: true },
-    reservePrice: { type: Number, required: true },
-    minIncrement: { type: Number, required: true },
-    EMD: { type: Number, required: true },
-    Commission: { type: Number, required: true },
-    startBid: { type: Number, required: true },
-    ownershipStatus: { type: String, required: true },
-    propertyType: { type: String, required: true },
-    HOT: { type: String, required: true },
-    OnlineorInPerson:{type:String,required:true},
-    Street:{type:String,required:true},
-    City:{type:String,required:true},
-    Country:{type:String,required:true},
-    ZipCode:{type:Number,required:true},
-    State:{type:String,required:true},
-    yearBuilt: { type: Number, required: true },
-    manufacturer: { type: String, required: true },
-    userProducts: { type: Number, required: true },
-    floor: { type: Number, required: true },
-    totalFloor: { type: Number, required: true },
-    totalArea: { type: Number, required: true },
-    bedroom: { type: Number, required: true },
-    bathroom: { type: Number, required: true },
-    squareFootage:{type:Number,required:true},
-    lotSize:{type:Number,required:true},
-    monthlyHodDues:{type:Number,required:true},
-    trusteeSaleNumber:{type:Number,required:true},
-    Apn:{type:Number,required:true},
-    eventId:{type:Number,required:true},
-    alternateEmails: [String],
-    productImage:{type:String,required:true},
-    productImages:  [
+    productName: {
+        type: String,
+        required: true,
+      },
+      auctionStartDate: {
+        type: Date,
+        required: true,
+      },
+      auctionStartTime: {
+        type: String, // or use Date if you want to include time details
+        required: true,
+      },
+      auctionEndDate: {
+        type: Date,
+        required: true,
+      },
+      auctionEndTime: {
+        type: String, // or use Date if you want to include time details
+        required: true,
+      },
+      reservePrice: {
+        type: Number,
+        required: true,
+      },
+      minIncrement: {
+        type: Number,
+        required: true,
+      },
+      emd: {
+        type: Number,
+        required: true,
+      },
+      commission: {
+        type: Number, // assuming percentage
+        required: true,
+      },
+      startBid: {
+        type: Number,
+        required: true,
+      },
+      propertyDescription: {
+        type: String,
+        required: true,
+      },
+      propertyType: {
+        type: String,
+        required: true,
+      },
+      street: {
+        type: String,
+        required: true,
+      },
+      city: {
+        type: String,
+        required: true,
+      },
+      county: {
+        type: String,
+        required: true,
+      },
+      state: {
+        type: String,
+        required: true,
+      },
+      zipCode: {
+        type: String,
+        required: true,
+      },
+      beds: {
+        type: Number,
+        required: true,
+      },
+      baths: {
+        type: Number,
+        required: true,
+      },
+      squareFootage: {
+        type: Number,
+        required: true,
+      },
+      lotSize: {
+        type: Number, // assuming it's in acres
+        required: true,
+      },
+      yearBuilt: {
+        type: Number,
+        required: true,
+      },
+      monthlyHOADues: {
+        type: Number,
+        required: true,
+      },
+      apn: {
+        type: String,
+        required: true,
+      },
+      eventID: {
+        type: String,
+        required: true,
+      },
+      trusteeSaleNumber: {
+        type: String,
+        required: true,
+      },
+      image: {
+        type: String, // URL or path to the image file
+        required: false,
+      },
+      otherImages: [
+         {
+            type: String, // URL or path to the image file
+         }
+      ],
+      onlineOrInPerson: {
+        type: String,
+        enum: ['Online', 'In Person'],
+        required: true,
+      },
+      bidderEmails:[
         {
-            url: {
-                type: String,
-                required: true
-            }
+            type: String,
         }
-    ],
+      ]
 })
 productSchema.pre('save', async function (next) {
     this.updated_at = Date.now();
