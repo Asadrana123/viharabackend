@@ -49,6 +49,12 @@ const userSchema=new mongoose.Schema({
         type:Number,
         default:1
       },
+      savedProperties:[
+         {
+           type:mongoose.Schema.Types.ObjectId,
+           ref:"productModel",
+         }
+      ],
       resetPasswordToken: String,
       resetPasswordExpire: Date
 })
