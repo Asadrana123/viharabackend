@@ -59,3 +59,11 @@ exports.allsavedProperties=catchAsyncError(
       return res.status(200).json({sucess:true,savedProperties:findUser.savedProperties})
   }
 )
+exports.getUser=catchAsyncError(
+  async (req,res,next)=>{
+     const user_id=req.user._id;
+     const findUser=await userModel.findById(user_id).populate("savedProperties");
+     if(!findUser) return next(new Errorhandler("User not found",404));
+     return res.status(200).json({user:findUser});
+  }
+)

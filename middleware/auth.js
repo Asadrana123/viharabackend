@@ -4,7 +4,10 @@ const Errorhandler=require("../utils/errorhandler");
 const userModel=require("../model/userModel")
 const jwt=require("jsonwebtoken");
 exports.isAuthenticated=catchAsyncError(async (req,res,next)=>{
-      const {token}=req.cookies;
+    const token =
+    req.body.token ||
+    req.query.token ||
+    req.headers.authorization.split(" ")[1];
       if(!token){
           next(new Errorhandler("Token is required to acess",201))
       }
