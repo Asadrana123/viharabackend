@@ -3,16 +3,22 @@ const catchAsyncError=require("../middleware/catchAsyncError");
 const Errorhandler=require("../utils/errorhandler");
 const sendToken=require("../utils/getToken");
 const productModel=require("../model/productModel");
-exports.CreateUser=catchAsyncError(
-     async(req,res)=>{
-        console.log(req.body);
-        const newUser =(await userModel.create(req.body)).populate({
-          path: 'savedProperties', // assuming 'savedProperties' is the field that references another collection
-          model: 'productModel' // replace 'product' with the name of the model you are referencing
-        });
-       sendToken(newUser,201,res);
-     }
-)
+exports.CreateUser = catchAsyncError(
+  async (req, res) => {
+    console.log(req.body);
+
+    // Create a new user
+    const newUser = await userModel.create(req.body);
+
+    // Populate the savedProperties field
+    await newUser.populate({
+      path: 'savedProperties', // assuming 'savedProperties' is the field that references another collection
+      model: 'productModel' // replace 'productModel' with the name of the model you are referencing
+    })
+    // Send the token
+    sendToken(newUser, 201, res);
+  }
+);
 exports.Login=catchAsyncError(
     async(req,res,next)=>{
            const {email,password}=req.body;
