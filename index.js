@@ -10,6 +10,7 @@ const errorMiddleware=require("./middleware/error");
 const userRoutes=require("./routes/userRoutes");
 const adminRoutes=require("./routes/adminRoutes");
 const productRoutes=require("./routes/productRoutes");
+const savePropertyRoutes=require("./routes/savePropertyRoutes");
 // Connect to MongoDB
 app.use(cors());
 app.use(bodyParser.json());
@@ -21,6 +22,7 @@ mongoose.connect(process.env.DB_URI)
 app.use('/api/v1/user',userRoutes);
 app.use('/api/v1/admin',adminRoutes);
 app.use('/api/v1/product',productRoutes);
+app.use("/api/v1/saveProperty",savePropertyRoutes);
 app.get('/', (req, res) => {
   res.send('Hello World!');
 });
