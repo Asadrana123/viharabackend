@@ -6,14 +6,20 @@ const productModel=require("../model/productModel");
 exports.CreateUser=catchAsyncError(
      async(req,res)=>{
         console.log(req.body);
-        const newUser =(await userModel.create(req.body)).populate("savedProperties");
+        const newUser =(await userModel.create(req.body)).populate({
+          path: 'savedProperties', // assuming 'savedProperties' is the field that references another collection
+          model: 'productModel' // replace 'product' with the name of the model you are referencing
+        });
        sendToken(newUser,201,res);
      }
 )
 exports.Login=catchAsyncError(
     async(req,res,next)=>{
            const {email,password}=req.body;
-           const finduser=await userModel.findOne({email}).select("+password");
+           const finduser=await userModel.findOne({email}).select("+password").populate({
+            path: 'savedProperties', // assuming 'savedProperties' is the field that references another collection
+            model: 'productModel' // replace 'product' with the name of the model you are referencing
+          });
            if(!finduser) return  next(new Errorhandler("Invalid Email or Password",400));
            const matchPassword=finduser.comparePassword(password);
           if(!matchPassword) return  next(new Errorhandler("Invalid Email or Password",400));
@@ -35,12 +41,13 @@ exports.LogOut=catchAsyncError(
 exports.saveProperty=catchAsyncError(
     async(req,res,next)=>{
       const {product_id,user_id}=req.body;
+      console.log(user_id);
       const findProduct=await productModel.findById(product_id);
       if(!findProduct) return next(new Errorhandler("Product not found",404));
       const findUser=await userModel.findById(user_id);
       findUser.savedProperties.push(findProduct);
       await findUser.save();
-      return res.status(200).json({sucess:true,message:"property saved sucessfully"})
+      return res.status(200).json({sucess:true,message:"property saved sucessfully",user:findUser})
     }
 )
 exports.allsavedProperties=catchAsyncError(
