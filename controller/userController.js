@@ -33,13 +33,22 @@ exports.LogOut=catchAsyncError(
   }
 )
 exports.saveProperty=catchAsyncError(
-    async(req,res)=>{
-      const {productId}=req.body;
-      const findProduct=await productModel.findById(productId);
+    async(req,res,next)=>{
+      const {product_id,user_id}=req.body;
+      const findProduct=await productModel.findById(product_id);
       if(!findProduct) return next(new Errorhandler("Product not found",404));
-      const findUser=await userModel.findById(req.user.id);
+      const findUser=await userModel.findById(user_id);
       findUser.savedProperties.push(findProduct);
       await findUser.save();
       return res.status(200).json({sucess:true,message:"property saved sucessfully"})
     }
+)
+exports.allsavedProperties=catchAsyncError(
+  async (req,res,next)=>{
+    const userId = req.query.user_id;
+      console.log(userId);
+      const findUser=await userModel.findById(userId).populate("savedProperties");
+      if(!findUser) return next(new Errorhandler("User not found",404));
+      return res.status(200).json({sucess:true,savedProperties:findUser.savedProperties})
+  }
 )
