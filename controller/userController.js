@@ -50,7 +50,10 @@ exports.saveProperty=catchAsyncError(
       console.log(user_id);
       const findProduct=await productModel.findById(product_id);
       if(!findProduct) return next(new Errorhandler("Product not found",404));
-      const findUser=await userModel.findById(user_id);
+      const findUser=await userModel.findById(user_id).populate({
+          path: 'savedProperties', // assuming 'savedProperties' is the field that references another collection
+          model: 'productModel' // replace 'product' with the name of the model you are referencing
+      });
       findUser.savedProperties.push(findProduct);
       await findUser.save();
       return res.status(200).json({sucess:true,message:"property saved sucessfully",user:findUser})
