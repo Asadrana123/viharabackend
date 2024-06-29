@@ -59,6 +59,29 @@ exports.saveProperty=catchAsyncError(
       return res.status(200).json({sucess:true,message:"property saved sucessfully",user:findUser})
     }
 )
+exports.removeProperty = catchAsyncError(
+  async (req, res, next) => {
+    const { product_id, user_id } = req.body;
+    console.log(user_id);
+
+    const findProduct = await productModel.findById(product_id);
+    if (!findProduct) return next(new Errorhandler("Product not found", 404));
+
+    const findUser = await userModel.findById(user_id).populate({
+      path: 'savedProperties', // assuming 'savedProperties' is the field that references another collection
+      model: 'productModel' // replace 'product' with the name of the model you are referencing
+    });
+
+    // Remove the product from the savedProperties array
+    findUser.savedProperties = findUser.savedProperties.filter(
+      property => property._id.toString() !== product_id
+    );
+
+    await findUser.save();
+    return res.status(200).json({ success: true, message: "Property removed successfully", user: findUser });
+  }
+);
+
 exports.allsavedProperties=catchAsyncError(
   async (req,res,next)=>{
     const userId = req.query.user_id;
