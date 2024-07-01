@@ -5,8 +5,7 @@ const sendToken=require("../utils/getToken");
 const productModel=require("../model/productModel");
 exports.CreateUser = catchAsyncError(
   async (req, res) => {
-    console.log(req.body);
-
+   
     // Create a new user
     const newUser = await userModel.create(req.body);
 
