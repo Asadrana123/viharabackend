@@ -23,12 +23,11 @@ exports.getAllEmailandPhone = catchAsyncError(
   async (req, res, next) => {
     try {
       // Find all users and select only the email and phoneNumber fields
-      const users = await userModel.find().select('email phoneNumber');
-      
+      const users = await userModel.find().select('email businessPhone');
       // Extract emails and phoneNumbers into an array of objects
       const contacts = users.map(user => ({
         email: user.email,
-        phoneNumber: user.phoneNumber
+        businessPhone: user.businessPhone
       }));
 
       // Send the array of contacts to the frontend
@@ -123,7 +122,7 @@ exports.getAllEmails = catchAsyncError(
     try {
       // Find all users and select only the email field
       const users = await userModel.find().select('email');
-      
+
       // Extract the emails into an array
       const emails = users.map(user => user.email);
 
