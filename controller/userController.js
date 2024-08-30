@@ -19,6 +19,25 @@ exports.CreateUser = catchAsyncError(
     sendToken(newUser, 201, res);
   }
 );
+exports.getAllEmailandPhone = catchAsyncError(
+  async (req, res, next) => {
+    try {
+      // Find all users and select only the email and phoneNumber fields
+      const users = await userModel.find().select('email phoneNumber');
+      
+      // Extract emails and phoneNumbers into an array of objects
+      const contacts = users.map(user => ({
+        email: user.email,
+        phoneNumber: user.phoneNumber
+      }));
+
+      // Send the array of contacts to the frontend
+      return res.status(200).json({ contacts });
+    } catch (error) {
+      return next(new Errorhandler("Error fetching contacts", 500));
+    }
+  }
+);
 exports.Login = catchAsyncError(
   async (req, res, next) => {
     const { email, password } = req.body;
@@ -99,3 +118,19 @@ exports.getUser = catchAsyncError(
     return res.status(200).json({ user: findUser });
   }
 )
+exports.getAllEmails = catchAsyncError(
+  async (req, res, next) => {
+    try {
+      // Find all users and select only the email field
+      const users = await userModel.find().select('email');
+      
+      // Extract the emails into an array
+      const emails = users.map(user => user.email);
+
+      // Send the array of emails to the frontend
+      return res.status(200).json({ emails });
+    } catch (error) {
+      return next(new Errorhandler("Error fetching emails", 500));
+    }
+  }
+);

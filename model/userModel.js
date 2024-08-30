@@ -1,7 +1,8 @@
 const mongoose=require("mongoose");
 const validator=require("validator");
 const bcrypt=require("bcryptjs");
-const jwt=require("jsonwebtoken")
+const jwt=require("jsonwebtoken");
+const { type } = require("os");
 const userSchema=new mongoose.Schema({
       name:{
            type:String,
@@ -24,6 +25,10 @@ const userSchema=new mongoose.Schema({
         required:[true,"Please Enter Password"],
         minLength:[8,"password should have more than 8 characters"],
         select:false
+      },
+      businessPhone :{
+         type:String,
+         required:[true,"Please Enter Phone number"],
       },
       createdAt:{
         type:Date,
