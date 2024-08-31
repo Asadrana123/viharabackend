@@ -13,6 +13,7 @@ const productRoutes=require("./routes/productRoutes");
 const savePropertyRoutes=require("./routes/savePropertyRoutes");
 const contactRoutes=require("./routes/contactRoutes");
 const sellPropertyRoutes=require("./routes/sellPropertyRoutes");
+const authRoutes=require("./routes/auth")
 // Connect to MongoDB
 app.use(cors());
 app.use(bodyParser.json());
@@ -27,6 +28,7 @@ app.use('/api/v1/product',productRoutes);
 app.use("/api/v1/saveProperty",savePropertyRoutes);
 app.use("/api/saveContact",contactRoutes);
 app.use("/api/sellProperty",sellPropertyRoutes);
+app.use("/auth",authRoutes)
 app.get('/', (req, res) => {
   res.send('Hello World!');
 });
