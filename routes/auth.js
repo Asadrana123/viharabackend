@@ -23,11 +23,11 @@ router.get("/login/failed", (req, res) => {
 router.get("/google", passport.authenticate("google", { scope: ["profile", "email"] }));
 
 router.get(
-  "/google/callback",
-  passport.authenticate("google", {
-    successRedirect: process.env.CLIENT_URL,
-    failureRedirect: "/login/failed",
-  })
+  '/google/callback',
+  passport.authenticate('google', { failureRedirect: '/login' }),
+  (req, res) => {
+      res.redirect(`https://www.vihara.ai//auth/success?token=${token=req.user.remmember_token}`);
+  }
 );
 
 router.get("/logout", (req, res) => {

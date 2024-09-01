@@ -1,11 +1,13 @@
 // index.js
 require('dotenv').config();
 const express = require('express');
+const session = require("express-session");
+const passport = require("passport");
 const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
 const cors=require("cors");
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8000;
 const errorMiddleware=require("./middleware/error");
 const userRoutes=require("./routes/userRoutes");
 const adminRoutes=require("./routes/adminRoutes");
@@ -14,7 +16,12 @@ const savePropertyRoutes=require("./routes/savePropertyRoutes");
 const contactRoutes=require("./routes/contactRoutes");
 const sellPropertyRoutes=require("./routes/sellPropertyRoutes");
 const authRoutes=require("./routes/auth")
+require('./passport'); // This executes the setup code
 // Connect to MongoDB
+app.use(session({ secret: process.env.secret, resave: false, saveUninitialized: true }));
+// Initialize Passport
+app.use(passport.initialize());
+app.use(passport.session());
 app.use(cors());
 app.use(bodyParser.json());
 mongoose.connect(process.env.DB_URI)

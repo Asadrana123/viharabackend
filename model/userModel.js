@@ -22,13 +22,13 @@ const userSchema=new mongoose.Schema({
       },
       password:{
         type:String,
-        required:[true,"Please Enter Password"],
+        // required:[true,"Please Enter Password"],
         minLength:[8,"password should have more than 8 characters"],
         select:false
       },
       businessPhone :{
          type:String,
-         required:[true,"Please Enter Phone number"],
+        //  required:[true,"Please Enter Phone number"],
       },
       createdAt:{
         type:Date,
