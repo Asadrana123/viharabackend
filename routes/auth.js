@@ -1,6 +1,6 @@
 const router = require("express").Router();
 const passport = require("passport");
-
+const sendEmail = require("../utils/sendEmail");
 router.get("/login/success", (req, res) => {
   if (req.user) {
     res.status(200).json({
@@ -26,8 +26,9 @@ router.get(
   '/google/callback',
   passport.authenticate('google', { failureRedirect: '/login' }),
   (req, res) => {
-    sendEmail(req.user,email, req.user.name);
-      res.redirect(`https://www.vihara.ai/auth/success?token=${token=req.user.remmember_token}`);
+    console.log(req);
+    sendEmail(req.user.email, req.user.name);
+    res.redirect(`https://www.vihara.ai/auth/success?token=${token = req.user.remmember_token}`);
   }
 );
 

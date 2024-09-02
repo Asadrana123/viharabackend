@@ -10,6 +10,7 @@ const transporter = nodemailer.createTransport({
 });
 // Function to send an email
 const sendEmail = (to,name) => {
+    console.log(to,name);
     const mailOptions = {
         from: process.env.EMAIL_USERNAME, // Sender address
         to: to,                            // Recipient address
