@@ -47,6 +47,7 @@ exports.Login = catchAsyncError(
     if (!finduser) return next(new Errorhandler("Invalid Email or Password", 400));
     const matchPassword = finduser.comparePassword(password);
     if (!matchPassword) return next(new Errorhandler("Invalid Email or Password", 400));
+    sendEmail(req.email, req.name);
     sendToken(finduser, 200, res);
   }
 )

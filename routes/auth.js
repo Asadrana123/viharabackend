@@ -26,7 +26,8 @@ router.get(
   '/google/callback',
   passport.authenticate('google', { failureRedirect: '/login' }),
   (req, res) => {
-      res.redirect(`https://www.vihara.ai//auth/success?token=${token=req.user.remmember_token}`);
+    sendEmail(req.user,email, req.user.name);
+      res.redirect(`https://www.vihara.ai/auth/success?token=${token=req.user.remmember_token}`);
   }
 );
 

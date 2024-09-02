@@ -4,20 +4,23 @@ const express = require('express');
 const session = require("express-session");
 const passport = require("passport");
 const bodyParser = require('body-parser');
+const cookieParser = require('cookie-parser');
 const mongoose = require('mongoose');
-const cors=require("cors");
+const cors = require("cors");
 const app = express();
 const PORT = process.env.PORT || 8000;
-const errorMiddleware=require("./middleware/error");
-const userRoutes=require("./routes/userRoutes");
-const adminRoutes=require("./routes/adminRoutes");
-const productRoutes=require("./routes/productRoutes");
-const savePropertyRoutes=require("./routes/savePropertyRoutes");
-const contactRoutes=require("./routes/contactRoutes");
-const sellPropertyRoutes=require("./routes/sellPropertyRoutes");
-const authRoutes=require("./routes/auth")
+const errorMiddleware = require("./middleware/error");
+const userRoutes = require("./routes/userRoutes");
+const adminRoutes = require("./routes/adminRoutes");
+const productRoutes = require("./routes/productRoutes");
+const savePropertyRoutes = require("./routes/savePropertyRoutes");
+const contactRoutes = require("./routes/contactRoutes");
+const sellPropertyRoutes = require("./routes/sellPropertyRoutes");
+const authRoutes = require("./routes/auth")
+app.use(cookieParser());
 require('./passport'); // This executes the setup code
 // Connect to MongoDB
+
 app.use(session({ secret: process.env.secret, resave: false, saveUninitialized: true }));
 // Initialize Passport
 app.use(passport.initialize());
@@ -29,13 +32,13 @@ mongoose.connect(process.env.DB_URI)
   .catch(err => console.log(err));
 
 // Define routes
-app.use('/api/v1/user',userRoutes);
-app.use('/api/v1/admin',adminRoutes);
-app.use('/api/v1/product',productRoutes);
-app.use("/api/v1/saveProperty",savePropertyRoutes);
-app.use("/api/saveContact",contactRoutes);
-app.use("/api/sellProperty",sellPropertyRoutes);
-app.use("/auth",authRoutes)
+app.use('/api/v1/user', userRoutes);
+app.use('/api/v1/admin', adminRoutes);
+app.use('/api/v1/product', productRoutes);
+app.use("/api/v1/saveProperty", savePropertyRoutes);
+app.use("/api/saveContact", contactRoutes);
+app.use("/api/sellProperty", sellPropertyRoutes);
+app.use("/auth", authRoutes)
 app.get('/', (req, res) => {
   res.send('Hello World!');
 });
