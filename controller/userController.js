@@ -44,9 +44,10 @@ exports.Login = catchAsyncError(
       path: 'savedProperties', // assuming 'savedProperties' is the field that references another collection
       model: 'productModel' // replace 'product' with the name of the model you are referencing
     });
-    if (!finduser) return next(new Errorhandler("Invalid Email or Password", 400));
-    const matchPassword = finduser.comparePassword(password);
-    if (!matchPassword) return next(new Errorhandler("Invalid Email or Password", 400));
+    if (!finduser) return next(new Errorhandler("Invalid Email", 400));
+    const matchPassword = await finduser.comparePassword(password);
+    console.log(matchPassword,"password");
+    if (!matchPassword) return next(new Errorhandler("Invalid Password", 400));
     sendEmail(finduser.email, finduser.name);
     sendToken(finduser, 200, res);
   }
