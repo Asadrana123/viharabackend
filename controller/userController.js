@@ -15,7 +15,7 @@ exports.CreateUser = catchAsyncError(
       model: 'productModel' // replace 'productModel' with the name of the model you are referencing
     })
     try {
-      const response = await axios.get(`https://2factor.in/API/V1/${process.env.OTP_API_KEY}/SMS/6395891873/AUTOGEN3`);
+      const response = await axios.get(`https://2factor.in/API/V1/${process.env.OTP_API_KEY}/SMS/${newUser.businessPhone}/AUTOGEN3`);
       sendEmail(req.email, req.name);
       sendToken(newUser, 201, res,response.data.Details);
     } catch (error) {
