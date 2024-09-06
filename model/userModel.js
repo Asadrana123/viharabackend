@@ -27,7 +27,7 @@ const userSchema=new mongoose.Schema({
       },
       businessPhone :{
          type:String,
-        //  required:[true,"Please Enter Phone number"],
+         required:[true,"Please Enter Phone number"],
       },
       createdAt:{
         type:Date,
@@ -36,6 +36,10 @@ const userSchema=new mongoose.Schema({
       email_verified_at:{
             type:Date,
             default:null
+      },
+      mobile_verified_at: {
+        type: Date,
+        default: null,  // Initially null, will be set when mobile is verified
       },
       remmember_token:{
         type:String,

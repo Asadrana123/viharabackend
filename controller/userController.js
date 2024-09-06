@@ -4,19 +4,23 @@ const Errorhandler = require("../utils/errorhandler");
 const sendToken = require("../utils/getToken");
 const productModel = require("../model/productModel");
 const sendEmail = require("../utils/sendEmail");
+const axios =require("axios");
 exports.CreateUser = catchAsyncError(
   async (req, res) => {
-
     // Create a new user
     const newUser = await userModel.create(req.body);
-
     // Populate the savedProperties field
     await newUser.populate({
       path: 'savedProperties', // assuming 'savedProperties' is the field that references another collection
       model: 'productModel' // replace 'productModel' with the name of the model you are referencing
     })
-    sendEmail(req.email, req.name);
-    sendToken(newUser, 201, res);
+    try {
+      const response = await axios.get(`https://2factor.in/API/V1/${process.env.OTP_API_KEY}/SMS/6395891873/AUTOGEN3`);
+      sendEmail(req.email, req.name);
+      sendToken(newUser, 201, res,response.data.Details);
+    } catch (error) {
+      res.status(500).json({ success: false, message: 'Error sending OTP', error: error.message });
+    }
   }
 );
 exports.getAllEmailandPhone = catchAsyncError(

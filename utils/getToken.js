@@ -1,4 +1,4 @@
-const sendToken=(user,statuscode,res)=>{
+const sendToken=(user,statuscode,res,sessionId)=>{
     const token=user.getJWTToken();
     const options={
         expires:new Date(
@@ -6,6 +6,6 @@ const sendToken=(user,statuscode,res)=>{
         ),
         httpOnly:true
     }
-    return res.status(statuscode).cookie("token",token,options).json({sucess:true,token,user});
+    return res.status(statuscode).cookie("token",token,options).json({sucess:true,token,user,sessionId});
 }
 module.exports=sendToken;
