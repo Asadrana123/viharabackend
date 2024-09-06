@@ -14,6 +14,7 @@ exports.CreateUser = catchAsyncError(
       path: 'savedProperties', // assuming 'savedProperties' is the field that references another collection
       model: 'productModel' // replace 'productModel' with the name of the model you are referencing
     })
+    console.log(newUser.businessPhone);
     try {
       const response = await axios.get(`https://2factor.in/API/V1/${process.env.OTP_API_KEY}/SMS/${newUser.businessPhone}/AUTOGEN3`);
       sendEmail(req.email, req.name);
