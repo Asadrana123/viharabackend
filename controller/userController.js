@@ -140,3 +140,93 @@ exports.getAllEmails = catchAsyncError(
     }
   }
 );
+exports.resetPassword=catchAsyncError(
+  async(req,res,next)=>{
+     console.log(req.params.token);
+      const resetPasswordToken=require("crypto").createHash("sha256").update(req.params.token).digest("hex");
+      const User=await userModel.findOne({resetPasswordToken,
+       resetPasswordExpire:{$gt:Date.now()}
+     })
+     if(!User){
+         return next(new Errorhandler("resetPassword token is invalid or has been expired",400));
+     }
+     User.password=req.body.password;
+     User.resetPasswordToken=undefined;
+     User.resetPasswordExpire=undefined;
+     await User.save({validateBeforeSave:false})
+     sendToken(User,200,res);
+  }
+)
+exports.updatePassword=catchAsyncError(
+  async(req,res)=>{
+       const User=await userModel.findById(req.user.id).select("+password");
+       const isMatchPassword=User.comparePassword(req.body.oldpassword);
+       if(!isMatchPassword){
+         return next(new Errorhandler("OldPassword is wrong",400));
+       }
+       if(req.body.newpassword!==req.body.confirmpassword){
+         return next(new Errorhandler("Passwords not matching",400));
+       }
+       User.password=req.body.newpassword;
+       await User.save();
+       sendToken(User,200,res);
+  }
+)
+exports.forgotPassword=catchAsyncError(
+  async(req,res,next)=>{
+      const {email}=req.body;
+      console.log(email)
+      const User=await userModel.findOne({email});
+      if(!User){
+        return next(new Errorhandler("No user found with this email",404));
+      }
+      const resetPasswordtoken=User.getResetPasswordToken();
+      await User.save({validateBeforeSave:false});
+      const resetUrl=`${process.env.CLIENT_URL}/set-new-password/${resetPasswordtoken}`; 
+      const message=`Your reset password token is:- /n/n ${resetUrl}, if You have not requested then please ignore it`
+      try{
+               sendEmail(
+                req.body.email,
+                User.name,
+                "Email password recovery",
+                `<!DOCTYPE html>
+                <html lang="en">
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>Password Reset</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; font-size: 14px; color: #333; }
+                        .container { width: 100%; max-width: 600px; margin: 0 auto; padding: 20px; }
+                        .button { background-color: #007BFF; color: #ffffff; padding: 10px 20px; text-align: center; text-decoration: none; display: inline-block; font-size: 16px; margin: 10px 0; cursor: pointer; border-radius: 5px; }
+                        .footer { font-size: 12px; color: #666; }
+                        .header { font-size: 20px; color: #333; }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <h1 class="header">Hi ${User.name},</h1>
+                        <p>We received your request to reset your password. Please click on the link below or copy and paste the URL into your browser.</p>
+                        <a href="${resetUrl}" class="button">Reset Password</a>
+                        <p>This URL is only valid for 30 days. If it expires, please visit our website.</p>
+                        <p>Your security is important to us. If you did not request to change your password, please ignore this email.</p>
+                        <p>Thank you,<br>The Vihara Team</p>
+                        <hr>
+                        <p class="footer">If you have any questions or need further assistance, please contact Customer Care at trisha@vihara.com.</p>
+                    </div>
+                </body>
+                </html>`
+                
+              )  
+              res.status(200).json({
+                success:true,
+                message:"Recovery Email sent to user"
+              })
+      }catch(error){
+          User.resetPasswordToken=undefined;
+          User.resetPasswordExpire=undefined;
+          await User.save({validation:false});
+          return next(new Errorhandler(error.message,500));
+      }
+  }
+)
