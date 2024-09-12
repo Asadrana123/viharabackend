@@ -29,7 +29,7 @@ exports.CreateUser = catchAsyncError(
             <title>Welcome to Vihara</title>
             <style>
                 body { font-family: Arial, sans-serif; font-size: 14px; color: #333; }
-                .container { width: 100%; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f4f4f4; border-radius: 8px; }
+                .container { width: 90%; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f4f4f4; border-radius: 8px; }
                 .button { background-color: #28a745; color: #ffffff; padding: 10px 20px; text-align: center; text-decoration: none; display: inline-block; font-size: 16px; margin: 10px 0; cursor: pointer; border-radius: 5px; }
                 .footer { font-size: 12px; color: #666; }
                 .header { font-size: 24px; color: #333; }
@@ -97,7 +97,7 @@ exports.Login = catchAsyncError(
             <title>Welcome to Vihara</title>
             <style>
                 body { font-family: Arial, sans-serif; font-size: 14px; color: #333; }
-                .container { width: 100%; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f4f4f4; border-radius: 8px; }
+                .container { width: 90%; max-width: 600px; margin: 0 auto; background-color: #f4f4f4; border-radius: 8px;padding:20px }
                 .button { background-color: #28a745; color: #ffffff; padding: 10px 20px; text-align: center; text-decoration: none; display: inline-block; font-size: 16px; margin: 10px 0; cursor: pointer; border-radius: 5px; }
                 .footer { font-size: 12px; color: #666; }
                 .header { font-size: 24px; color: #333; }
@@ -260,7 +260,7 @@ exports.forgotPassword=catchAsyncError(
                     <title>Password Reset</title>
                     <style>
                         body { font-family: Arial, sans-serif; font-size: 14px; color: #333; }
-                        .container { width: 100%; max-width: 600px; margin: 0 auto; padding: 20px; }
+                        .container { width: 90%; max-width: 600px; margin: 0 auto; }
                         .button { background-color: #007BFF; color: #ffffff; padding: 10px 20px; text-align: center; text-decoration: none; display: inline-block; font-size: 16px; margin: 10px 0; cursor: pointer; border-radius: 5px; }
                         .footer { font-size: 12px; color: #666; }
                         .header { font-size: 20px; color: #333; }
