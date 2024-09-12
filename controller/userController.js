@@ -106,7 +106,7 @@ exports.Login = catchAsyncError(
         </head>
         <body>
             <div class="container">
-                <h1 class="header">Welcome to Vihara, ${findUser.name}!</h1>
+                <h1 class="header">Welcome to Vihara, ${finduser.name}!</h1>
                 <p class="welcome-text">We're thrilled to have you on board! At Vihara, we strive to provide you with the best experience possible. Whether you're exploring our platform or getting started, we want you to know that we're here to support you every step of the way.</p>
                 <p class="welcome-text">Feel free to explore our services, and don't hesitate to reach out if you need any assistance. We’re excited to see what you achieve with Vihara!</p>
                 <a href="${process.env.CLIENT_URL}" class="button">Explore Now</a>
