@@ -258,7 +258,6 @@ exports.forgotPassword = catchAsyncError(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
     <title>Password Reset</title>
     <style>
         body { 
@@ -267,72 +266,34 @@ exports.forgotPassword = catchAsyncError(
             color: black !important; 
             margin: 0; 
             padding: 0; 
-            background-color: #f4f4f4;
         }
-            p{
-                color: black !important; 
-                font-size:16px;
-                font-weight:400;
-            }
+        p {
+            color: black !important; 
+            font-size:16px;
+            font-weight:400;
+        }
         .container { 
-            width: 95%; 
+            width: 100%; 
             max-width: 600px; 
             margin: 0 auto; 
             background-color: #ffffff; 
             padding: 20px; 
         }
-        .header img {
-            max-width: 120px;
-            height:auto;
-            display: block;
-            margin:0 auto;
-        }
-        .main-content { 
-            text-align: left; 
-        }
-        .main-content h1 { 
-            font-size: 20px; 
-            margin: 20px 0;
-            color: #333333;
-        }
-        .button { 
+        .button {
             background-color: #0384fb; 
             color: #ffffff !important; 
             padding: 10px 20px; 
-            text-align: center; 
             text-decoration: none; 
-            display: inline-block; 
             font-size: 16px; 
-            margin: 20px 0; 
-            cursor: pointer; 
             border-radius: 5px;
             display: block;
             width: fit-content;
             margin: 20px auto;
-        }
-        .footer { 
-            font-size: 12px; 
-            color: #666666; 
-            margin-top: 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .footer-logo{
-           width:70%;
+            text-align: center;
         }
         .footer-logo img {
             width: 120px;
             height:auto;
-        }
-        .social-icons {
-            width:30%;
-            display: flex;
-            gap: 10px;
-        }
-        .social-icons a {
-            display: inline-block;
-            margin-right:10px;
         }
         .social-icons img {
             width: 30px;
@@ -350,53 +311,87 @@ exports.forgotPassword = catchAsyncError(
     </style>
 </head>
 <body>
-    <div class="container">
-        <!-- Header -->
-        <div class="header">
-            <img src="https://www.vihara.ai/static/media/vihara-new-logo.1e0ecd4b8707813c361a.jpeg" alt="Company Logo">
-        </div>
-        
-        <!-- Main Content -->
-        <div class="main-content">
-            <p>Hi <strong>${User.name}</strong>,</p>
-            <p>We received your request to reset your password. Please click on the link below or copy and paste the URL into your browser.</p>
-            <a href="${resetUrl}" class="button">Reset Password</a>
-            <p>This reset URL is only valid for 30 days. If it expires, please visit our website, sign in, and request a new password reset link.</p>
-            <p>Your security is important to us. If you did not request to change your password, please ignore this email.</p>
-        </div>
-      <div class="main-content">
-         <p>Thank You,
-            <br/>
-            The Vihara Team
-         </p>
-      </div>
-        <!-- Footer -->
-     <div class="footer">
-            <div class="footer-logo">
-                <img src="https://www.vihara.ai/static/media/vihara-new-logo.1e0ecd4b8707813c361a.jpeg" alt="Company Logo" style="height: 40px;">
-            </div>
-            <div class="social-icons" style="gap:10px;">
-                <a href="https://www.facebook.com">
-                    <img src="https://ci3.googleusercontent.com/meips/ADKq_NYdCsK3DhV8iuJ7KDeQ4CZlaIT8Sd8dS-bL2M_9-lUDE--JPQiQHWc_FtdACnIkeFGtKIbrGuhcEFm3yManRJvDtAUz4D3UsqveC8gPdvJ0sA6EiRJURxk2OSEQxx55L7GHtY2RGINW87DbXx7fjVn0a26tV6c3BlnUTvrNCriS=s0-d-e1-ft#https://image.s11.sfmc-content.com/lib/fe3a11717164047d7d1572/m/1/e8f22763-dc43-4959-b3e9-5a8048b273a1.png" alt="Facebook">
-                </a>
-                <a href="https://www.twitter.com">
-                    <img src="https://ci3.googleusercontent.com/meips/ADKq_Na1EsBWS9vfqdVpS9-mHalzjVCy6XyghIY8kjzp3PGKy-0rDx8O4peoE0epBbkg-qsA_qBPcMfSlcRNKE6rfM9FsErlgkJv5FA87ZmwoZA2q9Z46IrX6v3sWBWM_TBy87XvnCFu6gtcVtr6KumY932kiquePdG1xBkIZBdXFhG0=s0-d-e1-ft#https://image.s11.sfmc-content.com/lib/fe3a11717164047d7d1572/m/1/b67ecf84-4efa-431c-9b78-000164cf247c.png" alt="Twitter">
-                </a>
-                <a href="https://www.linkedin.com">
-                    <img src="https://ci3.googleusercontent.com/meips/ADKq_NZSsc060crzcO_DBbMfwxA4yCle_n0m1ONl46fk_voetKez4PGuHkMsVkv3L-l8qI7jrNg32izm6m0AA2f3xg1-Eq6Hm0h2Mx01uw0ZCZb2pUYQYnyVVK6IGq0LGbfQY72fKk72zjySmaMB5ZTDw9YebJld3-NA1tCX03toHpuU=s0-d-e1-ft#https://image.s11.sfmc-content.com/lib/fe3a11717164047d7d1572/m/1/0ac84e3b-25d2-4bf7-81f1-740f7bfdc8c5.png" alt="LinkedIn">
-                </a>
-                <a href="https://www.youtube.com">
-                    <img src="https://ci3.googleusercontent.com/meips/ADKq_Na43exfG770dgwf_6ah7ag4uFwZIVqzRfY3ER8T10aiIKRL6SUETzkHDIX2AI2O0oLDzwjnSoPWeomEVNdxGvpN21CfTQOdX6M35KCM7brGLptGqjG1-v0ju2BwoL_GSF7OG3D1OeV-R0sm29obAfJ7gtp4Bwz05MZieQ2rWRes=s0-d-e1-ft#https://image.s11.sfmc-content.com/lib/fe3a11717164047d7d1572/m/1/e2ae1bd7-6b6f-4608-9aff-88a06973551f.png" alt="YouTube">
-                </a>
-            </div>
-        </div>
+    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+            <td>
+                <table class="container" align="center" cellpadding="0" cellspacing="0" border="0">
+                    <!-- Header -->
+                    <tr>
+                        <td align="center" style="padding: 20px 0;border-bottom:1px solid #979797;padding-bottom:20px;">
+                        <img src="https://www.vihara.ai/static/media/vihara-new-logo.1e0ecd4b8707813c361a.jpeg" alt="Company Logo" style="max-width: 120px;">
+              </td>
+        </tr>
+        <tr>
+    <td>
+        <table width="100%" cellpadding="10" cellspacing="0" border="0" style="text-align: center;margin-bottom:10px;margin-top:10px;">
+            <tr>
+                <td style="font-size: 14px; color: #3d5877; border-right: 1px solid #979797;">Bank Owned</td>
+                <td style="font-size: 14px; color: #3d5877; border-right: 1px solid #979797;">Foreclosures</td>
+                <td style="font-size: 14px; color: #3d5877; border-right: 1px solid #979797;">Vacant</td>
+                <td style="font-size: 14px; color: #3d5877;">Cash Only</td>
+            </tr>
+        </table>
+    </td>
+</tr>    
+ <!-- Main Content -->
+                    <tr>
+                        <td>
+                            <p>Hi <strong>${User.name}</strong>,</p>
+                            <p>We received your request to reset your password. Please click on the link below or copy and paste the URL into your browser.</p>
+                            <a href="${resetUrl}" class="button">Reset Password</a>
+                            <p>This reset URL is only valid for 30 days. If it expires, please visit our website, sign in, and request a new password reset link.</p>
+                            <p>Your security is important to us. If you did not request to change your password, please ignore this email.</p>
+                        </td>
+                    </tr>
 
-        <!-- Contact Info -->
-        <div class="contact-info">
-            <p>If you have any questions or need assistance, please contact our support team at <a href="mailto:trisha@vihara.com">trisha@vihara.com</a>.</p>
-            <p>Altisource Online Auction, Inc.<br>2300 Lakeview Parkway, 7th Floor, Space 756, Alpharetta, GA 30009</p>
-        </div>
-    </div>
+                    <tr>
+                        <td>
+                            <p>Thank You,<br>The Vihara Team</p>
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td>
+                            <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                                <tr>
+                                    <td align="left" width="50%">
+                                        <img src="https://www.vihara.ai/static/media/vihara-new-logo.1e0ecd4b8707813c361a.jpeg" alt="Company Logo" class="footer-logo" style="width:120px;">
+                                    </td>
+                                    <td align="right" width="30%">
+                                        <table class="social-icons" cellspacing="10" cellspacing="0" border="0">
+                                            <tr>
+                                                <td>
+                                                    <a href="https://www.facebook.com"><img src="https://ci3.googleusercontent.com/meips/ADKq_NYdCsK3DhV8iuJ7KDeQ4CZlaIT8Sd8dS-bL2M_9-lUDE--JPQiQHWc_FtdACnIkeFGtKIbrGuhcEFm3yManRJvDtAUz4D3UsqveC8gPdvJ0sA6EiRJURxk2OSEQxx55L7GHtY2RGINW87DbXx7fjVn0a26tV6c3BlnUTvrNCriS=s0-d-e1-ft#https://image.s11.sfmc-content.com/lib/fe3a11717164047d7d1572/m/1/e8f22763-dc43-4959-b3e9-5a8048b273a1.png" alt="Facebook"></a>
+                                                </td>
+                                                <td>
+                                                    <a href="https://www.twitter.com"><img src="https://ci3.googleusercontent.com/meips/ADKq_Na1EsBWS9vfqdVpS9-mHalzjVCy6XyghIY8kjzp3PGKy-0rDx8O4peoE0epBbkg-qsA_qBPcMfSlcRNKE6rfM9FsErlgkJv5FA87ZmwoZA2q9Z46IrX6v3sWBWM_TBy87XvnCFu6gtcVtr6KumY932kiquePdG1xBkIZBdXFhG0=s0-d-e1-ft#https://image.s11.sfmc-content.com/lib/fe3a11717164047d7d1572/m/1/b67ecf84-4efa-431c-9b78-000164cf247c.png" alt="Twitter"></a>
+                                                </td>
+                                                <td>
+                                                    <a href="https://www.linkedin.com"><img src="https://ci3.googleusercontent.com/meips/ADKq_NZSsc060crzcO_DBbMfwxA4yCle_n0m1ONl46fk_voetKez4PGuHkMsVkv3L-l8qI7jrNg32izm6m0AA2f3xg1-Eq6Hm0h2Mx01uw0ZCZb2pUYQYnyVVK6IGq0LGbfQY72fKk72zjySmaMB5ZTDw9YebJld3-NA1tCX03toHpuU=s0-d-e1-ft#https://image.s11.sfmc-content.com/lib/fe3a11717164047d7d1572/m/1/0ac84e3b-25d2-4bf7-81f1-740f7bfdc8c5.png" alt="LinkedIn"></a>
+                                                </td>
+                                                <td>
+                                                    <a href="https://www.youtube.com"><img src="https://ci3.googleusercontent.com/meips/ADKq_Na43exfG770dgwf_6ah7ag4uFwZIVqzRfY3ER8T10aiIKRL6SUETzkHDIX2AI2O0oLDzwjnSoPWeomEVNdxGvpN21CfTQOdX6M35KCM7brGLptGqjG1-v0ju2BwoL_GSF7OG3D1OeV-R0sm29obAfJ7gtp4Bwz05MZieQ2rWRes=s0-d-e1-ft#https://image.s11.sfmc-content.com/lib/fe3a11717164047d7d1572/m/1/e2ae1bd7-6b6f-4608-9aff-88a06973551f.png" alt="YouTube"></a>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <!-- Contact Info -->
+                    <tr>
+                        <td class="contact-info">
+                            <p>If you have any questions or need assistance, please contact our support team at <a href="mailto:trisha@vihara.com">trisha@vihara.com</a>.</p>
+                            <p>Altisource Online Auction, Inc.<br>2300 Lakeview Parkway, 7th Floor, Space 756, Alpharetta, GA 30009</p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
 </body>
 </html>
 `
