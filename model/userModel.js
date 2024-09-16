@@ -57,6 +57,12 @@ const userSchema=new mongoose.Schema({
         type:Number,
         default:1
       },
+      city:{
+         type:String,
+      },
+      state:{
+        type:String,
+     },
       savedProperties:[
          {
            type:mongoose.Schema.Types.ObjectId,

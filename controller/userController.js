@@ -414,7 +414,6 @@ exports.forgotPassword = catchAsyncError(
 </body>
 </html>
 `
-
       )
       res.status(200).json({
         success: true,
