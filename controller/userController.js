@@ -4,6 +4,7 @@ const Errorhandler = require("../utils/errorhandler");
 const sendToken = require("../utils/getToken");
 const productModel = require("../model/productModel");
 const sendEmail = require("../utils/sendEmail");
+const mongoose = require('mongoose'); // Import mongoose
 const axios = require("axios");
 exports.CreateUser = catchAsyncError(
   async (req, res) => {
@@ -123,6 +124,36 @@ exports.Login = catchAsyncError(
 //catchAsyncError is a middleware function or wrapper that handles asynchronous errors.
 //next (next middleware function in the Express pipeline).
 //httpOnly: true: Ensures that the cookie is only accessible through HTTP(S) and cannot be accessed by client-side JavaScript, adding a layer of security.
+exports.updateUserDetails = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const updates = req.body;
+    if (!mongoose.isValidObjectId(userId)) {
+      return res.status(400).json({ message: 'Invalid User ID' });
+    }
+    // Ensure that userType is valid if it's being updated
+    const updatedUser = await userModel.findByIdAndUpdate(
+      userId,
+      { $set: updates }, // Use $set to update only the provided fields
+      { new: true, runValidators: true } // new: true returns the updated document, runValidators ensures validation is applied
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.status(200).json({
+      message: 'User updated successfully',
+      user: updatedUser
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      message: 'Error updating user',
+      error: error.message
+    });
+  }
+};
 exports.LogOut = catchAsyncError(
   async (req, res, next) => {
     res.cookie("token", null, {
