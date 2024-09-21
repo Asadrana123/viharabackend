@@ -121,6 +121,47 @@ exports.Login = catchAsyncError(
     sendToken(finduser, 200, res);
   }
 )
+exports.sendOTP = catchAsyncError(async (req, res) => {
+  const { email } = req.body;
+  const otp = Math.floor(1000 + Math.random() * 9000).toString();
+  sendEmail(
+    email,
+    "Hello user",
+    "Your OTP for Vihara",
+    `<!DOCTYPE html>
+      <html lang="en">
+      <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Your OTP for email change</title>
+          <style>
+              body { font-family: Arial, sans-serif; font-size: 14px; color: #333; }
+              .container { width: 90%; max-width: 600px; margin: 0 auto; background-color: #f4f4f4; border-radius: 8px;padding:20px }
+              .button { background-color: #28a745; color: #ffffff; padding: 10px 20px; text-align: center; text-decoration: none; display: inline-block; font-size: 16px; margin: 10px 0; cursor: pointer; border-radius: 5px; }
+              .footer { font-size: 12px; color: #666; }
+              .header { font-size: 24px; color: #333; }
+              .otp-text { font-size: 18px; font-weight: bold; color: #d9534f; }
+              .welcome-text { font-size: 16px; line-height: 1.6; }
+          </style>
+      </head>
+      <body>
+          <div class="container">
+              <p class="welcome-text">Your OTP for Vihara is:</p>
+              <p class="otp-text">${otp}</p>
+              <p class="welcome-text">Thank you for using Vihara!<br>Best Regards,<br>The Vihara Team</p>
+              <hr>
+              <p class="footer">If you have any questions, feel free to contact us at trisha@vihara.com.</p>
+          </div>
+      </body>
+      </html>`
+  );
+
+  res.status(200).json({
+    success: true,
+    otp:otp,
+    message: `OTP sent to ${email}`,
+  });
+});
 //catchAsyncError is a middleware function or wrapper that handles asynchronous errors.
 //next (next middleware function in the Express pipeline).
 //httpOnly: true: Ensures that the cookie is only accessible through HTTP(S) and cannot be accessed by client-side JavaScript, adding a layer of security.
