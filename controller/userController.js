@@ -86,38 +86,38 @@ exports.Login = catchAsyncError(
     const matchPassword = await finduser.comparePassword(password);
     console.log(matchPassword, "password");
     if (!matchPassword) return next(new Errorhandler("Invalid Password", 400));
-    sendEmail(
-      req.body.email,
-      finduser.name,
-      "Welcome to Vihara",
-      `<!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Welcome to Vihara</title>
-            <style>
-                body { font-family: Arial, sans-serif; font-size: 14px; color: #333; }
-                .container { width: 90%; max-width: 600px; margin: 0 auto; background-color: #f4f4f4; border-radius: 8px;padding:20px }
-                .button { background-color: #28a745; color: #ffffff; padding: 10px 20px; text-align: center; text-decoration: none; display: inline-block; font-size: 16px; margin: 10px 0; cursor: pointer; border-radius: 5px; }
-                .footer { font-size: 12px; color: #666; }
-                .header { font-size: 24px; color: #333; }
-                .welcome-text { font-size: 16px; line-height: 1.6; }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h1 class="header">Welcome to Vihara, ${finduser.name}!</h1>
-                <p class="welcome-text">We're thrilled to have you on board! At Vihara, we strive to provide you with the best experience possible. Whether you're exploring our platform or getting started, we want you to know that we're here to support you every step of the way.</p>
-                <p class="welcome-text">Feel free to explore our services, and don't hesitate to reach out if you need any assistance. We’re excited to see what you achieve with Vihara!</p>
-                <a href="${process.env.CLIENT_URL}" class="button">Explore Now</a>
-                <p class="welcome-text">Thank you for joining us.<br>Best Regards,<br>The Vihara Team</p>
-                <hr>
-                <p class="footer">If you have any questions or need assistance, don't hesitate to reach out to our support team at trisha@vihara.com.</p>
-            </div>
-        </body>
-        </html>`
-    );
+    // sendEmail(
+    //   req.body.email,
+    //   finduser.name,
+    //   "Welcome to Vihara",
+    //   `<!DOCTYPE html>
+    //     <html lang="en">
+    //     <head>
+    //         <meta charset="UTF-8">
+    //         <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    //         <title>Welcome to Vihara</title>
+    //         <style>
+    //             body { font-family: Arial, sans-serif; font-size: 14px; color: #333; }
+    //             .container { width: 90%; max-width: 600px; margin: 0 auto; background-color: #f4f4f4; border-radius: 8px;padding:20px }
+    //             .button { background-color: #28a745; color: #ffffff; padding: 10px 20px; text-align: center; text-decoration: none; display: inline-block; font-size: 16px; margin: 10px 0; cursor: pointer; border-radius: 5px; }
+    //             .footer { font-size: 12px; color: #666; }
+    //             .header { font-size: 24px; color: #333; }
+    //             .welcome-text { font-size: 16px; line-height: 1.6; }
+    //         </style>
+    //     </head>
+    //     <body>
+    //         <div class="container">
+    //             <h1 class="header">Welcome to Vihara, ${finduser.name}!</h1>
+    //             <p class="welcome-text">We're thrilled to have you on board! At Vihara, we strive to provide you with the best experience possible. Whether you're exploring our platform or getting started, we want you to know that we're here to support you every step of the way.</p>
+    //             <p class="welcome-text">Feel free to explore our services, and don't hesitate to reach out if you need any assistance. We’re excited to see what you achieve with Vihara!</p>
+    //             <a href="${process.env.CLIENT_URL}" class="button">Explore Now</a>
+    //             <p class="welcome-text">Thank you for joining us.<br>Best Regards,<br>The Vihara Team</p>
+    //             <hr>
+    //             <p class="footer">If you have any questions or need assistance, don't hesitate to reach out to our support team at trisha@vihara.com.</p>
+    //         </div>
+    //     </body>
+    //     </html>`
+    // );
     sendToken(finduser, 200, res);
   }
 )
