@@ -4,6 +4,7 @@ const Errorhandler = require("../utils/errorhandler");
 const sendToken = require("../utils/getToken");
 const productModel = require("../model/productModel");
 const sendEmail = require("../utils/sendEmail");
+const {sendSmSOTP}=require("./otpController");
 const mongoose = require('mongoose'); // Import mongoose
 const axios = require("axios");
 exports.CreateUser = catchAsyncError(
@@ -15,9 +16,8 @@ exports.CreateUser = catchAsyncError(
       path: 'savedProperties', // assuming 'savedProperties' is the field that references another collection
       model: 'productModel' // replace 'productModel' with the name of the model you are referencing
     })
-    console.log(newUser.businessPhone);
     try {
-      const response = await axios.get(`https://2factor.in/API/V1/${process.env.OTP_API_KEY}/SMS/${newUser.businessPhone}/AUTOGEN3`);
+      const otp = await sendSmSOTP(newUser.businessPhone);
       sendEmail(
         req.body.email,
         newUser.name,
@@ -50,8 +50,7 @@ exports.CreateUser = catchAsyncError(
         </body>
         </html>`
       );
-
-      sendToken(newUser, 201, res, response.data.Details);
+      sendToken(newUser, 201, res, otp);
     } catch (error) {
       res.status(500).json({ success: false, message: 'Error sending OTP', error: error.message });
     }
@@ -118,7 +117,7 @@ exports.Login = catchAsyncError(
     //     </body>
     //     </html>`
     // );
-    sendToken(finduser, 200, res);
+    sendToken(finduser, 200, res,otp);
   }
 )
 exports.sendOTP = catchAsyncError(async (req, res) => {

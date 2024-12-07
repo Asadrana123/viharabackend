@@ -8,7 +8,7 @@ const cookieParser = require('cookie-parser');
 const mongoose = require('mongoose');
 const cors = require("cors");
 const app = express();
-const PORT = process.env.PORT || 8000;
+const PORT = process.env.PORT || 3001;
 const errorMiddleware = require("./middleware/error");
 const userRoutes = require("./routes/userRoutes");
 const adminRoutes = require("./routes/adminRoutes");
@@ -39,7 +39,7 @@ app.use("/api/v1/saveProperty", savePropertyRoutes);
 app.use("/api/saveContact", contactRoutes);
 app.use("/api/sellProperty", sellPropertyRoutes);
 app.use("/auth", authRoutes)
-app.get('/', (req, res) => {
+app.use('/', (req, res) => {
   res.send('Hello World!');
 });
 app.use(errorMiddleware);

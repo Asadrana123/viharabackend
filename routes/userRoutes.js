@@ -1,6 +1,7 @@
 const express = require("express");
 const { updateUserDetails,CreateUser, Login, LogOut, saveProperty, allsavedProperties, getUser, removeProperty, getAllEmailandPhone,forgotPassword,resetPassword, sendOTP } = require("../controller/userController");
 const { isAuthenticated } = require("../middleware/auth");
+const { sendSmSOTP } = require("../controller/otpController");
 const router = express.Router();
 router.post("/registerUser", CreateUser);
 router.post("/login", Login);
@@ -14,4 +15,5 @@ router.post("/forgot/password",forgotPassword);
 router.post("/password/reset/:token",resetPassword);
 router.put('/update/:userId', updateUserDetails);
 router.post('/send-otp', sendOTP);
+router.post('/send-sms-otp',sendSmSOTP);
 module.exports = router;
