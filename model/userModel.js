@@ -32,7 +32,7 @@ const userSchema = new mongoose.Schema({
   },
   businessPhone: {
     type: String,
-    required: [true, "Please Enter Phone number"],
+    // required: [true, "Please Enter Phone number"],
   },
   createdAt: {
     type: Date,
