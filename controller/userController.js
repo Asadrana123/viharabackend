@@ -77,6 +77,7 @@ exports.getAllEmailandPhone = catchAsyncError(
 exports.Login = catchAsyncError(
   async (req, res, next) => {
     const { email, password } = req.body;
+    console.log(email,password);
     const finduser = await userModel.findOne({ email }).select("+password").populate({
       path: 'savedProperties', // assuming 'savedProperties' is the field that references another collection
       model: 'productModel' // replace 'product' with the name of the model you are referencing
@@ -117,7 +118,7 @@ exports.Login = catchAsyncError(
     //     </body>
     //     </html>`
     // );
-    sendToken(finduser, 200, res,otp);
+    sendToken(finduser, 200, res,"----");
   }
 )
 exports.sendOTP = catchAsyncError(async (req, res) => {
@@ -497,4 +498,28 @@ exports.forgotPassword = catchAsyncError(
       return next(new Errorhandler(error.message, 500));
     }
   }
+)
+exports.recaptcha=catchAsyncError(
+   async (req,res,next)=>{
+    const { token } = req.body;
+    if (!token) {
+      return res.status(400).json({ success: false, message: "Token is missing." });
+    }
+    try {
+      const secretKey = '6LfUu5gqAAAAAOZ3fRsN5A5fTcus1NzxueGkmKZy';
+      const response = await axios.post(
+        `https://www.google.com/recaptcha/api/siteverify?secret=${secretKey}&response=${token}`
+      );
+      const { success } = response.data;
+  
+      if (success) {
+        return res.json({ success: true, message: "CAPTCHA verified successfully!" });
+      } else {
+        return res.status(400).json({ success: false, message: "CAPTCHA verification failed." });
+      }
+    } catch (error) {
+      console.error("Error verifying CAPTCHA:", error);
+      return res.status(500).json({ success: false, message: "Server error." });
+    }
+   }
 )

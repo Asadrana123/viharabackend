@@ -20,7 +20,7 @@ const authRoutes = require("./routes/auth")
 app.use(cookieParser());
 require('./passport'); // This executes the setup code
 // Connect to MongoDB
-
+console.log(PORT);
 app.use(session({ secret: process.env.secret, resave: false, saveUninitialized: true }));
 // Initialize Passport
 app.use(passport.initialize());
@@ -32,6 +32,9 @@ mongoose.connect(process.env.DB_URI)
   .catch(err => console.log(err));
 
 // Define routes
+app.get("/", (req, res) => {
+  res.status(200).send("Server is running!");
+});
 app.use('/api/v1/user', userRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/product', productRoutes);
@@ -39,9 +42,6 @@ app.use("/api/v1/saveProperty", savePropertyRoutes);
 app.use("/api/saveContact", contactRoutes);
 app.use("/api/sellProperty", sellPropertyRoutes);
 app.use("/auth", authRoutes)
-app.use('/', (req, res) => {
-  res.send('Hello World!');
-});
 app.use(errorMiddleware);
 // Start the server
 app.listen(PORT, () => {
