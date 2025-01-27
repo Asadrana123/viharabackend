@@ -1,5 +1,5 @@
 const express = require("express");
-const { updateUserDetails,CreateUser, Login, LogOut, saveProperty, allsavedProperties, getUser, removeProperty, getAllEmailandPhone,forgotPassword,resetPassword, sendOTP, recaptcha } = require("../controller/userController");
+const {submitForm, updateUserDetails,CreateUser, Login, LogOut, saveProperty, allsavedProperties, getUser, removeProperty, getAllEmailandPhone,forgotPassword,resetPassword, sendOTP, recaptcha, } = require("../controller/userController");
 const { isAuthenticated } = require("../middleware/auth");
 const { sendSmSOTP } = require("../controller/otpController");
 const router = express.Router();
@@ -17,4 +17,5 @@ router.put('/update/:userId', updateUserDetails);
 router.post('/send-otp', sendOTP);
 router.post('/send-sms-otp',sendSmSOTP);
 router.post('/recaptcha',recaptcha);
+router.post("/meeting-form",submitForm)
 module.exports = router;

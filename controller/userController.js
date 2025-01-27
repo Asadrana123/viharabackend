@@ -1,4 +1,5 @@
 const userModel = require("../model/userModel");
+const Form=require("../model/formDataModel");
 const catchAsyncError = require("../middleware/catchAsyncError");
 const Errorhandler = require("../utils/errorhandler");
 const sendToken = require("../utils/getToken");
@@ -523,3 +524,44 @@ exports.recaptcha=catchAsyncError(
     }
    }
 )
+
+
+// Controller to handle form submission
+exports.submitForm =catchAsyncError ( 
+  async (req, res) => {
+  const { firstName, lastName, companyName, email, phone, contactMethods } = req.body;
+
+  // Validate the data (you can add more validations as needed)
+  if (!firstName || !lastName || !companyName || !email || !contactMethods) {
+    return res.status(400).json({ success: false, message: 'All fields are required' });
+  }
+
+  try {
+    // Create a new form document
+    const formData = new Form({
+      firstName,
+      lastName,
+      companyName,
+      email,
+      phone: contactMethods.includes("phone") ? phone : '',
+      contactMethods,
+    });
+
+    // Save the form data in the database
+    await formData.save();
+
+    // Respond with success message
+    res.status(200).json({
+      success: true,
+      message: 'Form submitted successfully!',
+    });
+  } catch (error) {
+    console.error("Error saving form data:", error);
+    res.status(500).json({
+      success: false,
+      message: 'An error occurred while saving the data.',
+    });
+  }
+}
+)
+
