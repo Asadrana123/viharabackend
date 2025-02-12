@@ -52,13 +52,13 @@ app.get("/api/unsubscribe", async (req, res) => {
 
   try {
       // Check if email already unsubscribed
-      const existingEntry = await Unsubscribe.findOne({ email });
+      const existingEntry = await unsubscribedEmails.findOne({ email });
       if (existingEntry) {
           return res.send("<h2>You have already unsubscribed.</h2>");
       }
 
       // Save email to database
-      await Unsubscribe.create({ email });
+      await unsubscribedEmails.create({ email });
       console.log(`Unsubscribed: ${email}`);
 
       res.send("<h2>You have been unsubscribed successfully.</h2>");

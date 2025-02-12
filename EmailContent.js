@@ -144,14 +144,8 @@ const content = (user) => [
         Trisha<br>
         <a href="https://vihara.ai" target="_blank">Vihara.ai</a></p>
     
-        <p style="margin-top: 20px; text-align: center;">
-          <a href="https://yourdomain.com/unsubscribe?email=${user["Email Address"]}" 
-             style="display: inline-block; padding: 10px 20px; font-size: 14px; color: #fff; background-color: #d9534f; text-decoration: none; border-radius: 5px;">
-             Unsubscribe
-          </a>
-        </p>
         <p style="font-size: 12px; color: #888; text-align: center;">
-          <a href="https://yourdomain.com/unsubscribe?email=${user["Email Address"]}" style="color: #888;">Click here to unsubscribe</a>.
+          <a href="https://viharabackend.onrender.com/api/unsubscribe?email=${user["Email Address"]}" style="color: #888;">Click here to unsubscribe</a>.
         </p>
       `
     }
