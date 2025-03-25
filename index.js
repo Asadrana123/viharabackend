@@ -16,6 +16,7 @@ const productRoutes = require("./routes/productRoutes");
 const savePropertyRoutes = require("./routes/savePropertyRoutes");
 const contactRoutes = require("./routes/contactRoutes");
 const sellPropertyRoutes = require("./routes/sellPropertyRoutes");
+const saveSearchRoutes = require("./routes/savedSearch");
 const authRoutes = require("./routes/auth")
 const unsubscribedEmails=require("./model/unsubscribeModel")
 app.use(cookieParser());
@@ -43,6 +44,7 @@ app.use("/api/v1/saveProperty", savePropertyRoutes);
 app.use("/api/saveContact", contactRoutes);
 app.use("/api/sellProperty", sellPropertyRoutes);
 app.use("/auth", authRoutes);
+app.use("/api/user/save-searches",saveSearchRoutes);
 app.get("/api/unsubscribe", async (req, res) => {
   const { email } = req.query;
 
