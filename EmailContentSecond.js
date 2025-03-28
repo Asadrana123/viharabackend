@@ -1,138 +1,136 @@
 module.exports = function(user) {
-  const logo = `
-    <div style="text-align: center; margin-top: 20px;">
-      <img src="https://res.cloudinary.com/my1chatapp/image/upload/v1742399258/vihara-logo-b_jgiv7c.png" alt="Vihara Logo" style="width: 150px; height: auto;" />
-    </div>`;
+  const logo = 
+      `<div style="text-align: center; margin-top: 20px;">
+        <img src="https://res.cloudinary.com/my1chatapp/image/upload/v1742399258/vihara-logo-b_jgiv7c.png" alt="Vihara Logo" style="width: 150px; height: auto;" />
+      </div>`;
 
-  const unsubscribe = `
-    <p style="font-size: 12px; color: #888; text-align: center;">
-      <a href="https://viharabackend.onrender.com/api/unsubscribe?email=${user["Email"]}" style="color: #888;">Click here to unsubscribe</a>.
-    </p>`;
+  const unsubscribe = 
+      `<p style="font-size: 12px; color: #888; text-align: center;">
+        <a href="https://viharabackend-pcwn.onrender.com/api/unsubscribe?email=${user["Email"]}" style="color: #888;">Click here to unsubscribe</a>.
+      </p>`;
 
   return [
-    {
-      subject: "Distressed Property Auctions Pilot",
-      body: `
-        <p>Hi ${user?.["First Name"] || "Valued Partner"},</p>
-        <p>I hope this email finds you well.</p>
-        <p>I'm Trisha, the Head of Asset Management at Vihara. We specialize in auctioning distressed properties, helping institutions like yours maximize returns efficiently.</p>
-        <p>I'd love to connect and explore how we can run a pilot auction tailored to your needs. Do you have 15-30 minutes this week for a quick chat?
-         <a href="https://calendly.com/trisha-vihara/30min" target="_blank">Click here to schedule a time that works for you</a>.</p>
-        <p>Looking forward to your thoughts.</p>
-        <p>Best,<br>
-        Trisha Soin<br>
-        <a href="https://www.vihara.ai" target="_blank">vihara.ai</a></p>
-        ${logo}
-        ${unsubscribe}`
-    },
-    {
-      subject: "Why Distressed Property Auctions Work for You",
-      body: `
-        <p>Hi ${user?.["First Name"] || "Valued Partner"},</p>
-        <p>Did you know distressed property auctions can generate higher returns in a shorter time?</p>
-        <p>Our platform connects serious buyers with exclusive properties, ensuring a competitive and efficient process.</p>
-        <p>Let's discuss how this can benefit your portfolio. <a href="https://calendly.com/trisha-vihara/30min" target="_blank">Book a quick call</a>.</p>
-        <p>Best,<br>
-        Trisha Soin</p>
-        ${logo}
-        ${unsubscribe}`
-    },
-    {
-      subject: "RE:Exclusive: 2025 Distressed Real Estate Trends for Lenders",
-      body: `
-        <p>Hi ${user?.["First Name"] || "Valued Partner"},</p>
-        <p>The real estate market is shifting fast, and distressed assets are becoming a major investment opportunity.</p>
-        <h3>📊 Key Market Trends:</h3>
-        <ul>
-          <li>✅ <b>Foreclosures Are Up</b> – A 25% increase in 2025 compared to last year.</li>
-          <li>✅ <b>Distressed Sales Boom</b> – 15% of all real estate transactions now involve distressed properties.</li>
-          <li>✅ <b>Shifting Buyer Demand</b> – 30% of foreclosed homes are in suburban & rural areas due to remote work shifts.</li>
-        </ul>
-        <p>Vihara helps institutions analyze distressed properties and optimize asset recovery.</p>
-        <p>Would you like to see how we help institutions like yours? <a href="https://calendly.com/trisha-vihara/30min" target="_blank">Schedule a call</a>.</p>
-        <p>Best,<br>
-        Trisha Gupta<br>
-        <a href="https://vihara.ai">Vihara.ai</a></p>
-        ${logo}
-        ${unsubscribe}`
-    },
-    {
-      subject: "3 Essential Insights on the Distressed Property Market for Banks",
-      body: `
-        <p>Dear ${user?.["First Name"] || "Valued Partner"},</p>
-        <h3>🔹 Increased Default Rates</h3>
-        <p>Default rates are rising, meaning more distressed properties are entering the market.</p>
-        <h3>🔹 Higher Recovery Values Through Auctions</h3>
-        <p>Studies show that auctioning distressed properties can yield higher recovery rates.</p>
-        <h3>🔹 Regulatory Pressure on Property Disposal</h3>
-        <p>Regulatory requirements for non-performing loans are tightening.</p>
-        <p>Let's discuss how Vihara can help. <a href="https://calendly.com/trisha-vihara/30min" target="_blank">Schedule a quick chat</a>.</p>
-        <p>Best,<br>
-        Trisha Gupta<br>
-        <a href="https://vihara.ai">Vihara.ai</a></p>
-        ${logo}
-        ${unsubscribe}`
-    },
-    {
-      subject: "Maximize Returns: Data-Driven Distressed Property Auctions",
-      body: `
-        <p>Hi ${user?.["First Name"] || "Valued Partner"},</p>
-        <p>Did you know data-driven auction strategies can help institutions like yours achieve better recovery rates?</p>
-        <p>Our AI-powered platform helps predict market trends, identify high-value properties, and attract serious buyers for a competitive bidding process.</p>
-        <p>Let's discuss how our solutions can help. <a href="https://calendly.com/trisha-vihara/30min" target="_blank">Schedule a call</a>.</p>
-        <p>Best,<br>
-        Trisha Gupta<br>
-        <a href="https://vihara.ai">Vihara.ai</a></p>
-        ${logo}
-        ${unsubscribe}`
-    },
-    {
-      subject: "How Banks Are Leveraging Auctions for Higher Asset Recovery",
-      body: `
-        <p>Hi ${user?.["First Name"] || "Valued Partner"},</p>
-        <p>Many financial institutions are now using auction strategies to increase recovery rates on distressed properties.</p>
-        <p>By leveraging competitive bidding and real-time market insights, banks are able to maximize property value while minimizing holding costs.</p>
-        <h3>🔹 Key Benefits of Auctioning Distressed Properties:</h3>
-        <ul>
-          <li>✅ Faster turnaround time—properties can be sold in days, not months.</li>
-          <li>✅ Competitive bidding drives up final sale prices.</li>
-          <li>✅ Reduced legal and maintenance costs for held assets.</li>
-        </ul>
-        <p>Would you like to learn how Vihara can help your institution optimize asset recovery? <a href="https://calendly.com/trisha-vihara/30min" target="_blank">Let's chat.</a></p>
-        <p>Best,<br>
-        Trisha Gupta<br>
-        <a href="https://vihara.ai" target="_blank">Vihara.ai</a></p>
-        ${logo}
-        ${unsubscribe}`
-    },
-    {
-      subject: "Distressed Property Auction Insights You Shouldn't Miss",
-      body: `
-        <p>Hi ${user?.["First Name"] || "Valued Partner"},</p>
-        <p>Are you staying updated on the latest trends in distressed property auctions? Let's discuss how Vihara can help.</p>
-        <p><a href="https://calendly.com/trisha-vihara/30min" target="_blank">Schedule a call</a> today.</p>
-        <p>Best,<br>Trisha Gupta</p>
-        ${logo}
-        ${unsubscribe}`
-    },
-    {
-      subject: "Distressed Property Auction Insights You Shouldn't Miss",
-      body: `
-        <p>Hi ${user?.["First Name"] || "Valued Partner"},</p>
-        <p>Are you staying updated on the latest trends in distressed property auctions? Market conditions are shifting, and financial institutions that adapt quickly are seeing stronger returns.</p>
-        <h3>🔹 What's Changing in 2025?</h3>
-        <ul>
-          <li>📈 Increased investor interest in foreclosure properties.</li>
-          <li>🏡 More suburban and rural properties entering distressed markets.</li>
-          <li>⚖️ New regulatory policies impacting non-performing loan management.</li>
-        </ul>
-        <p>Vihara provides real-time auction insights and a seamless platform to help banks optimize asset liquidation.</p>
-        <p><a href="https://calendly.com/trisha-vihara/30min" target="_blank">Schedule a call</a> today to explore how your institution can stay ahead of market changes.</p>
-        <p>Best,<br>
-        Trisha Gupta<br>
-        <a href="https://vihara.ai" target="_blank">Vihara.ai</a></p>
-         ${logo}
-        ${unsubscribe}`
-    }
-  ];
+  {
+    subject: "What if the best buyers never saw your listings?",
+    body: 
+          `<p style="display: none;">Most platforms miss 60% of qualified REO buyers. We don't.</p>
+           <p>Hi ${user?.["First Name"] || "Valued Partner"},</p>
+           <p>Quick thought: What if the <strong>highest-intent buyers</strong>—the ones who close fast—never saw your listings?</p>
+           <ul>
+             <li>Most auction platforms market to the <em>usual buyers.</em></li>
+             <li>Vihara connects sellers to <strong>private buyer pools</strong> that aren't visible on other sites.</li>
+             <li>It's not about more eyes—it's about <strong>the right eyes</strong></li>
+           </ul>
+           <p>Curious? I'll show you how.</p>
+           <p>– Trisha<br>Head of Asset Management | Vihara</p>
+           ${logo}
+           ${unsubscribe}`
+  },
+  {
+    subject: "Update: Our buyer funnel doesn't look like anyone else's.",
+    body: 
+          `<p style="display: none;">And that's why sellers like you switch to Vihara.</p>
+           <p>Hi ${user?.["First Name"] || "Valued Partner"},</p>
+           <p>Most sellers think "more traffic = better outcome." We've found the opposite:</p>
+           <ul>
+             <li>Traditional platforms chase volume—we track <strong>engagement depth</strong></li>
+             <li>Our buyer network includes <strong>off-market investors</strong>, trust funds, and fix-and-hold firms you won't see on the public grid</li>
+             <li>We bring them in <em>before</em> auction day—<strong>quietly.</strong></li>
+           </ul>
+           <p>We don't compete with the crowd. We skip it.</p>
+           <p>Want to see what that changes?</p>
+           <p>– Trisha</p>
+           ${logo}
+           ${unsubscribe}`
+  },
+  {
+    subject: "Not all buyers are created equal. We sort them before they waste your time.",
+    body: 
+          `<p style="display: none;">Here's how we protect your listing from buyer fallout.</p>
+           <p>Hi ${user?.["First Name"] || "Valued Partner"},</p>
+           <p>Sellers tell us the same thing:</p>
+           <p>"We had 12 bidders. 1 closed."</p>
+           <p>We get it. So we built Vihara differently:</p>
+           <ul>
+             <li>Our buyer intake process <strong>qualifies intent</strong> with behavioral and financial signals</li>
+             <li>That means <strong>fewer bids, more closings</strong></li>
+             <li>It's not about flashy listings—it's about <strong>quiet confidence in the outcome</strong></li>
+           </ul>
+           <p>Less noise. More certainty.</p>
+           <p>Want a walkthrough?</p>
+           <p>– Trisha</p>
+           ${logo}
+           ${unsubscribe}`
+  },
+  {
+    subject: "Let's make your next auction boring—in a good way.",
+    body: 
+          `<p style="display: none;">No drama. No fallout. Just real closings.</p>
+           <p>Hi ${user?.["First Name"] || "Valued Partner"},</p>
+           <p>REO shouldn't feel like roulette. At Vihara:</p>
+           <ul>
+             <li>We treat auctions like <strong>matchmaking</strong>, not marketing</li>
+             <li>The right buyers show up <em>before</em> auction day—and stay through closing</li>
+             <li>No surprises, no re-listing, no endless back-and-forth</li>
+           </ul>
+           <p>I'd love to show you how we do it.</p>
+           <p>👉 <a href="https://calendly.com/trisha-vihara/15min" target="_blank">Grab time here</a></p>
+           <p>– Trisha<br>Head of Asset Management | Vihara</p>
+           ${logo}
+           ${unsubscribe}`
+  },
+  {
+    subject: "Why one seller called us 'the quiet advantage'",
+    body: 
+          `<p style="display: none;">A peek into how Vihara buyers behave differently.</p>
+           <p>Hi ${user?.["First Name"] || "Valued Partner"},</p>
+           <p>One of our clients recently said:</p>
+           <p>"With Vihara, it just <em>felt</em> different. No games, no ghosting—just the right buyers, ready."</p>
+           <p>Here's what made the difference:</p>
+           <ul>
+             <li>Vihara doesn't chase mass traffic. We <strong>cultivate readiness</strong></li>
+             <li>Our buyer signals go beyond clicks—we look at <strong>intent, history, and capability</strong></li>
+             <li>Sellers stay in control because <strong>we control for buyer noise</strong></li>
+           </ul>
+           <p>Would you want to pilot one listing?</p>
+           <p>– Trisha</p>
+           ${logo}
+           ${unsubscribe}`
+  },
+  {
+    subject: "Want less drama in your next disposition?",
+    body: 
+          `<p style="display: none;">Our sellers say "it just works."</p>
+           <p>Hi ${user?.["First Name"] || "Valued Partner"},</p>
+           <p>If REO sales feel unpredictable— It's likely a <strong>buyer problem</strong>, not a seller one.</p>
+           <p>Vihara fixes that with:</p>
+           <ul>
+             <li>A <strong>pre-qualified pool</strong> that behaves more like direct buyers than opportunists</li>
+             <li>Zero listing fees unless we win for you</li>
+             <li>A process that's simple, not loud</li>
+           </ul>
+           <p>One test listing. One clean close.</p>
+           <p>Let's talk: <a href="https://calendly.com/trisha-vihara/15min" target="_blank">https://calendly.com/trisha-vihara/15min</a></p>
+           <p>– Trisha</p>
+           ${logo}
+           ${unsubscribe}`
+  },
+  {
+    subject: "The smartest REO sellers are trying something different",
+    body: 
+          `<p style="display: none;">And it's not because it's better. It's because it's quieter.</p>
+           <p>Hi ${user?.["First Name"] || "Valued Partner"},</p>
+           <p>Better is debatable. Different is undeniable.</p>
+           <ul>
+             <li>Vihara doesn't list. We <em>target.</em></li>
+             <li>Our buyers don't browse. They <em>buy.</em></li>
+             <li>And our sellers? They sleep better.</li>
+           </ul>
+           <p>Let's try one together. Just one asset. One test. That's it.</p>
+           <p>👉 <a href="https://calendly.com/trisha-vihara/15min" target="_blank">Schedule here</a></p>
+           <p>Hope we connect,<br>Trisha</p>
+           ${logo}
+           ${unsubscribe}`
+  }
+ ];
 };

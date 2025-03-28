@@ -17,8 +17,14 @@ const savePropertyRoutes = require("./routes/savePropertyRoutes");
 const contactRoutes = require("./routes/contactRoutes");
 const sellPropertyRoutes = require("./routes/sellPropertyRoutes");
 const saveSearchRoutes = require("./routes/savedSearch");
+const auctionRegistrationRoutes=require("./routes/auctionRegistrationRoutes")
 const authRoutes = require("./routes/auth")
+const biddingRoutes=require("./routes/biddingRoutes")
 const unsubscribedEmails=require("./model/unsubscribeModel")
+const http = require('http');
+const initSocketServer = require('./socketServer');
+const server = http.createServer(app);
+const io = initSocketServer(server);
 app.use(cookieParser());
 require('./passport'); // This executes the setup code
 // Connect to MongoDB
@@ -45,6 +51,8 @@ app.use("/api/saveContact", contactRoutes);
 app.use("/api/sellProperty", sellPropertyRoutes);
 app.use("/auth", authRoutes);
 app.use("/api/user/save-searches",saveSearchRoutes);
+app.use('/api/auction-registration',auctionRegistrationRoutes);
+app.use('/api/bidding',biddingRoutes)
 app.get("/api/unsubscribe", async (req, res) => {
   const { email } = req.query;
 
@@ -71,6 +79,6 @@ app.get("/api/unsubscribe", async (req, res) => {
 });
 app.use(errorMiddleware);
 // Start the server
-app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });

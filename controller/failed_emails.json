@@ -66,5 +66,17 @@
     "name": "Kelly",
     "error": "{\"errors\":[{\"message\":\"Does not contain a valid address.\",\"field\":\"personalizations.0.to.0.email\",\"help\":\"http://sendgrid.com/docs/API_Reference/Web_API_v3/Mail/errors.html#message.personalizations.to\"}]}",
     "timestamp": "2025-03-21T15:12:42.811Z"
+  },
+  {
+    "email": "asadlukman246@gmail.com",
+    "name": "Max",
+    "error": "{\"errors\":[{\"message\":\"The provided authorization grant is invalid, expired, or revoked\",\"field\":null,\"help\":null}]}",
+    "timestamp": "2025-03-25T15:10:56.592Z"
+  },
+  {
+    "email": "asadlukman246@gmail.com",
+    "name": "Max",
+    "error": "{\"errors\":[{\"message\":\"The provided authorization grant is invalid, expired, or revoked\",\"field\":null,\"help\":null}]}",
+    "timestamp": "2025-03-25T15:12:02.685Z"
   }
 ]

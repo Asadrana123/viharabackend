@@ -12,6 +12,7 @@ exports.CreateAdmin=catchAsyncError(
 exports.Login=catchAsyncError(
     async(req,res,next)=>{
            const {email,password}=req.body;
+           console.log(email,password);
            const findAdmin=await adminModel.findOne({email}).select("+password");
            if(!findAdmin) return  next(new Errorhandler("Invalid Email or Password",400));
            const matchPassword=findAdmin.comparePassword(password);

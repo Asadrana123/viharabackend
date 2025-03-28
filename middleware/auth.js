@@ -45,3 +45,23 @@ exports.isAuthenticated = catchAsyncError(async (req, res, next) => {
     return next(new Errorhandler("Invalid or expired token", 401));
   }
 });
+
+exports.authorizeRoles = (...roles) => {
+  return (req, res, next) => {
+    // Check if user exists and has a role property
+    if (!req.user || !req.user.role) {
+      return next(
+        new Errorhandler(`Role property not found on user`, 403)
+      );
+    }
+
+    // Check if user's role is included in the allowed roles
+    if (!roles.includes(req.user.role)) {
+      return next(
+        new Errorhandler(`Role: ${req.user.role} is not allowed to access this resource`, 403)
+      );
+    }
+
+    next();
+  };
+};
