@@ -2,11 +2,17 @@ const mongoose = require("mongoose");
 const validator = require("validator");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+
 const userSchema = new mongoose.Schema({
   userType: {
     type: String,
-    enum: ['Buyer', 'Agent'], // Restricting the values to 'Buyer' or 'Agent'
-    default: 'Buyer' // Setting 'Buyer' as the default value
+    enum: ['Buyer', 'Agent'], 
+    default: 'Buyer'
+  },
+  role: {
+    type: String,
+    enum: ['user', 'admin'],
+    default: 'user'
   },
   name: {
     type: String,
@@ -26,13 +32,12 @@ const userSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    // required:[true,"Please Enter Password"],
+    required: [true, "Please Enter Password"],
     minLength: [8, "password should have more than 8 characters"],
     select: false
   },
   businessPhone: {
     type: String,
-    // required: [true, "Please Enter Phone number"],
   },
   createdAt: {
     type: Date,
@@ -44,7 +49,7 @@ const userSchema = new mongoose.Schema({
   },
   mobile_verified_at: {
     type: Date,
-    default: null,  // Initially null, will be set when mobile is verified
+    default: null,
   },
   remmember_token: {
     type: String,
@@ -76,37 +81,32 @@ const userSchema = new mongoose.Schema({
   ],
   resetPasswordToken: String,
   resetPasswordExpire: Date
-})
+});
+
 userSchema.pre("save", async function (next) {
   if (this.isModified("password") == false) {
     next();
   }
-  this.updatedAt = Date.now();
+  this.updated_at = Date.now();
   this.password = await bcrypt.hash(this.password, 10);
-})
-userSchema.methods.comparePassword = async function (enterdPassword) {
-  return await bcrypt.compare(enterdPassword, this.password);
+});
+
+userSchema.methods.comparePassword = async function (enteredPassword) {
+  return await bcrypt.compare(enteredPassword, this.password);
 };
+
 userSchema.methods.getJWTToken = function () {
-  return jwt.sign({ id: this._id }, process.env.secret, { expiresIn: process.env.expireTime });
-}
-// In Express.js, the "crypto" module is a built-in module that provides 
-// cryptographic functionality, allowing you to perform various cryptographic operations, 
-// such as hashing, encryption, and decryption. Here's a simplified explanation of 
-// how the crypto module works in Express.js:
-// const dataToHash = 'Hello, World!';
-// const hash = crypto.createHash('sha256').update(dataToHash).digest('hex');
-// console.log('Hash:', hash);
-// In this example, we create a SHA-256 hash of the string 'Hello, World!'. 
-//The update method specifies the data to be hashed, and digest('hex') converts the hash into a
-// hexadecimal string.
+  return jwt.sign({ id: this._id, role: this.role }, process.env.secret, { expiresIn: process.env.expireTime });
+};
+
 userSchema.methods.getResetPasswordToken = function () {
-  //genratingtoken
-  const resetToken = require('crypto').randomBytes(20).toString('hex')
-  //hashing token and adding to userScheme
-  this.resetPasswordToken = require("crypto").createHash("sha256").update(resetToken).digest("hex")
+  //generating token
+  const resetToken = require('crypto').randomBytes(20).toString('hex');
+  //hashing token and adding to userSchema
+  this.resetPasswordToken = require("crypto").createHash("sha256").update(resetToken).digest("hex");
   this.resetPasswordExpire = Date.now() + 15 * 60 * 1000;
 
   return resetToken;
-}
+};
+
 module.exports = mongoose.model("userModel", userSchema);

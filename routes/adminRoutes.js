@@ -1,24 +1,59 @@
 const express = require("express");
-const { CreateAdmin, LogOut, Login } = require("../controller/adminController");
 const { isAuthenticated, authorizeRoles } = require("../middleware/auth");
+const { 
+  CreateAdmin, 
+  updateUserRole,
+  deleteUser,
+  getAllUsers
+} = require("../controller/adminController");
 const {
   getAllRegistrations,
   updateRegistrationStatus,
 } = require("../controller/auctionRegistrationController");
+
 const router = express.Router();
-router.post(
-  "/register",
+
+// Admin user management routes
+router.get(
+  "/users",
   isAuthenticated,
+  authorizeRoles("admin"),
+  getAllUsers
+);
+
+router.post(
+  "/register-admin",
+  isAuthenticated,
+  authorizeRoles("admin"),
   CreateAdmin
 );
-router.post("/login",Login);
-router.get("/logout", LogOut);
+
+router.put(
+  "/user/:id/role",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  updateUserRole
+);
+
+router.delete(
+  "/user/:id",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  deleteUser
+);
+
+// Auction registration routes
 router.get(
   "/auction-registrations",
+  isAuthenticated,
+  authorizeRoles("admin"),
   getAllRegistrations
 );
+
 router.put(
   "/auction-registration/:id",
+  isAuthenticated,
+  authorizeRoles("admin"),
   updateRegistrationStatus
 );
 

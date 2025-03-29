@@ -1,4 +1,4 @@
-const catchAsyncError = require("../middleware/catchAsyncError");
+const catchAsyncError = require("./catchAsyncError");
 const Errorhandler = require("../utils/errorhandler");
 const userModel = require("../model/userModel");
 const jwt = require("jsonwebtoken");
@@ -19,6 +19,9 @@ exports.isAuthenticated = catchAsyncError(async (req, res, next) => {
   } else if (req.query.token) {
     // Token from query params
     token = req.query.token;
+  } else if (req.cookies && req.cookies.token) {
+    // Token from cookies
+    token = req.cookies.token;
   }
 
   // If no token found
@@ -28,9 +31,8 @@ exports.isAuthenticated = catchAsyncError(async (req, res, next) => {
 
   try {
     // Verify token
-    console.log(process.env.secret)
-    console.log(token)
     const decodedData = jwt.verify(token, process.env.secret);
+    
     // Fetch user from database
     req.user = await userModel.findById(decodedData.id);
     
@@ -41,24 +43,26 @@ exports.isAuthenticated = catchAsyncError(async (req, res, next) => {
     
     next();
   } catch (error) {
-    console.log(error);
+    console.error("Token verification error:", error);
     return next(new Errorhandler("Invalid or expired token", 401));
   }
 });
 
+// Middleware to check if the user has the required role
 exports.authorizeRoles = (...roles) => {
   return (req, res, next) => {
-    // Check if user exists and has a role property
-    if (!req.user || !req.user.role) {
-      return next(
-        new Errorhandler(`Role property not found on user`, 403)
-      );
+    // Check if user exists
+    if (!req.user) {
+      return next(new Errorhandler("User not authenticated", 401));
     }
 
+    // If role isn't specified, default to 'user'
+    const userRole = req.user.role || 'user';
+
     // Check if user's role is included in the allowed roles
-    if (!roles.includes(req.user.role)) {
+    if (!roles.includes(userRole)) {
       return next(
-        new Errorhandler(`Role: ${req.user.role} is not allowed to access this resource`, 403)
+        new Errorhandler(`Role: ${userRole} is not allowed to access this resource`, 403)
       );
     }
 
