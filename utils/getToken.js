@@ -4,11 +4,18 @@ const sendToken = (user, statusCode, res) => {
     // Generate JWT token
     const token = user.getJWTToken();
     
-    // Options for cookies
+    // Set a default cookie expiration if environment variable isn't set
+    const cookieExpire = process.env.cookie_expire || 30; // Default to 30 days if not set
+    
+    // Ensure we have a valid number for expiration
+    const expirationDays = parseInt(cookieExpire, 10) || 30;
+    
+    // Calculate expiration date - properly handling the date creation
+    const expires = new Date(Date.now() + expirationDays * 24 * 60 * 60 * 1000);
+    
+    // Options for cookies with proper error handling
     const options = {
-        expires: new Date(
-            Date.now() + process.env.COOKIE_EXPIRE * 24 * 60 * 60 * 1000
-        ),
+        expires: expires,
         httpOnly: true
     };
     
@@ -18,7 +25,7 @@ const sendToken = (user, statusCode, res) => {
         user: {
             _id: user._id,
             name: user.name,
-            last_name: user.last_name,
+            last_name: user.last_name || '',
             email: user.email,
             role: user.role || 'user',
             userType: user.userType,
