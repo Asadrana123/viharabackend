@@ -15,12 +15,10 @@ router.post("/login",Login);
 router.get("/logout", LogOut);
 router.get(
   "/auction-registrations",
-  isAuthenticated,
   getAllRegistrations
 );
 router.put(
   "/auction-registration/:id",
-  isAuthenticated,
   updateRegistrationStatus
 );
 
