@@ -94,14 +94,14 @@ const registrationSchema = new mongoose.Schema({
     enum: ["pending", "approved", "rejected"],
     default: "pending"
   },
-  bidAmount: {
-    type: Number,
-    required: true
-  },
-  buyersPremium: {
-    type: Number,
-    required: true
-  },
+  // bidAmount: {
+  //   type: Number,
+  //   required: true
+  // },
+  // buyersPremium: {
+  //   type: Number,
+  //   required: true
+  // },
   submittedAt: {
     type: Date,
     default: Date.now

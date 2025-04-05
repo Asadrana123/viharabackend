@@ -14,9 +14,9 @@ exports.submitAuctionRegistration = catchAsyncError(
       buyerInfo, 
       buyerType, 
       companyInfo, 
-      legalAgreements,
-      bidAmount,
-      buyersPremium
+      legalAgreements
+      // bidAmount,
+      // buyersPremium
     } = req.body;
     // Check if user exists
     const user = await User.findById(userId);
@@ -48,12 +48,12 @@ exports.submitAuctionRegistration = catchAsyncError(
       }
       
       // If already registered but pending or rejected, update the registration
-      existingRegistration.buyerInfo = buyerInfo;
+      // existingRegistration.buyerInfo = buyerInfo;
       existingRegistration.buyerType = buyerType;
       existingRegistration.companyInfo = companyInfo;
       existingRegistration.legalAgreements = legalAgreements;
-      existingRegistration.bidAmount = bidAmount;
-      existingRegistration.buyersPremium = buyersPremium;
+      // existingRegistration.bidAmount = bidAmount;
+      // existingRegistration.buyersPremium = buyersPremium;
       existingRegistration.status = "pending"; // Reset status to pending if previously rejected
       existingRegistration.updatedAt = Date.now();
       
@@ -75,8 +75,8 @@ exports.submitAuctionRegistration = catchAsyncError(
       buyerType,
       companyInfo,
       legalAgreements,
-      bidAmount,
-      buyersPremium
+      // bidAmount,
+      // buyersPremium
     });
     res.status(201).json({
       success: true,

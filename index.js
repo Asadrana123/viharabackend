@@ -21,6 +21,7 @@ const auctionRegistrationRoutes=require("./routes/auctionRegistrationRoutes")
 const authRoutes = require("./routes/auth")
 const biddingRoutes=require("./routes/biddingRoutes")
 const unsubscribedEmails=require("./model/unsubscribeModel")
+const ebookRoutes = require("./routes/eBookRoutes");
 const http = require('http');
 const initSocketServer = require('./socketServer');
 const server = http.createServer(app);
@@ -53,6 +54,7 @@ app.use("/auth", authRoutes);
 app.use("/api/user/save-searches",saveSearchRoutes);
 app.use('/api/auction-registration',auctionRegistrationRoutes);
 app.use('/api/bidding',biddingRoutes)
+app.use("/api/ebook", ebookRoutes);
 app.get("/api/unsubscribe", async (req, res) => {
   const { email } = req.query;
 
