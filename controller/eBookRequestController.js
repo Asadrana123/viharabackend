@@ -18,7 +18,7 @@ exports.requestEbook = catchAsyncError(
     
     if (existingRequest) {
       // If already requested, send it again without creating a new record
-      await sendEbookEmail(email, name || existingRequest.name || "there");
+      //await sendEbookEmail(email, name || existingRequest.name || "there");
       
       return res.status(200).json({
         success: true,

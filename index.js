@@ -22,6 +22,7 @@ const authRoutes = require("./routes/auth")
 const biddingRoutes=require("./routes/biddingRoutes")
 const unsubscribedEmails=require("./model/unsubscribeModel")
 const ebookRoutes = require("./routes/eBookRoutes");
+const demographicRoutes = require("./routes/demoGraphicRoutes");
 const http = require('http');
 const initSocketServer = require('./socketServer');
 const server = http.createServer(app);
@@ -48,6 +49,7 @@ app.use('/api/v1/user', userRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/product', productRoutes);
 app.use("/api/v1/saveProperty", savePropertyRoutes);
+app.use('/api/v1/demographics',demographicRoutes);
 app.use("/api/saveContact", contactRoutes);
 app.use("/api/sellProperty", sellPropertyRoutes);
 app.use("/auth", authRoutes);
