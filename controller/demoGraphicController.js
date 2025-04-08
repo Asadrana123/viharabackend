@@ -1,7 +1,7 @@
 // controller/demographicController.js
 const catchAsyncError = require("../middleware/catchAsyncError");
 const ErrorHandler = require("../utils/errorhandler");
-const censusApiService = require("../services/censusApiService");
+const censusApiService = require("../Services/censusApiService");
 const fs = require('fs');
 const path = require('path');
 
