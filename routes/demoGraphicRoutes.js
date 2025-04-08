@@ -13,7 +13,7 @@ const router = express.Router();
 // Public routes - available without authentication
 router.get("/counties", getCounties);
 router.get("/states", getStates);
-router.get("/census-variables", getCensusVariables);
+router.get("/variables", getCensusVariables);
 
 // Protected routes - require authentication
 router.post("/analyze", isAuthenticated, analyzeDemographics);
