@@ -131,6 +131,133 @@ module.exports = function(user) {
            <p>Hope we connect,<br>Trisha</p>
            ${logo}
            ${unsubscribe}`
+  },
+  {
+    subject: "Your listings deserve better buyers.",
+    body: 
+      `<p style="display: none;">Most auction platforms chase noise. Vihara delivers focus.</p>
+       <p>Hi ${user?.["First Name"] || "there"},</p>
+       <p>Ever feel like your listings are being shown to the wrong crowd?</p>
+       <p>Most auction platforms push for more clicks. More views. More noise.</p>
+       <ul>
+         <li>We don’t just list—we match.</li>
+         <li>We whisper to the right buyers—not blast to the masses.</li>
+         <li>We prioritize closings—not chaos.</li>
+       </ul>
+       <p>You’ve worked hard to secure these properties. Let’s make sure the right people see them.</p>
+       <p>– Trisha<br>Head of Asset Management | Vihara</p>
+       ${logo}
+       ${unsubscribe}`
+  },
+  {
+    subject: "We skip the chaos. You close faster.",
+    body: 
+      `<p style="display: none;">What if REO didn't have to be noisy and messy?</p>
+       <p>Hi ${user?.["First Name"] || "there"},</p>
+       <p>Most REO sales come with chaos:</p>
+       <ul>
+         <li>Buyers who ghost.</li>
+         <li>Auctions with high drama.</li>
+         <li>Re-listings that waste weeks.</li>
+       </ul>
+       <p>We built Vihara to skip all of that.</p>
+       <p>We connect REO sellers with buyers who:</p>
+       <ul>
+         <li>Are pre-vetted</li>
+         <li>Show up before auction day</li>
+         <li>Close quietly</li>
+       </ul>
+       <p>It’s not louder. It’s smarter.</p>
+       <p>– Trisha</p>
+       ${logo}
+       ${unsubscribe}`
+  },
+  {
+    subject: "The auction doesn’t start on auction day.",
+    body: 
+      `<p style="display: none;">At Vihara, the match happens before the bidding starts.</p>
+       <p>Hi ${user?.["First Name"] || "there"},</p>
+       <p>Here’s a secret: Your best buyer often decides <strong>before</strong> auction day.</p>
+       <ul>
+         <li>They’ve seen the asset early.</li>
+         <li>They’ve been qualified quietly.</li>
+         <li>They’re ready to close before the crowd shows up.</li>
+       </ul>
+       <p>That’s why we don’t just post listings—we start conversations.</p>
+       <p>If you're tired of surprises on auction day, let’s talk.</p>
+       <p>– Trisha</p>
+       ${logo}
+       ${unsubscribe}`
+  },
+  {
+    subject: "Why we show your property to fewer people on purpose.",
+    body: 
+      `<p style="display: none;">Fewer eyes. More results. That's the Vihara advantage.</p>
+       <p>Hi ${user?.["First Name"] || "there"},</p>
+       <p>This might sound crazy in a world obsessed with traffic:</p>
+       <p>We show your property to <strong>fewer</strong> people—on purpose.</p>
+       <ul>
+         <li>More traffic = more noise</li>
+         <li>Our buyers are pre-filtered and curated</li>
+         <li>We protect your time and your listing</li>
+       </ul>
+       <p>More isn't always better. Sometimes, less is power.</p>
+       <p>– Trisha</p>
+       ${logo}
+       ${unsubscribe}`
+  },
+  {
+    subject: "The bidder problem nobody talks about.",
+    body: 
+      `<p style="display: none;">Not every bid is worth your time. We filter for intent.</p>
+       <p>Hi ${user?.["First Name"] || "there"},</p>
+       <p>Sellers often say: “We had 10 bidders. One closed.”</p>
+       <p>That’s not success. That’s frustration.</p>
+       <ul>
+         <li>We score buyer behavior before they even raise their hand</li>
+         <li>We weed out flakers and window shoppers</li>
+         <li>You see fewer bids—but better closings</li>
+       </ul>
+       <p>Want to see how it works?</p>
+       <p>– Trisha</p>
+       ${logo}
+       ${unsubscribe}`
+  },
+  {
+    subject: "Try this: 1 listing. 1 test. 0 drama.",
+    body: 
+      `<p style="display: none;">A single asset is enough to see the difference.</p>
+       <p>Hi ${user?.["First Name"] || "there"},</p>
+       <p>Here’s what we’re asking:</p>
+       <p>Pick one listing. Let us run it through the Vihara system.</p>
+       <ul>
+         <li>No commitment.</li>
+         <li>No drama.</li>
+         <li>Just one clean close.</li>
+       </ul>
+       <p>If it works, great. If not, no harm done.</p>
+       <p>👉 <a href="https://calendly.com/trisha-vihara/15min" target="_blank">Book a time here</a></p>
+       <p>– Trisha</p>
+       ${logo}
+       ${unsubscribe}`
+  },
+  {
+    subject: "Most platforms sell noise. We sell silence.",
+    body: 
+      `<p style="display: none;">Vihara isn’t louder. It’s smarter.</p>
+       <p>Hi ${user?.["First Name"] || "there"},</p>
+       <p>Let’s be honest. Most platforms promise visibility, views, volume.</p>
+       <p>We promise something different:</p>
+       <ul>
+         <li>Sellers who sleep better</li>
+         <li>Buyers who are actually ready</li>
+         <li>Listings that close quietly—and quickly</li>
+       </ul>
+       <p>If that sounds better than noise, let’s connect.</p>
+       <p>👉 <a href="https://calendly.com/trisha-vihara/15min" target="_blank">Schedule a chat</a></p>
+       <p>Hope to hear from you,<br>Trisha</p>
+       ${logo}
+       ${unsubscribe}`
   }
  ];
 };

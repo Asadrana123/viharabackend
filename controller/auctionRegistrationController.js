@@ -54,7 +54,7 @@ exports.submitAuctionRegistration = catchAsyncError(
       existingRegistration.legalAgreements = legalAgreements;
       // existingRegistration.bidAmount = bidAmount;
       // existingRegistration.buyersPremium = buyersPremium;
-      existingRegistration.status = "pending"; // Reset status to pending if previously rejected
+      existingRegistration.status = "approved"; // Reset status to pending if previously rejected
       existingRegistration.updatedAt = Date.now();
       
       await existingRegistration.save();
@@ -63,7 +63,7 @@ exports.submitAuctionRegistration = catchAsyncError(
         success: true,
         message: "Registration request updated successfully",
         registration: existingRegistration,
-        isApproved: false
+        isApproved: true
       });
     }
 
@@ -82,7 +82,7 @@ exports.submitAuctionRegistration = catchAsyncError(
       success: true,
       message: "Registration request submitted successfully",
       registration,
-      isApproved: false
+      isApproved: true
     });
   }
 );
