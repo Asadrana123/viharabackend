@@ -8,7 +8,7 @@ const Unsubscribe = require('./model/unsubscribeModel');
 // Connect to MongoDB
 mongoose.connect(process.env.DB_URI, {
   useNewUrlParser: true,
-  useUnifiedTopology: true
+   useUnifiedTopology: true
 })
 .then(() => console.log('✅ Connected to MongoDB'))
 .catch(err => {
@@ -17,7 +17,7 @@ mongoose.connect(process.env.DB_URI, {
 });
 
 // Choose the day index (0 = Day 1, ..., 6 = Day 7)
-const dayIndex = 8;
+const dayIndex = 5;
 const subject = emailContent(users[0])[dayIndex].subject;
 
 function generateHtml(user) {
