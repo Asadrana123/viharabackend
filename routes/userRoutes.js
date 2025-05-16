@@ -7,7 +7,7 @@ router.post("/registerUser", CreateUser);
 router.post("/login", Login);
 router.get("/logout", LogOut);
 router.put("/save-property", saveProperty);
-router.put("/rempve-property", removeProperty);
+router.put("/remove-property", removeProperty);
 router.get("/save-property/get", allsavedProperties);
 router.get("/get", isAuthenticated, getUser)
 router.get("/getEmails", getAllEmailandPhone);
