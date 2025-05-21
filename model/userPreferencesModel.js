@@ -15,10 +15,7 @@ const preferencesSchema = new mongoose.Schema({
     type: String,
     enum: ['bank-owned', '2nd-chance', 'short-sale', 'foreclosure-trustee', 'non-bank-owned']
   }],
-  occupancyStatus: {
-    type: String,
-    enum: ['', 'occupied', 'vacant']
-  },
+  occupancyStatus: [String],
   propertyTypes: {
     residential: {
       selected: {
