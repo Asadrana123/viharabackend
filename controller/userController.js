@@ -1,11 +1,11 @@
 const userModel = require("../model/userModel");
-const Form=require("../model/formDataModel");
+const Form = require("../model/formDataModel");
 const catchAsyncError = require("../middleware/catchAsyncError");
 const Errorhandler = require("../utils/errorhandler");
 const sendToken = require("../utils/getToken");
 const productModel = require("../model/productModel");
 const sendEmail = require("../utils/sendEmail");
-const {sendSmSOTP}=require("./otpController");
+const { sendSmSOTP } = require("./otpController");
 const mongoose = require('mongoose'); // Import mongoose
 const axios = require("axios");
 exports.CreateUser = catchAsyncError(
@@ -19,38 +19,267 @@ exports.CreateUser = catchAsyncError(
     })
     try {
       // // const otp = await sendSmSOTP(newUser.businessPhone);
-      // // sendEmail(
-      // //   req.body.email,
-      // //   newUser.name,
-      // //   "Welcome to Vihara",
-      // //   `<!DOCTYPE html>
-      // //   <html lang="en">
-      // //   <head>
-      // //       <meta charset="UTF-8">
-      // //       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      // //       <title>Welcome to Vihara</title>
-      // //       <style>
-      // //           body { font-family: Arial, sans-serif; font-size: 14px; color: #333; }
-      // //           .container { width: 90%; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f4f4f4; border-radius: 8px; }
-      // //           .button { background-color: #0384fb; color: white; padding: 10px 20px; text-align: center; text-decoration: none; display: inline-block; font-size: 16px; margin: 10px 0; cursor: pointer; border-radius: 5px; }
-      // //           .footer { font-size: 12px; color: #666; }
-      // //           .header { font-size: 24px; color: #333; }
-      // //           .welcome-text { font-size: 16px; line-height: 1.6; }
-      // //       </style>
-      // //   </head>
-      // //   <body>
-      // //       <div class="container">
-      // //           <h1 class="header">Welcome to Vihara, ${newUser.name}!</h1>
-      // //           <p class="welcome-text">We're thrilled to have you on board! At Vihara, we strive to provide you with the best experience possible. Whether you're exploring our platform or getting started, we want you to know that we're here to support you every step of the way.</p>
-      // //           <p class="welcome-text">Feel free to explore our services, and don't hesitate to reach out if you need any assistance. We’re excited to see what you achieve with Vihara!</p>
-      // //           <a href="${process.env.CLIENT_URL}" class="button">Explore Now</a>
-      // //           <p class="welcome-text">Thank you for joining us.<br>Best Regards,<br>The Vihara Team</p>
-      // //           <hr>
-      // //           <p class="footer">If you have any questions or need assistance, don't hesitate to reach out to our support team at trisha@vihara.com.</p>
-      // //       </div>
-      // //   </body>
-      // //   </html>`
-      // );
+      sendEmail(
+        req.body.email,
+        newUser.name,
+        "Welcome to Vihara",
+        `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to Vihara</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            font-size: 14px; 
+            color: #333; 
+            margin: 0; 
+            padding: 0; 
+            background-color: #f5f5f5;
+        }
+        
+        .email-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .header-section {
+            background-color: #0384fb;
+            padding: 30px 20px;
+            text-align: center;
+            position: relative;
+        }
+        
+        .logo-container {
+            position: absolute;
+            top: 15px;
+            left: 20px;
+            background-color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .vihara-logo {
+            color: white;
+            font-size: 48px;
+            font-weight: bold;
+            letter-spacing: 2px;
+            margin: 20px 0 10px 0;
+        }
+        
+        .content-section {
+            padding: 40px 30px;
+            background-color: white;
+        }
+        
+        .welcome-title {
+            font-size: 24px;
+            color: #333;
+            margin-bottom: 20px;
+            font-weight: normal;
+        }
+        
+        .username-info {
+            font-size: 16px;
+            color: #333;
+            margin-bottom: 25px;
+        }
+        
+        .username-link {
+            color: #0384fb;
+            text-decoration: none;
+        }
+        
+        .welcome-text {
+            font-size: 16px;
+            line-height: 1.6;
+            color: #333;
+            margin-bottom: 20px;
+        }
+        
+        .highlight-text {
+            color: #0384fb;
+            font-weight: bold;
+        }
+        
+        .get-started-button {
+            background-color: #0384fb;
+            color: white;
+            padding: 12px 30px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            font-weight: bold;
+            margin: 30px 0;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        
+        .help-section {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+        }
+        
+        .help-text {
+            font-size: 16px;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .customer-service-link {
+            color: #0384fb;
+            text-decoration: none;
+        }
+        
+        .thank-you-text {
+            font-size: 16px;
+            color: #333;
+            margin-top: 20px;
+        }
+        
+        .footer-section {
+            background-color: #4a5568;
+            padding: 30px;
+            color: white;
+            text-align: center;
+        }
+        
+        .footer-logo {
+            margin-bottom: 20px;
+        }
+        
+        .footer-logo img {
+            width: 40px;
+            height: 40px;
+            background-color: white;
+            padding: 8px;
+            border-radius: 4px;
+        }
+        
+        .social-icons {
+            margin: 20px 0;
+        }
+        
+        .social-icon {
+            display: inline-block;
+            width: 35px;
+            height: 35px;
+            background-color: #6b7280;
+            border-radius: 50%;
+            margin: 0 5px;
+            line-height: 35px;
+            text-align: center;
+            color: white;
+            text-decoration: none;
+            font-size: 16px;
+        }
+        
+        .social-icon:hover {
+            background-color: #0384fb;
+        }
+        
+        .footer-copyright {
+            font-size: 12px;
+            color: #d1d5db;
+            margin: 20px 0 10px 0;
+            line-height: 1.4;
+        }
+        
+        .footer-links {
+            margin: 15px 0;
+        }
+        
+        .footer-link {
+            color: #d1d5db;
+            text-decoration: underline;
+            font-size: 12px;
+        }
+        
+        .footer-privacy {
+            font-size: 12px;
+            color: #d1d5db;
+            margin-top: 15px;
+        }
+        
+        .footer-privacy a {
+            color: #d1d5db;
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <!-- Header Section -->
+        <div class="header-section">
+            <div class="logo-container">Vihara.com</div>
+            <div class="vihara-logo">vihara</div>
+        </div>
+        
+        <!-- Content Section -->
+        <div class="content-section">
+            <h1 class="welcome-title">Welcome to Vihara Asad.</h1>
+            
+            <p class="username-info">
+                Your username is: <a href="mailto:${newUser.email}" class="username-link">${newUser.email}</a>
+            </p>
+            
+            <p class="welcome-text">
+                Now that you have registered on <span class="highlight-text">vihara.com</span>, you have access to your own personal dashboard to save searches and properties, share your favorites, receive notifications when there is a price or status change, and more!
+            </p>
+            
+            <div style="text-align: center;">
+                <a href="${process.env.CLIENT_URL}" class="get-started-button">Get Started</a>
+            </div>
+            
+            <div class="help-section">
+                <p class="help-text">
+                    Need help? Our <a href="mailto:trisha@vihara.com" class="customer-service-link">customer service</a> team is here to help.
+                </p>
+                
+                <p class="thank-you-text">Thank you for choosing Vihara.</p>
+            </div>
+        </div>
+        
+        <!-- Footer Section -->
+        <div class="footer-section">
+            <div class="footer-logo">
+                <div style="width: 40px; height: 40px; background-color: white; border-radius: 4px; margin: 0 auto; display: flex; align-items: center; justify-content: center;">
+                    <div style="width: 24px; height: 16px; background-color: #4a5568; border-radius: 2px;"></div>
+                </div>
+            </div>
+            
+            <div class="social-icons">
+                <a href="#" class="social-icon">f</a>
+                <a href="#" class="social-icon">𝕏</a>
+                <a href="#" class="social-icon">in</a>
+            </div>
+            
+            <div class="footer-copyright">
+                © 2024 Vihara Inc.; Vihara CT LLC (for CT properties); Vihara PR LLC (for PR properties); Vihara Realty Services LLC. All rights reserved. 750 Highway 121 BYP, Suite 100, Lewisville, TX 75067.
+            </div>
+            
+            <div class="footer-links">
+                <a href="#" class="footer-link">View our licensing page here.</a>
+            </div>
+            
+            <div class="footer-privacy">
+                We respect your right to privacy. View our policy <a href="#">here</a>.
+            </div>
+        </div>
+    </div>
+</body>
+</html>`
+      );
       sendToken(newUser, 201, res, "----");
     } catch (error) {
       res.status(500).json({ success: false, message: 'Error sending OTP', error: error.message });
@@ -78,7 +307,7 @@ exports.getAllEmailandPhone = catchAsyncError(
 exports.Login = catchAsyncError(
   async (req, res, next) => {
     const { email, password } = req.body;
-    console.log(email,password);
+    console.log(email, password);
     const finduser = await userModel.findOne({ email }).select("+password").populate({
       path: 'savedProperties', // assuming 'savedProperties' is the field that references another collection
       model: 'productModel' // replace 'product' with the name of the model you are referencing
@@ -119,7 +348,7 @@ exports.Login = catchAsyncError(
     //     </body>
     //     </html>`
     // );
-    sendToken(finduser, 200, res,"----");
+    sendToken(finduser, 200, res, "----");
   }
 )
 exports.sendOTP = catchAsyncError(async (req, res) => {
@@ -159,7 +388,7 @@ exports.sendOTP = catchAsyncError(async (req, res) => {
 
   res.status(200).json({
     success: true,
-    otp:otp,
+    otp: otp,
     message: `OTP sent to ${email}`,
   });
 });
@@ -500,8 +729,8 @@ exports.forgotPassword = catchAsyncError(
     }
   }
 )
-exports.recaptcha=catchAsyncError(
-   async (req,res,next)=>{
+exports.recaptcha = catchAsyncError(
+  async (req, res, next) => {
     const { token } = req.body;
     if (!token) {
       return res.status(400).json({ success: false, message: "Token is missing." });
@@ -512,7 +741,7 @@ exports.recaptcha=catchAsyncError(
         `https://www.google.com/recaptcha/api/siteverify?secret=${secretKey}&response=${token}`
       );
       const { success } = response.data;
-  
+
       if (success) {
         return res.json({ success: true, message: "CAPTCHA verified successfully!" });
       } else {
@@ -522,47 +751,47 @@ exports.recaptcha=catchAsyncError(
       console.error("Error verifying CAPTCHA:", error);
       return res.status(500).json({ success: false, message: "Server error." });
     }
-   }
+  }
 )
 
 
 // Controller to handle form submission
-exports.submitForm =catchAsyncError ( 
+exports.submitForm = catchAsyncError(
   async (req, res) => {
-  const { firstName, lastName, companyName, email, phone, contactMethods } = req.body;
+    const { firstName, lastName, companyName, email, phone, contactMethods } = req.body;
 
-  // Validate the data (you can add more validations as needed)
-  if (!firstName || !lastName || !companyName || !email || !contactMethods) {
-    return res.status(400).json({ success: false, message: 'All fields are required' });
+    // Validate the data (you can add more validations as needed)
+    if (!firstName || !lastName || !companyName || !email || !contactMethods) {
+      return res.status(400).json({ success: false, message: 'All fields are required' });
+    }
+
+    try {
+      // Create a new form document
+      const formData = new Form({
+        firstName,
+        lastName,
+        companyName,
+        email,
+        phone: contactMethods.includes("phone") ? phone : '',
+        contactMethods,
+      });
+
+      // Save the form data in the database
+      await formData.save();
+
+      // Respond with success message
+      res.status(200).json({
+        success: true,
+        message: 'Form submitted successfully!',
+      });
+    } catch (error) {
+      console.error("Error saving form data:", error);
+      res.status(500).json({
+        success: false,
+        message: 'An error occurred while saving the data.',
+      });
+    }
   }
-
-  try {
-    // Create a new form document
-    const formData = new Form({
-      firstName,
-      lastName,
-      companyName,
-      email,
-      phone: contactMethods.includes("phone") ? phone : '',
-      contactMethods,
-    });
-
-    // Save the form data in the database
-    await formData.save();
-
-    // Respond with success message
-    res.status(200).json({
-      success: true,
-      message: 'Form submitted successfully!',
-    });
-  } catch (error) {
-    console.error("Error saving form data:", error);
-    res.status(500).json({
-      success: false,
-      message: 'An error occurred while saving the data.',
-    });
-  }
-}
 )
 
 
