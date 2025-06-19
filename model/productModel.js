@@ -1,131 +1,177 @@
 const mongoose = require("mongoose");
+
 const productSchema = new mongoose.Schema({
     productName: {
         type: String,
         required: true,
-      },
-      auctionStartDate: {
+    },
+    auctionStartDate: {
         type: Date,
         required: true,
-      },
-      auctionStartTime: {
+    },
+    auctionStartTime: {
         type: String, // or use Date if you want to include time details
         required: true,
-      },
-      auctionEndDate: {
+    },
+    auctionEndDate: {
         type: Date,
         required: true,
-      },
-      auctionEndTime: {
+    },
+    auctionEndTime: {
         type: String, // or use Date if you want to include time details
         required: true,
-      },
-      reservePrice: {
+    },
+    reservePrice: {
         type: Number,
         required: true,
-      },
-      minIncrement: {
+    },
+    minIncrement: {
         type: Number,
         required: true,
-      },
-      emd: {
+    },
+    emd: {
         type: Number,
         required: true,
-      },
-      commission: {
+    },
+    commission: {
         type: Number, // assuming percentage
         required: true,
-      },
-      startBid: {
+    },
+    startBid: {
         type: Number,
         required: true,
-      },
-      propertyDescription: {
+    },
+    // Current bidding information
+    currentBid: {
+        type: Number,
+        default: function() {
+            return this.startBid;
+        }
+    },
+    currentBidder: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "userModel",
+        default: null
+    },
+    propertyDescription: {
         type: String,
         required: true,
-      },
-      propertyType: {
+    },
+    propertyType: {
         type: String,
         required: true,
-      },
-      street: {
+    },
+    street: {
         type: String,
         required: true,
-      },
-      city: {
+    },
+    city: {
         type: String,
         required: true,
-      },
-      county: {
+    },
+    county: {
         type: String,
         required: true,
-      },
-      state: {
+    },
+    state: {
         type: String,
         required: true,
-      },
-      zipCode: {
+    },
+    zipCode: {
         type: String,
         required: true,
-      },
-      beds: {
+    },
+    beds: {
         type: Number,
         required: true,
-      },
-      baths: {
+    },
+    baths: {
         type: Number,
         required: true,
-      },
-      squareFootage: {
+    },
+    squareFootage: {
         type: Number,
         required: true,
-      },
-      lotSize: {
+    },
+    lotSize: {
         type: Number, // assuming it's in acres
         required: true,
-      },
-      yearBuilt: {
+    },
+    yearBuilt: {
         type: Number,
         required: true,
-      },
-      monthlyHOADues: {
+    },
+    monthlyHOADues: {
         type: Number,
         required: true,
-      },
-      apn: {
+    },
+    apn: {
         type: String,
         required: true,
-      },
-      eventID: {
+    },
+    eventID: {
         type: String,
         required: true,
-      },
-      trusteeSaleNumber: {
+    },
+    trusteeSaleNumber: {
         type: String,
         required: true,
-      },
-      image: {
+    },
+    image: {
         type: String, // URL or path to the image file
         required: false,
-      },
-      otherImages: [
-         {
+    },
+    otherImages: [
+        {
             type: String, // URL or path to the image file
-         }
-      ],
-      onlineOrInPerson: {
+        }
+    ],
+    onlineOrInPerson: {
         type: String,
         enum: ['Online', 'In Person'],
         required: true,
-      },
-      bidderEmails:[
+    },
+    bidderEmails: [
         {
             type: String,
         }
-      ]
-})
+    ],
+    // NEW FIELD: 3D Tour Model ID
+    threeDTourId: {
+        type: String,
+        required: false,
+        default: null
+    },
+    // 3D Tour metadata
+    threeDTourMetadata: {
+        title: {
+            type: String,
+            default: null
+        },
+        description: {
+            type: String,
+            default: null
+        },
+        isActive: {
+            type: Boolean,
+            default: true
+        }
+    },
+    // Property status
+    status: {
+        type: String,
+        enum: ['active', 'sold', 'cancelled', 'pending'],
+        default: 'active'
+    },
+    featured: {
+        type: Boolean,
+        default: false
+    }
+});
+
 productSchema.pre('save', async function (next) {
     this.updated_at = Date.now();
     next();
-})
+});
+
 module.exports = mongoose.model("productModel", productSchema);

@@ -4,7 +4,6 @@ const mongoose = require('mongoose');
 const users = require('./EmailData.json');
 const emailContent = require('./EmailContentSecond.js');
 const Unsubscribe = require('./model/unsubscribeModel');
-
 // Connect to MongoDB
 mongoose.connect(process.env.DB_URI, {
   useNewUrlParser: true,
@@ -17,7 +16,7 @@ mongoose.connect(process.env.DB_URI, {
 });
 
 // Choose the day index (0 = Day 1, ..., 6 = Day 7)
-const dayIndex = 6;
+const dayIndex = 1;
 const subject = emailContent(users[0])[dayIndex].subject;
 
 function generateHtml(user) {

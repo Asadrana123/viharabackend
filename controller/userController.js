@@ -507,7 +507,6 @@ exports.getAllEmails = catchAsyncError(
 );
 exports.resetPassword = catchAsyncError(
   async (req, res, next) => {
-    console.log(req.params.token);
     const resetPasswordToken = require("crypto").createHash("sha256").update(req.params.token).digest("hex");
     const User = await userModel.findOne({
       resetPasswordToken,
@@ -524,24 +523,55 @@ exports.resetPassword = catchAsyncError(
   }
 )
 exports.updatePassword = catchAsyncError(
-  async (req, res) => {
-    const User = await userModel.findById(req.user.id).select("+password");
-    const isMatchPassword = User.comparePassword(req.body.oldpassword);
+  async (req, res, next) => {
+    const { oldpassword, newpassword, confirmpassword } = req.body;
+
+    // Validation
+    if (!oldpassword || !newpassword || !confirmpassword) {
+      return next(new Errorhandler("All fields are required", 400));
+    }
+
+    if (newpassword !== confirmpassword) {
+      return next(new Errorhandler("Passwords not matching", 400));
+    }
+
+    if (newpassword.length < 8) {
+      return next(new Errorhandler("New password must be at least 8 characters long", 400));
+    }
+
+    // Get user with password field
+    const user = await userModel.findById(req.user._id).select("+password");
+
+    if (!user) {
+      return next(new Errorhandler("User not found", 404));
+    }
+
+    // Check if old password is correct
+    const isMatchPassword = await user.comparePassword(oldpassword);
     if (!isMatchPassword) {
       return next(new Errorhandler("OldPassword is wrong", 400));
     }
-    if (req.body.newpassword !== req.body.confirmpassword) {
-      return next(new Errorhandler("Passwords not matching", 400));
+
+    // Check if new password is different from old password
+    const isSamePassword = await user.comparePassword(newpassword);
+    if (isSamePassword) {
+      return next(new Errorhandler("New password must be different from current password", 400));
     }
-    User.password = req.body.newpassword;
-    await User.save();
-    sendToken(User, 200, res);
+
+    // Update password
+    user.password = newpassword;
+    await user.save();
+
+    // Send success response (don't send token for password change)
+    res.status(200).json({
+      success: true,
+      message: "Password updated successfully"
+    });
   }
-)
+);
 exports.forgotPassword = catchAsyncError(
   async (req, res, next) => {
     const { email } = req.body;
-    console.log(email)
     const User = await userModel.findOne({ email });
     if (!User) {
       return next(new Errorhandler("No user found with this email", 404));
@@ -722,6 +752,7 @@ exports.forgotPassword = catchAsyncError(
         message: "Recovery Email sent to user"
       })
     } catch (error) {
+      console.log(error,'main error');
       User.resetPasswordToken = undefined;
       User.resetPasswordExpire = undefined;
       await User.save({ validation: false });
