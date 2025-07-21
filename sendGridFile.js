@@ -16,7 +16,7 @@ mongoose.connect(process.env.DB_URI, {
 });
 
 // Choose the day index (0 = Day 1, ..., 6 = Day 7)
-const dayIndex = 1;
+const dayIndex = 7;
 const subject = emailContent(users[0])[dayIndex].subject;
 
 function generateHtml(user) {

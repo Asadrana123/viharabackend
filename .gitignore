@@ -1,4 +1,4 @@
 /node_modules
 /.env
 /controller/sendGridController.js
-/EmailContentThird.js
+/EmailContentThird.js 

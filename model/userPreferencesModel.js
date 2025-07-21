@@ -13,7 +13,7 @@ const preferencesSchema = new mongoose.Schema({
   }],
   auctionTypes: [{
     type: String,
-    enum: ['bank-owned', '2nd-chance', 'short-sale', 'foreclosure-trustee', 'non-bank-owned']
+    // enum: ['bank-owned', '2nd-chance', 'short-sale', 'foreclosure-trustee', 'non-bank-owned']
   }],
   occupancyStatus: [String],
   propertyTypes: {

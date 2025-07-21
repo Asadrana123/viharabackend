@@ -10,75 +10,114 @@ module.exports = function (user) {
       </p>`;
 
   return [
-  {
-    subject: "Auctions aren’t for the desperate anymore.",
-    preheader: "In 2025, they’re strategic. Fast. And profitable.",
-    body: `
-<p style="display: none;">In 2025, they’re strategic. Fast. And profitable.</p>
+ {
+  subject: "Buyers don’t need perfect. They need clear.",
+  preheader: "Home valuation gaps are widening. Transparency wins.",
+  body: `
+<p style="display: none;">Home valuation gaps are widening. Transparency wins.</p>
 <p>Hi ${user?.["First Name"] || "Valued Partner"},</p>
-<p>Forget the old perception.</p>
-<p>Today’s smartest sellers are turning to auction platforms by design.</p>
-<p>Vihara delivers:</p>
-<p>🔍 Private buyer network<br>
-📉 No listing fee unless we close<br>
-📆 17-day avg. time-to-cash</p>
-<p>This isn’t distress selling. It’s precision.</p>
-<p>Let’s test it.</p>
+<p>Bankrate’s latest survey shows buyer confusion on pricing is at a 5-year high.</p>
+<p>That’s stalling offers.</p>
+<p>We solve that—by educating our buyer base before they bid.</p>
+<p>Result? Clarity = confidence = closings.</p>
+<p>Want in?</p>
 <p>– Trisha</p>
 ${logo}
-${unsubscribe}
-`
-  },
-  {
-    subject: "You don’t need to compete. You need to opt out.",
-    preheader: "Most sellers chase. We select. That’s why we close.",
-    body: `
-<p style="display: none;">Most sellers chase. We select. That’s why we close.</p>
+${unsubscribe}`
+},
+{
+  subject: "Equity erosion isn’t dramatic. It’s daily.",
+  preheader: "Most sellers wait too long to find out.",
+  body: `
+<p style="display: none;">Most sellers wait too long to find out.</p>
 <p>Hi ${user?.["First Name"] || "Valued Partner"},</p>
-<p>Competing on public platforms is like running uphill.</p>
-<p>📉 Buyer attention spans are short<br>
-📉 Offers are weaker<br>
-📉 Fallouts are higher</p>
-<p>We skip the noise.</p>
-<p>Vihara surfaces real buyers, before your asset is even listed.</p>
-<p>One asset. One clean close. Let’s go.</p>
+<p>REO sellers aren’t panicking.</p>
+<p>But the ones who wait quietly lose 3–5% while watching headlines.</p>
+<p>Vihara exits early—with full visibility and zero fee risk.</p>
+<p>Let’s move one.</p>
 <p>– Trisha</p>
 ${logo}
-${unsubscribe}
-`
-  },
-  {
-    subject: "A slowdown is coming. But liquidity is still possible.",
-    preheader: "Bankrate says the market’s tipping. We show how to stay liquid.",
-    body: `
-<p style="display: none;">Bankrate says the market’s tipping. We show how to stay liquid.</p>
+${unsubscribe}`
+},{
+  subject: "You’re not early until you sell.",
+  preheader: "“I knew the market was turning” doesn’t pay the mortgage.",
+  body: `
+<p style="display: none;">“I knew the market was turning” doesn’t pay the mortgage.</p>
 <p>Hi ${user?.["First Name"] || "Valued Partner"},</p>
-<p>Tariffs. Rates. Supply chain drag.</p>
-<p>According to Bankrate, sellers are already seeing pricing pressure.</p>
-<p>At Vihara, our sellers close faster and higher—because we don’t wait for headlines.</p>
-<p>We use signals. Not sentiment.</p>
-<p>Let’s get one asset moving.</p>
+<p>A lot of sellers say they saw the trend early.</p>
+<p>Only a few acted.</p>
+<p>At Vihara, we help you move when it matters—not when it’s too late.</p>
+<p>No fees. No games. Just action.</p>
 <p>– Trisha</p>
 ${logo}
-${unsubscribe}
-`
-  },
-  {
-    subject: "The next 60 days will define your year.",
-    preheader: "This isn’t a prediction. It’s a math problem.",
-    body: `
-<p style="display: none;">This isn’t a prediction. It’s a math problem.</p>
+${unsubscribe}`
+},
+{
+  subject: "One asset. One test. One shot at clean margin.",
+  preheader: "The next 60 days could define your REO results.",
+  body: `
+<p style="display: none;">The next 60 days could define your REO results.</p>
 <p>Hi ${user?.["First Name"] || "Valued Partner"},</p>
-<p>If your listing enters the market after the next Fed shift…</p>
-<p>…it competes on discount, not value.</p>
-<p>Our sellers move assets before that happens.</p>
-<p>Vihara = buyers who close, not just browse.</p>
-<p>You’ve seen the shift coming.</p>
-<p>Let’s act on it.</p>
+<p>Everything is compounding right now:</p>
+<p>Rates. Tariffs. Wildfire costs. Buyer fatigue.</p>
+<p>But margin is still possible—if you move now.</p>
+<p>Let’s test one together.</p>
 <p>– Trisha</p>
 ${logo}
-${unsubscribe}
-`
-  }
-];
+${unsubscribe}`
+},
+{
+  subject: "Inventory’s building. Quiet sellers are winning.",
+  preheader: "Vihara = qualified buyers. Clean exits. No noise.",
+  body: `
+<p style="display: none;">Vihara = qualified buyers. Clean exits. No noise.</p>
+<p>Hi ${user?.["First Name"] || "Valued Partner"},</p>
+<p>ATTOM just reported another monthly rise in foreclosure starts.</p>
+<p>Sellers who move quietly are exiting clean—above reserve, zero listing fees unless we deliver.</p>
+<p>Want to move one? Reply here and we’ll show you how.</p>
+<p>– Trisha</p>
+${logo}
+${unsubscribe}`
+},
+{
+  subject: "Buyers are still there — but they’re filtering harder.",
+  preheader: "Sellers who qualify buyers first are closing faster.",
+  body: `
+<p style="display: none;">Sellers who qualify buyers first are closing faster.</p>
+<p>Hi ${user?.["First Name"] || "Valued Partner"},</p>
+<p>Loan originations are slowing. But buyers haven’t vanished—they’ve just gotten sharper.</p>
+<p>We pre-screen buyer intent and funding before auction day.</p>
+<p>Let’s try one listing?</p>
+<p>👉 www.vihara.ai</p>
+<p>– Trisha</p>
+${logo}
+${unsubscribe}`
+},
+{
+  subject: "Rate shifts are coming. Margin windows are narrowing.",
+  preheader: "Exit before discount season begins.",
+  body: `
+<p style="display: none;">Exit before discount season begins.</p>
+<p>Hi ${user?.["First Name"] || "Valued Partner"},</p>
+<p>Mortgage rates may shift again this quarter. If they do, buyer pools shrink.</p>
+<p>At Vihara, we help sellers exit ahead of markdown season—17-day average close.</p>
+<p>– Trisha</p>
+${logo}
+${unsubscribe}`
+},
+{
+  subject: "Serious buyers don’t scroll MLS. They ask us.",
+  preheader: "Vetted buyers don’t wait for listings.",
+  body: `
+<p style="display: none;">Vetted buyers don’t wait for listings.</p>
+<p>Hi ${user?.["First Name"] || "Valued Partner"},</p>
+<p>The buyers we work with don’t waste time browsing.</p>
+<p>They ask us directly for off-market opportunities.</p>
+<p>Let’s place one of your assets in front of them?</p>
+<p>👉 www.vihara.ai — or just reply here.</p>
+<p>– Trisha</p>
+${logo}
+${unsubscribe}`
+},
+  ];
 };
