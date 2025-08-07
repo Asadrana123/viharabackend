@@ -421,10 +421,6 @@ function getAlreadyUnsubscribedPage(email) {
                 This email address has already been unsubscribed from our mailing list.
                 <br><br>
             </div>
-            
-            <div class="actions">
-                <a href="/" class="btn btn-primary">Return to Homepage</a>
-            </div>
         </div>
     </body>
     </html>

@@ -2,8 +2,7 @@ require('dotenv').config();
 const sgMail = require('@sendgrid/mail');
 const fs = require('fs');
 const mongoose = require('mongoose');
-const users = require('./CMBA11AUG.json').slice(0, 2);
-console.log(users);
+const users = require('./CMBA11AUG.json');
 const Unsubscribe = require('./model/unsubscribeModel');
 
 // Connect to MongoDB
