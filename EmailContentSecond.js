@@ -10,114 +10,119 @@ module.exports = function (user) {
       </p>`;
 
   return [
- {
-  subject: "Buyers don’t need perfect. They need clear.",
-  preheader: "Home valuation gaps are widening. Transparency wins.",
-  body: `
-<p style="display: none;">Home valuation gaps are widening. Transparency wins.</p>
+    {
+      subject: "AI is reshaping real estate closings. Quietly.",
+      preheader: "We don’t just match buyers. We predict who closes.",
+      body: `
+<p style="display: none;">We don’t just match buyers. We predict who closes.</p>
 <p>Hi ${user?.["First Name"] || "Valued Partner"},</p>
-<p>Bankrate’s latest survey shows buyer confusion on pricing is at a 5-year high.</p>
-<p>That’s stalling offers.</p>
-<p>We solve that—by educating our buyer base before they bid.</p>
-<p>Result? Clarity = confidence = closings.</p>
-<p>Want in?</p>
+<p>Everyone has a “buyer list.”</p>
+<p>But we use predictive scoring — based on behavior, funding, and past close velocity — to find the one who actually wires.</p>
+<p>It’s why our sellers don’t relist.</p>
+<p>Let’s show you how it works on one property:</p>
+<p>👉 www.vihara.ai or reply and we’ll walk you through it.</p>
 <p>– Trisha</p>
 ${logo}
 ${unsubscribe}`
-},
-{
-  subject: "Equity erosion isn’t dramatic. It’s daily.",
-  preheader: "Most sellers wait too long to find out.",
-  body: `
-<p style="display: none;">Most sellers wait too long to find out.</p>
+    },
+    {
+      subject: "Zillow won’t fix this. You need precision.",
+      preheader: "Listing exposure ≠ listing performance.",
+      body: `
+<p style="display: none;">Listing exposure ≠ listing performance.</p>
 <p>Hi ${user?.["First Name"] || "Valued Partner"},</p>
-<p>REO sellers aren’t panicking.</p>
-<p>But the ones who wait quietly lose 3–5% while watching headlines.</p>
-<p>Vihara exits early—with full visibility and zero fee risk.</p>
-<p>Let’s move one.</p>
+<p>More listings. Fewer closings.</p>
+<p>Buyers today don’t browse. They zero in.</p>
+<p>Vihara connects to intent-driven buyers directly — no spam, no fluff. Just closings.</p>
+<p>Want to try one property?</p>
+<p>👉 www.vihara.ai — or reply “let’s go.”</p>
 <p>– Trisha</p>
 ${logo}
 ${unsubscribe}`
-},{
-  subject: "You’re not early until you sell.",
-  preheader: "“I knew the market was turning” doesn’t pay the mortgage.",
-  body: `
-<p style="display: none;">“I knew the market was turning” doesn’t pay the mortgage.</p>
+    },
+    {
+      subject: "REO flipping is slowing — but buyer appetite isn’t.",
+      preheader: "The smart capital is asking for clean inventory.",
+      body: `
+<p style="display: none;">The smart capital is asking for clean inventory.</p>
 <p>Hi ${user?.["First Name"] || "Valued Partner"},</p>
-<p>A lot of sellers say they saw the trend early.</p>
-<p>Only a few acted.</p>
-<p>At Vihara, we help you move when it matters—not when it’s too late.</p>
-<p>No fees. No games. Just action.</p>
-<p>– Trisha</p>
-${logo}
-${unsubscribe}`
-},
-{
-  subject: "One asset. One test. One shot at clean margin.",
-  preheader: "The next 60 days could define your REO results.",
-  body: `
-<p style="display: none;">The next 60 days could define your REO results.</p>
-<p>Hi ${user?.["First Name"] || "Valued Partner"},</p>
-<p>Everything is compounding right now:</p>
-<p>Rates. Tariffs. Wildfire costs. Buyer fatigue.</p>
-<p>But margin is still possible—if you move now.</p>
-<p>Let’s test one together.</p>
-<p>– Trisha</p>
-${logo}
-${unsubscribe}`
-},
-{
-  subject: "Inventory’s building. Quiet sellers are winning.",
-  preheader: "Vihara = qualified buyers. Clean exits. No noise.",
-  body: `
-<p style="display: none;">Vihara = qualified buyers. Clean exits. No noise.</p>
-<p>Hi ${user?.["First Name"] || "Valued Partner"},</p>
-<p>ATTOM just reported another monthly rise in foreclosure starts.</p>
-<p>Sellers who move quietly are exiting clean—above reserve, zero listing fees unless we deliver.</p>
-<p>Want to move one? Reply here and we’ll show you how.</p>
-<p>– Trisha</p>
-${logo}
-${unsubscribe}`
-},
-{
-  subject: "Buyers are still there — but they’re filtering harder.",
-  preheader: "Sellers who qualify buyers first are closing faster.",
-  body: `
-<p style="display: none;">Sellers who qualify buyers first are closing faster.</p>
-<p>Hi ${user?.["First Name"] || "Valued Partner"},</p>
-<p>Loan originations are slowing. But buyers haven’t vanished—they’ve just gotten sharper.</p>
-<p>We pre-screen buyer intent and funding before auction day.</p>
-<p>Let’s try one listing?</p>
+<p>Flipping is down across 30 states (ATTOM, Q2 2025).</p>
+<p>But the money hasn’t vanished — it’s just being smarter.</p>
+<p>We surface clean, pre-screened REOs to motivated institutional + private buyers.</p>
+<p>Want to see what they’re looking for?</p>
 <p>👉 www.vihara.ai</p>
 <p>– Trisha</p>
 ${logo}
 ${unsubscribe}`
-},
-{
-  subject: "Rate shifts are coming. Margin windows are narrowing.",
-  preheader: "Exit before discount season begins.",
-  body: `
-<p style="display: none;">Exit before discount season begins.</p>
+    },
+    {
+      subject: "Silent sellers win. Loud ones get buried.",
+      preheader: "You don’t need exposure. You need execution.",
+      body: `
+<p style="display: none;">You don’t need exposure. You need execution.</p>
 <p>Hi ${user?.["First Name"] || "Valued Partner"},</p>
-<p>Mortgage rates may shift again this quarter. If they do, buyer pools shrink.</p>
-<p>At Vihara, we help sellers exit ahead of markdown season—17-day average close.</p>
+<p>We’re in a buyer filter cycle.</p>
+<p>Volume platforms are flooding inboxes. But serious sellers? They go where the closings happen.</p>
+<p>That’s why Vihara works:</p>
+<ul>
+  <li>Pre-vetted buyers</li>
+  <li>Zero listing fee</li>
+  <li>Fast exits</li>
+</ul>
+<p>One property. One clean test.</p>
+<p>👉 www.vihara.ai — or reply and we’ll show you.</p>
 <p>– Trisha</p>
 ${logo}
 ${unsubscribe}`
-},
-{
-  subject: "Serious buyers don’t scroll MLS. They ask us.",
-  preheader: "Vetted buyers don’t wait for listings.",
-  body: `
-<p style="display: none;">Vetted buyers don’t wait for listings.</p>
+    },
+    {
+      subject: "The post-pandemic cushion is gone. Quietly.",
+      preheader: "Sellers are still pricing like it's 2022. Buyers aren't.",
+      body: `
+<p style="display: none;">Sellers are still pricing like it's 2022. Buyers aren't.</p>
 <p>Hi ${user?.["First Name"] || "Valued Partner"},</p>
-<p>The buyers we work with don’t waste time browsing.</p>
-<p>They ask us directly for off-market opportunities.</p>
-<p>Let’s place one of your assets in front of them?</p>
-<p>👉 www.vihara.ai — or just reply here.</p>
+<p>Bankrate and ATTOM agree: equity-rich sellers are fading.</p>
+<p>Buyers? They're sharpening pencils — and waiting for clean exits.</p>
+<p>At Vihara, we front-load that process.</p>
+<p>Our buyers don’t bid. They buy.</p>
+<p>Let’s test it.</p>
+<p>👉 www.vihara.ai or just reply “ready.”</p>
 <p>– Trisha</p>
 ${logo}
 ${unsubscribe}`
-},
+    },
+    {
+      subject: "Auction.com volumes are rising. So are mistakes.",
+      preheader: "Speed ≠ close rate. Intent = margin.",
+      body: `
+<p style="display: none;">Speed ≠ close rate. Intent = margin.</p>
+<p>Hi ${user?.["First Name"] || "Valued Partner"},</p>
+<p>Auction.com just posted a Q2 volume spike.</p>
+<p>But talk to sellers, and you’ll hear the same: lots of bids, few real closings.</p>
+<p>Vihara is different.</p>
+<p>Behavioral filtering. Private network. 17-day avg to cash.</p>
+<p>Try one.</p>
+<p>👉 www.vihara.ai or reply “show me.”</p>
+<p>– Trisha</p>
+${logo}
+${unsubscribe}`
+    },
+    {
+      subject: "Your Fed window just narrowed.",
+      preheader: "Rate watch = REO risk.",
+      body: `
+<p style="display: none;">Rate watch = REO risk.</p>
+<p>Hi ${user?.["First Name"] || "Valued Partner"},</p>
+<p>The next Fed adjustment could shrink buyer capital again.</p>
+<p>That means more discounting… unless you act now.</p>
+<p>Vihara = clean buyer matches, before the market softens further.</p>
+<p>One asset. Zero noise.</p>
+<p>👉 www.vihara.ai</p>
+<p>– Trisha</p>
+${logo}
+${unsubscribe}`
+    }
+
+
   ];
 };
