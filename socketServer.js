@@ -13,12 +13,22 @@ const userAuctions = new Map(); // Track which auctions each user has joined
 const userSocketsMap = new Map(); // Track sockets by user ID to prevent duplicate counts
 const lastBroadcastTime = new Map();
 const BROADCAST_THROTTLE = 500; // ms between broadcasts
-
+const allowedOrigins = [
+  "https://www.vihara.ai",
+  "https://vihara-new-website-git-testing-nodifys-projects.vercel.app",
+  "http://localhost:3000"
+];
 // Initialize socket server
 function initSocketServer(server) {
   const io = socketIO(server, {
     cors: {
-      origin: process.env.CLIENT_URL || "*",
+      origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin)) {
+          callback(null, true);
+        } else {
+          callback(new Error("CORS not allowed"));
+        }
+      },
       methods: ["GET", "POST"],
       credentials: true
     },
@@ -36,26 +46,26 @@ function initSocketServer(server) {
 
       const decoded = jwt.verify(token, process.env.secret);
       socket.userId = decoded.id;
-      
+
       // Get user info
       const user = await User.findById(decoded.id).select('name email');
       if (!user) {
         return next(new Error('User not found'));
       }
-      
+
       socket.user = user;
-      
+
       // Initialize user's auctions tracking if not exists
       if (!userAuctions.has(socket.userId)) {
         userAuctions.set(socket.userId, new Set());
       }
-      
+
       // Track this socket for the user
       if (!userSocketsMap.has(socket.userId)) {
         userSocketsMap.set(socket.userId, new Set());
       }
       userSocketsMap.get(socket.userId).add(socket.id);
-      
+
       next();
     } catch (error) {
       console.error('Socket authentication error:', error);
@@ -83,13 +93,13 @@ function initSocketServer(server) {
 
         // Join the auction room
         socket.join(auctionId);
-        
+
         // Check if user already joined this auction with another socket
         const isFirstJoin = !userAuctions.get(socket.userId).has(auctionId);
-        
+
         // Track that this user joined this auction
         userAuctions.get(socket.userId).add(auctionId);
-        
+
         console.log(`User ${socket.userId} joined auction: ${auctionId} (First join: ${isFirstJoin})`);
 
         // Initialize auction data if not exists
@@ -103,15 +113,15 @@ function initSocketServer(server) {
 
           // Get the highest bid for this auction
           const highestBid = await BidsManager.getHighestBid(auctionId);
-          
+
           // Set default values
           let currentBidAmount = auction.startBid;
           let currentBidder = null;
-          
+
           // If there's a highest bid, get its details
           if (highestBid) {
             currentBidAmount = highestBid.amount;
-            
+
             // Get bidder info
             const bidderUser = await User.findById(highestBid.userId).select('name');
             if (bidderUser) {
@@ -127,10 +137,10 @@ function initSocketServer(server) {
 
           // Determine auction status
           const now = new Date();
-          
+
           // Handle end time properly
           let endTime;
-          
+
           // Handle auctionEndTime based on its format
           if (auction.auctionEndTime) {
             // If it's a full date string
@@ -154,9 +164,9 @@ function initSocketServer(server) {
           else {
             endTime = new Date(auction.auctionEndDate);
           }
-          
+
           let auctionStatus = "active";
-          
+
           if (now > endTime) {
             auctionStatus = "ended";
           }
@@ -186,14 +196,14 @@ function initSocketServer(server) {
         if (isFirstJoin) {
           const now = Date.now();
           const lastBroadcast = lastBroadcastTime.get(`participants:${auctionId}`) || 0;
-          
+
           if (now - lastBroadcast > BROADCAST_THROTTLE) {
             // Notify all users about updated participant count
             const auctionData = activeAuctions.get(auctionId);
             io.to(auctionId).emit('participant-update', {
               count: auctionData.participants
             });
-            
+
             lastBroadcastTime.set(`participants:${auctionId}`, now);
           }
         }
@@ -212,7 +222,7 @@ function initSocketServer(server) {
     socket.on('place-bid', async (data) => {
       try {
         const { auctionId, bidAmount } = data;
-        
+
         if (!auctionId || !bidAmount) {
           socket.emit('bid-error', 'Invalid bid data');
           return;
@@ -238,8 +248,8 @@ function initSocketServer(server) {
 
         // Create the manual bid
         const newManualBid = await BidsManager.createManualBid(
-          auctionId, 
-          socket.userId, 
+          auctionId,
+          socket.userId,
           bidAmount
         );
 
@@ -271,8 +281,8 @@ function initSocketServer(server) {
 
         // Process any auto bids
         const autoBidResult = await BidsManager.processAutoBids(
-          auctionId, 
-          bidAmount, 
+          auctionId,
+          bidAmount,
           socket.userId
         );
 
@@ -281,7 +291,7 @@ function initSocketServer(server) {
           // Get bidder info
           const autoBidder = await User.findById(autoBidResult.userId).select('name');
           const autoBidderName = autoBidder ? autoBidder.name : 'Unknown';
-          
+
           // Format auto bid for broadcast
           const autoBidUpdate = {
             currentBid: autoBidResult.amount,
@@ -346,20 +356,20 @@ function initSocketServer(server) {
     socket.on('auction-timer', async (data) => {
       const now = Date.now();
       const lastBroadcast = lastBroadcastTime.get(`timer:${data.auctionId}`) || 0;
-      
+
       // Only broadcast timer updates every BROADCAST_THROTTLE ms
       if (now - lastBroadcast > BROADCAST_THROTTLE) {
         socket.to(data.auctionId).emit('timer-update', data.timeLeft);
         lastBroadcastTime.set(`timer:${data.auctionId}`, now);
-        
+
         // Update auction status if needed
         const auctionData = activeAuctions.get(data.auctionId);
         if (auctionData) {
           let newStatus = auctionData.auctionStatus;
-          
+
           if (data.timeLeft <= 0) {
             newStatus = "ended";
-            
+
             // If auction just ended, update the database
             if (auctionData.auctionStatus !== "ended") {
               await Product.findByIdAndUpdate(data.auctionId, {
@@ -372,12 +382,12 @@ function initSocketServer(server) {
           } else {
             newStatus = "active"; // Simplify status to just active when time remaining
           }
-          
+
           // If status changed, update and broadcast
           if (newStatus !== auctionData.auctionStatus) {
             auctionData.auctionStatus = newStatus;
             activeAuctions.set(data.auctionId, auctionData);
-            
+
             // Send updated status to all clients
             io.to(data.auctionId).emit('auction-status', auctionData);
           }
@@ -393,22 +403,22 @@ function initSocketServer(server) {
     // Handle disconnection with cleanup
     socket.on('disconnect', () => {
       console.log(`User disconnected: ${socket.userId} (Socket ID: ${socket.id})`);
-      
+
       // Remove this socket from user's active sockets
       if (userSocketsMap.has(socket.userId)) {
         userSocketsMap.get(socket.userId).delete(socket.id);
-        
+
         // If this was the user's last socket, clean up all auctions this user was in
         if (userSocketsMap.get(socket.userId).size === 0) {
           userSocketsMap.delete(socket.userId);
-          
+
           // Update participant count for all auctions this user was in
           if (userAuctions.has(socket.userId)) {
             const userRooms = userAuctions.get(socket.userId);
             for (const auctionId of userRooms) {
               handleParticipantLeave(socket.userId, auctionId);
             }
-            
+
             // Clean up user tracking
             userAuctions.delete(socket.userId);
           }
@@ -422,14 +432,14 @@ function initSocketServer(server) {
     if (userAuctions.has(socket.userId) && userAuctions.get(socket.userId).has(auctionId)) {
       // Remove this auction from the user's joined auctions
       userAuctions.get(socket.userId).delete(auctionId);
-      
+
       // Leave the room
       socket.leave(auctionId);
-      
+
       // Check if this was the user's last socket in this auction
       const userHasOtherSocketsInAuction = Array.from(io.sockets.sockets.values())
         .some(s => s.id !== socket.id && s.userId === socket.userId && s.rooms.has(auctionId));
-      
+
       // Only update participant count if this was the user's last socket in this auction
       if (!userHasOtherSocketsInAuction) {
         handleParticipantLeave(socket.userId, auctionId);
@@ -443,17 +453,17 @@ function initSocketServer(server) {
     if (auctionData) {
       auctionData.participants = Math.max(0, auctionData.participants - 1);
       activeAuctions.set(auctionId, auctionData);
-      
+
       // Throttled broadcast of participant update
       const now = Date.now();
       const lastBroadcast = lastBroadcastTime.get(`participants:${auctionId}`) || 0;
-      
+
       if (now - lastBroadcast > BROADCAST_THROTTLE) {
         // Notify remaining users
         io.to(auctionId).emit('participant-update', {
           count: auctionData.participants
         });
-        
+
         lastBroadcastTime.set(`participants:${auctionId}`, now);
       }
     }
@@ -464,13 +474,13 @@ function initSocketServer(server) {
     // Run every hour
     setInterval(() => {
       const now = new Date();
-      
+
       // Clean up activeAuctions that have ended over 24 hours ago
       for (const [auctionId, auctionData] of activeAuctions.entries()) {
         if (auctionData.participants === 0) {
           const endTime = new Date(auctionData.endTime);
           const timeSinceEnd = now - endTime;
-          
+
           // If ended more than 24 hours ago and no participants, remove from memory
           if (timeSinceEnd > 24 * 60 * 60 * 1000) {
             activeAuctions.delete(auctionId);
@@ -478,7 +488,7 @@ function initSocketServer(server) {
           }
         }
       }
-      
+
       // Clean up lastBroadcastTime entries older than 1 hour
       for (const [key, time] of lastBroadcastTime.entries()) {
         if (now - time > 60 * 60 * 1000) {
@@ -487,7 +497,7 @@ function initSocketServer(server) {
       }
     }, 60 * 60 * 1000); // Run every hour
   }
-  
+
   // Start cleanup interval
   setupCleanupInterval();
 
