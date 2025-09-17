@@ -32,166 +32,157 @@ exports.CreateUser = catchAsyncError(
     <style>
         body { 
             font-family: Arial, sans-serif; 
-            font-size: 14px; 
-            color: #333; 
+            font-size: 16px; 
+            color: #333333; 
             margin: 0; 
             padding: 0; 
-            background-color: #f5f5f5;
+            background-color: #ffffff;
+            line-height: 1.5;
         }
         
         .email-container {
             max-width: 600px;
             margin: 0 auto;
-            background-color: white;
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            background-color: #ffffff;
         }
         
         .header-section {
-            background-color: #0384fb;
-            padding: 30px 20px;
-            text-align: center;
-            position: relative;
+            background-color: #0384FB;
+            padding: 20px 20px;
+            text-align: right;
         }
         
-        .logo-container {
-            position: absolute;
-            top: 15px;
-            left: 20px;
-            background-color: white;
-            padding: 5px 10px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: bold;
-            color: #333;
-        }
-        
-        .vihara-logo {
+        .logo {
             color: white;
-            font-size: 48px;
+            font-size: 32px;
             font-weight: bold;
-            letter-spacing: 2px;
-            margin: 20px 0 10px 0;
+            text-transform: lowercase;
         }
         
         .content-section {
-            padding: 40px 30px;
+            padding: 40px 40px;
             background-color: white;
         }
         
         .welcome-title {
-            font-size: 24px;
-            color: #333;
-            margin-bottom: 20px;
+            font-size: 22px;
+            color: #333333;
+            margin-bottom: 30px;
             font-weight: normal;
         }
         
         .username-info {
             font-size: 16px;
-            color: #333;
-            margin-bottom: 25px;
+            color: #333333;
+            margin-bottom: 30px;
         }
         
         .username-link {
-            color: #0384fb;
+            color: #4A90E2;
             text-decoration: none;
         }
         
         .welcome-text {
             font-size: 16px;
             line-height: 1.6;
-            color: #333;
-            margin-bottom: 20px;
+            color: #333333;
+            margin-bottom: 40px;
         }
         
         .highlight-text {
-            color: #0384fb;
-            font-weight: bold;
+            color: #0384FB;
+            text-decoration: none;
+        }
+        
+        .button-container {
+            text-align: center;
+            margin: 40px 0;
         }
         
         .get-started-button {
-            background-color: #0384fb;
-            color: white;
-            padding: 12px 30px;
+            background-color: #0384FB;
+            color: white !important;
+            padding: 15px 40px;
             text-align: center;
             text-decoration: none;
             display: inline-block;
             font-size: 16px;
             font-weight: bold;
-            margin: 30px 0;
-            border-radius: 5px;
+            border-radius: 4px;
             cursor: pointer;
         }
         
         .help-section {
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid #eee;
+            margin-top: 40px;
+            text-align: center;
         }
         
         .help-text {
+            text-align:left;
             font-size: 16px;
-            color: #333;
-            margin-bottom: 10px;
+            color: #333333;
+            margin-bottom: 15px;
         }
         
         .customer-service-link {
-            color: #0384fb;
+            color: #0384FB;
             text-decoration: none;
         }
         
         .thank-you-text {
+          text-align:left;
             font-size: 16px;
-            color: #333;
+            color: #333333;
             margin-top: 20px;
         }
         
         .footer-section {
             background-color: #4a5568;
-            padding: 30px;
+            padding: 30px 40px;
             color: white;
             text-align: center;
         }
         
-        .footer-logo {
+        .footer-logo-section {
+            width:100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             margin-bottom: 20px;
         }
         
-        .footer-logo img {
-            width: 40px;
-            height: 40px;
-            background-color: white;
-            padding: 8px;
-            border-radius: 4px;
+        .equal-housing-logo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         
         .social-icons {
-            margin: 20px 0;
+            display: flex;
+            gap: 10px;
         }
         
         .social-icon {
-            display: inline-block;
-            width: 35px;
-            height: 35px;
+            width: 40px;
+            height: 40px;
             background-color: #6b7280;
             border-radius: 50%;
-            margin: 0 5px;
-            line-height: 35px;
-            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             color: white;
             text-decoration: none;
             font-size: 16px;
         }
         
         .social-icon:hover {
-            background-color: #0384fb;
+            background-color: #0384FB;
         }
         
         .footer-copyright {
             font-size: 12px;
             color: #d1d5db;
-            margin: 20px 0 10px 0;
+            margin: 20px 0 15px 0;
             line-height: 1.4;
         }
         
@@ -215,29 +206,41 @@ exports.CreateUser = catchAsyncError(
             color: #d1d5db;
             text-decoration: underline;
         }
+
+        @media (max-width: 600px) {
+            .content-section {
+                padding: 30px 20px;
+            }
+            .footer-section {
+                padding: 20px;
+            }
+            .footer-logo-section {
+                flex-direction: column;
+                gap: 20px;
+            }
+        }
     </style>
 </head>
 <body>
     <div class="email-container">
         <!-- Header Section -->
         <div class="header-section">
-            <div class="logo-container">Vihara.com</div>
-            <div class="vihara-logo">vihara</div>
+            <div class="logo">vihara</div>
         </div>
         
         <!-- Content Section -->
         <div class="content-section">
-            <h1 class="welcome-title">Welcome to Vihara Asad.</h1>
+            <h1 class="welcome-title">Welcome to Vihara ${newUser.name}.</h1>
             
             <p class="username-info">
                 Your username is: <a href="mailto:${newUser.email}" class="username-link">${newUser.email}</a>
             </p>
             
             <p class="welcome-text">
-                Now that you have registered on <span class="highlight-text">vihara.com</span>, you have access to your own personal dashboard to save searches and properties, share your favorites, receive notifications when there is a price or status change, and more!
+                Now that you have registered on <a href="https://vihara.ai" class="highlight-text">vihara.ai</a>, you have access to your own personal dashboard to save searches and properties, share your favorites, receive notifications when there is a price or status change, and more!
             </p>
             
-            <div style="text-align: center;">
+            <div class="button-container">
                 <a href="${process.env.CLIENT_URL}" class="get-started-button">Get Started</a>
             </div>
             
@@ -252,20 +255,20 @@ exports.CreateUser = catchAsyncError(
         
         <!-- Footer Section -->
         <div class="footer-section">
-            <div class="footer-logo">
-                <div style="width: 40px; height: 40px; background-color: white; border-radius: 4px; margin: 0 auto; display: flex; align-items: center; justify-content: center;">
-                    <div style="width: 24px; height: 16px; background-color: #4a5568; border-radius: 2px;"></div>
+            <div class="footer-logo-section">
+                <div class="equal-housing-logo">
+                       <img width='40px' height='40px' src='https://res.cloudinary.com/my1chatapp/image/upload/v1758125574/XmHome_yfauw5.png' />
+                </div>
+                
+                <div class="social-icons">
+                    <img width='40px' height='40px' src='https://res.cloudinary.com/my1chatapp/image/upload/v1758121455/FbIcon_edgimr.png' />
+                     <img width='40px' height='40px' src='https://res.cloudinary.com/my1chatapp/image/upload/v1758121458/TrIcon_c7qoyb.png' />
+                    <img width='40px' height='40px' src='https://res.cloudinary.com/my1chatapp/image/upload/v1758121456/LdIcon_rvaqhn.png' />
                 </div>
             </div>
             
-            <div class="social-icons">
-                <a href="#" class="social-icon">f</a>
-                <a href="#" class="social-icon">𝕏</a>
-                <a href="#" class="social-icon">in</a>
-            </div>
-            
             <div class="footer-copyright">
-                © 2024 Vihara Inc.; Vihara CT LLC (for CT properties); Vihara PR LLC (for PR properties); Vihara Realty Services LLC. All rights reserved. 750 Highway 121 BYP, Suite 100, Lewisville, TX 75067.
+                © 2025 Vihara Inc.; Vihara CT LLC (for CT properties); Vihara PR LLC (for PR properties); Vihara Realty Services LLC. All rights reserved. 1335 S Milpitas Blvd, Milpitas, California 95035.
             </div>
             
             <div class="footer-links">
@@ -579,7 +582,7 @@ exports.forgotPassword = catchAsyncError(
     const resetPasswordtoken = User.getResetPasswordToken();
     await User.save({ validateBeforeSave: false });
     const resetUrl = `${process.env.CLIENT_URL}/set-new-password/${resetPasswordtoken}`;
-    const message = `Your reset password token is:- /n/n ${resetUrl}, if You have not requested then please ignore it`
+    // const message = `Your reset password token is:- /n/n ${resetUrl}, if You have not requested then please ignore it`
     try {
       sendEmail(
         req.body.email,
@@ -593,142 +596,140 @@ exports.forgotPassword = catchAsyncError(
     <title>Reset Your Password - Vihara</title>
     <style>
         body { 
-            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-            font-size: 16px; 
+            font-family: Arial, sans-serif;
+            font-size: 14px; 
             color: #333333; 
             margin: 0; 
             padding: 0; 
-            background-color: #f8f9fa;
+            background-color: #ffffff;
         }
         .email-container {
             max-width: 600px;
             margin: 0 auto;
             background-color: #ffffff;
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
         .header {
             background-color: #ffffff;
-            padding: 40px 40px 20px 40px;
+            padding: 30px 40px;
             text-align: center;
-            border-bottom: 1px solid #e9ecef;
         }
         .logo {
-            max-width: 150px;
+            max-width: 200px;
             height: auto;
         }
         .main-content {
-            padding: 40px;
-            text-align: center;
-        }
-        .greeting {
-            font-size: 18px;
-            color: #333333;
-            margin-bottom: 20px;
-            font-weight: 500;
-        }
-        .message {
-            font-size: 16px;
-            color: #666666;
-            line-height: 1.6;
-            margin-bottom: 30px;
-        }
-        .reset-button {
-            background-color: #007bff;
-            color: #ffffff !important;
-            padding: 16px 32px;
-            text-decoration: none;
-            font-size: 16px;
-            font-weight: 600;
-            border-radius: 8px;
-            display: inline-block;
-            margin: 20px 0;
-            transition: background-color 0.3s ease;
-        }
-        .reset-button:hover {
-            background-color: #0056b3;
-        }
-        .expiry-notice {
-            font-size: 14px;
-            color: #666666;
-            margin: 20px 0;
-        }
-        .security-notice {
-            background-color: #f8f9fa;
-            border-left: 4px solid #007bff;
-            padding: 20px;
-            margin: 30px 0;
-            font-size: 14px;
-            color: #666666;
+            padding: 0 40px 30px 40px;
             text-align: left;
         }
-        .footer {
-            background-color: #f8f9fa;
-            padding: 30px 40px;
-            text-align: center;
-            border-top: 1px solid #e9ecef;
-        }
-        .footer-text {
+        .greeting {
             font-size: 14px;
-            color: #666666;
+            color: #333333;
+            margin-bottom: 15px;
+        }
+        .message {
+            font-size: 14px;
+            color: #333333;
             line-height: 1.5;
-            margin-bottom: 20px;
+            margin-bottom: 25px;
         }
-        .contact-info {
-            font-size: 14px;
-            color: #666666;
-            margin-bottom: 20px;
-        }
-        .contact-info a {
-            color: #007bff;
+        .message a {
+            color: #4A90E2;
             text-decoration: none;
         }
-        .company-info {
+        .reset-button {
+            background-color: #4A90E2;
+            color: #ffffff !important;
+            padding: 12px 30px;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: bold;
+            border-radius: 4px;
+            display: inline-block;
+            margin: 20px 0;
+        }
+        .expiry-notice {
             font-size: 12px;
-            color: #999999;
-            line-height: 1.4;
+            color: #666666;
+            margin: 15px 0;
+            text-align: center;
         }
         .help-section {
-            background-color: #e3f2fd;
-            padding: 25px;
-            margin: 20px 0;
-            border-radius: 8px;
+            background-color: #f5f5f5;
+            padding: 25px 40px;
             text-align: center;
         }
         .help-title {
-            font-size: 18px;
-            font-weight: 600;
-            color: #1565c0;
-            margin-bottom: 10px;
-        }
-        .help-text {
-            font-size: 14px;
-            color: #1565c0;
-            margin-bottom: 15px;
+            font-size: 16px;
+            font-weight: normal;
+            color: #666666;
+            margin-bottom: 8px;
         }
         .help-contact {
             font-size: 14px;
-            color: #1565c0;
+            color: #666666;
+            margin-bottom: 8px;
         }
         .help-contact a {
-            color: #1565c0;
+            color: #4A90E2;
             text-decoration: none;
-            font-weight: 600;
         }
-        @media (max-width: 600px) {
-            .email-container {
-                margin: 10px;
-                border-radius: 0;
-            }
-            .header, .main-content, .footer {
-                padding: 20px;
-            }
-            .reset-button {
-                padding: 14px 24px;
-                width: 80%;
-                box-sizing: border-box;
-            }
+        .help-link a {
+            color: #4A90E2;
+            text-decoration: none;
+            font-size: 14px;
+        }
+        .footer {
+            background-color: #ffffff;
+            padding: 30px 40px;
+            text-align: center;
+        }
+        .tagline {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+        .tagline .blue {
+            color: #4A90E2;
+        }
+        .tagline .green {
+            color: #7CB342;
+        }
+        .social-icons {
+            margin: 20px 0;
+        }
+        .social-icons img {
+            width: 32px;
+            height: 32px;
+            margin: 0 8px;
+            border-radius: 50%;
+        }
+        .app-buttons {
+            margin: 20px 0;
+        }
+        .app-buttons img {
+            height: 40px;
+            width:110px;
+            margin: 0 5px;
+        }
+        .footer-links {
+            font-size: 12px;
+            color: #666666;
+            margin: 15px 0;
+        }
+        .footer-links a {
+            color: #666666;
+            text-decoration: none;
+            margin: 0 5px;
+        }
+        .footer-address {
+            font-size: 12px;
+            color: #666666;
+            margin: 5px 0;
+        }
+        .copyright {
+            font-size: 12px;
+            color: #666666;
+            margin-top: 10px;
         }
     </style>
 </head>
@@ -736,7 +737,7 @@ exports.forgotPassword = catchAsyncError(
     <div class="email-container">
         <!-- Header with Logo -->
         <div class="header">
-            <img src="https://www.vihara.ai/static/media/vihara-new-logo.1e0ecd4b8707813c361a.jpeg" alt="Vihara Logo" class="logo">
+            <img src="https://www.vihara.ai/static/media/vihara-new-logo.1e0ecd4b8707813c361a.jpeg" alt="Vihara.com" class="logo">
         </div>
 
         <!-- Main Content -->
@@ -744,47 +745,53 @@ exports.forgotPassword = catchAsyncError(
             <div class="greeting">Hello ${User.name},</div>
             
             <div class="message">
-                Please click the link below to update your <strong>Vihara.com</strong> account password.
+                Please click the link below to update your <a href="https://vihara.ai">Vihara.ai</a> account password.
             </div>
 
-            <a href="${resetUrl}" class="reset-button">Reset Password</a>
-            
-            <div class="expiry-notice">
-                The link will be active for only 24 hours.
-            </div>
-
-            <div class="security-notice">
-                <strong>Security Notice:</strong> Your security is important to us. If you did not request to change your password, please ignore this email and your password will remain unchanged.
+            <div style="text-align: center;">
+                <a href="${resetUrl}" class="reset-button">Reset Password</a>
+                <div class="expiry-notice">The link will be active for only 24 hours.</div>
             </div>
         </div>
 
         <!-- Help Section -->
         <div class="help-section">
             <div class="help-title">Questions? We're here to help.</div>
-            <div class="help-text">Mon-Fri from 9am - 6pm PT or email</div>
             <div class="help-contact">
-                Contact us at <a href="mailto:trisha@vihara.com">trisha@vihara.com</a>
+                Contact us at <a href="mailto:trisha@vihara.com">trisha@vihara.com</a> Mon-Fri from 9am - 6pm PT or email
+            </div>
+            <div class="help-link">
+                <a href="mailto:customerservice@vihara.com">customerservice@vihara.com</a>. Or, visit our online <a href="https://vihara.ai/help">Vihara Help Center</a>.
             </div>
         </div>
 
         <!-- Footer -->
         <div class="footer">
-            <div class="footer-text">
-                <strong>Regards,</strong><br>
-                <strong>Vihara.com</strong>
+            <div class="tagline">
+                <span class="blue">BEYOND</span> <span class="green">THE BID.</span>
             </div>
             
-            <div class="contact-info">
-                If you have any questions or need assistance, please contact our support team at 
-                <a href="mailto:trisha@vihara.com">trisha@vihara.com</a>
+            <div class="social-icons">
+                <img src="https://res.cloudinary.com/my1chatapp/image/upload/v1758121455/FbIcon_edgimr.png" alt="Facebook">
+                <img src="https://res.cloudinary.com/my1chatapp/image/upload/v1758121456/GlIcon_grsi7k.png" alt="Google+">
+                <img src="https://res.cloudinary.com/my1chatapp/image/upload/v1758121456/LdIcon_rvaqhn.png" alt="LinkedIn">
+                <img src="https://res.cloudinary.com/my1chatapp/image/upload/v1758121458/TrIcon_c7qoyb.png" alt="Twitter">
+                <img src="https://res.cloudinary.com/my1chatapp/image/upload/v1758121465/YtIcon_zyidvg.png" alt="YouTube">
+            </div>
+
+            <div class="app-buttons">
+                <img src="https://res.cloudinary.com/my1chatapp/image/upload/v1758121238/PlayStore_dnjfli.png" alt="Get it on Google Play">
+                <img src="https://res.cloudinary.com/my1chatapp/image/upload/v1758120827/AppStore_msm0jt.png" alt="Download on the App Store">
+            </div>
+
+            <div class="footer-links">
+                <a href="#">Licensing & Disclosures</a> |
+                <a href="#">Privacy Statement</a> |
+                <a href="#">Website Terms of Use</a>
             </div>
             
-            <div class="company-info">
-                <strong>RL Auction, Inc.</strong><br>
-                1335 S Milpitas Blvd, Milpitas, California 95035<br><br>
-                
-                Vihara is a technology platform used by licensed real estate brokers and sellers to market properties and manage bids for those properties. For more information about a property, including the listing broker's contact information, please click on the property to view the details on Vihara.ai.
-            </div>
+            <div class="footer-address">Inc. 1335 S Milpitas Blvd Milpitas, California 95035</div>
+            <div class="copyright">© 2025 Vihara.ai, LLC. All Rights Reserved</div>
         </div>
     </div>
 </body>
@@ -796,7 +803,7 @@ exports.forgotPassword = catchAsyncError(
         message: "Recovery Email sent to user"
       })
     } catch (error) {
-      console.log(error,'main error');
+      console.log(error, 'main error');
       User.resetPasswordToken = undefined;
       User.resetPasswordExpire = undefined;
       await User.save({ validation: false });
