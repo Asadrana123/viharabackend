@@ -590,159 +590,203 @@ exports.forgotPassword = catchAsyncError(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Password Reset</title>
+    <title>Reset Your Password - Vihara</title>
     <style>
         body { 
-            font-family: "Roboto", Helvetica, Arial, sans-serif;
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
             font-size: 16px; 
-            color: black !important; 
+            color: #333333; 
             margin: 0; 
             padding: 0; 
+            background-color: #f8f9fa;
         }
-        p {
-            color: black !important; 
-            font-size:16px;
-            font-weight:400;
+        .email-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
-        .container { 
-            width: 100%; 
-            max-width: 600px; 
-            margin: 0 auto; 
-            background-color: #ffffff; 
-            padding: 20px; 
-        }
-        .button {
-            background-color: #0384fb; 
-            color: #ffffff !important; 
-            padding: 10px 20px; 
-            text-decoration: none; 
-            font-size: 16px; 
-            border-radius: 5px;
-            display: block;
-            width: fit-content;
-            margin: 20px auto;
+        .header {
+            background-color: #ffffff;
+            padding: 40px 40px 20px 40px;
             text-align: center;
-            font-weight:700;
+            border-bottom: 1px solid #e9ecef;
         }
-        .footer-logo img {
-            width: 120px;
-            height:auto;
+        .logo {
+            max-width: 150px;
+            height: auto;
         }
-        .social-icons img {
-            width: 30px;
-            height: 30px;
+        .main-content {
+            padding: 40px;
+            text-align: center;
+        }
+        .greeting {
+            font-size: 18px;
+            color: #333333;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+        .message {
+            font-size: 16px;
+            color: #666666;
+            line-height: 1.6;
+            margin-bottom: 30px;
+        }
+        .reset-button {
+            background-color: #007bff;
+            color: #ffffff !important;
+            padding: 16px 32px;
+            text-decoration: none;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 8px;
+            display: inline-block;
+            margin: 20px 0;
+            transition: background-color 0.3s ease;
+        }
+        .reset-button:hover {
+            background-color: #0056b3;
+        }
+        .expiry-notice {
+            font-size: 14px;
+            color: #666666;
+            margin: 20px 0;
+        }
+        .security-notice {
+            background-color: #f8f9fa;
+            border-left: 4px solid #007bff;
+            padding: 20px;
+            margin: 30px 0;
+            font-size: 14px;
+            color: #666666;
+            text-align: left;
+        }
+        .footer {
+            background-color: #f8f9fa;
+            padding: 30px 40px;
+            text-align: center;
+            border-top: 1px solid #e9ecef;
+        }
+        .footer-text {
+            font-size: 14px;
+            color: #666666;
+            line-height: 1.5;
+            margin-bottom: 20px;
         }
         .contact-info {
-            margin-top: 20px;
-            font-size: 12px;
+            font-size: 14px;
             color: #666666;
+            margin-bottom: 20px;
         }
         .contact-info a {
-            color: #007BFF;
+            color: #007bff;
             text-decoration: none;
+        }
+        .company-info {
+            font-size: 12px;
+            color: #999999;
+            line-height: 1.4;
+        }
+        .help-section {
+            background-color: #e3f2fd;
+            padding: 25px;
+            margin: 20px 0;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .help-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1565c0;
+            margin-bottom: 10px;
+        }
+        .help-text {
+            font-size: 14px;
+            color: #1565c0;
+            margin-bottom: 15px;
+        }
+        .help-contact {
+            font-size: 14px;
+            color: #1565c0;
+        }
+        .help-contact a {
+            color: #1565c0;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        @media (max-width: 600px) {
+            .email-container {
+                margin: 10px;
+                border-radius: 0;
+            }
+            .header, .main-content, .footer {
+                padding: 20px;
+            }
+            .reset-button {
+                padding: 14px 24px;
+                width: 80%;
+                box-sizing: border-box;
+            }
         }
     </style>
 </head>
 <body>
-    <table width="100%" cellpadding="0" cellspacing="0" border="0">
-        <tr>
-            <td>
-                <table class="container" align="center" cellpadding="0" cellspacing="0" border="0">
-                    <!-- Header -->
-                <tr>
-                        <td align="center" style="padding: 20px 0;border-bottom:1px solid #979797;padding-bottom:20px;">
-                        <img src="https://www.vihara.ai/static/media/vihara-new-logo.1e0ecd4b8707813c361a.jpeg" alt="Company Logo" style="max-width: 120px;">
-              </td>
-        </tr>
-        <tr>
-    <td>
-        <table width="100%" cellpadding="10" cellspacing="0" border="0" style="text-align: center;margin-bottom:10px;margin-top:10px;">
-            <tr>
-                <td style="font-size:16px; color: #3d5877; border-right: 1px solid #979797;">Bank Owned</td>
-                <td style="font-size:16px;color: #3d5877; border-right: 1px solid #979797;">Foreclosure</td>
-                <td style="font-size:16px;color: #3d5877;">Short Sales</td>
-            </tr>
-        </table>
-    </td>
-</tr>    
- <!-- Main Content -->
-                    <tr>
-                        <td>
-                            <p>Hi ${User.name},</p>
-                            <p>We received your request to reset your password. Please click on the link below or copy and paste the URL into your browser.</p>
-                           <button class="button" style="border:none; background-color: #0384fb; color: #ffffff !important; padding: 10px 20px; text-decoration: none; font-size: 16px; border-radius: 5px; display: block; width: fit-content; margin: 20px auto; text-align: center; font-weight: 700;" > <a href="${resetUrl}" style="text-decoration:none;color:white">Reset Password</a></button>
-                            <p>This reset URL is only valid for 30 days. If it expires, please visit our website, sign in, and request a new password reset link.</p>
-                            <p>Your security is important to us. If you did not request to change your password, please ignore this email.</p>
-                        </td>
-                    </tr>
+    <div class="email-container">
+        <!-- Header with Logo -->
+        <div class="header">
+            <img src="https://www.vihara.ai/static/media/vihara-new-logo.1e0ecd4b8707813c361a.jpeg" alt="Vihara Logo" class="logo">
+        </div>
 
-                    <tr>
-                        <td>
-                            <p style="padding-bottom:20px;border-bottom:1px solid #979797;">Thank You,<br>The Vihara Team</p>
-                        </td>
-                    </tr>
-                     <tr>
-                       <td>
-                        <p>
-                 If you have any questions or received this  
-                notification in error, please contact Customer Care at CustomerCare@Vihara.com. 
-                To ensure you continue to receive
-                emails from Vihara, please add noreply@email.Vihara.com to your address book.
-                       </td>
-                     </tr>
-                     <tr>
-                       <td>
-                        <p>
-               Vihara is a technology platform used by licensed real estate brokers and
-                sellers to market properties and manage bids for those properties. For 
-                more information about a property, including the listing broker's contact information, 
-                please click on the property to view the details on Vihara.ai. 
-                Foreclosure auction listings are not guaranteed to go to auction 
-               and may be cancelled at any point prior to the auction start time.
-                       </td>
-                     </tr>
-                    <!-- Footer -->
-                    <tr>
-                        <td class="contact-info">
-                            <p>If you have any questions or need assistance, please contact our support team at <a href="mailto:trisha@vihara.com">trisha@vihara.com</a>.</p>
-                            <p> RL Auction,<br></br> Inc. 1335 S Milpitas Blvd Milpitas, California 95035</p>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>
-                            <table width="100%" cellpadding="0" cellspacing="0" border="0">
-                                <tr>
-                                    <td align="left" width="50%">
-                                        <img src="https://www.vihara.ai/static/media/vihara-new-logo.1e0ecd4b8707813c361a.jpeg" alt="Company Logo" class="footer-logo" style="width:120px;">
-                                    </td>
-                                    <td align="right" width="30%">
-                                        <table class="social-icons" cellspacing="10" cellspacing="0" border="0">
-                                            <tr>
-                                                <td>
-                                                    <a href="https://www.facebook.com"><img  style="width:30px;height:30px" src="https://ci3.googleusercontent.com/meips/ADKq_NYdCsK3DhV8iuJ7KDeQ4CZlaIT8Sd8dS-bL2M_9-lUDE--JPQiQHWc_FtdACnIkeFGtKIbrGuhcEFm3yManRJvDtAUz4D3UsqveC8gPdvJ0sA6EiRJURxk2OSEQxx55L7GHtY2RGINW87DbXx7fjVn0a26tV6c3BlnUTvrNCriS=s0-d-e1-ft#https://image.s11.sfmc-content.com/lib/fe3a11717164047d7d1572/m/1/e8f22763-dc43-4959-b3e9-5a8048b273a1.png" alt="Facebook"></a>
-                                                </td>
-                                                <td>
-                                                    <a href="https://www.twitter.com"><img style="width:30px;height:30px" src="https://ci3.googleusercontent.com/meips/ADKq_Na1EsBWS9vfqdVpS9-mHalzjVCy6XyghIY8kjzp3PGKy-0rDx8O4peoE0epBbkg-qsA_qBPcMfSlcRNKE6rfM9FsErlgkJv5FA87ZmwoZA2q9Z46IrX6v3sWBWM_TBy87XvnCFu6gtcVtr6KumY932kiquePdG1xBkIZBdXFhG0=s0-d-e1-ft#https://image.s11.sfmc-content.com/lib/fe3a11717164047d7d1572/m/1/b67ecf84-4efa-431c-9b78-000164cf247c.png" alt="Twitter"></a>
-                                                </td>
-                                                <td>
-                                                    <a href="https://www.linkedin.com"><img style="width:30px;height:30px" src="https://ci3.googleusercontent.com/meips/ADKq_NZSsc060crzcO_DBbMfwxA4yCle_n0m1ONl46fk_voetKez4PGuHkMsVkv3L-l8qI7jrNg32izm6m0AA2f3xg1-Eq6Hm0h2Mx01uw0ZCZb2pUYQYnyVVK6IGq0LGbfQY72fKk72zjySmaMB5ZTDw9YebJld3-NA1tCX03toHpuU=s0-d-e1-ft#https://image.s11.sfmc-content.com/lib/fe3a11717164047d7d1572/m/1/0ac84e3b-25d2-4bf7-81f1-740f7bfdc8c5.png" alt="LinkedIn"></a>
-                                                </td>
-                                                <td>
-                                                    <a href="https://www.youtube.com"><img style="width:30px;height:30px" src="https://ci3.googleusercontent.com/meips/ADKq_Na43exfG770dgwf_6ah7ag4uFwZIVqzRfY3ER8T10aiIKRL6SUETzkHDIX2AI2O0oLDzwjnSoPWeomEVNdxGvpN21CfTQOdX6M35KCM7brGLptGqjG1-v0ju2BwoL_GSF7OG3D1OeV-R0sm29obAfJ7gtp4Bwz05MZieQ2rWRes=s0-d-e1-ft#https://image.s11.sfmc-content.com/lib/fe3a11717164047d7d1572/m/1/e2ae1bd7-6b6f-4608-9aff-88a06973551f.png" alt="YouTube"></a>
-                                                </td>
-                                            </tr>
-                                        </table>
-                                    </td>
-                                </tr>
-                            </table>
-                        </td>
-                    </tr>
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="greeting">Hello ${User.name},</div>
+            
+            <div class="message">
+                Please click the link below to update your <strong>Vihara.com</strong> account password.
+            </div>
 
-                    <!-- Contact Info -->
-                </table>
-            </td>
-        </tr>
-    </table>
+            <a href="${resetUrl}" class="reset-button">Reset Password</a>
+            
+            <div class="expiry-notice">
+                The link will be active for only 24 hours.
+            </div>
+
+            <div class="security-notice">
+                <strong>Security Notice:</strong> Your security is important to us. If you did not request to change your password, please ignore this email and your password will remain unchanged.
+            </div>
+        </div>
+
+        <!-- Help Section -->
+        <div class="help-section">
+            <div class="help-title">Questions? We're here to help.</div>
+            <div class="help-text">Mon-Fri from 9am - 6pm PT or email</div>
+            <div class="help-contact">
+                Contact us at <a href="mailto:trisha@vihara.com">trisha@vihara.com</a>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <div class="footer-text">
+                <strong>Regards,</strong><br>
+                <strong>Vihara.com</strong>
+            </div>
+            
+            <div class="contact-info">
+                If you have any questions or need assistance, please contact our support team at 
+                <a href="mailto:trisha@vihara.com">trisha@vihara.com</a>
+            </div>
+            
+            <div class="company-info">
+                <strong>RL Auction, Inc.</strong><br>
+                1335 S Milpitas Blvd, Milpitas, California 95035<br><br>
+                
+                Vihara is a technology platform used by licensed real estate brokers and sellers to market properties and manage bids for those properties. For more information about a property, including the listing broker's contact information, please click on the property to view the details on Vihara.ai.
+            </div>
+        </div>
+    </div>
 </body>
 </html>
 `
