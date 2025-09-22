@@ -352,17 +352,16 @@ function initSocketServer(server) {
       }
     });
 
-    // Handle timer updates with throttling
+    // socketServer.js - Updated auction-timer handler
+
     socket.on('auction-timer', async (data) => {
       const now = Date.now();
       const lastBroadcast = lastBroadcastTime.get(`timer:${data.auctionId}`) || 0;
 
-      // Only broadcast timer updates every BROADCAST_THROTTLE ms
       if (now - lastBroadcast > BROADCAST_THROTTLE) {
         socket.to(data.auctionId).emit('timer-update', data.timeLeft);
         lastBroadcastTime.set(`timer:${data.auctionId}`, now);
 
-        // Update auction status if needed
         const auctionData = activeAuctions.get(data.auctionId);
         if (auctionData) {
           let newStatus = auctionData.auctionStatus;
@@ -370,32 +369,90 @@ function initSocketServer(server) {
           if (data.timeLeft <= 0) {
             newStatus = "ended";
 
-            // If auction just ended, update the database
             if (auctionData.auctionStatus !== "ended") {
-              await Product.findByIdAndUpdate(data.auctionId, {
-                auctionStatus: "ended",
-                isAuctionComplete: true,
-                winningBid: auctionData.currentBid,
-                winningBidder: auctionData.currentBidder?.id || null
-              });
+              console.log('🎯 Auction ending, finalizing winner...');
+
+              try {
+                const auction = await Product.findById(data.auctionId);
+
+                let winningBidAmount = null;
+                let winnerId = null;
+                let winnerName = null;
+
+                if (auction && auction.currentBid && auction.currentBidder) {
+                  winningBidAmount = auction.currentBid;
+                  winnerId = auction.currentBidder;
+
+                  const winnerUser = await User.findById(winnerId).select('name');
+                  winnerName = winnerUser ? winnerUser.name : 'Unknown';
+
+                  console.log(`🏆 Winner determined: ${winnerName} (${winnerId}) with bid $${winningBidAmount}`);
+                } else {
+                  console.log('❌ No winner - auction ended with no bids');
+                }
+
+                const updateData = {
+                  currentBid: winningBidAmount,
+                  currentBidder: winnerId,
+                  status: "sold"  // This field exists in your model
+                };
+
+                await Product.findByIdAndUpdate(data.auctionId, updateData);
+
+                auctionData.auctionStatus = "ended";
+                auctionData.winningBid = winningBidAmount;
+                auctionData.winningBidder = winnerId;
+                auctionData.winnerName = winnerName;
+
+                const finalResults = {
+                  auctionStatus: "ended",
+                  hasWinner: !!winnerId,
+                  winningBid: winningBidAmount,
+                  winningBidder: winnerId,
+                  winnerName: winnerName,
+                  currentBidder: winnerId ? {
+                    id: winnerId,
+                    name: winnerName
+                  } : null,
+                  endTime: auctionData.endTime,
+                  participants: auctionData.participants || 0,
+                  recentBids: auctionData.recentBids || []
+                };
+
+                console.log('📢 Broadcasting final results to all clients:', finalResults);
+
+                // ✅ THIS IS THE CRITICAL LINE
+                io.to(data.auctionId).emit('auction-ended', finalResults);
+
+              } catch (error) {
+                console.error('Error finalizing auction:', error);
+
+                io.to(data.auctionId).emit('auction-ended', {
+                  auctionStatus: "ended",
+                  hasWinner: false,
+                  winningBid: null,
+                  winningBidder: null,
+                  winnerName: null,
+                  currentBidder: null,
+                  endTime: auctionData.endTime
+                });
+              }
             }
           } else {
-            newStatus = "active"; // Simplify status to just active when time remaining
+            newStatus = "active";
           }
 
-          // If status changed, update and broadcast
           if (newStatus !== auctionData.auctionStatus) {
             auctionData.auctionStatus = newStatus;
             activeAuctions.set(data.auctionId, auctionData);
 
-            // Send updated status to all clients
-            io.to(data.auctionId).emit('auction-status', auctionData);
+            if (newStatus !== "ended") {
+              io.to(data.auctionId).emit('auction-status', auctionData);
+            }
           }
         }
       }
-    });
-
-    // Handle explicit leave auction event
+    });    // Handle explicit leave auction event
     socket.on('leave-auction', (auctionId) => {
       handleLeaveAuction(socket, auctionId);
     });
