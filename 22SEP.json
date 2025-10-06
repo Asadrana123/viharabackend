@@ -1,0 +1,555 @@
+[
+  {
+    "First Name": "Chi",
+    "Last Name": "Jensen",
+    "Company": "Acra Lending",
+    "Job Title": "Director, Loan Servicing",
+    "Email Address": "tvtimes27@gmail.com"
+  },
+  {
+    "First Name": "Tanya",
+    "Last Name": "Bates",
+    "Company": "BOK Finacial Mortgage",
+    "Job Title": "SVP, Home Loans Regional Director",
+    "Email Address": "tbates@bokf.com"
+  },
+  {
+    "First Name": "Tim",
+    "Last Name": "Gaynor",
+    "Company": "BSI Financial Services",
+    "Job Title": "SVP, Risk Management",
+    "Email Address": "tgaynor@bsifinancial.com"
+  },
+  {
+    "First Name": "Bhupinder",
+    "Last Name": "Mehta",
+    "Company": "BSI Financial Services",
+    "Job Title": "SVP, Chief Transformation Officer and Operations Lead",
+    "Email Address": "bmehta@bsifinancial.com"
+  },
+  {
+    "First Name": "Erum",
+    "Last Name": "Nayani",
+    "Company": "BSI Financial Services",
+    "Job Title": "SVP, General Counsel",
+    "Email Address": "enayani@bsifinancial.com"
+  },
+  {
+    "First Name": "Allen",
+    "Last Name": "Price",
+    "Company": "BSI Financial Services",
+    "Job Title": "Senior Vice President, Sales, Client and Transaction Management",
+    "Email Address": "aprice@bsifinancial.com"
+  },
+  {
+    "First Name": "Gagan",
+    "Last Name": "Sharma",
+    "Company": "BSI Financial Services",
+    "Job Title": "President/CEO",
+    "Email Address": "gsharma@bsifinancial.com"
+  },
+  {
+    "First Name": "Jeffrey",
+    "Last Name": "Aiken",
+    "Company": "Carrington Mortgage Holdings",
+    "Job Title": "Senior Vice President",
+    "Email Address": "jeffrey.aiken@carringtonms.com"
+  },
+  {
+    "First Name": "Nolan",
+    "Last Name": "Turner",
+    "Company": "Carrington Mortgage Services",
+    "Job Title": "SVP, Managing Director",
+    "Email Address": "nolan.turner@carringtonms.com"
+  },
+  {
+    "First Name": "Jonathan",
+    "Last Name": "Lobb",
+    "Company": "Cenlar",
+    "Job Title": "Director of Investor Relations",
+    "Email Address": "jonathan.lobb@cenlar.com"
+  },
+  {
+    "First Name": "Leslie",
+    "Last Name": "Peeler",
+    "Company": "Cenlar",
+    "Job Title": "EVP, Chief Operating Officer",
+    "Email Address": "leslie.peeler@cenlar.com"
+  },
+  {
+    "First Name": "Jackie",
+    "Last Name": "Torres",
+    "Company": "Cenlar",
+    "Job Title": "SVP, Loan Operations",
+    "Email Address": "jackie.torres@cenlar.com"
+  },
+  {
+    "First Name": "Matthew",
+    "Last Name": "Clarke",
+    "Company": "Churchill Mortgage Corporation",
+    "Job Title": "President",
+    "Email Address": "matthew.clarkedoe@churchillmortgage.com"
+  },
+  {
+    "First Name": "Brian",
+    "Last Name": "Appell",
+    "Company": "Citi",
+    "Job Title": "Managing Director",
+    "Email Address": "brian.appell@citi.com"
+  },
+  {
+    "First Name": "Kira",
+    "Last Name": "Granovskaya",
+    "Company": "Citi",
+    "Job Title": "Managing Director",
+    "Email Address": "kira.granovskaya@citi.com"
+  },
+  {
+    "First Name": "Rick",
+    "Last Name": "Sharga",
+    "Company": "CJ Patrick Company",
+    "Job Title": "CEO",
+    "Email Address": "rick.sharga@cjpatrick.com"
+  },
+  {
+    "First Name": "Courtney",
+    "Last Name": "Thompson",
+    "Company": "CMG Financial",
+    "Job Title": "EVP, Mortgage Servicing",
+    "Email Address": "courtney@cmgfi.com"
+  },
+  {
+    "First Name": "Kim",
+    "Last Name": "Yowell",
+    "Company": "Fairway Independent Mortgage Corporation",
+    "Job Title": "EVP, Servicing",
+    "Email Address": "kim.yowell@fairwaymc.com"
+  },
+  {
+    "First Name": "Len",
+    "Last Name": "Krupinski",
+    "Company": "Fairway Mortgage",
+    "Job Title": "COO",
+    "Email Address": "lenk@fairwaymc.com"
+  },
+  {
+    "First Name": "Glenn",
+    "Last Name": "Brooks",
+    "Company": "Fay Servicing",
+    "Job Title": "President of REO",
+    "Email Address": "gbrooks@fayservicing.com"
+  },
+  {
+    "First Name": "Teri",
+    "Last Name": "Mullin",
+    "Company": "Fay Servicing",
+    "Job Title": "AVP of Asset Management",
+    "Email Address": "tmullin@fayservicing.com"
+  },
+  {
+    "First Name": "Daren",
+    "Last Name": "Perez",
+    "Company": "Fay Servicing",
+    "Job Title": "SVP of REO",
+    "Email Address": "dperez@fayservicing.com"
+  },
+  {
+    "First Name": "Samantha",
+    "Last Name": "Shanaberger",
+    "Company": "Fay Servicing",
+    "Job Title": "Chief of Staff, Financial Services",
+    "Email Address": "sshanaberger@fayservicing.com"
+  },
+  {
+    "First Name": "Ryan",
+    "Last Name": "Blake",
+    "Company": "FirstBank",
+    "Job Title": "President - Loan Servicing",
+    "Email Address": "ryan.blake@efirstbank.com"
+  },
+  {
+    "First Name": "Jenny",
+    "Last Name": "Lagerberg",
+    "Company": "FirstBank",
+    "Job Title": "Senior Vice President - Loan Servicing",
+    "Email Address": "jenny.lagerberg@efirstbank.com"
+  },
+  {
+    "First Name": "Cheryl",
+    "Last Name": "Marchant",
+    "Company": "Freedom Mortgage",
+    "Job Title": "SVP, Servicing Mgmt",
+    "Email Address": "cheryl.merchant@freedommortgage.com"
+  },
+  {
+    "First Name": "David",
+    "Last Name": "Sheeler",
+    "Company": "Freedom Mortgage",
+    "Job Title": "Sr EVP, President Svcg/CL",
+    "Email Address": "david.sheeler@freedommortgage.com"
+  },
+  {
+    "First Name": "Barry",
+    "Last Name": "Hess",
+    "Company": "JP Morgan Chase",
+    "Job Title": "Managing Director Home Lending Marketing",
+    "Email Address": "barry.hess@jpmchase.com"
+  },
+  {
+    "First Name": "Cathy",
+    "Last Name": "Fetner",
+    "Company": "JPMorgan Chase",
+    "Job Title": "Managing Director, Mortgage Servicing",
+    "Email Address": "cathy.fetner@jpmchase.com"
+  },
+  {
+    "First Name": "Tim",
+    "Last Name": "Holden",
+    "Company": "JPMorgan Chase",
+    "Job Title": "Executive Director, Home Lending | Agency Relations |  GSE Servicing & MI Relationships",
+    "Email Address": "tim.holden@jpmchase.com"
+  },
+  {
+    "First Name": "Michelle",
+    "Last Name": "Anderson",
+    "Company": "LoanCare",
+    "Job Title": "EVP, Client & Investor Relations",
+    "Email Address": "michelle.anderson@loancare.net"
+  },
+  {
+    "First Name": "James",
+    "Last Name": "Lauter",
+    "Company": "LoanCare",
+    "Job Title": "Chief Administrative Officer",
+    "Email Address": "james.lauter@loancare.net"
+  },
+  {
+    "First Name": "Brent",
+    "Last Name": "Potter",
+    "Company": "LoanCare",
+    "Job Title": "EVP, Chief Operating Officer",
+    "Email Address": "brent.potter@loancare.net"
+  },
+  {
+    "First Name": "Kellie",
+    "Last Name": "Basher",
+    "Company": "M&T Bank",
+    "Job Title": "SVP, Mortgage Servicing Administration & Project Management",
+    "Email Address": "kbasher@mtb.com"
+  },
+  {
+    "First Name": "Nichole",
+    "Last Name": "McMurray",
+    "Company": "M&T Bank",
+    "Job Title": "REO manager",
+    "Email Address": "nmcmurray@mtb.com"
+  },
+  {
+    "First Name": "Ashley",
+    "Last Name": "Misener",
+    "Company": "M&T Bank",
+    "Job Title": "SVP, Legal Asset Management",
+    "Email Address": "amisener@mtb.com"
+  },
+  {
+    "First Name": "Sarah",
+    "Last Name": "Stout",
+    "Company": "M&T Bank",
+    "Job Title": "Sr. VP - Default Manager IV",
+    "Email Address": "sstout@mtb.com"
+  },
+  {
+    "First Name": "Scott",
+    "Last Name": "Noskowiak",
+    "Company": "Mid-Missouri Bank",
+    "Job Title": "President Mtg",
+    "Email Address": "scott.noskowiak@midmobank.com"
+  },
+  {
+    "First Name": "Justin",
+    "Last Name": "Wagner",
+    "Company": "Mid-Missouri Bank",
+    "Job Title": "CLO",
+    "Email Address": "justin.wagner@midmobank.com"
+  },
+  {
+    "First Name": "James",
+    "Last Name": "Brueggen",
+    "Company": "MidFirst",
+    "Job Title": "First Vice President",
+    "Email Address": "james.brueggen@midfirst.com"
+  },
+  {
+    "First Name": "Aaron",
+    "Last Name": "Aulgur",
+    "Company": "MidFirst Bank",
+    "Job Title": "VP, Servicing Acquisition",
+    "Email Address": "aaron.aulgur@midfirst.com"
+  },
+  {
+    "First Name": "Melissa",
+    "Last Name": "Croom",
+    "Company": "MidFirst Bank",
+    "Job Title": "Vice President, Government & Industry Relations",
+    "Email Address": "melissa.croom@midfirst.com"
+  },
+  {
+    "First Name": "Jason",
+    "Last Name": "Lane",
+    "Company": "MidFirst Bank",
+    "Job Title": "SVP, Mortgage Servicing",
+    "Email Address": "jason.lane@midfirst.com"
+  },
+  {
+    "First Name": "Courtney",
+    "Last Name": "Ehinger",
+    "Company": "Mr. Cooper",
+    "Job Title": "SVP, Performance Servicing",
+    "Email Address": "courtney.ehinger@mrcooper.com"
+  },
+  {
+    "First Name": "Jay",
+    "Last Name": "Jones, Jr.",
+    "Company": "Mr. Cooper",
+    "Job Title": "EVP, Mortgage Servicing",
+    "Email Address": "jay.jones@mrcooper.com"
+  },
+  {
+    "First Name": "Brandon",
+    "Last Name": "Latman",
+    "Company": "Mr. Cooper",
+    "Job Title": "SVP, Head of Default Servicing",
+    "Email Address": "brandon.latman@mrcooper.com"
+  },
+  {
+    "First Name": "Eddie",
+    "Last Name": "Tovar",
+    "Company": "Mr. Cooper",
+    "Job Title": "VP, Client Relations",
+    "Email Address": "eddie.tovar@mrcooper.com"
+  },
+  {
+    "First Name": "Akeita",
+    "Last Name": "Douglas",
+    "Company": "Newrez",
+    "Job Title": "Senior Director of Operational Contrtols",
+    "Email Address": "akeita.douglas@newrez.com"
+  },
+  {
+    "First Name": "Chris",
+    "Last Name": "McCormick",
+    "Company": "NewRez",
+    "Job Title": "VP, REO & Valuations",
+    "Email Address": "chris.mccormick@newrez.com"
+  },
+  {
+    "First Name": "George",
+    "Last Name": "Roth",
+    "Company": "NewRez",
+    "Job Title": "Director of Valuations",
+    "Email Address": "george.roth@newrez.com"
+  },
+  {
+    "First Name": "Ricardo",
+    "Last Name": "Sosa",
+    "Company": "NewRez",
+    "Job Title": "Director REO",
+    "Email Address": "ricardo.sosa@newrez.com"
+  },
+  {
+    "First Name": "Joshua",
+    "Last Name": "Bishop",
+    "Company": "Newrez | Shellpoint",
+    "Job Title": "COO",
+    "Email Address": "joshua.bishop@newrez.com"
+  },
+  {
+    "First Name": "James",
+    "Last Name": "Larson",
+    "Company": "Northrim Bank",
+    "Job Title": "VP, Special Credits Officer & Mortgage Assistance Manager",
+    "Email Address": "james.larson@nrim.com"
+  },
+  {
+    "First Name": "Susan",
+    "Last Name": "Byrd",
+    "Company": "Planet Home Lending",
+    "Job Title": "VP, Default Centers",
+    "Email Address": "sbyrd@planethomelending.com"
+  },
+  {
+    "First Name": "Steven",
+    "Last Name": "Droddy",
+    "Company": "Planet Home Lending",
+    "Job Title": "VP, Default Fullfillment",
+    "Email Address": "sdroddy@planethomelending.com"
+  },
+  {
+    "First Name": "LaQuanda",
+    "Last Name": "Sain",
+    "Company": "Rocket Mortgage",
+    "Job Title": "EVP, Mortgage Servicing",
+    "Email Address": "laquandasain@rocketmortgage.com"
+  },
+  {
+    "First Name": "Justin",
+    "Last Name": "Nezda",
+    "Company": "Selene Finance",
+    "Job Title": "EVP, Special Servicing",
+    "Email Address": "justin.nezda@selenefinance.com"
+  },
+  {
+    "First Name": "Jocelyn",
+    "Last Name": "Martin Leano",
+    "Company": "Selene Finance",
+    "Job Title": "President",
+    "Email Address": "jocelyn@eniziostrategies.llc"
+  },
+  {
+    "First Name": "John",
+    "Last Name": "Vella",
+    "Company": "Selene Finance",
+    "Job Title": "Chief Revenue Officer",
+    "Email Address": "john.vella@selenefinance.com"
+  },
+  {
+    "First Name": "Anthony",
+    "Last Name": "Forsberg",
+    "Company": "Servbank",
+    "Job Title": "EVP, Default Servicing",
+    "Email Address": "anthony.forsberg@servbank.com"
+  },
+  {
+    "First Name": "Joanne",
+    "Last Name": "Gonzalez",
+    "Company": "Servbank",
+    "Job Title": "SVP, Loan Servicing Administration",
+    "Email Address": "joanne.gonzalez@servbank.com"
+  },
+  {
+    "First Name": "Brandee",
+    "Last Name": "Conrad",
+    "Company": "Shellpoint Mortgage Servicing/Newrez",
+    "Job Title": "REO Manager",
+    "Email Address": "brandee.conrad@newrez.com"
+  },
+  {
+    "First Name": "Karen",
+    "Last Name": "Shields",
+    "Company": "Shellpoint Mortgage Servicing/Newrez",
+    "Job Title": "SVP Default Operations",
+    "Email Address": "karen.shields@newrez.com"
+  },
+  {
+    "First Name": "Adam",
+    "Last Name": "Cooper",
+    "Company": "Shellpoint/Newrez",
+    "Job Title": "Director - Property Preservation & Post-Foreclosure",
+    "Email Address": "adam.cooper@newrez.com"
+  },
+  {
+    "First Name": "T.J.",
+    "Last Name": "Harrington",
+    "Company": "Stewart Title Insurance Company",
+    "Job Title": "SVP Product Strategy",
+    "Email Address": "tj.harrington@stewart.com"
+  },
+  {
+    "First Name": "Kim",
+    "Last Name": "Goodell",
+    "Company": "Towne Mortgage Company",
+    "Job Title": "Chief Servicing Officer",
+    "Email Address": "kim.goodell@townemortgage.com"
+  },
+  {
+    "First Name": "Tim",
+    "Last Name": "Bicha",
+    "Company": "Truist Bank",
+    "Job Title": "Head of Mortgage Servicing",
+    "Email Address": "tim.bicha@truist.com"
+  },
+  {
+    "First Name": "Patrick",
+    "Last Name": "Carper",
+    "Company": "Truist Bank",
+    "Job Title": "Mortgage Post Foreclosure Manager",
+    "Email Address": "patrick.carper@truist.com"
+  },
+  {
+    "First Name": "Scott",
+    "Last Name": "Conradson",
+    "Company": "Truist Bank",
+    "Job Title": "SVP, Head of Servicing Financial Control",
+    "Email Address": "scott.conradson@truist.com"
+  },
+  {
+    "First Name": "Timika",
+    "Last Name": "Scott",
+    "Company": "U.S. Bank",
+    "Job Title": "Senior Vice President",
+    "Email Address": "timika.scott@usbank.com"
+  },
+  {
+    "First Name": "Loretta",
+    "Last Name": "Cephus",
+    "Company": "US Bank",
+    "Job Title": "Vice President - Mortgage Investor Relations & Sub-Servicing Oversight",
+    "Email Address": "loretta.cephus@usbank.com"
+  },
+  {
+    "First Name": "Monica",
+    "Last Name": "Cespedes",
+    "Company": "US Bank",
+    "Job Title": "VP, Operations Group Manager",
+    "Email Address": "monica.cespedes@usbank.com"
+  },
+  {
+    "First Name": "Alyson",
+    "Last Name": "Roberts",
+    "Company": "US Bank",
+    "Job Title": "VP, Home Mortgage",
+    "Email Address": "alyson.roberts@usbank.com"
+  },
+  {
+    "First Name": "Lisa",
+    "Last Name": "Walker",
+    "Company": "US Bank",
+    "Job Title": "AVP, Mortgage Operations Manager",
+    "Email Address": "lisa.walker@usbank.com"
+  },
+  {
+    "First Name": "Rida",
+    "Last Name": "Sharaf",
+    "Company": "USRES / RES.NET",
+    "Job Title": "Chief Strategy Officer",
+    "Email Address": "rida.sharaf@usres.com"
+  },
+  {
+    "First Name": "Kipp",
+    "Last Name": "Butler",
+    "Company": "USRES/RES.NET",
+    "Job Title": "SVP, Account Executive",
+    "Email Address": "kipp.butler@usres.com"
+  },
+  {
+    "First Name": "Garrett",
+    "Last Name": "Mays",
+    "Company": "USRES/RES.NET",
+    "Job Title": "SVP, Valuations & Vendor Management",
+    "Email Address": "garrett.mays@usres.com"
+  },
+  {
+    "First Name": "Kelli",
+    "Last Name": "Forbord",
+    "Company": "Westmark Credit Union",
+    "Job Title": "SVP Real Estate",
+    "Email Address": "kforbord@westmark.org"
+  },
+  {
+    "First Name": "Jessica",
+    "Last Name": "Peterson",
+    "Company": "Westmark Credit Union",
+    "Job Title": "Servicing Specialist",
+    "Email Address": "jpeterson@westmark.org"
+  }
+]

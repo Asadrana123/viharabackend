@@ -16,7 +16,8 @@ const BROADCAST_THROTTLE = 500; // ms between broadcasts
 const allowedOrigins = [
   "https://www.vihara.ai",
   "https://vihara-new-website-git-testing-nodifys-projects.vercel.app",
-  "http://localhost:3000"
+  "http://localhost:3000",
+  "https://vihara-new-website-nodifys-projects.vercel.app"
 ];
 // Initialize socket server
 function initSocketServer(server) {
