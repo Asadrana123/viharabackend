@@ -258,3 +258,20 @@ exports.updateRegistrationStatus = catchAsyncError(
     });
   }
 );
+
+
+// Get all registrations for current user
+exports.getUserRegistrations = catchAsyncError(
+  async (req, res, next) => {
+    const userId = req.user._id;
+
+    const registrations = await AuctionRegistration.find({ userId })
+      .populate('auctionId', 'street city state productName auctionEndDate')
+      .sort({ submittedAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      registrations
+    });
+  }
+);
