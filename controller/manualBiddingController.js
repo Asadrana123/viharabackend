@@ -7,49 +7,36 @@ const ManualBid = require("../model/manualBiddingModel");
 const User = require("../model/userModel");
 const BidsManager = require("../utils/bidsManager");
 
-// Check if user has access to an auction
 exports.checkAuctionAccess = catchAsyncError(
   async (req, res, next) => {
-    const { id } = req.params;
+    const { id } = req.params; // auction ID
     const userId = req.user._id;
 
-    // Check if auction exists
+    console.log(`Checking access for user ${userId} to auction ${id}`);
+
+    // Get auction details
     const auction = await Product.findById(id);
     if (!auction) {
-      return next(new ErrorHandler("Auction not found", 404));
+      return res.status(404).json({
+        success: false,
+        error: "Auction not found"
+      });
     }
 
-    // Check if auction is active
+    // Determine auction end time
     const now = new Date();
-    
-    // Handle the end time properly
     let auctionEnd;
     
-    // If auctionEndTime is a full date string
-    if (auction.auctionEndTime && auction.auctionEndTime.toString().includes('T')) {
-      auctionEnd = new Date(auction.auctionEndTime);
-    } 
-    // If auctionEndTime is just a time string (like "17:00")
-    else if (auction.auctionEndTime && typeof auction.auctionEndTime === 'string') {
-      auctionEnd = new Date(auction.auctionEndDate);
-      const timeParts = auction.auctionEndTime.split(':');
-      if (timeParts.length >= 2) {
-        auctionEnd.setHours(parseInt(timeParts[0]), parseInt(timeParts[1]), 0, 0);
-      }
-    } 
-    // Default to the end date
-    else {
+    if (auction.endTime) {
+      auctionEnd = new Date(auction.endTime);
+    } else {
       auctionEnd = new Date(auction.auctionEndDate);
     }
     
     console.log('Auction end time determined as:', auctionEnd);
-
-    if (now > auctionEnd) {
-      return res.status(200).json({
-        success: false,
-        error: "This auction has ended"
-      });
-    }
+    
+    // Check if auction has ended
+    const hasEnded = now > auctionEnd;
 
     // Check if user is registered and approved for this auction
     const registration = await AuctionRegistration.findOne({
@@ -65,13 +52,16 @@ exports.checkAuctionAccess = catchAsyncError(
       });
     }
 
+    // ✅ FIX: Allow access even if auction has ended
+    // Users need to see the results screen
     return res.status(200).json({
       success: true,
-      message: "You have access to this auction"
+      message: "You have access to this auction",
+      auctionStatus: hasEnded ? 'ended' : 'active', // ✅ Include auction status
+      hasEnded: hasEnded // ✅ Inform frontend if auction ended
     });
   }
 );
-
 // Create a new manual bid (REST API endpoint)
 exports.createManualBid = catchAsyncError(
   async (req, res, next) => {
