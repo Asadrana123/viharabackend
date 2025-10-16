@@ -2,8 +2,8 @@
 const axios = require('axios');
 const fs = require('fs').promises;
 const path = require('path');
-const { CENSUS_VARIABLES, FILTER_TO_VARIABLE_MAP } = require('../utils/censusConstants');
-const stateAbbreviations = require('../utils/stateAbbreviations');
+const { CENSUS_VARIABLES, FILTER_TO_VARIABLE_MAP } = require('../../utils/censusConstants');
+const stateAbbreviations = require('../../utils/stateAbbreviations');
 
 // Census API configuration
 const CENSUS_API_KEY = process.env.CENSUS_API_KEY || '';
