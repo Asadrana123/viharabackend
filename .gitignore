@@ -7,3 +7,4 @@ src/EmailData.json
 src/PropertyData.json
 src/sendGridFile.js
 src/SendImageEmail.js
+src/resendFile.js
