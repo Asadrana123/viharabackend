@@ -1,4 +1,7 @@
 const userModel = require("../model/userModel");
+const userPreferencesModel=require('../model/userPreferencesModel.js')
+const savedSearches=require('../model/savedSearch.js')
+const savedProperties=require('../model/savePropertiesModel.js')
 const Form = require("../model/formDataModel");
 const catchAsyncError = require("../middleware/catchAsyncError");
 const Errorhandler = require("../utils/errorhandler");
@@ -328,14 +331,14 @@ exports.forgotPassword = catchAsyncError(
     const resetPasswordtoken = User.getResetPasswordToken();
     await User.save({ validateBeforeSave: false });
     const resetUrl = `${process.env.CLIENT_URL}/set-new-password/${resetPasswordtoken}`;
-    const passwordResetEmail= createPasswordResetEmail(User.name, resetUrl);
+    const passwordResetEmail = createPasswordResetEmail(User.name, resetUrl);
     // const message = `Your reset password token is:- /n/n ${resetUrl}, if You have not requested then please ignore it`
     try {
       sendEmail(
         req.body.email,
         User.name,
         "Email password recovery",
-       passwordResetEmail
+        passwordResetEmail
       )
       res.status(200).json({
         success: true,
@@ -416,5 +419,51 @@ exports.submitForm = catchAsyncError(
 )
 
 
+// Export User Data
+exports.exportUserData = catchAsyncError(
+  async (req, res) => {
+    const userId = req.user._id;
 
+    // Fetch user data from different models
+    const userData = await userModel.findById(userId)
+      .populate('savedProperties') // Populate saved properties
+      .lean(); // Convert to plain JavaScript object
 
+    const exportData = {
+      personalInfo: {
+        name: userData.name,
+        lastName: userData.last_name,
+        email: userData.email,
+        createdAt: userData.createdAt
+      },
+      savedProperties: userData.savedProperties,
+      userPreferences: await userPreferencesModel.findOne({ userId }),
+      savedSearches: await savedSearches.find({ user: userId })
+    };
+
+    res.json({
+      success: true,
+      data: exportData
+    });
+  }
+);
+
+// Account Deletion
+exports.deleteAccount = catchAsyncError(
+  async (req, res) => {
+    const userId = req.user._id;
+
+    // Soft delete: Anonymize user data
+    await userModel.findByIdAndUpdate(userId, {
+      name: 'Deleted User',
+      last_name: 'Account',
+      email: `deleted_${userId}@vihara.ai`,
+      active: false,
+      deleted_at: new Date()
+    });
+    res.json({
+      success: true,
+      message: 'Account deleted successfully'
+    });
+  }
+);

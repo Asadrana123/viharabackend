@@ -6,7 +6,7 @@ const jwt = require("jsonwebtoken");
 const userSchema = new mongoose.Schema({
   userType: {
     type: String,
-    enum: ['Buyer', 'Agent'], 
+    enum: ['Buyer', 'Agent'],
     default: 'Buyer'
   },
   role: {
@@ -19,6 +19,20 @@ const userSchema = new mongoose.Schema({
     required: [true, "Please Enter User Name"],
     maxLength: [30, "Name cannot exceed 30 characters"],
     minLength: [2, "Name should have more than 4 characters"],
+  },
+  consents: {
+    dataProcessing: {
+      granted: {
+        type: Boolean,
+        default: false
+      },
+      grantedAt: {
+        type: Date
+      },
+      version: {
+        type: String
+      }
+    }
   },
   last_name: {
     type: String,
