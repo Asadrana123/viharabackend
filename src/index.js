@@ -13,7 +13,6 @@ const errorMiddleware = require("./middleware/error");
 const userRoutes = require("./routes/userRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const productRoutes = require("./routes/productRoutes");
-const savePropertyRoutes = require("./routes/savePropertyRoutes");
 const contactRoutes = require("./routes/contactRoutes");
 const sellPropertyRoutes = require("./routes/sellPropertyRoutes");
 const saveSearchRoutes = require("./routes/savedSearch");
@@ -49,7 +48,6 @@ app.get("/", (req, res) => {
 app.use('/api/v1/user', userRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/product', productRoutes);
-app.use("/api/v1/saveProperty", savePropertyRoutes);
 app.use('/api/v1/demographics',demographicRoutes);
 app.use("/api/saveContact", contactRoutes);
 app.use("/api/sellProperty", sellPropertyRoutes);

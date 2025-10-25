@@ -1,7 +1,6 @@
 const userModel = require("../model/userModel");
 const userPreferencesModel=require('../model/userPreferencesModel.js')
 const savedSearches=require('../model/savedSearch.js')
-const savedProperties=require('../model/savePropertiesModel.js')
 const Form = require("../model/formDataModel");
 const catchAsyncError = require("../middleware/catchAsyncError");
 const Errorhandler = require("../utils/errorhandler");
