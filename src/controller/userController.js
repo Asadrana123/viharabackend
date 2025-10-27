@@ -13,27 +13,50 @@ const mongoose = require('mongoose'); // Import mongoose
 const axios = require("axios");
 exports.CreateUser = catchAsyncError(
   async (req, res) => {
-    // Create a new user
-    const newUser = await userModel.create(req.body);
+    // Destructure the request body with consent
+    const { 
+      consentToNotifications, 
+      ...userData 
+    } = req.body;
+
+    // Create a new user with consent handling
+    const newUser = await userModel.create({
+      ...userData,
+      consents: {
+        dataProcessing: {
+          granted: consentToNotifications || false,
+          grantedAt: consentToNotifications ? Date.now() : null,
+          version: "1.0"
+        }
+      }
+    });
+
     // Populate the savedProperties field
     await newUser.populate({
-      path: 'savedProperties', // assuming 'savedProperties' is the field that references another collection
-      model: 'productModel' // replace 'productModel' with the name of the model you are referencing
-    })
+      path: 'savedProperties',
+      model: 'productModel'
+    });
+
+    // Create welcome email
     const welcomeEmailHtml = createWelcomeEmail(newUser, process.env.CLIENT_URL);
 
-
     try {
-      // // const otp = await sendSmSOTP(newUser.businessPhone);
+      // Send welcome email
       sendEmail(
         newUser.email,
         newUser.name,
         "Welcome to Vihara",
         welcomeEmailHtml
       );
-      sendToken(newUser, 201, res, "----");
+
+      // Send token response
+      sendToken(newUser, 201, res, "User created successfully");
     } catch (error) {
-      res.status(500).json({ success: false, message: 'Error sending OTP', error: error.message });
+      res.status(500).json({ 
+        success: false, 
+        message: 'Error creating user', 
+        error: error.message 
+      });
     }
   }
 );
