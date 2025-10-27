@@ -173,14 +173,29 @@ exports.updateUserDetails = async (req, res) => {
   try {
     const { userId } = req.params;
     const updates = req.body;
+
     if (!mongoose.isValidObjectId(userId)) {
       return res.status(400).json({ message: 'Invalid User ID' });
     }
-    // Ensure that userType is valid if it's being updated
+
+    const updateOperation = {
+      $set: {
+        ...updates,
+        ...(updates.notificationConsent !== undefined && {
+          'consents.dataProcessing.granted': updates.notificationConsent,
+          'consents.dataProcessing.grantedAt': updates.notificationConsent ? Date.now() : null,
+          'consents.dataProcessing.version': '1.1' // Update version if consent changes
+        })
+      }
+    };
+
+    // Remove notificationConsent from updates to prevent duplicate processing
+    delete updateOperation.$set.notificationConsent;
+
     const updatedUser = await userModel.findByIdAndUpdate(
       userId,
-      { $set: updates }, // Use $set to update only the provided fields
-      { new: true, runValidators: true } // new: true returns the updated document, runValidators ensures validation is applied
+      updateOperation,
+      { new: true, runValidators: true }
     );
 
     if (!updatedUser) {
