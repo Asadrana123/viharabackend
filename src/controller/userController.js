@@ -173,7 +173,7 @@ exports.updateUserDetails = async (req, res) => {
   try {
     const { userId } = req.params;
     const updates = req.body;
-
+     console.log(updates);
     if (!mongoose.isValidObjectId(userId)) {
       return res.status(400).json({ message: 'Invalid User ID' });
     }
