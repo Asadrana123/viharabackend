@@ -65,10 +65,6 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
-  remmember_token: {
-    type: String,
-    default: null
-  },
   updated_at: {
     type: Date,
     default: Date.now
