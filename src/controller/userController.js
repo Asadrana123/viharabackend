@@ -1,6 +1,6 @@
 const userModel = require("../model/userModel");
-const userPreferencesModel=require('../model/userPreferencesModel.js')
-const savedSearches=require('../model/savedSearch.js')
+const userPreferencesModel = require('../model/userPreferencesModel.js')
+const savedSearches = require('../model/savedSearch.js')
 const Form = require("../model/formDataModel");
 const catchAsyncError = require("../middleware/catchAsyncError");
 const Errorhandler = require("../utils/errorhandler");
@@ -14,9 +14,9 @@ const axios = require("axios");
 exports.CreateUser = catchAsyncError(
   async (req, res) => {
     // Destructure the request body with consent
-    const { 
-      consentToNotifications, 
-      ...userData 
+    const {
+      consentToNotifications,
+      ...userData
     } = req.body;
 
     // Create a new user with consent handling
@@ -52,10 +52,10 @@ exports.CreateUser = catchAsyncError(
       // Send token response
       sendToken(newUser, 201, res, "User created successfully");
     } catch (error) {
-      res.status(500).json({ 
-        success: false, 
-        message: 'Error creating user', 
-        error: error.message 
+      res.status(500).json({
+        success: false,
+        message: 'Error creating user',
+        error: error.message
       });
     }
   }
@@ -173,7 +173,7 @@ exports.updateUserDetails = async (req, res) => {
   try {
     const { userId } = req.params;
     const updates = req.body;
-     console.log(updates);
+    console.log(updates);
     if (!mongoose.isValidObjectId(userId)) {
       return res.status(400).json({ message: 'Invalid User ID' });
     }
@@ -214,15 +214,21 @@ exports.updateUserDetails = async (req, res) => {
     });
   }
 };
-exports.LogOut = catchAsyncError(
-  async (req, res, next) => {
-    res.cookie("token", null, {
+exports.LogOut = catchAsyncError(async (req, res, next) => {
+  res
+    .status(200)
+    .clearCookie("token", {
       httpOnly: true,
-      expires: new Date(Date.now())
+      sameSite: "strict",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",          // must match the path used when setting the cookie
     })
-    return res.status(200).json({ success: true, message: "User Logout successfully" })
-  }
-)
+    .json({
+      success: true,
+      message: "User logout successfully",
+    });
+});
+
 exports.saveProperty = catchAsyncError(
   async (req, res, next) => {
     const { product_id, user_id } = req.body;
@@ -273,6 +279,7 @@ exports.allsavedProperties = catchAsyncError(
 exports.getUser = catchAsyncError(
   async (req, res, next) => {
     const user_id = req.user._id;
+    console.log(user_id);
     const findUser = await userModel.findById(user_id).populate("savedProperties");
     if (!findUser) return next(new Errorhandler("User not found", 404));
     return res.status(200).json({ user: findUser });

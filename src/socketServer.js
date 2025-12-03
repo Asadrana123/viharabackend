@@ -1,6 +1,7 @@
 // socketServer.js
 const socketIO = require('socket.io');
 const jwt = require('jsonwebtoken');
+const { socketIOCorsOptions } = require('./config/corsConfig');
 const AuctionRegistration = require('./model/auctionRegistration');
 const Product = require('./model/productModel');
 const User = require('./model/userModel');
@@ -13,38 +14,28 @@ const userAuctions = new Map(); // Track which auctions each user has joined
 const userSocketsMap = new Map(); // Track sockets by user ID to prevent duplicate counts
 const lastBroadcastTime = new Map();
 const BROADCAST_THROTTLE = 500; // ms between broadcasts
-const allowedOrigins = [
-  "https://www.vihara.ai",
-  "https://vihara-new-website-git-testing-nodifys-projects.vercel.app",
-  "http://localhost:3000",
-  "https://vihara-new-website-nodifys-projects.vercel.app"
-];
+
 // Initialize socket server
 function initSocketServer(server) {
-  const io = socketIO(server, {
-    cors: {
-      origin: (origin, callback) => {
-        if (!origin || allowedOrigins.includes(origin)) {
-          callback(null, true);
-        } else {
-          callback(new Error("CORS not allowed"));
-        }
-      },
-      methods: ["GET", "POST"],
-      credentials: true
-    },
-    pingTimeout: 30000,
-    pingInterval: 25000
-  });
+  const io = socketIO(server, socketIOCorsOptions);
 
   // Authentication middleware
   io.use(async (socket, next) => {
     try {
-      const token = socket.handshake.auth.token;
-      if (!token) {
-        return next(new Error('Authentication error: Token missing'));
+      // ✅ Extract token from cookies
+      const cookies = socket.handshake.headers.cookie;
+
+      if (!cookies) {
+        return next(new Error('Authentication error: Cookies missing'));
       }
 
+      // Parse the token cookie from the cookie string
+      const tokenMatch = cookies.match(/token=([^;]+)/);
+      const token = tokenMatch ? tokenMatch[1] : null;
+
+      if (!token) {
+        return next(new Error('Authentication error: Token cookie missing'));
+      }
       const decoded = jwt.verify(token, process.env.secret);
       socket.userId = decoded.id;
 
@@ -353,8 +344,7 @@ function initSocketServer(server) {
       }
     });
 
-    // socketServer.js - Updated auction-timer handler
-
+    // Handle auction timer
     socket.on('auction-timer', async (data) => {
       const now = Date.now();
       const lastBroadcast = lastBroadcastTime.get(`timer:${data.auctionId}`) || 0;
@@ -453,7 +443,9 @@ function initSocketServer(server) {
           }
         }
       }
-    });    // Handle explicit leave auction event
+    });
+
+    // Handle explicit leave auction event
     socket.on('leave-auction', (auctionId) => {
       handleLeaveAuction(socket, auctionId);
     });

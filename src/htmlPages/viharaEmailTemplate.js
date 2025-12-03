@@ -1,4 +1,5 @@
-<!DOCTYPE html>
+function getViharaTemplate() {
+    return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -77,4 +78,7 @@
         </tr>
     </table>
 </body>
-</html>
+</html>`;
+}
+
+module.exports = getViharaTemplate;

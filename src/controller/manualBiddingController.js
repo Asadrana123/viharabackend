@@ -67,7 +67,7 @@ exports.createManualBid = catchAsyncError(
   async (req, res, next) => {
     const { auctionId, amount } = req.body;
     const userId = req.user._id;
-
+    console.log(auctionId,amount);
     // Validate input
     if (!auctionId || !amount) {
       return next(new ErrorHandler("Missing required fields", 400));

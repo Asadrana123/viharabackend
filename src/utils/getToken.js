@@ -35,8 +35,7 @@ const sendToken = (user, statusCode, res) => {
             city: user.city,
             state: user.state,
             savedProperties: user.savedProperties
-        },
-        token
+        }
     });
 };
 

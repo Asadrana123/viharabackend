@@ -73,6 +73,7 @@ exports.saveAutoBiddingSettings = catchAsyncError(
     }
 
     const currentBid = auction.currentBid || auction.startBid;
+    console.log(currentBid, maxAmount);
     if (maxAmount <= currentBid) {
       return next(new ErrorHandler("Maximum amount must be higher than current bid", 400));
     }
@@ -114,24 +115,24 @@ exports.saveAutoBiddingSettings = catchAsyncError(
     if (enabled) {
       try {
         // Check if user is already the highest bidder
-        const isHighestBidder = auction.currentBidder && 
-                              auction.currentBidder.toString() === userId.toString();
-        
+        const isHighestBidder = auction.currentBidder &&
+          auction.currentBidder.toString() === userId.toString();
+
         if (!isHighestBidder) {
           // Calculate initial bid amount
           const initialBidAmount = currentBid + (increment || 1000);
-          
+
           // Place the initial bid if it's within the max amount
           if (initialBidAmount <= maxAmount) {
             // Create a manual bid through BidsManager
             const bidCreated = await BidsManager.createManualBid(auctionId, userId, initialBidAmount);
-            
+
             // Update the auction with the new bid info
             await Product.findByIdAndUpdate(auctionId, {
               currentBid: initialBidAmount,
               currentBidder: userId
             });
-            
+
             // Update the response to indicate a bid was placed
             return res.status(200).json({
               success: true,
@@ -219,20 +220,20 @@ exports.disableAutoBidding = catchAsyncError(
       }
 
       // Check if user is the current highest bidder
-      const isHighestBidder = auction.currentBidder && 
-                             auction.currentBidder.toString() === userId.toString();
-      
+      const isHighestBidder = auction.currentBidder &&
+        auction.currentBidder.toString() === userId.toString();
+
       // If user is highest bidder, don't allow disabling auto-bidding
       if (isHighestBidder) {
         return next(new ErrorHandler("Cannot disable auto-bidding when you are the highest bidder", 400));
       }
-      
+
       // Check if user has any bids in this auction
       const userBids = await ManualBid.countDocuments({
         userId,
         auctionId: id
       });
-      
+
       if (userBids > 0) {
         return next(new ErrorHandler("Cannot disable auto-bidding after placing bids", 400));
       }
