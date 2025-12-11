@@ -6,7 +6,6 @@ const jwt = require("jsonwebtoken");
 exports.isAuthenticated = catchAsyncError(async (req, res, next) => {
   // Only accept token from cookies
   const token = req.cookies?.token;
-  console.log(token);
   if (!token) {
     return next(new Errorhandler("Please login to access this resource", 401));
   }
