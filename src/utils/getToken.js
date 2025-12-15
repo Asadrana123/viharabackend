@@ -18,7 +18,7 @@ const sendToken = (user, statusCode, res) => {
         expires: expires,
         httpOnly: true,                                    // ← Prevents XSS
         secure: process.env.NODE_ENV === 'production',    // ← HTTPS only in prod
-        sameSite: 'strict'
+        sameSite: 'none'
     };
 
     // Send response with user info, token and set cookie
