@@ -17,7 +17,7 @@ const sendToken = (user, statusCode, res) => {
     const options = {
         expires: expires,
         httpOnly: true,                                    // ← Prevents XSS
-        secure: process.env.NODE_ENV === 'production',    // ← HTTPS only in prod
+        secure:true,    // ← HTTPS only in prod
         sameSite: 'none'
     };
 
