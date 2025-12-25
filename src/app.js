@@ -23,7 +23,7 @@ const ebookRoutes = require("./routes/eBookRoutes");
 const demographicRoutes = require("./routes/demoGraphicRoutes");
 const userPreferencesRoutes = require("./routes/userPreferencesRoutes");
 const unsubscribeRoutes = require("./routes/unsubscribeRoutes");
-
+const renovationRoutes = require("./routes/renovationRoutes");
 const errorMiddleware = require("./middleware/error");
 
 // Middleware
@@ -55,7 +55,7 @@ app.use('/api/bidding', biddingRoutes);
 app.use("/api/ebook", ebookRoutes);
 app.use("/api/v1/user", userPreferencesRoutes);
 app.use("/api", unsubscribeRoutes);
-
+app.use("/api/property-renovation", renovationRoutes);
 // Error Middleware
 app.use(errorMiddleware);
 
