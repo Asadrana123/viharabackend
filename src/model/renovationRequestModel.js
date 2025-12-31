@@ -80,10 +80,10 @@ const renovationRequestSchema = new mongoose.Schema({
     enum: ['pending', 'processing', 'completed', 'failed'],
     default: 'pending'
   },
-
-  created_at: {
-    type: Date,
-    default: Date.now
+  
+  description: {
+    type: String,
+    default: ""
   }
 });
 

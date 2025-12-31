@@ -186,7 +186,7 @@ async function generateRenovationImagesAsync(requestId, systemPrompt, userPrompt
       status: "completed",
       imageUrls: {
         before: propertyImage,
-        after: propertyImage // In real scenario, this would be the generated image URL from cloud storage
+        after: geminiResult.imageUrl // Use the Cloudinary URL from GeminiService
       },
       description: geminiResult.description
     };

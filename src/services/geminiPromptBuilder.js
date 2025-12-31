@@ -27,7 +27,8 @@ class GeminiPromptBuilder {
    * @returns {String} System prompt
    */
   static buildSystemPrompt() {
-    return `You are an expert real estate renovation architect and designer creating REALISTIC property visualizations. Your visualizations must account for:
+    return `You are an expert real estate renovation architect and designer creating 
+    REALISTIC property visualizations. Your visualizations must account for:
 
 1. Geographic Location Context: Cost and availability of materials varies by region
 2. Market Awareness: Renovations reflect typical styles and price points for the area
@@ -35,7 +36,8 @@ class GeminiPromptBuilder {
 4. Budget Constraints: Renovations must be achievable within the stated budget
 5. Regional Preferences: Design preferences vary significantly by geography
 
-CRITICAL: Your renovations should be realistic, achievable, and market-appropriate. Do not suggest premium finishes in markets that don't justify them.`;
+CRITICAL: Your renovations should be realistic, achievable, and market-appropriate. 
+Do not suggest premium finishes in markets that don't justify them.`;
   }
 
   /**
@@ -137,7 +139,8 @@ CRITICAL: Your renovations should be realistic, achievable, and market-appropria
 
     // Build ROI section
     let roiSection = `POTENTIAL VALUE INCREASE:
-This renovation could increase your property value by ~$${roiEstimate.estimatedValueIncrease.toLocaleString()}
+This renovation could increase your property
+ value by ~$${roiEstimate.estimatedValueIncrease.toLocaleString()}
 (${roiEstimate.roiMessage})`;
 
     // Combine all sections
@@ -155,7 +158,8 @@ ${constraints}
 
 ${roiSection}
 
-Please create ONE high-quality before/after visualization showing realistic transformation with the above specifications.`;
+Please create ONE high-quality before/after visualization showing realistic 
+transformation with the above specifications.`;
 
     return userPrompt;
   }

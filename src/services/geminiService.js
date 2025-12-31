@@ -1,6 +1,13 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
+const cloudinary = require('cloudinary').v2;
 const fs = require("fs");
 const path = require("path");
+// Configure Cloudinary (add this to your constructor or top of file)
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
 
 class GeminiService {
   constructor() {
@@ -9,7 +16,7 @@ class GeminiService {
       throw new Error("GEMINI_API_KEY environment variable is not set");
     }
     this.client = new GoogleGenerativeAI(apiKey);
-    this.model = "gemini-2.5-flash";
+    this.model = "gemini-2.5-flash-image";
   }
 
   /**
@@ -22,63 +29,51 @@ class GeminiService {
   async generateRenovationImage(systemPrompt, userPrompt, imagePath) {
     try {
       const model = this.client.getGenerativeModel({ model: this.model });
-
-      // Prepare image data
       const imageData = await this.prepareImageData(imagePath);
+      const fullPrompt = `${systemPrompt}\n\n${userPrompt}`;
 
-      // Build request content
-      const content = [
-        {
+      const result = await model.generateContent({
+        contents: [{
           role: "user",
-          parts: [
-            { text: systemPrompt },
-            { text: userPrompt },
-            {
-              inlineData: {
-                mimeType: imageData.mimeType,
-                data: imageData.data
-              }
-            }
-          ]
-        }
-      ];
-
-      // Call Gemini API
-      const startTime = Date.now();
-      const response = await model.generateContent({
-        contents: content,
+          parts: [{ text: fullPrompt }, { inlineData: imageData }]
+        }],
         generationConfig: {
-          maxOutputTokens: 2048,
-          temperature: 0.7,
-          topP: 0.95
+          responseModalities: ["IMAGE", "TEXT"] // Required to get the image back
         }
       });
+      const response = result.response;
+      let generatedImageBase64 = null;
+      let description = "";
 
-      const processingTime = Date.now() - startTime;
-
-      // Extract response
-      const result = response.response;
-      
-      if (!result || !result.text()) {
-        throw new Error("No response from Gemini API");
+      if (response.candidates && response.candidates[0].content.parts) {
+        for (const part of response.candidates[0].content.parts) {
+          if (part.inlineData) generatedImageBase64 = part.inlineData.data;
+          else if (part.text) description += part.text;
+        }
       }
 
-      // Parse response - Gemini returns description/details
-      const responseText = result.text();
+      if (!generatedImageBase64) throw new Error("No image generated.");
+
+      // --- NEW: Upload to Cloudinary ---
+      // Gemini returns raw base64; Cloudinary needs a Data URI format
+      const dataUri = `data:image/jpeg;base64,${generatedImageBase64}`;
+
+      const uploadResponse = await cloudinary.uploader.upload(dataUri, {
+        folder: "renovations",
+        resource_type: "image"
+      });
 
       return {
         success: true,
-        description: responseText,
-        processingTimeMs: processingTime,
-        tokensUsed: result.usageMetadata?.totalTokenCount || 0,
+        imageUrl: uploadResponse.secure_url, // Permanent public URL
+        description: description || "Renovation complete.",
         model: this.model
       };
     } catch (error) {
-      console.error("Error calling Gemini API:", error);
-      throw new Error(`Gemini API error: ${error.message}`);
+      console.error("Gemini/Cloudinary Error:", error);
+      throw error;
     }
   }
-
   /**
    * Prepare image data from file path or URL
    * @param {String} imagePath - File path or URL to image
@@ -96,8 +91,8 @@ class GeminiService {
         if (!response.ok) {
           throw new Error(`Failed to fetch image from URL: ${response.statusText}`);
         }
-        imageBuffer = await response.buffer();
-        
+        imageBuffer = Buffer.from(await response.arrayBuffer());
+
         // Detect mime type from content-type header
         const contentType = response.headers.get("content-type");
         if (contentType) {
@@ -109,7 +104,7 @@ class GeminiService {
           throw new Error(`Image file not found: ${imagePath}`);
         }
         imageBuffer = fs.readFileSync(imagePath);
-        
+
         // Detect mime type from file extension
         const ext = path.extname(imagePath).toLowerCase();
         const mimeTypes = {
