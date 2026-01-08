@@ -24,6 +24,7 @@ const demographicRoutes = require("./routes/demoGraphicRoutes");
 const userPreferencesRoutes = require("./routes/userPreferencesRoutes");
 const unsubscribeRoutes = require("./routes/unsubscribeRoutes");
 const renovationRoutes = require("./routes/renovationRoutes");
+const investmentCalculatorRoutes = require("./routes/investmentCalculatorRoutes");
 const errorMiddleware = require("./middleware/error");
 
 // Middleware
@@ -56,6 +57,8 @@ app.use("/api/ebook", ebookRoutes);
 app.use("/api/v1/user", userPreferencesRoutes);
 app.use("/api", unsubscribeRoutes);
 app.use("/api/property-renovation", renovationRoutes);
+app.use('/api/v1/investment-calculator', investmentCalculatorRoutes);
+
 // Error Middleware
 app.use(errorMiddleware);
 

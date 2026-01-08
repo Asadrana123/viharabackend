@@ -8,3 +8,4 @@ src/PropertyData.json
 src/sendGridFile.js
 src/SendImageEmail.js
 src/resendFile.js
+src/sendHappyNewYearEmail.js
