@@ -1,6 +1,9 @@
 const mongoose = require("mongoose");
 
 const productSchema = new mongoose.Schema({
+    // ============================================
+    // CORE AUCTION & PROPERTY FIELDS
+    // ============================================
     productName: {
         type: String,
         required: true,
@@ -10,7 +13,7 @@ const productSchema = new mongoose.Schema({
         required: true,
     },
     auctionStartTime: {
-        type: String, // or use Date if you want to include time details
+        type: String,
         required: true,
     },
     auctionEndDate: {
@@ -18,7 +21,7 @@ const productSchema = new mongoose.Schema({
         required: true,
     },
     auctionEndTime: {
-        type: String, // or use Date if you want to include time details
+        type: String,
         required: true,
     },
     reservePrice: {
@@ -34,17 +37,16 @@ const productSchema = new mongoose.Schema({
         required: true,
     },
     commission: {
-        type: Number, // assuming percentage
+        type: Number,
         required: true,
     },
     startBid: {
         type: Number,
         required: true,
     },
-    // Current bidding information
     currentBid: {
         type: Number,
-        default: function() {
+        default: function () {
             return this.startBid;
         }
     },
@@ -57,9 +59,20 @@ const productSchema = new mongoose.Schema({
         type: String,
         required: true,
     },
+    assetType: {
+        type: String,
+        enum: ['Reo Bank Owned', 'Foreclosure Homes', 'Short Sale'],
+        required: false,
+    },
     propertyType: {
         type: String,
+        enum: ['Single Family', 'Condo, Townhouse, other single unit', 'Multi-family', 'Land'],
         required: true,
+    },
+    occupancyStatus: {
+        type: String,
+        enum: ['Vacant', 'Occupied', 'Reported Vacant'],
+        required: false,
     },
     street: {
         type: String,
@@ -94,7 +107,7 @@ const productSchema = new mongoose.Schema({
         required: true,
     },
     lotSize: {
-        type: Number, // assuming it's in acres
+        type: Number,
         required: true,
     },
     yearBuilt: {
@@ -118,12 +131,12 @@ const productSchema = new mongoose.Schema({
         required: true,
     },
     image: {
-        type: String, // URL or path to the image file
+        type: String,
         required: false,
     },
     otherImages: [
         {
-            type: String, // URL or path to the image file
+            type: String,
         }
     ],
     onlineOrInPerson: {
@@ -136,13 +149,11 @@ const productSchema = new mongoose.Schema({
             type: String,
         }
     ],
-    // NEW FIELD: 3D Tour Model ID
     threeDTourId: {
         type: String,
         required: false,
         default: null
     },
-    // 3D Tour metadata
     threeDTourMetadata: {
         title: {
             type: String,
@@ -157,7 +168,6 @@ const productSchema = new mongoose.Schema({
             default: true
         }
     },
-    // Property status
     status: {
         type: String,
         enum: ['active', 'sold', 'cancelled', 'pending'],
@@ -166,11 +176,275 @@ const productSchema = new mongoose.Schema({
     featured: {
         type: Boolean,
         default: false
+    },
+
+    // ============================================
+    // COORDINATES (For Map Display - CoreLogic Integration)
+    // Priority: Parcel > Block > City Approximation
+    // ============================================
+    coordinates: {
+        parcel: {
+            lat: {
+                type: Number,
+                required: false
+            },
+            lng: {
+                type: Number,
+                required: false
+            }
+        },
+        block: {
+            lat: {
+                type: Number,
+                required: false
+            },
+            lng: {
+                type: Number,
+                required: false
+            }
+        },
+        // Tracks which coordinate source was used as primary
+        sourceData: {
+            type: String,
+            enum: ['parcel', 'block', 'city'],
+            default: 'city'
+        },
+        lastUpdated: {
+            type: Date,
+            default: Date.now
+        }
+    },
+
+    // ============================================
+    // PROPERTY DETAILS (PropertyDescription, PropertyAmenities)
+    // ============================================
+    propertyDetails: {
+        architecturalStyle: String,  // "Traditional 2-Story"
+        buildingClassType: String,  // "Traditional"
+        constructionType: String,  // "Frame"
+        numberOfStories: Number,
+        interiorFeatures: [String],  // ["High ceilings", "Custom millwork"]
+        appliancesIncluded: [String],  // ["Convection Oven", "Double Oven"]
+        bathroomFixtures: Number,
+        numFireplaces: Number,
+        hasPool: Boolean,
+        poolType: String,  // "Gunite in-ground pool"
+        garageType: String,  // "3-car attached garage"
+        heatingType: String,  // "Central Gas Heat"
+        coolingType: String,  // "Central Electric Cooling"
+        waterType: String,  // "Public Water"
+        sewerType: String,  // "Public Sewer"
+        lotSizeAcres: Number,
+        subdivision: String  // "KINGS POINT VILLAGE SEC 4"
+    },
+
+    // ============================================
+    // LISTING AGENT INFO (ListingAgentInfo)
+    // ============================================
+    listingAgent: {
+        name: String,
+        company: String,
+        phone: String,
+        licenseNumber: String
+    },
+
+    // ============================================
+    // INVESTMENT CALCULATOR DATA
+    // ============================================
+    investmentData: {
+        // Valuation (PropertyValuation component)
+        valuation: {
+            ViharaValue: Number,  // Propstream: 961,000
+            highRange: Number,  // ATTOM: 1,119,540
+            lowRange: Number,  // ATTOM: 844,565
+            confidenceScore: Number,  // 86
+            evaluatedDate: Date
+        },
+
+        // Rental (RevenueSection component)
+        rental: {
+            estimatedMonthlyRent: Number,  // 6,457
+            estimatedAnnualRent: Number,  // 77,484
+            rentalValue: Number,  // 6,457 (display value)
+            highRange: Number,
+            lowRange: Number,
+            averageRentalTrend: Number,  // % change
+            vacancyRate: Number  // 8%
+        },
+
+        // Tax (TaxCalculator component)
+        taxData: {
+            annualPropertyTax: Number,  // 24,384.52
+            assessedValue: Number,  // 1,041,771
+            assessmentYear: Number,  // 2025
+            landValue: Number,  // 176,400
+            improvementValue: Number  // 865,371
+        },
+
+        // Comparables (ComparablesSection component)
+        comparables: [
+            {
+                address: String,
+                beds: Number,
+                baths: Number,
+                sqft: Number,
+                salePrice: Number,
+                pricePerSqft: Number,
+                saleDate: Date
+            }
+        ],
+
+        // Price History (PriceTaxHistory component)
+        priceHistory: [
+            {
+                year: Number,
+                event: String,  // "Listed", "Sold"
+                price: Number,
+                pricePerSqft: Number
+            }
+        ],
+
+        // Tax History (PriceTaxHistory component)
+        taxHistory: [
+            {
+                year: Number,
+                propertyTax: Number,
+                taxChange: String,
+                taxAssessment: Number,
+                assessmentChange: String
+            }
+        ]
+    },
+
+    // ============================================
+    // MARKET INSIGHTS (MarketTrendsTab component)
+    // ============================================
+    marketInsights: {
+        medianListPrice: Number,
+        medianSoldPrice: Number,
+        daysOnMarket: Number,
+        salesListPrice: Number,  // 101.3 (percentage)
+        trends: {
+            listPrice: String,  // "up", "down", "stable"
+            soldPrice: String,
+            daysOnMarket: String,
+            salesRatio: String
+        }
+    },
+
+    // ============================================
+    // SCHOOLS & NEIGHBORHOOD (SchoolNeighborhoodTab)
+    // ============================================
+    schools: {
+        public: [
+            {
+                name: String,
+                rating: String,  // "1/10"
+                grades: String,  // "PK-6"
+                distance: String  // "0.34 mi"
+            }
+        ],
+        private: [
+            {
+                name: String,
+                rating: String,
+                grades: String,
+                distance: String
+            }
+        ]
+    },
+
+    walkScores: {
+        walkScore: Number,  // 67
+        transitScore: Number,  // 49
+        bikeScore: Number  // 40
+    },
+
+    // ============================================
+    // COMPARABLE MARKET DATA (ComparableMarketTab)
+    // ============================================
+    comparableMarket: [
+        {
+            address: String,
+            listPrice: Number,
+            listDate: String,
+            soldPrice: Number,
+            soldDate: String,
+            beds: Number,
+            baths: Number,
+            sqft: Number,
+            pricePerSqft: String
+        }
+    ],
+
+    // ============================================
+    // AREA STATISTICS (AreaStatistics component)
+    // ============================================
+    areaStatistics: {
+        property: {
+            address: String,
+            beds: Number,
+            baths: Number,
+            sqft: Number
+        },
+        areaStats: {
+            zip: {
+                population: Number,
+                populationDensity: Number,
+                peoplePerHousehold: Number,
+                medianAge: Number,
+                medianHouseholdIncome: Number,
+                averageIncome: Number
+            },
+            city: {
+                population: Number,
+                populationDensity: Number,
+                peoplePerHousehold: Number,
+                medianAge: Number,
+                medianHouseholdIncome: Number,
+                averageIncome: Number
+            },
+            county: {
+                population: String,
+                populationDensity: Number,
+                peoplePerHousehold: Number,
+                medianAge: Number,
+                medianHouseholdIncome: Number,
+                averageIncome: Number
+            },
+            national: {
+                population: String,
+                populationDensity: Number,
+                peoplePerHousehold: Number,
+                medianAge: Number,
+                medianHouseholdIncome: Number,
+                averageIncome: Number
+            }
+        }
+    },
+
+    // ============================================
+    // TIMESTAMPS
+    // ============================================
+    createdAt: {
+        type: Date,
+        default: Date.now
+    },
+    updatedAt: {
+        type: Date,
+        default: Date.now
     }
 });
 
+// Middleware to update lastUpdated when coordinates change
 productSchema.pre('save', async function (next) {
-    this.updated_at = Date.now();
+    this.updatedAt = Date.now();
+
+    // Update coordinates lastUpdated if coordinates changed
+    if (this.isModified('coordinates.parcel') || this.isModified('coordinates.block')) {
+        this.coordinates.lastUpdated = Date.now();
+    }
+
     next();
 });
 

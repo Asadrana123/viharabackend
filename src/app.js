@@ -25,6 +25,7 @@ const userPreferencesRoutes = require("./routes/userPreferencesRoutes");
 const unsubscribeRoutes = require("./routes/unsubscribeRoutes");
 const renovationRoutes = require("./routes/renovationRoutes");
 const investmentCalculatorRoutes = require("./routes/investmentCalculatorRoutes");
+const coreLogicRoutes = require("./routes/coreLogicRoutes");
 const errorMiddleware = require("./middleware/error");
 
 // Middleware
@@ -58,7 +59,7 @@ app.use("/api/v1/user", userPreferencesRoutes);
 app.use("/api", unsubscribeRoutes);
 app.use("/api/property-renovation", renovationRoutes);
 app.use('/api/v1/investment-calculator', investmentCalculatorRoutes);
-
+app.use("/api/v1/corelogic", coreLogicRoutes);
 // Error Middleware
 app.use(errorMiddleware);
 

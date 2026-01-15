@@ -41,7 +41,7 @@ const findPropertyId = async (street, city, state, zipCode) => {
     });
 
     const attomId = response.data?.property?.[0]?.identifier?.attomId;
-
+    console.log(response.data.property)
     if (!attomId) {
       console.warn('[ATTOM] Property not found during ID lookup');
       return null;
