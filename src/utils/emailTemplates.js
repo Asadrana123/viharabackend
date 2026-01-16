@@ -103,7 +103,7 @@ const createPasswordResetEmail = (userName, resetUrl) => {
                             <table role="presentation" cellspacing="0" cellpadding="0" border="0">
                                 <tr>
                                     <td align="center">
-                                        <img src="https://www.vihara.ai/static/media/vihara-new-logo.1e0ecd4b8707813c361a.jpeg" 
+                                        <img src="https://res.cloudinary.com/drm9blcmj/image/upload/v1768580466/vihara-new-logo_csgllk.png" 
                                              alt="Vihara.com" 
                                              width="200" 
                                              height="auto"
@@ -201,7 +201,6 @@ const createPasswordResetEmail = (userName, resetUrl) => {
                                 <tr>
                                     <td align="center">
                                         <p style="margin: 0; font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif; font-size: 14px; color: #666666; text-align: center; line-height: 1.4;" class="mobile-text">
-                                            <a href="mailto:customerservice@vihara.com" style="color: #4A90E2; text-decoration: none;">customerservice@vihara.com</a>. 
                                             Or, visit our online 
                                             <a href="https://vihara.ai/help" style="color: #4A90E2; text-decoration: none;">Vihara Help Center</a>.
                                         </p>
