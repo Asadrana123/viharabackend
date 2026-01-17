@@ -646,7 +646,7 @@ const createWelcomeEmail = (newUser, clientUrl) => {
                                 <tr>
                                     <td style="padding-bottom: 15px;">
                                         <p style="margin: 0; font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif; font-size: 12px; line-height: 1.4; color: #d1d5db; text-align: center;" class="mobile-text">
-                                            RL Auction Inc.;
+                                            RL Auction Inc.
                                             <br></br>
                                              1335 S Milpitas Blvd, Milpitas, California 95035.
                                         </p>
