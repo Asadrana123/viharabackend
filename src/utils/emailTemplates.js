@@ -192,7 +192,7 @@ const createPasswordResetEmail = (userName, resetUrl) => {
                                     <td align="center" style="padding-bottom: 8px;">
                                         <p style="margin: 0; font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif; font-size: 14px; color: #666666; text-align: center; line-height: 1.4;" class="mobile-text">
                                             Contact us at 
-                                            <a href="mailto:trisha@vihara.com" style="color: #4A90E2; text-decoration: none;">trisha@vihara.com</a> 
+                                            <a href="mailto:trisha@vihara.ai" style="color: #4A90E2; text-decoration: none;">trisha@vihara.ai</a> 
                                             Mon-Fri from 9am - 6pm PT or email
                                         </p>
                                     </td>
@@ -484,10 +484,12 @@ const createWelcomeEmail = (newUser, clientUrl) => {
                         <td align="right" bgcolor="#0384FB" style="padding: 20px; background-color: #0384FB;" class="mobile-padding mobile-center">
                             <table role="presentation" cellspacing="0" cellpadding="0" border="0">
                                 <tr>
-                                    <td align="right" class="mobile-center">
-                                        <p style="margin: 0; font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif; font-size: 32px; font-weight: bold; color: #ffffff; text-transform: lowercase;">
-                                            vihara
-                                        </p>
+                                    <td align="center">
+                                        <img src="https://res.cloudinary.com/drm9blcmj/image/upload/v1768580466/vihara-new-logo_csgllk.png" 
+                                             alt="Vihara.com" 
+                                             width="200" 
+                                             height="auto"
+                                             style="display: block; max-width: 200px; height: auto; margin: 0 auto; border: 0; outline: none; text-decoration: none;">
                                     </td>
                                 </tr>
                             </table>
@@ -557,7 +559,7 @@ const createWelcomeEmail = (newUser, clientUrl) => {
                                     <td style="padding-bottom: 15px;">
                                         <p style="margin: 0; font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif; font-size: 16px; line-height: 1.5; color: #333333;" class="mobile-text dark-mode-text">
                                             Need help? Our 
-                                            <a href="mailto:trisha@vihara.com" style="color: #0384FB; text-decoration: none;">customer service</a> 
+                                            <a href="mailto:trisha@vihara.ai" style="color: #0384FB; text-decoration: none;">customer service</a> 
                                             team is here to help.
                                         </p>
                                     </td>
@@ -606,7 +608,7 @@ const createWelcomeEmail = (newUser, clientUrl) => {
                                                     <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 0;">
                                                         <tr class="social-icons-row">
                                                             <td style="padding: 0 5px;">
-                                                                <a href="#" style="display: inline-block; text-decoration: none;">
+                                                                <a href="https://www.facebook.com/profile.php?id=61556248807076" style="display: inline-block; text-decoration: none;">
                                                                     <img src="https://res.cloudinary.com/my1chatapp/image/upload/v1758121455/FbIcon_edgimr.png" 
                                                                          alt="Facebook" 
                                                                          width="40" 
@@ -615,8 +617,8 @@ const createWelcomeEmail = (newUser, clientUrl) => {
                                                                 </a>
                                                             </td>
                                                             <td style="padding: 0 5px;">
-                                                                <a href="#" style="display: inline-block; text-decoration: none;">
-                                                                    <img src="https://res.cloudinary.com/my1chatapp/image/upload/v1758121458/TrIcon_c7qoyb.png" 
+                                                                <a href="https://www.instagram.com/vihara.ai/" style="display: inline-block; text-decoration: none;">
+                                                                    <img src="https://res.cloudinary.com/my1chatapp/image/upload/v1768646620/insta-icon_yab7b2.webp" 
                                                                          alt="Twitter" 
                                                                          width="40" 
                                                                          height="40"
@@ -624,7 +626,7 @@ const createWelcomeEmail = (newUser, clientUrl) => {
                                                                 </a>
                                                             </td>
                                                             <td style="padding: 0 5px;">
-                                                                <a href="#" style="display: inline-block; text-decoration: none;">
+                                                                <a href="https://www.linkedin.com/company/vihara-ai/" style="display: inline-block; text-decoration: none;">
                                                                     <img src="https://res.cloudinary.com/my1chatapp/image/upload/v1758121456/LdIcon_rvaqhn.png" 
                                                                          alt="LinkedIn" 
                                                                          width="40" 
@@ -644,26 +646,20 @@ const createWelcomeEmail = (newUser, clientUrl) => {
                                 <tr>
                                     <td style="padding-bottom: 15px;">
                                         <p style="margin: 0; font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif; font-size: 12px; line-height: 1.4; color: #d1d5db; text-align: center;" class="mobile-text">
-                                            © 2025 Vihara Inc.; Vihara CT LLC (for CT properties); Vihara PR LLC (for PR properties); Vihara Realty Services LLC. All rights reserved. 1335 S Milpitas Blvd, Milpitas, California 95035.
+                                            RL Auction Inc.;
+                                            <br></br>
+                                             1335 S Milpitas Blvd, Milpitas, California 95035.
                                         </p>
                                     </td>
                                 </tr>
                                 
                                 <!-- Footer Links -->
-                                <tr>
-                                    <td align="center" style="padding-bottom: 15px;">
-                                        <a href="#" style="color: #d1d5db; text-decoration: underline; font-size: 12px; font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif;">
-                                            View our licensing page here.
-                                        </a>
-                                    </td>
-                                </tr>
-                                
                                 <!-- Privacy Notice -->
                                 <tr>
                                     <td align="center">
                                         <p style="margin: 0; font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif; font-size: 12px; line-height: 1.4; color: #d1d5db; text-align: center;" class="mobile-text">
                                             We respect your right to privacy. View our policy 
-                                            <a href="#" style="color: #d1d5db; text-decoration: underline;">here</a>.
+                                            <a href="https://www.vihara.ai/privacy-statement" style="color: #d1d5db; text-decoration: underline;">here</a>.
                                         </p>
                                     </td>
                                 </tr>
