@@ -202,7 +202,7 @@ const createPasswordResetEmail = (userName, resetUrl) => {
                                     <td align="center">
                                         <p style="margin: 0; font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif; font-size: 14px; color: #666666; text-align: center; line-height: 1.4;" class="mobile-text">
                                             Or, visit our online 
-                                            <a href="https://vihara.ai/help" style="color: #4A90E2; text-decoration: none;">Vihara Help Center</a>.
+                                            <a href="https://vihara.ai/contact-us" style="color: #4A90E2; text-decoration: none;">Vihara Help Center</a>.
                                         </p>
                                     </td>
                                 </tr>
