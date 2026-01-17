@@ -9,6 +9,7 @@ const productModel = require("../model/productModel");
 const sendEmail = require("../utils/sendEmail");
 const { sendSmSOTP } = require("./otpController");
 const { createPasswordResetEmail, createWelcomeEmail } = require("../utils/emailTemplates.js");
+const getCookieOptions = require("../utils/cookieOptions");
 const mongoose = require('mongoose'); // Import mongoose
 const axios = require("axios");
 exports.CreateUser = catchAsyncError(
@@ -217,18 +218,12 @@ exports.updateUserDetails = async (req, res) => {
 exports.LogOut = catchAsyncError(async (req, res, next) => {
   res
     .status(200)
-    .clearCookie("token", {
-      httpOnly: true,
-      sameSite: "strict",
-      secure: process.env.NODE_ENV === "production",
-      path: "/",          // must match the path used when setting the cookie
-    })
+    .clearCookie("token", getCookieOptions()) // Automatically uses the correct flags
     .json({
       success: true,
       message: "User logout successfully",
     });
 });
-
 exports.saveProperty = catchAsyncError(
   async (req, res, next) => {
     const { product_id, user_id } = req.body;
