@@ -481,7 +481,7 @@ const createWelcomeEmail = (newUser, clientUrl) => {
                     
                     <!-- Header Section -->
                     <tr>
-                        <td align="right" bgcolor="#0384FB" style="padding: 20px; background-color: #0384FB;" class="mobile-padding mobile-center">
+                        <td align="center"  style="padding: 20px;" class="mobile-padding mobile-center">
                             <table role="presentation" cellspacing="0" cellpadding="0" border="0">
                                 <tr>
                                     <td align="center">
