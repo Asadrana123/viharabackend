@@ -6,7 +6,7 @@ const Product = require("../model/productModel");
 const ManualBid = require("../model/manualBiddingModel");
 const User = require("../model/userModel");
 const BidsManager = require("../utils/bidsManager");
-
+const mongoose = require('mongoose');
 exports.checkAuctionAccess = catchAsyncError(
   async (req, res, next) => {
     const { id } = req.params; // auction ID
@@ -26,15 +26,15 @@ exports.checkAuctionAccess = catchAsyncError(
     // Determine auction end time
     const now = new Date();
     let auctionEnd;
-    
+
     if (auction.endTime) {
       auctionEnd = new Date(auction.endTime);
     } else {
       auctionEnd = new Date(auction.auctionEndDate);
     }
-    
+
     console.log('Auction end time determined as:', auctionEnd);
-    
+
     // Check if auction has ended
     const hasEnded = now > auctionEnd;
 
@@ -67,7 +67,7 @@ exports.createManualBid = catchAsyncError(
   async (req, res, next) => {
     const { auctionId, amount } = req.body;
     const userId = req.user._id;
-    console.log(auctionId,amount);
+    console.log(auctionId, amount);
     // Validate input
     if (!auctionId || !amount) {
       return next(new ErrorHandler("Missing required fields", 400));
@@ -111,23 +111,21 @@ exports.createManualBid = catchAsyncError(
     }
 
     // Create manual bid
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
     try {
-      const newBid = await BidsManager.createManualBid(auctionId, userId, amount);
+      const newBid = await BidsManager.createManualBid(auctionId, userId, amount, session);
 
-      // Update auction in database
-      await Product.findByIdAndUpdate(auctionId, {
-        currentBid: amount,
-        currentBidder: userId
-      });
-
-      // Process any auto bids
       const autoBidResult = await BidsManager.processAutoBids(
-        auctionId, 
-        amount, 
-        userId
+        auctionId,
+        amount,
+        userId,
+        session
       );
 
-      // Return success response
+      await session.commitTransaction();
+
       return res.status(201).json({
         success: true,
         message: "Bid placed successfully",
@@ -135,12 +133,15 @@ exports.createManualBid = catchAsyncError(
           bidId: newBid._id,
           amount: newBid.amount,
           createdAt: newBid.createdAt,
-          outbid: !!autoBidResult // Indicate if user was outbid by an auto-bid
+          outbid: !!autoBidResult
         }
       });
     } catch (error) {
+      await session.abortTransaction();
       console.error("Error placing bid:", error);
       return next(new ErrorHandler("Failed to place bid", 500));
+    } finally {
+      session.endSession();
     }
   }
 );
@@ -175,7 +176,6 @@ exports.getBidHistory = catchAsyncError(
 
     // Format bids for client consumption
     const formattedBids = await BidsManager.formatBidsWithUserInfo(bids);
-
     return res.status(200).json({
       success: true,
       data: {
@@ -196,14 +196,12 @@ exports.getUserBidHistory = catchAsyncError(
   async (req, res, next) => {
     const { limit = 20, page = 1 } = req.query;
     const userId = req.user._id;
-
     // Get user's bids with pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const bids = await ManualBid.find({ userId })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
-
     // Get total count for pagination
     const totalBids = await ManualBid.countDocuments({ userId });
 
@@ -213,10 +211,10 @@ exports.getUserBidHistory = catchAsyncError(
         .select('propertyType street city state productName currentBid currentBidder');
 
       // Determine if this is the winning bid
-      const isWinningBid = auction && 
-                           auction.currentBidder && 
-                           auction.currentBidder.toString() === userId.toString() &&
-                           auction.currentBid === bid.amount;
+      const isWinningBid = auction &&
+        auction.currentBidder &&
+        auction.currentBidder.toString() === userId.toString()
+      //&& auction.currentBid === bid.amount;
 
       return {
         bidId: bid._id,
@@ -231,7 +229,6 @@ exports.getUserBidHistory = catchAsyncError(
         isWinningBid
       };
     }));
-
     return res.status(200).json({
       success: true,
       data: {
@@ -283,7 +280,7 @@ exports.getAuctionBiddingStatus = catchAsyncError(
     const now = new Date();
     const endTime = auction.auctionEndTime || new Date(auction.auctionEndDate);
     let auctionStatus = "ended";
-    
+
     if (now < endTime) {
       auctionStatus = "active";
     }
@@ -291,7 +288,7 @@ exports.getAuctionBiddingStatus = catchAsyncError(
     // Get current bid and bidder info
     const currentBid = auction.currentBid || auction.startBid;
     let currentBidder = null;
-    
+
     if (auction.currentBidder) {
       const bidderUser = await User.findById(auction.currentBidder).select('name');
       if (bidderUser) {

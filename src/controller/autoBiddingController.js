@@ -6,7 +6,7 @@ const ManualBid = require("../model/manualBiddingModel");
 const Product = require("../model/productModel");
 const AuctionRegistration = require("../model/auctionRegistration");
 const BidsManager = require("../utils/bidsManager");
-
+const mongoose=require('mongoose');
 // Get auto-bidding settings for current user
 exports.getAutoBiddingSettings = catchAsyncError(
   async (req, res, next) => {
@@ -113,40 +113,35 @@ exports.saveAutoBiddingSettings = catchAsyncError(
 
     // If enabled is true, immediately place an auto bid if needed
     if (enabled) {
+      const session = await mongoose.startSession();
+      session.startTransaction();
+      let transactionCommitted = false;
       try {
-        // Check if user is already the highest bidder
         const isHighestBidder = auction.currentBidder &&
           auction.currentBidder.toString() === userId.toString();
 
         if (!isHighestBidder) {
-          // Calculate initial bid amount
           const initialBidAmount = currentBid + (increment || 1000);
 
-          // Place the initial bid if it's within the max amount
           if (initialBidAmount <= maxAmount) {
-            // Create a manual bid through BidsManager
-            const bidCreated = await BidsManager.createManualBid(auctionId, userId, initialBidAmount);
-
-            // Update the auction with the new bid info
-            await Product.findByIdAndUpdate(auctionId, {
-              currentBid: initialBidAmount,
-              currentBidder: userId
-            });
-
-            // Update the response to indicate a bid was placed
-            return res.status(200).json({
-              success: true,
-              message: "Auto-bidding settings saved and initial bid placed",
-              data: {
-                settings,
-                initialBid: initialBidAmount
-              }
-            });
+            const bidCreated = await BidsManager.createManualBid(
+              auctionId,
+              userId,
+              initialBidAmount,
+              session  // ← Add session
+            );
           }
         }
+
+        await session.commitTransaction();
+        transactionCommitted = true;
       } catch (error) {
+        if (!transactionCommitted) {
+          await session.abortTransaction();
+        }
         console.error('Error placing initial auto bid:', error);
-        // Continue with saving settings even if initial bid fails
+      } finally {
+        session.endSession();
       }
     }
 

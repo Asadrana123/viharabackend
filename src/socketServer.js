@@ -7,7 +7,7 @@ const Product = require('./model/productModel');
 const User = require('./model/userModel');
 const ManualBid = require('./model/manualBiddingModel');
 const BidsManager = require('./utils/bidsManager');
-
+const mongoose = require('mongoose');
 // Store active auctions in memory
 const activeAuctions = new Map();
 const userAuctions = new Map(); // Track which auctions each user has joined
@@ -210,11 +210,15 @@ function initSocketServer(server) {
       }
     });
 
-    // Place a manual bid via socket
     socket.on('place-bid', async (data) => {
+      const session = await mongoose.startSession();
+      session.startTransaction();
+      let transactionCommitted = false;
+
       try {
         const { auctionId, bidAmount } = data;
 
+        // Validations (before transaction)
         if (!auctionId || !bidAmount) {
           socket.emit('bid-error', 'Invalid bid data');
           return;
@@ -226,124 +230,103 @@ function initSocketServer(server) {
           return;
         }
 
-        // Check if auction is active
         if (auctionData.auctionStatus !== "active") {
           socket.emit('bid-error', `Auction is ${auctionData.auctionStatus}`);
           return;
         }
 
-        // Check if bid is higher than current bid
         if (bidAmount <= auctionData.currentBid) {
-          socket.emit('bid-error', `Bid must be higher than current bid (${auctionData.currentBid})`);
+          socket.emit('bid-error', `Bid must be higher than current bid`);
           return;
         }
 
-        // Create the manual bid
+        // ✓ All within transaction
         const newManualBid = await BidsManager.createManualBid(
           auctionId,
           socket.userId,
-          bidAmount
+          bidAmount,
+          session
         );
 
-        // Format bid for broadcast
+        const autoBidResult = await BidsManager.processAutoBids(
+          auctionId,
+          bidAmount,
+          socket.userId,
+          session
+        );
+
+        // ✓ Commit after ALL database operations
+        await session.commitTransaction();
+        transactionCommitted = true;
+
+        // ✓ NOW do socket broadcasts (no database involved)
         const newBid = {
           currentBid: bidAmount,
-          currentBidder: {
-            id: socket.userId,
-            name: socket.user.name
-          },
+          currentBidder: { id: socket.userId, name: socket.user.name },
           timestamp: newManualBid.createdAt.toISOString(),
           isAutoBid: false
         };
 
-        // Update in-memory auction data
         auctionData.currentBid = bidAmount;
         auctionData.currentBidder = newBid.currentBidder;
         auctionData.recentBids = [newBid, ...auctionData.recentBids].slice(0, 50);
         activeAuctions.set(auctionId, auctionData);
 
-        // Update auction in database
-        await Product.findByIdAndUpdate(auctionId, {
-          currentBid: bidAmount,
-          currentBidder: socket.userId
-        });
-
-        // Notify all users about the new bid
         io.to(auctionId).emit('bid-update', newBid);
 
-        // Process any auto bids
-        const autoBidResult = await BidsManager.processAutoBids(
-          auctionId,
-          bidAmount,
-          socket.userId
-        );
-
-        // If an auto bid was processed, broadcast it
+        // Handle auto bid broadcast
         if (autoBidResult) {
-          // Get bidder info
           const autoBidder = await User.findById(autoBidResult.userId).select('name');
-          const autoBidderName = autoBidder ? autoBidder.name : 'Unknown';
-
-          // Format auto bid for broadcast
           const autoBidUpdate = {
             currentBid: autoBidResult.amount,
-            currentBidder: {
-              id: autoBidResult.userId,
-              name: autoBidderName
-            },
+            currentBidder: { id: autoBidResult.userId, name: autoBidder?.name || 'Unknown' },
             timestamp: new Date().toISOString(),
             isAutoBid: true
           };
 
-          // Update in-memory auction data
           auctionData.currentBid = autoBidResult.amount;
           auctionData.currentBidder = autoBidUpdate.currentBidder;
           auctionData.recentBids = [autoBidUpdate, ...auctionData.recentBids].slice(0, 50);
           activeAuctions.set(auctionId, auctionData);
 
-          // Update auction in database
-          await Product.findByIdAndUpdate(auctionId, {
-            currentBid: autoBidResult.amount,
-            currentBidder: autoBidResult.userId
-          });
-
-          // Notify all users about the auto bid
           io.to(auctionId).emit('bid-update', autoBidUpdate);
         }
 
-        // Check if we need to extend the auction time
+        // Extension logic (in-memory only, no DB)
         const now = new Date();
         const endTime = new Date(auctionData.endTime);
         const timeLeftMs = endTime - now;
 
-        // If less than 5 minutes left, extend by 5 minutes
         if (timeLeftMs > 0 && timeLeftMs < 5 * 60 * 1000) {
           const newEndTime = new Date(endTime.getTime() + 5 * 60 * 1000);
           auctionData.endTime = newEndTime;
           activeAuctions.set(auctionId, auctionData);
 
-          // Update in database
+          // SEPARATE transaction for extension
           await Product.findByIdAndUpdate(auctionId, {
             auctionEndTime: newEndTime,
-            $inc: { auctionExtensionCount: 1 } // Increment extension count
+            $inc: { auctionExtensionCount: 1 }
           });
 
-          // Notify all users about extension
           io.to(auctionId).emit('auction-extended', {
-            endTime: newEndTime.toISOString(),
-            extensionCount: (await Product.findById(auctionId)).auctionExtensionCount || 1
+            endTime: newEndTime.toISOString()
           });
         }
 
-        // Calculate and broadcast new minimum bid amounts
+        // Broadcast bid limits (calculation only)
         const bidLimits = await BidsManager.calculateMinimumBids(auctionId, auctionData.currentBid);
         io.to(auctionId).emit('min-bid-update', bidLimits);
+
       } catch (error) {
-        console.error('Error placing bid:', error);
+        if (!transactionCommitted) {
+          await session.abortTransaction();
+        }
+        console.error('Bid error:', error);
         socket.emit('bid-error', 'Failed to place bid');
+      } finally {
+        await session.endSession();
       }
     });
-
     // Handle auction timer
     socket.on('auction-timer', async (data) => {
       const now = Date.now();
@@ -525,17 +508,15 @@ function initSocketServer(server) {
     setInterval(() => {
       const now = new Date();
 
-      // Clean up activeAuctions that have ended over 24 hours ago
+      // Clean up activeAuctions that have ended more than 3 hours ago
       for (const [auctionId, auctionData] of activeAuctions.entries()) {
-        if (auctionData.participants === 0) {
-          const endTime = new Date(auctionData.endTime);
-          const timeSinceEnd = now - endTime;
+        const endTime = new Date(auctionData.endTime);
+        const timeSinceEnd = now - endTime;
 
-          // If ended more than 24 hours ago and no participants, remove from memory
-          if (timeSinceEnd > 24 * 60 * 60 * 1000) {
-            activeAuctions.delete(auctionId);
-            console.log(`Removed inactive auction ${auctionId} from memory`);
-          }
+        // If ended more than 3 hours ago, remove from memory
+        if (timeSinceEnd > 3 * 60 * 60 * 1000) {
+          activeAuctions.delete(auctionId);
+          console.log(`Removed auction ${auctionId} from memory after 3 hours`);
         }
       }
 
