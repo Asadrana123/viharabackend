@@ -34,8 +34,8 @@ const socketIOCorsOptions = {
     methods: ["GET", "POST"],
     credentials: true
   },
-  pingTimeout: 30000,
-  pingInterval: 25000
+  pingTimeout: 5000,     // ← 5 seconds (detect dead connection)
+  pingInterval: 2000     // ← 2 seconds (check every 2 seconds)
 };
 
 module.exports = {
