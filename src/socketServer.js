@@ -210,33 +210,31 @@ function initSocketServer(server) {
       }
     });
 
-    socket.on('place-bid', async (data) => {
+    socket.on('place-bid', async (data, callback) => {
       const session = await mongoose.startSession();
       session.startTransaction();
       let transactionCommitted = false;
-
       try {
         const { auctionId, bidAmount } = data;
 
-        // Validations (before transaction)
         if (!auctionId || !bidAmount) {
-          socket.emit('bid-error', 'Invalid bid data');
+          callback({ success: false, error: 'Invalid bid data' });
           return;
         }
 
         const auctionData = activeAuctions.get(auctionId);
         if (!auctionData) {
-          socket.emit('bid-error', 'Auction not found');
+          callback({ success: false, error: 'Auction not found' });
           return;
         }
 
         if (auctionData.auctionStatus !== "active") {
-          socket.emit('bid-error', `Auction is ${auctionData.auctionStatus}`);
+          callback({ success: false, error: `Auction is ${auctionData.auctionStatus}` });
           return;
         }
 
         if (bidAmount <= auctionData.currentBid) {
-          socket.emit('bid-error', `Bid must be higher than current bid`);
+          callback({ success: false, error: 'Bid must be higher than current bid' });
           return;
         }
 
@@ -259,7 +257,10 @@ function initSocketServer(server) {
         await session.commitTransaction();
         transactionCommitted = true;
 
-        // ✓ NOW do socket broadcasts (no database involved)
+        // ✓ Send acknowledgment BEFORE broadcast
+        callback({ success: true, bidId: newManualBid._id, amount: bidAmount });
+
+        // ✓ NOW do socket broadcasts
         const newBid = {
           currentBid: bidAmount,
           currentBidder: { id: socket.userId, name: socket.user.name },
@@ -321,8 +322,8 @@ function initSocketServer(server) {
         if (!transactionCommitted) {
           await session.abortTransaction();
         }
+        callback({ success: false, error: error.message });
         console.error('Bid error:', error);
-        socket.emit('bid-error', 'Failed to place bid');
       } finally {
         await session.endSession();
       }
