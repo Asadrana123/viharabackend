@@ -1,7 +1,7 @@
 require('dotenv').config();
 const http = require('http');
 const app = require('./app');
-const initSocketServer = require('./socketServer');
+const initSocketServer = require('./socket/socketServer');
 require('./passport');
 
 const PORT = process.env.PORT || 8000;
