@@ -1,5 +1,6 @@
 // socketHandlers.js
 const AuctionRegistration = require('../model/auctionRegistration');
+const rateLimiter = require('../utils/socketRateLimitMiddleware');
 const Product = require('../model/productModel');
 const User = require('../model/userModel');
 const BidsManager = require('../utils/bidsManager');
@@ -31,6 +32,10 @@ function registerSocketHandlers(socket) {
   // Join auction room
   socket.on('join-auction', async (auctionId) => {
     try {
+      if (!rateLimiter.isAllowed(socket.userId, 'join-auction', auctionId)) {
+        socket.emit('auction-error', 'Please wait before joining another auction');
+        return;
+      }
       // Check if user is authorized to join this auction
       const registration = await AuctionRegistration.findOne({
         userId: socket.userId,
@@ -191,18 +196,35 @@ function registerSocketHandlers(socket) {
         return;
       }
 
+      // ADD THESE CHECKS:
+      if (typeof bidAmount !== 'number' || !Number.isFinite(bidAmount)) {
+        callback({ success: false, error: 'Bid amount must be a valid number' });
+        return;
+      }
+
+      if (bidAmount <= 0) {
+        callback({ success: false, error: 'Bid amount must be positive' });
+        return;
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(auctionId)) {
+        callback({ success: false, error: 'Invalid auction ID' });
+        return;
+      }
       const auctionData = activeAuctions.get(auctionId);
-      if (!auctionData) {
+      const auction = await Product.findById(auctionId);
+      if (!auction) {
         callback({ success: false, error: 'Auction not found' });
         return;
       }
 
-      if (auctionData.auctionStatus !== "active") {
-        callback({ success: false, error: `Auction is ${auctionData.auctionStatus}` });
+      const Timenow = new Date();
+      if (Timenow > new Date(auction.auctionEndDate)) {
+        callback({ success: false, error: 'Auction has ended' });
         return;
       }
 
-      if (bidAmount <= auctionData.currentBid) {
+      if (bidAmount <= auction.currentBid) {
         callback({ success: false, error: 'Bid must be higher than current bid' });
         return;
       }
@@ -303,6 +325,10 @@ function registerSocketHandlers(socket) {
     const now = Date.now();
     const lastBroadcast = lastBroadcastTime.get(`timer:${data.auctionId}`) || 0;
 
+    if (!rateLimiter.isAllowed(socket.userId, 'auction-timer', data.auctionId)) {
+      return; // Silently ignore if rate limited
+    }
+
     if (now - lastBroadcast > BROADCAST_THROTTLE) {
       socket.to(data.auctionId).emit('timer-update', data.timeLeft);
       lastBroadcastTime.set(`timer:${data.auctionId}`, now);
@@ -401,6 +427,9 @@ function registerSocketHandlers(socket) {
 
   // Handle explicit leave auction event
   socket.on('leave-auction', (auctionId) => {
+    if (!rateLimiter.isAllowed(socket.userId, 'leave-auction', auctionId)) {
+      return; // Silently ignore if rate limited
+    }
     handleLeaveAuction(socket, auctionId);
   });
 

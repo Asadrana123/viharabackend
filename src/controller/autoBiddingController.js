@@ -73,7 +73,6 @@ exports.saveAutoBiddingSettings = catchAsyncError(
     }
 
     const currentBid = auction.currentBid || auction.startBid;
-    console.log(currentBid, maxAmount);
     if (maxAmount <= currentBid) {
       return next(new ErrorHandler("Maximum amount must be higher than current bid", 400));
     }

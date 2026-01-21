@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const { socketIOCorsOptions } = require('../config/corsConfig');
 const User = require('../model/userModel');
 const { initializeHandlers, registerSocketHandlers } = require('./socketHandlers');
+const rateLimiter = require('../utils/socketRateLimitMiddleware');
 
 // Store active auctions in memory
 const activeAuctions = new Map();
@@ -20,6 +21,14 @@ function initSocketServer(server) {
 
   // Initialize handlers with references to global state
   initializeHandlers(io, activeAuctions, userAuctions, userSocketsMap, lastBroadcastTime, userBidThrottle);
+
+  // ✅ Connection limit middleware
+  io.use((socket, next) => {
+    if (!rateLimiter.canConnect(socket.userId)) {
+      return next(new Error('Too many connections'));
+    }
+    next();
+  });
 
   // Authentication middleware
   io.use(async (socket, next) => {
@@ -69,6 +78,15 @@ function initSocketServer(server) {
 
   io.on('connection', (socket) => {
     console.log(`User connected: ${socket.userId} (Socket ID: ${socket.id})`);
+
+    // ✅ Track connection for rate limiting
+    rateLimiter.addConnection(socket.userId);
+
+    // ✅ Handle disconnection and cleanup
+    socket.on('disconnect', () => {
+      rateLimiter.removeConnection(socket.userId);
+      console.log(`User disconnected: ${socket.userId} (Socket ID: ${socket.id})`);
+    });
 
     // Register all event handlers for this socket
     registerSocketHandlers(socket);

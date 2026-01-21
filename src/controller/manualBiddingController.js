@@ -66,12 +66,22 @@ exports.checkAuctionAccess = catchAsyncError(
 exports.createManualBid = catchAsyncError(
   async (req, res, next) => {
     const { auctionId, amount } = req.body;
-    const userId = req.user._id;
-    console.log(auctionId, amount);
-    // Validate input
+    
     if (!auctionId || !amount) {
       return next(new ErrorHandler("Missing required fields", 400));
     }
+    if (typeof amount !== 'number' || !Number.isFinite(amount)) {
+      return next(new ErrorHandler("Bid amount must be a valid number", 400));
+    }
+
+    if (amount <= 0) {
+      return next(new ErrorHandler("Bid amount must be positive", 400));
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(auctionId)) {
+      return next(new ErrorHandler("Invalid auction ID format", 400));
+    }
+    const userId = req.user._id;
 
     // Check if user is registered for this auction
     const registration = await AuctionRegistration.findOne({

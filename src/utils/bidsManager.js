@@ -48,6 +48,10 @@ class BidsManager {
 
   // Create a new manual bid
   static async createManualBid(auctionId, userId, amount, session = null) {
+    const auction = await Product.findById(auctionId, null, { session });
+    if (amount <= auction.currentBid) {
+      throw new Error('Bid is no longer valid');
+    }
     // Create the new bid
     const newBid = new ManualBid({
       auctionId,
