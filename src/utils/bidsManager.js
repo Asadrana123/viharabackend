@@ -3,13 +3,14 @@ const ManualBid = require('../model/manualBiddingModel');
 const AutoBidding = require('../model/autoBiddingModel');
 const Product = require('../model/productModel');
 const User = require('../model/userModel');
-
+const withTimeout = require('./queryTimeoutWrapper');
 class BidsManager {
   // Get the highest bid for an auction from manual bids
   static async getHighestBid(auctionId) {
-    const highestManualBid = await ManualBid.findOne({ auctionId })
-      .sort({ amount: -1, createdAt: -1 })
-      .limit(1);
+    const highestManualBid = await withTimeout(
+      ManualBid.findOne({ auctionId }).sort({ amount: -1, createdAt: -1 }).limit(1),
+      5000
+    );
 
     if (!highestManualBid) {
       return null;
@@ -21,15 +22,16 @@ class BidsManager {
   // Get recent bids for an auction
   static async getRecentBids(auctionId, limit = 50) {
     // Get manual bids
-    const manualBids = await ManualBid.find({ auctionId })
-      .sort({ createdAt: -1 })
-      .limit(limit);
+    const manualBids = await withTimeout(
+      ManualBid.find({ auctionId }).sort({ createdAt: -1 }).limit(limit),
+      5000
+    );
 
     // Format bids for client consumption
     const formattedBids = await Promise.all(manualBids.map(async (bid) => {
       // Get bidder info
       let bidderName = 'Unknown';
-      const bidder = await User.findById(bid.userId).select('name');
+      const bidder = await withTimeout(User.findById(bid.userId).select('name'), 3000);
       if (bidder) bidderName = bidder.name;
 
       return {
@@ -48,7 +50,7 @@ class BidsManager {
 
   // Create a new manual bid
   static async createManualBid(auctionId, userId, amount, session = null) {
-    const auction = await Product.findById(auctionId, null, { session });
+    const auction = await withTimeout(Product.findById(auctionId, null, { session }), 5000);
     if (amount <= auction.currentBid) {
       throw new Error('Bid is no longer valid');
     }
@@ -59,10 +61,10 @@ class BidsManager {
       amount
     });
 
-    await newBid.save({ session });
+    await withTimeout(newBid.save({ session }), 5000);
 
     // Update auction with the new highest bid
-    await Product.findByIdAndUpdate(
+    await withTimeout(Product.findByIdAndUpdate(
       auctionId,
       {
         currentBid: amount,
@@ -70,7 +72,7 @@ class BidsManager {
         lastBidId: newBid._id
       },
       { session }
-    );
+    ), 5000);
 
     return newBid;
   }
@@ -152,11 +154,13 @@ class BidsManager {
   // Calculate minimum bid amounts
   static async calculateMinimumBids(auctionId, currentBid) {
     // Get all active auto bids for this auction
-    const autoBidSettings = await AutoBidding.find({
-      auctionId,
-      enabled: true
-    }).sort({ maxAmount: -1 }); // Sort by max amount desc
-
+    const autoBidSettings = await withTimeout(
+      AutoBidding.find({
+        auctionId,
+        enabled: true
+      }).sort({ maxAmount: -1 }),
+      5000
+    );
     let minManualBid = currentBid + 5000; // Default increment
     let minAutoBidAmount = 0;
 

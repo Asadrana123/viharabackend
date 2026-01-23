@@ -7,6 +7,8 @@ const ManualBid = require("../model/manualBiddingModel");
 const User = require("../model/userModel");
 const BidsManager = require("../utils/bidsManager");
 const mongoose = require('mongoose');
+const withTimeout = require('../utils/queryTimeoutWrapper');
+
 exports.checkAuctionAccess = catchAsyncError(
   async (req, res, next) => {
     const { id } = req.params; // auction ID
@@ -66,7 +68,7 @@ exports.checkAuctionAccess = catchAsyncError(
 exports.createManualBid = catchAsyncError(
   async (req, res, next) => {
     const { auctionId, amount } = req.body;
-    
+
     if (!auctionId || !amount) {
       return next(new ErrorHandler("Missing required fields", 400));
     }
@@ -84,18 +86,16 @@ exports.createManualBid = catchAsyncError(
     const userId = req.user._id;
 
     // Check if user is registered for this auction
-    const registration = await AuctionRegistration.findOne({
-      userId,
-      auctionId,
-      status: 'approved'
-    });
-
+    const registration = await withTimeout(
+      AuctionRegistration.findOne({ userId, auctionId, status: 'approved' }),
+      5000
+    );
     if (!registration) {
       return next(new ErrorHandler("You do not have access to this auction", 403));
     }
 
     // Get current auction data
-    const auction = await Product.findById(auctionId);
+    const auction = await withTimeout(Product.findById(auctionId), 5000);
     if (!auction) {
       return next(new ErrorHandler("Auction not found", 404));
     }

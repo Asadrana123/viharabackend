@@ -4,7 +4,7 @@ const jwt = require('jsonwebtoken');
 const { socketIOCorsOptions } = require('../config/corsConfig');
 const User = require('../model/userModel');
 const { initializeHandlers, registerSocketHandlers } = require('./socketHandlers');
-const rateLimiter = require('../utils/socketRateLimitMiddleware');
+const rateLimiter = require('../middleware/socketRateLimitMiddleware');
 
 // Store active auctions in memory
 const activeAuctions = new Map();

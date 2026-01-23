@@ -1,6 +1,6 @@
 // socketHandlers.js
 const AuctionRegistration = require('../model/auctionRegistration');
-const rateLimiter = require('../utils/socketRateLimitMiddleware');
+const rateLimiter = require('../middleware/socketRateLimitMiddleware');
 const Product = require('../model/productModel');
 const User = require('../model/userModel');
 const BidsManager = require('../utils/bidsManager');

@@ -33,10 +33,17 @@ app.use(cookieParser());
 app.use(cors(expressCorsOptions));
 app.use(bodyParser.json());
 
-// MongoDB Connection
-mongoose.connect(process.env.DB_URI)
-  .then(() => console.log('MongoDB Connected'))
-  .catch(err => console.log(err));
+// MongoDB Connection with Connection Pooling
+mongoose.connect(process.env.DB_URI, {
+  maxPoolSize: 50,        // Increase from default 10 to 50
+  minPoolSize: 10,        // Keep minimum 10 connections ready
+  serverSelectionTimeoutMS: 5000,
+  socketTimeoutMS: 45000,
+  retryWrites: true,
+  w: 'majority'
+})
+  .then(() => console.log('MongoDB Connected with pool size: 50'))
+  .catch(err => console.log('MongoDB Connection Error:', err));
 
 // Home route
 app.get("/", (req, res) => {
