@@ -4,6 +4,7 @@ const ErrorHandler = require("../utils/errorhandler");
 const AuctionRegistration = require("../model/auctionRegistration");
 const Product = require("../model/productModel");
 const ManualBid = require("../model/manualBiddingModel");
+const AutoBidding = require("../model/autoBiddingModel");
 const User = require("../model/userModel");
 const BidsManager = require("../utils/bidsManager");
 const mongoose = require('mongoose');

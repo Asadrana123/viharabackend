@@ -223,7 +223,7 @@ function registerSocketHandlers(socket) {
         callback({ success: false, error: 'Auction has ended' });
         return;
       }
-
+      console.log(auction.currentBid,bidAmount);
       if (bidAmount <= auction.currentBid) {
         callback({ success: false, error: 'Bid must be higher than current bid' });
         return;

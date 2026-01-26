@@ -27,23 +27,33 @@ class BidsManager {
       5000
     );
 
-    // Format bids for client consumption
-    const formattedBids = await Promise.all(manualBids.map(async (bid) => {
-      // Get bidder info
-      let bidderName = 'Unknown';
-      const bidder = await withTimeout(User.findById(bid.userId).select('name'), 3000);
-      if (bidder) bidderName = bidder.name;
+    // Extract unique user IDs from bids
+    const userIds = [...new Set(manualBids.map(bid => bid.userId))];
 
+    // Fetch all bidder info in ONE query instead of 50 separate queries
+    const bidders = await withTimeout(
+      User.find({ _id: { $in: userIds } }).select('_id name').lean(),
+      5000
+    );
+
+    // Create a map for quick lookup: userId -> userName
+    const bidderMap = {};
+    bidders.forEach(bidder => {
+      bidderMap[bidder._id] = bidder.name || 'Unknown';
+    });
+
+    // Format bids for client consumption
+    const formattedBids = manualBids.map(bid => {
       return {
         currentBid: bid.amount,
         currentBidder: {
           id: bid.userId,
-          name: bidderName
+          name: bidderMap[bid.userId] || 'Unknown'
         },
         timestamp: bid.createdAt.toISOString(),
         isAutoBid: false
       };
-    }));
+    });
 
     return formattedBids;
   }
@@ -186,6 +196,36 @@ class BidsManager {
       minManualBid,
       minAutoBidAmount
     };
+  }
+
+  // Format bids with user info (batch query)
+  static async formatBidsWithUserInfo(bids) {
+    // Extract unique user IDs
+    const userIds = [...new Set(bids.map(bid => bid.userId))];
+
+    // Fetch all users in ONE query
+    const users = await withTimeout(
+      User.find({ _id: { $in: userIds } }).select('_id name').lean(),
+      5000
+    );
+
+    // Create map for quick lookup
+    const userMap = {};
+    users.forEach(user => {
+      userMap[user._id] = user.name || 'Unknown';
+    });
+
+    // Format bids
+    return bids.map(bid => ({
+      bidId: bid._id,
+      amount: bid.amount,
+      createdAt: bid.createdAt,
+      bidderName: userMap[bid.userId] || 'Unknown',
+      bidderInfo: {
+        id: bid.userId,
+        name: userMap[bid.userId] || 'Unknown'
+      }
+    }));
   }
 }
 
