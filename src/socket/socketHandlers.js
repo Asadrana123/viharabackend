@@ -223,7 +223,7 @@ function registerSocketHandlers(socket) {
         callback({ success: false, error: 'Auction has ended' });
         return;
       }
-      console.log(auction.currentBid,bidAmount);
+      console.log(auction.currentBid, bidAmount);
       if (bidAmount <= auction.currentBid) {
         callback({ success: false, error: 'Bid must be higher than current bid' });
         return;
@@ -455,9 +455,16 @@ function registerSocketHandlers(socket) {
           // Clean up user tracking
           userAuctions.delete(socket.userId);
         }
+
+        // Clean up throttle entries (moved outside userAuctions check)
+        for (const [key] of userBidThrottle.entries()) {
+          if (key.startsWith(`${socket.userId}:`)) {
+            userBidThrottle.delete(key);
+          }
+        }
       }
     }
-  });
+  })
 }
 
 // Helper function to handle leave auction

@@ -6,7 +6,9 @@ const ManualBid = require("../model/manualBiddingModel");
 const Product = require("../model/productModel");
 const AuctionRegistration = require("../model/auctionRegistration");
 const BidsManager = require("../utils/bidsManager");
-const mongoose=require('mongoose');
+const mongoose = require('mongoose');
+const { getIoInstance } = require("../socket/getIoInstance");
+
 // Get auto-bidding settings for current user
 exports.getAutoBiddingSettings = catchAsyncError(
   async (req, res, next) => {
@@ -73,6 +75,18 @@ exports.saveAutoBiddingSettings = catchAsyncError(
     }
 
     const currentBid = auction.currentBid || auction.startBid;
+    const existingAutoBids = await AutoBidding.findOne({
+      auctionId,
+      enabled: true
+    }).sort({ maxAmount: -1 });
+
+    if (existingAutoBids && maxAmount <= existingAutoBids.maxAmount) {
+      return res.status(200).json({
+        success: false,
+        message: `Auto-bid must be higher than existing highest auto-bid ($${existingAutoBids.maxAmount})`,
+      });
+    }
+
     if (maxAmount <= currentBid) {
       return next(new ErrorHandler("Maximum amount must be higher than current bid", 400));
     }
@@ -127,7 +141,7 @@ exports.saveAutoBiddingSettings = catchAsyncError(
               auctionId,
               userId,
               initialBidAmount,
-              session  // ← Add session
+              session
             );
           }
         }
@@ -141,6 +155,18 @@ exports.saveAutoBiddingSettings = catchAsyncError(
         console.error('Error placing initial auto bid:', error);
       } finally {
         session.endSession();
+      }
+
+      // ✅ NEW: Broadcast min-bid-update if 2+ auto-bids enabled
+      const enabledAutoBidCount = await AutoBidding.countDocuments({
+        auctionId,
+        enabled: true
+      });
+
+      if (enabledAutoBidCount >= 2) {
+        const io = getIoInstance();
+        const bidLimits = await BidsManager.calculateMinimumBids(auctionId, currentBid);
+        io.to(auctionId).emit('min-bid-update', bidLimits);
       }
     }
 

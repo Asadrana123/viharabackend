@@ -111,6 +111,7 @@ exports.createManualBid = catchAsyncError(
 
     // Check if bid amount is valid
     const currentBid = auction.currentBid || auction.startBid;
+    console.log(currentBid);
     if (amount <= currentBid) {
       return next(new ErrorHandler(`Bid must be higher than current bid (${currentBid})`, 400));
     }
