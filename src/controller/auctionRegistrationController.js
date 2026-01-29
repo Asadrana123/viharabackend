@@ -11,13 +11,19 @@ exports.submitAuctionRegistration = catchAsyncError(
     const {
       userId,
       auctionId,
-      buyerInfo,
-      buyerType,
-      companyInfo,
-      legalAgreements
+      firstName,
+      lastName,
+      email,
+      mobilePhone,
+      address
+      // buyerInfo,
+      // buyerType,
+      // companyInfo,
+      // legalAgreements
       // bidAmount,
       // buyersPremium
     } = req.body;
+
     // Check if user exists
     const user = await User.findById(userId);
     if (!user) {
@@ -48,13 +54,15 @@ exports.submitAuctionRegistration = catchAsyncError(
       }
 
       // If already registered but pending or rejected, update the registration
-      // existingRegistration.buyerInfo = buyerInfo;
-      existingRegistration.buyerType = buyerType;
-      existingRegistration.companyInfo = companyInfo;
-      existingRegistration.legalAgreements = legalAgreements;
-      // existingRegistration.bidAmount = bidAmount;
-      // existingRegistration.buyersPremium = buyersPremium;
-      existingRegistration.status = "approved"; // Reset status to pending if previously rejected
+      existingRegistration.firstName = firstName;
+      existingRegistration.lastName = lastName;
+      existingRegistration.email = email;
+      existingRegistration.mobilePhone = mobilePhone;
+      existingRegistration.address = address || null;
+      // existingRegistration.buyerType = buyerType;
+      // existingRegistration.companyInfo = companyInfo;
+      // existingRegistration.legalAgreements = legalAgreements;
+      existingRegistration.status = "approved";
       existingRegistration.updatedAt = Date.now();
 
       await existingRegistration.save();
@@ -71,13 +79,19 @@ exports.submitAuctionRegistration = catchAsyncError(
     const registration = await AuctionRegistration.create({
       userId,
       auctionId,
-      buyerInfo,
-      buyerType,
-      companyInfo,
-      legalAgreements,
+      firstName: firstName,
+      lastName: lastName,
+      email: email,
+      mobilePhone: mobilePhone,
+      address: address || null,
+      // buyerType,
+      // companyInfo,
+      // legalAgreements,
       // bidAmount,
       // buyersPremium
     });
+
+    // Send pending approval email
     try {
       const emailContent = createRegistrationPendingEmail(
         user.name,
@@ -89,6 +103,7 @@ exports.submitAuctionRegistration = catchAsyncError(
     } catch (error) {
       console.error("Error sending registration pending email:", error);
     }
+
     res.status(201).json({
       success: true,
       message: "Registration request submitted successfully",
@@ -107,7 +122,7 @@ exports.getRegistrationStatus = catchAsyncError(
       userId,
       auctionId
     });
-     console.log(registration);
+    console.log(registration);
     if (!registration) {
       return res.status(200).json({
         success: true,
@@ -115,7 +130,7 @@ exports.getRegistrationStatus = catchAsyncError(
         isApproved: false
       });
     }
-   
+
     res.status(200).json({
       success: true,
       isRegistered: true,
