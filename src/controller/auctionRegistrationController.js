@@ -99,7 +99,7 @@ exports.submitAuctionRegistration = catchAsyncError(
         auction.city,
         auction.state
       );
-      sendEmail(user.email, user.name, "Auction Registration Received - Approval Pending", emailContent);
+      sendEmail(user.email, user.name, "Auction Registration Received", emailContent);
     } catch (error) {
       console.error("Error sending registration pending email:", error);
     }
