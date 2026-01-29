@@ -720,7 +720,6 @@ const createRegistrationPendingEmail = (userName, propertyAddress, propertyCity,
                     <p style="margin: 0 0 10px 0; font-weight: bold; color: #333;">Property Address:</p>
                     <p style="margin: 0; color: #555;">${propertyAddress}<br>${propertyCity}, ${propertyState}</p>
                 </div>
-                <p style="margin: 0 0 10px 0; font-size: 14px; color: #555;"><strong>Current Status: Pending Approval</strong></p>
                 <p style="margin: 0 0 20px 0; font-size: 14px; color: #666;">There is no approval right now. Simply a thank you for registering we will be in touch as the listing goes live</p>
                 <p style="margin: 0; font-size: 14px; color: #666;">Best regards,<br><strong>Vihara Team</strong></p>
             </td>
