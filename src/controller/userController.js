@@ -17,9 +17,11 @@ exports.CreateUser = catchAsyncError(
     // Destructure the request body with consent
     const {
       consentToNotifications,
+      role, // Remove this if attacker sends it
       ...userData
     } = req.body;
 
+    
     // Create a new user with consent handling
     const newUser = await userModel.create({
       ...userData,

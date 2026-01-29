@@ -1,3 +1,4 @@
+const adminModel = require("../model/adminModel");
 const userModel = require("../model/userModel");
 const catchAsyncError = require("../middleware/catchAsyncError");
 const Errorhandler = require("../utils/errorhandler");
@@ -7,14 +8,14 @@ const sendToken = require("../utils/getToken");
 exports.CreateAdmin = catchAsyncError(
   async (req, res) => {
     console.log(req.body);
-    
+
     // Make sure the role is set to admin
     const adminData = {
       ...req.body,
       role: "admin"
     };
-    
-    const newAdmin = await userModel.create(adminData);
+
+    const newAdmin = await adminModel.create(adminData);
     sendToken(newAdmin, 201, res);
   }
 );
@@ -44,21 +45,21 @@ exports.getAllUsers = catchAsyncError(
 exports.updateUserRole = catchAsyncError(
   async (req, res, next) => {
     const { role } = req.body;
-    
+
     if (!role || !["user", "admin"].includes(role)) {
       return next(new Errorhandler("Invalid role specified", 400));
     }
-    
+
     const user = await userModel.findByIdAndUpdate(
       req.params.id,
       { role },
       { new: true, runValidators: true }
     );
-    
+
     if (!user) {
       return next(new Errorhandler("User not found", 404));
     }
-    
+
     res.status(200).json({
       success: true,
       message: "User role updated successfully",
@@ -84,21 +85,21 @@ exports.getAllUsers = catchAsyncError(
 exports.updateUserRole = catchAsyncError(
   async (req, res, next) => {
     const { role } = req.body;
-    
+
     if (!role || !["user", "admin"].includes(role)) {
       return next(new Errorhandler("Invalid role specified", 400));
     }
-    
+
     const user = await userModel.findByIdAndUpdate(
       req.params.id,
       { role },
       { new: true, runValidators: true }
     );
-    
+
     if (!user) {
       return next(new Errorhandler("User not found", 404));
     }
-    
+
     res.status(200).json({
       success: true,
       message: "User role updated successfully",
@@ -111,20 +112,20 @@ exports.updateUserRole = catchAsyncError(
 exports.deleteUser = catchAsyncError(
   async (req, res, next) => {
     const user = await userModel.findById(req.params.id);
-    
+
     if (!user) {
       return next(new Errorhandler("User not found", 404));
     }
-    
+
     // Instead of hard deleting, you might want to soft delete by setting active to 0
     // and deleted_at to current date
     user.active = 0;
     user.deleted_at = Date.now();
     await user.save();
-    
+
     // If you really want to delete the user from the database:
     // await userModel.findByIdAndDelete(req.params.id);
-    
+
     res.status(200).json({
       success: true,
       message: "User deactivated successfully"

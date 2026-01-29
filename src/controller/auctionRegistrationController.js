@@ -4,16 +4,16 @@ const User = require("../model/userModel");
 const catchAsyncError = require("../middleware/catchAsyncError");
 const Errorhandler = require("../utils/errorhandler");
 const sendEmail = require("../utils/sendEmail");
-
+const { createRegistrationPendingEmail, createRegistrationApprovedEmail } = require("../utils/emailTemplates");
 // Submit a registration request for an auction
 exports.submitAuctionRegistration = catchAsyncError(
   async (req, res, next) => {
-    const { 
-      userId, 
-      auctionId, 
-      buyerInfo, 
-      buyerType, 
-      companyInfo, 
+    const {
+      userId,
+      auctionId,
+      buyerInfo,
+      buyerType,
+      companyInfo,
       legalAgreements
       // bidAmount,
       // buyersPremium
@@ -46,7 +46,7 @@ exports.submitAuctionRegistration = catchAsyncError(
           isApproved: true
         });
       }
-      
+
       // If already registered but pending or rejected, update the registration
       // existingRegistration.buyerInfo = buyerInfo;
       existingRegistration.buyerType = buyerType;
@@ -56,9 +56,9 @@ exports.submitAuctionRegistration = catchAsyncError(
       // existingRegistration.buyersPremium = buyersPremium;
       existingRegistration.status = "approved"; // Reset status to pending if previously rejected
       existingRegistration.updatedAt = Date.now();
-      
+
       await existingRegistration.save();
-      
+
       return res.status(200).json({
         success: true,
         message: "Registration request updated successfully",
@@ -78,6 +78,17 @@ exports.submitAuctionRegistration = catchAsyncError(
       // bidAmount,
       // buyersPremium
     });
+    try {
+      const emailContent = createRegistrationPendingEmail(
+        user.name,
+        auction.street,
+        auction.city,
+        auction.state
+      );
+      sendEmail(user.email, user.name, "Auction Registration Received - Approval Pending", emailContent);
+    } catch (error) {
+      console.error("Error sending registration pending email:", error);
+    }
     res.status(201).json({
       success: true,
       message: "Registration request submitted successfully",
@@ -96,7 +107,7 @@ exports.getRegistrationStatus = catchAsyncError(
       userId,
       auctionId
     });
-
+     console.log(registration);
     if (!registration) {
       return res.status(200).json({
         success: true,
@@ -104,7 +115,7 @@ exports.getRegistrationStatus = catchAsyncError(
         isApproved: false
       });
     }
-
+   
     res.status(200).json({
       success: true,
       isRegistered: true,
@@ -118,23 +129,23 @@ exports.getRegistrationStatus = catchAsyncError(
 exports.getAllRegistrations = catchAsyncError(
   async (req, res, next) => {
     const { status, page = 1, limit = 10 } = req.query;
-    
+
     const query = {};
     if (status) {
       query.status = status;
     }
-    
+
     const skip = (page - 1) * limit;
-    
+
     const registrations = await AuctionRegistration.find(query)
       .populate('userId', 'name email')
       .populate('auctionId', 'street city state')
       .sort({ submittedAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
-      
+
     const total = await AuctionRegistration.countDocuments(query);
-    
+
     res.status(200).json({
       success: true,
       registrations,
@@ -147,110 +158,47 @@ exports.getAllRegistrations = catchAsyncError(
   }
 );
 
-// Admin: Update registration status
+//Admin: Update registration status
+
 exports.updateRegistrationStatus = catchAsyncError(
   async (req, res, next) => {
     const { id } = req.params;
     const { status } = req.body;
-    
+
     if (!["pending", "approved", "rejected"].includes(status)) {
       return next(new Errorhandler("Invalid status", 400));
     }
-    
+
     const registration = await AuctionRegistration.findById(id);
-    
+
     if (!registration) {
       return next(new Errorhandler("Registration not found", 404));
     }
-    
+
     registration.status = status;
     registration.updatedAt = Date.now();
     await registration.save();
-    
+
     // Get user and auction details for email notification
     const user = await User.findById(registration.userId);
     const auction = await Product.findById(registration.auctionId);
-    
+
     // Send email notification to user
     try {
-      const emailSubject = `Auction Registration ${status === "approved" ? "Approved" : "Update"}`;
-      const emailContent = status === "approved" 
-        ? `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <style>
-              body { font-family: Arial, sans-serif; }
-              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-              .header { background-color: #0384fb; color: white; padding: 10px; text-align: center; }
-              .content { padding: 20px; }
-              .button { background-color: #0384fb; color: white; padding: 10px 20px; text-decoration: none; display: inline-block; margin: 20px 0; }
-              .footer { font-size: 12px; color: #666; text-align: center; margin-top: 20px; }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              <div class="header">
-                <h2>Your Auction Registration is Approved!</h2>
-              </div>
-              <div class="content">
-                <p>Good news! Your registration for the following auction has been approved:</p>
-                <p><strong>Property:</strong> ${auction.street}, ${auction.city}, ${auction.state}</p>
-                <p><strong>Auction End Date:</strong> ${new Date(auction.auctionEndDate).toLocaleDateString()}</p>
-                <p>You can now place bids on this property. Good luck!</p>
-                <a href="${process.env.CLIENT_URL}/property/${auction._id}" class="button">Go to Auction</a>
-                <p>Thank you,<br>Vihara Team</p>
-              </div>
-              <div class="footer">
-                If you have any questions, please contact our support team.
-              </div>
-            </div>
-          </body>
-          </html>
-        `
-        : `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <style>
-              body { font-family: Arial, sans-serif; }
-              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-              .header { background-color: #0384fb; color: white; padding: 10px; text-align: center; }
-              .content { padding: 20px; }
-              .footer { font-size: 12px; color: #666; text-align: center; margin-top: 20px; }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              <div class="header">
-                <h2>Auction Registration Status Update</h2>
-              </div>
-              <div class="content">
-                <p>Your registration request for the following auction has been updated:</p>
-                <p><strong>Property:</strong> ${auction.street}, ${auction.city}, ${auction.state}</p>
-                <p><strong>Status:</strong> ${status.toUpperCase()}</p>
-                ${status === "rejected" ? "<p>If you believe this is an error or would like more information, please contact our support team.</p>" : ""}
-                <p>Thank you,<br>Vihara Team</p>
-              </div>
-              <div class="footer">
-                If you have any questions, please contact our support team.
-              </div>
-            </div>
-          </body>
-          </html>
-        `;
-      
-      sendEmail(
-        user.email,
-        user.name,
-        emailSubject,
-        emailContent
-      );
+      if (status === "approved") {
+        const emailContent = createRegistrationApprovedEmail(
+          user.name,
+          auction.street,
+          auction.city,
+          auction.state,
+          auction._id
+        );
+        sendEmail(user.email, user.name, "Auction Registration Approved - Ready to Bid", emailContent);
+      }
     } catch (error) {
-      console.error("Error sending status update email:", error);
-      // Continue with the process even if email fails
+      console.error("Error sending registration approval email:", error);
     }
-    
+
     res.status(200).json({
       success: true,
       message: `Registration ${status} successfully`,
@@ -258,8 +206,6 @@ exports.updateRegistrationStatus = catchAsyncError(
     });
   }
 );
-
-
 // Get all registrations for current user
 exports.getUserRegistrations = catchAsyncError(
   async (req, res, next) => {
