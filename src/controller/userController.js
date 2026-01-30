@@ -244,7 +244,6 @@ exports.saveProperty = catchAsyncError(
 exports.removeProperty = catchAsyncError(
   async (req, res, next) => {
     const { product_id, user_id } = req.body;
-    console.log(user_id);
 
     const findProduct = await productModel.findById(product_id);
     if (!findProduct) return next(new Errorhandler("Product not found", 404));

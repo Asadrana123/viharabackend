@@ -245,6 +245,7 @@ const productSchema = new mongoose.Schema({
         name: String,
         company: String,
         phone: String,
+        email: String,
         licenseNumber: String
     },
 
