@@ -246,7 +246,8 @@ const productSchema = new mongoose.Schema({
         company: String,
         phone: String,
         email: String,
-        licenseNumber: String
+        licenseNumber: String,
+        image: String
     },
 
     // ============================================
