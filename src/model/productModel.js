@@ -219,25 +219,36 @@ const productSchema = new mongoose.Schema({
     // PROPERTY DETAILS (PropertyDescription, PropertyAmenities)
     // ============================================
     propertyDetails: {
-        architecturalStyle: String,  // "Traditional 2-Story"
-        buildingClassType: String,  // "Traditional"
-        constructionType: String,  // "Frame"
-        numberOfStories: Number,
-        interiorFeatures: [String],  // ["High ceilings", "Custom millwork"]
-        appliancesIncluded: [String],  // ["Convection Oven", "Double Oven"]
-        bathroomFixtures: Number,
-        numFireplaces: Number,
-        hasPool: Boolean,
-        poolType: String,  // "Gunite in-ground pool"
-        garageType: String,  // "3-car attached garage"
-        heatingType: String,  // "Central Gas Heat"
-        coolingType: String,  // "Central Electric Cooling"
-        waterType: String,  // "Public Water"
-        sewerType: String,  // "Public Sewer"
-        lotSizeAcres: Number,
-        subdivision: String  // "KINGS POINT VILLAGE SEC 4"
-    },
+        // ============================================
+        // INTERIOR DETAILS
+        // ============================================
+        interiorDetails: {
+            bedroomsBathrooms: [String],  // ["5 Bedrooms", "6 Bathrooms", "4 Full bathrooms", "2 Half bathrooms"]
+            masterBathroom: [String],  // ["Double sinks", "Jetted tub", "Separate shower"]
+            rooms: [String],  // ["Large living room"]
+            heating: [String],  // ["Natural Gas, Zoned"]
+            cooling: [String],  // ["Electric, Zoned"]
+            interiorFeatures: [String]  // ["High Ceilings", "Master Bedroom on first floor", "Flooring: Tile, Carpet, Wood", "2 fireplaces", "4,906 interior livable area", "2 stories"]
+        },
 
+        // ============================================
+        // EXTERIOR DETAILS
+        // ============================================
+        exteriorDetails: {
+            parking: [String],  // ["3 Total spaces", "Attached garage, circular driveway", "Double-wide driveway"]
+            lotFeatures: [String],  // ["0.53 Acres Lot size", "Corner Lot", "Near Golf Course"]
+            exteriorFeatures: [String],  // ["In ground Private Pool", "Private Spa"]
+            constructionFeatures: [String]  // ["Single Family home", "Traditional Architectural style", "Composition roof", "Slab foundation", "Brick, Wood siding"]
+        },
+
+        // ============================================
+        // COMMUNITY
+        // ============================================
+        community: {
+            communityInfo: [String],  // ["Kings Point Village Sec 04 subdivision", "Kingwood region"]
+            hoa: [String]  // ["HOA community", "$680 annual HOA fee"]
+        }
+    },
     // ============================================
     // LISTING AGENT INFO (ListingAgentInfo)
     // ============================================
