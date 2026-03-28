@@ -34,33 +34,7 @@ exports.createProduct = catchAsyncError(
 exports.getAllProducts = catchAsyncError(
     async (req, res) => {
         const targetProductId = '695236a4acad197a54f80e95';
-
-        // Fetch the target product first
-        const targetProduct = await productModel.findById(targetProductId);
-        
-        // Fetch other products (excluding the target one)
-        const otherProducts = await productModel.find({ 
-            _id: { $ne: targetProductId } 
-        }).limit(4);
-
-        // Combine products: target product first, then other products
-        let allProducts = [];
-        if (targetProduct) {
-            allProducts.push(targetProduct);
-        }
-        allProducts = allProducts.concat(otherProducts);
-
-        // If we don't have enough products, get more
-        if (allProducts.length < 5) {
-            const additionalProducts = await productModel.find({ 
-                _id: { $ne: targetProductId } 
-            }).limit(5 - allProducts.length);
-            allProducts = allProducts.concat(additionalProducts);
-        }
-
-        // Limit to exactly 5 products
-        const finalProducts = allProducts.slice(0, 5);
-
-        return res.json({ success: true, allProducts: finalProducts });
+        const allProducts = await productModel.find({ _id: { $ne: targetProductId } });
+        return res.json({ success: true, allProducts });
     }
 );
