@@ -1,12 +1,12 @@
 const RenovationCostService = require("../services/renovationCostService");
-const GeminiPromptBuilder = require("../services/geminiPromptBuilder");
-const GeminiService = require("../services/geminiService");
+const ReplicateService = require("../services/replicateService");
+const ReplicatePromptBuilder = require("../services/replicatePromptBuilder");
 const RenovationRequest = require("../model/renovationRequestModel");
 const Product = require("../model/productModel");
 
 /**
  * Generate renovation visualization images
- * POST /api/property/generate-renovation-images
+ * POST /api/property-renovation/generate-renovation-images
  */
 exports.generateRenovationImages = async (req, res) => {
   try {
@@ -30,6 +30,14 @@ exports.generateRenovationImages = async (req, res) => {
       });
     }
 
+    // Guard: property must have an image
+    if (!property.image) {
+      return res.status(400).json({
+        success: false,
+        error: "This property does not have an exterior image. Please upload a property image before using the renovation visualizer."
+      });
+    }
+
     // Validate input data
     const validation = RenovationCostService.validateInputs(
       {
@@ -47,25 +55,22 @@ exports.generateRenovationImages = async (req, res) => {
       });
     }
 
-    // Calculate renovation cost
+    // Calculate renovation cost (now itemized for exterior)
     const costAnalysis = RenovationCostService.calculateRenovationCost(
       {
         state: property.state,
         city: property.city,
-        squareFootage: property.squareFootage
+        squareFootage: property.squareFootage,
+        lotSize: property.lotSize
       },
       renovationData
     );
 
-    // Build Gemini prompts
-    const { systemPrompt, userPrompt } = GeminiPromptBuilder.buildPrompts(
+    // Build Replicate prompt
+    const { prompt, negativePrompt } = ReplicatePromptBuilder.buildPrompts(
       {
-        street: property.street,
         city: property.city,
         state: property.state,
-        beds: property.beds,
-        baths: property.baths,
-        squareFootage: property.squareFootage,
         yearBuilt: property.yearBuilt,
         propertyType: property.propertyType
       },
@@ -85,7 +90,12 @@ exports.generateRenovationImages = async (req, res) => {
     await renovationRequest.save();
 
     // Start image generation in background (don't wait)
-    generateRenovationImagesAsync(renovationRequest._id, systemPrompt, userPrompt, property.image);
+    generateRenovationImagesAsync(
+      renovationRequest._id,
+      property.image,
+      prompt,
+      negativePrompt
+    );
 
     // Return immediate response with cost analysis
     return res.status(200).json({
@@ -96,6 +106,8 @@ exports.generateRenovationImages = async (req, res) => {
       costAnalysis: {
         finalCost: costAnalysis.finalCost,
         costRange: costAnalysis.costRange,
+        lineItems: costAnalysis.lineItems,
+        contingency: costAnalysis.contingency,
         breakdown: costAnalysis.breakdown,
         marketContext: costAnalysis.marketContext,
         roiEstimate: costAnalysis.roiEstimate
@@ -112,14 +124,13 @@ exports.generateRenovationImages = async (req, res) => {
 
 /**
  * Get renovation request status and results
- * GET /api/property/renovation-request/:requestId
+ * GET /api/property-renovation/renovation-request/:requestId
  */
 exports.getRenovationRequest = async (req, res) => {
   try {
     const { requestId } = req.params;
     const userId = req.user._id;
 
-    // Fetch renovation request
     const renovationRequest = await RenovationRequest.findById(requestId);
 
     if (!renovationRequest) {
@@ -137,7 +148,6 @@ exports.getRenovationRequest = async (req, res) => {
       });
     }
 
-    // Build response based on status
     const responseData = {
       success: true,
       requestId: renovationRequest._id,
@@ -166,38 +176,34 @@ exports.getRenovationRequest = async (req, res) => {
 };
 
 /**
- * Background function to generate images asynchronously
- * This runs without blocking the API response
+ * Background function — generates image via Replicate without blocking response
  */
-async function generateRenovationImagesAsync(requestId, systemPrompt, userPrompt, propertyImage) {
+async function generateRenovationImagesAsync(requestId, propertyImage, prompt, negativePrompt) {
   try {
     // Update status to processing
     await RenovationRequest.findByIdAndUpdate(requestId, { status: "processing" });
 
-    // Call Gemini to generate image
-    const geminiResult = await GeminiService.generateRenovationImage(
-      systemPrompt,
-      userPrompt,
-      propertyImage
+    // Call Replicate to transform property image
+    const result = await ReplicateService.generateRenovationImage(
+      propertyImage,
+      prompt,
+      negativePrompt
     );
 
-    // Save results to database
-    const updateData = {
+    // Save results
+    await RenovationRequest.findByIdAndUpdate(requestId, {
       status: "completed",
       imageUrls: {
         before: propertyImage,
-        after: geminiResult.imageUrl // Use the Cloudinary URL from GeminiService
+        after: result.imageUrl
       },
-      description: geminiResult.description
-    };
+      description: result.description
+    });
 
-    await RenovationRequest.findByIdAndUpdate(requestId, updateData);
-
-    console.log(`✓ Renovation visualization generated successfully for request: ${requestId}`);
+    console.log(`✓ Renovation visualization generated for request: ${requestId}`);
   } catch (error) {
     console.error(`✗ Error generating renovation images for request ${requestId}:`, error);
 
-    // Update status to failed
     await RenovationRequest.findByIdAndUpdate(requestId, {
       status: "failed"
     }).catch(err => console.error("Error updating failed status:", err));
@@ -205,12 +211,12 @@ async function generateRenovationImagesAsync(requestId, systemPrompt, userPrompt
 }
 
 /**
- * Helper function to get user-friendly status message
+ * Status messages
  */
 function getStatusMessage(status) {
   const messages = {
     pending: "Generating your renovation visualization...",
-    processing: "Processing images with Gemini...",
+    processing: "Transforming your property image...",
     completed: "Your renovation visualization is ready!",
     failed: "Failed to generate renovation visualization. Please try again."
   };

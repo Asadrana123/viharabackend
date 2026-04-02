@@ -31,10 +31,27 @@ exports.createProduct = catchAsyncError(
 //     }
 // );
 
+// exports.getAllProducts = catchAsyncError(
+//     async (req, res) => {
+//         const targetProductId = '695236a4acad197a54f80e95';
+//         const allProducts = await productModel.find({ _id: { $ne: targetProductId } });
+//         return res.json({ success: true, allProducts });
+//     }
+// );
+
 exports.getAllProducts = catchAsyncError(
     async (req, res) => {
         const targetProductId = '695236a4acad197a54f80e95';
-        const allProducts = await productModel.find({ _id: { $ne: targetProductId } });
+
+        const targetProduct = await productModel.findById(targetProductId);
+        const otherProducts = await productModel.find({ _id: { $ne: targetProductId } });
+
+        let allProducts = [];
+        if (targetProduct) {
+            allProducts.push(targetProduct);
+        }
+        allProducts = allProducts.concat(otherProducts);
+
         return res.json({ success: true, allProducts });
     }
 );
