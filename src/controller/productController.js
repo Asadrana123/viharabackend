@@ -50,7 +50,7 @@ exports.getAllProducts = catchAsyncError(
         if (targetProduct) {
             allProducts.push(targetProduct);
         }
-        allProducts = allProducts.concat(otherProducts);
+      //  allProducts = allProducts.concat(otherProducts);
 
         return res.json({ success: true, allProducts });
     }
