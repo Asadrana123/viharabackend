@@ -2,7 +2,8 @@ const express = require("express");
 const router = express.Router();
 const {
   generateRenovationImages,
-  getRenovationRequest
+  getRenovationRequest,
+  getContractors
 } = require("../controller/renovationController");
 const catchAsyncError = require("../middleware/catchAsyncError");
 const { isAuthenticated } = require("../middleware/auth");
@@ -27,5 +28,7 @@ router.get(
    isAuthenticated ,
   catchAsyncError(getRenovationRequest)
 );
+
+router.get('/contractors/:propertyId',isAuthenticated, catchAsyncError(getContractors));
 
 module.exports = router;

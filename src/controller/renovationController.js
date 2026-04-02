@@ -2,12 +2,37 @@ const RenovationCostService = require("../services/renovationCostService");
 const ReplicateService = require("../services/replicateService");
 const ReplicatePromptBuilder = require("../services/replicatePromptBuilder");
 const RenovationRequest = require("../model/renovationRequestModel");
+const RenovationContractorService = require("../services/renovationContractorService");
 const Product = require("../model/productModel");
 
 /**
  * Generate renovation visualization images
  * POST /api/property-renovation/generate-renovation-images
  */
+
+exports.getContractors = async (req, res) => {
+  try {
+    const { propertyId } = req.params;
+    const { area } = req.query;
+
+    const property = await Product.findById(propertyId).select('city state');
+    if (!property) {
+      return res.status(404).json({ success: false, error: "Property not found" });
+    }
+
+    const contractors = await RenovationContractorService.findContractors(
+      property.city,
+      property.state,
+      area || 'General renovation'
+    );
+
+    return res.status(200).json({ success: true, contractors });
+  } catch (error) {
+    console.error("Error in getContractors:", error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 exports.generateRenovationImages = async (req, res) => {
   try {
     const { propertyId, selectedImage, renovationData } = req.body;
