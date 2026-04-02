@@ -13,38 +13,23 @@ const renovationRequestSchema = new mongoose.Schema({
     required: true
   },
 
+  selectedImage: {
+    type: String,
+    required: true
+  },
+
   renovationData: {
     primaryArea: {
       type: String,
-      enum: ['Kitchen', 'Bathroom', 'Living Room', 'Bedroom', 'Full Property', 'Exterior'],
-      required: true
+      enum: ['Kitchen', 'Bathroom', 'Living Room', 'Bedroom', 'Exterior']
     },
     style: String,
     colorScheme: String,
-    openConcept: Boolean,
-    countertopPreference: String,
-    luxuryLevel: String,
-    spaFeatures: Boolean,
-    bathroomType: String,
-    layoutFocus: String,
-    flooringPreference: String,
-    bedroomType: String,
-    lightingPreference: String,
-    roomPurpose: String,
-    accentWall: Boolean,
-    colorSchemeStrategy: String,
-    focusAreas: String,
-    renovationType: String,
-    exteriorFocusAreas: String,
-    architecturalElements: String,
-    includeLandscaping: Boolean,
     budgetTier: {
       type: String,
       enum: ['Budget-Friendly', 'Mid-Range', 'Premium', 'Luxury'],
       required: true
-    },
-    includeFurniture: Boolean,
-    imageQuality: String
+    }
   },
 
   costAnalysis: {
@@ -53,20 +38,42 @@ const renovationRequestSchema = new mongoose.Schema({
       min: Number,
       max: Number
     },
+    lineItems: [
+      {
+        item: String,
+        description: String,
+        costBasis: String,
+        cost: Number,
+        roiRecovery: Number
+      }
+    ],
+    contingency: {
+      percentage: Number,
+      amount: Number,
+      reason: String
+    },
     breakdown: {
       basePerSqFt: Number,
       areaSquareFootage: Number,
+      primaryWork: String,
+      focusArea: String,
       tier: String,
-      location: String
+      location: String,
+      subtotal: Number
     },
     marketContext: {
       state: String,
       city: String,
-      message: String
+      stateMultiplier: Number,
+      cityMultiplier: Number,
+      message: String,
+      dataSource: String
     },
     roiEstimate: {
       estimatedValueIncrease: Number,
-      recoveryPercentage: Number
+      recoveryPercentage: Number,
+      roiMessage: String,
+      source: String
     }
   },
 

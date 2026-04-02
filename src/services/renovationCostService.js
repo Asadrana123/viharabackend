@@ -37,17 +37,26 @@ class RenovationCostService {
    */
   static calculateExteriorCost(propertyData, renovationData) {
     const { state, city, squareFootage, lotSize } = propertyData;
-    const {
-      budgetTier,
-      architecturalElements,
-      exteriorFocusAreas
-    } = renovationData;
+    const { budgetTier } = renovationData;
 
-    // Determine which exterior work item was selected
-    // architecturalElements maps to primary changes (paint, siding, windows, entrance)
-    // exteriorFocusAreas maps to focus (landscaping, driveway, patio, entrance)
-    const primaryWork = architecturalElements || 'Repaint only';
-    const focusArea = exteriorFocusAreas || 'Front entrance';
+    // Default primary work and focus area based on budget tier
+    // Higher budgets assume more comprehensive scope
+    const primaryWorkByTier = {
+      'Budget-Friendly': 'Repaint only',
+      'Mid-Range': 'Update roof/siding',
+      'Premium': 'Update roof/siding',
+      'Luxury': 'Update roof/siding'
+    };
+
+    const focusAreaByTier = {
+      'Budget-Friendly': 'Front entrance',
+      'Mid-Range': 'Landscaping',
+      'Premium': 'All',
+      'Luxury': 'All'
+    };
+
+    const primaryWork = primaryWorkByTier[budgetTier] || 'Repaint only';
+    const focusArea = focusAreaByTier[budgetTier] || 'Front entrance';
 
     // Get location multipliers
     const stateMultiplier = this.getStateMultiplier(state);
@@ -281,7 +290,8 @@ class RenovationCostService {
     if (!RENOVATION_COST_TIERS[renovationData.budgetTier]) {
       return { isValid: false, error: "Invalid budget tier" };
     }
-    if (!AREA_COST_MULTIPLIERS[renovationData.primaryArea]) {
+    const validAreas = ['Kitchen', 'Bathroom', 'Living Room', 'Bedroom', 'Exterior'];
+    if (!validAreas.includes(renovationData.primaryArea)) {
       return { isValid: false, error: "Invalid renovation area" };
     }
     return { isValid: true, error: null };

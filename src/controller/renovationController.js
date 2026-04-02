@@ -10,14 +10,14 @@ const Product = require("../model/productModel");
  */
 exports.generateRenovationImages = async (req, res) => {
   try {
-    const { propertyId, renovationData } = req.body;
+    const { propertyId, selectedImage, renovationData } = req.body;
     const userId = req.user._id;
 
     // Validate required fields
-    if (!propertyId || !renovationData) {
+    if (!propertyId || !selectedImage || !renovationData) {
       return res.status(400).json({
         success: false,
-        error: "Property ID and renovation data are required"
+        error: "Property ID, selected image, and renovation data are required"
       });
     }
 
@@ -27,14 +27,6 @@ exports.generateRenovationImages = async (req, res) => {
       return res.status(404).json({
         success: false,
         error: "Property not found"
-      });
-    }
-
-    // Guard: property must have an image
-    if (!property.image) {
-      return res.status(400).json({
-        success: false,
-        error: "This property does not have an exterior image. Please upload a property image before using the renovation visualizer."
       });
     }
 
@@ -55,7 +47,7 @@ exports.generateRenovationImages = async (req, res) => {
       });
     }
 
-    // Calculate renovation cost (now itemized for exterior)
+    // Calculate renovation cost
     const costAnalysis = RenovationCostService.calculateRenovationCost(
       {
         state: property.state,
@@ -71,17 +63,16 @@ exports.generateRenovationImages = async (req, res) => {
       {
         city: property.city,
         state: property.state,
-        yearBuilt: property.yearBuilt,
         propertyType: property.propertyType
       },
-      renovationData,
-      costAnalysis
+      renovationData
     );
 
     // Create renovation request record (status: pending)
     const renovationRequest = new RenovationRequest({
       userId,
       propertyId,
+      selectedImage,
       renovationData,
       costAnalysis,
       status: "pending"
@@ -92,7 +83,7 @@ exports.generateRenovationImages = async (req, res) => {
     // Start image generation in background (don't wait)
     generateRenovationImagesAsync(
       renovationRequest._id,
-      property.image,
+      selectedImage,
       prompt,
       negativePrompt
     );
