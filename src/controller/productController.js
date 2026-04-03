@@ -41,17 +41,20 @@ exports.createProduct = catchAsyncError(
 
 exports.getAllProducts = catchAsyncError(
     async (req, res) => {
-        const targetProductId = '695236a4acad197a54f80e95';
+        const targetIds = [
+            '695236a4acad197a54f80e95', 
+            '69cf9ec217e006f5c4437c62'
+        ];
 
-        const targetProduct = await productModel.findById(targetProductId);
-        const otherProducts = await productModel.find({ _id: { $ne: targetProductId } });
+        // Find all products whose _id is in the targetIds array
+        const allProducts = await productModel.find({
+            _id: { $in: targetIds }
+        });
 
-        let allProducts = [];
-        if (targetProduct) {
-            allProducts.push(targetProduct);
-        }
-      //  allProducts = allProducts.concat(otherProducts);
-
-        return res.json({ success: true, allProducts });
+        return res.json({ 
+            success: true, 
+            count: allProducts.length,
+            allProducts 
+        });
     }
 );
