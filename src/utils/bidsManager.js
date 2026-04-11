@@ -171,7 +171,11 @@ class BidsManager {
       }).sort({ maxAmount: -1 }),
       5000
     );
-    let minManualBid = currentBid + 5000; // Default increment
+
+    const auction = await withTimeout(Product.findById(auctionId).select('minIncrement'), 5000);
+    const increment = auction?.minIncrement || 1000;
+
+    let minManualBid = currentBid + increment;
     let minAutoBidAmount = 0;
 
     // If there are auto-bids, calculate minimum manual bid
@@ -182,10 +186,10 @@ class BidsManager {
       if (autoBidSettings.length > 1) {
         // Second highest auto-bid + increment
         const secondHighest = autoBidSettings[1];
-        minManualBid = Math.max(minManualBid, secondHighest.maxAmount + 5000);
+        minManualBid = Math.max(minManualBid, secondHighest.maxAmount + increment);
       } else {
         // Only one auto-bid, just use current + increment
-        minManualBid = Math.max(minManualBid, currentBid + 5000);
+        minManualBid = Math.max(minManualBid, currentBid + increment);
       }
 
       // Set minimum for new auto-bids (must be higher than existing highest)

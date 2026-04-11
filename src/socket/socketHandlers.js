@@ -72,7 +72,7 @@ function registerSocketHandlers(socket) {
         const highestBid = await BidsManager.getHighestBid(auctionId);
 
         // Set default values
-        let currentBidAmount = auction.startBid;
+        let currentBidAmount = auction.currentBid;
         let currentBidder = null;
 
         // If there's a highest bid, get its details
@@ -135,7 +135,8 @@ function registerSocketHandlers(socket) {
           participants: 0,
           recentBids: recentBids,
           endTime: endTime,
-          auctionStatus: auctionStatus
+          auctionStatus: auctionStatus,
+          startBid: auction.startBid  // ← add this line
         });
       }
 
@@ -166,8 +167,8 @@ function registerSocketHandlers(socket) {
       }
 
       // Calculate and emit minimum bid amounts
-      const auctionData = activeAuctions.get(auctionId);
-      const bidLimits = await BidsManager.calculateMinimumBids(auctionId, auctionData.currentBid);
+      const freshAuctionData = activeAuctions.get(auctionId);
+      const bidLimits = await BidsManager.calculateMinimumBids(auctionId, freshAuctionData.currentBid || freshAuctionData.startBid);
       socket.emit('min-bid-update', bidLimits);
     } catch (error) {
       console.error('Error joining auction:', error);
