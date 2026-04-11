@@ -52,6 +52,9 @@ class RenovationCostService {
     const { state, city } = propertyData;
     const { primaryArea, budgetTier } = renovationData;
 
+    // Always use constants table for regional factor — deterministic, not Gemini-generated
+    const regionalFactor = this.getLocationMultiplier(state, city);
+
     const lineItems = geminiResult.lineItems.map(item => ({
       item: item.item,
       description: item.description,
@@ -60,7 +63,7 @@ class RenovationCostService {
       roiRecovery: item.roiRecovery,
       formula: {
         source: 'gemini',
-        regionalFactor: geminiResult.regionalFactor
+        regionalFactor
       }
     }));
 
@@ -92,9 +95,9 @@ class RenovationCostService {
       marketContext: {
         state,
         city,
-        region: geminiResult.region || getRegionForState(state),
-        regionalFactor: geminiResult.regionalFactor,
-        message: getCostContextMessage(state, geminiResult.regionalFactor || 1.0),
+        region: getRegionForState(state),
+        regionalFactor,
+        message: getCostContextMessage(state, regionalFactor),
         dataSource: geminiResult.dataSource,
         source: 'gemini'
       },
