@@ -1,21 +1,11 @@
 class ReplicatePromptBuilder {
 
-  /**
-   * Build prompt and negative prompt for Replicate adirik/interior-design model
-   * @param {Object} propertyData - { city, state, propertyType }
-   * @param {Object} renovationData - { primaryArea, style, colorScheme, budgetTier }
-   * @returns {Object} { prompt, negativePrompt }
-   */
   static buildPrompts(propertyData, renovationData) {
     const prompt = this.buildPrompt(propertyData, renovationData);
     const negativePrompt = this.buildNegativePrompt(renovationData.primaryArea);
     return { prompt, negativePrompt };
   }
 
-  /**
-   * Build the main transformation prompt
-   * Routes to area-specific prompt builder based on primaryArea
-   */
   static buildPrompt(propertyData, renovationData) {
     const { city, state } = propertyData;
     const { primaryArea, style, colorScheme, budgetTier } = renovationData;
@@ -25,12 +15,12 @@ class ReplicatePromptBuilder {
     const areaInstructions = this.getAreaInstructions(primaryArea, style, colorScheme, budgetTier);
     const locationContext = city && state ? ` in ${city}, ${state}` : '';
 
-    return `${styleDescriptor} renovation${locationContext}. ${areaInstructions} ${colorInstruction} Photorealistic, high quality, professional photography.`;
+    // Damage repair instruction prepended to every prompt
+    const damageRepair = 'COMPLETELY RENOVATED space. Every wall freshly plastered, primed, and painted. Zero mold, zero water damage, zero stains, zero peeling paint, zero cracks, zero damaged surfaces anywhere. Every surface is brand new, clean, and finished.';
+
+    return `${styleDescriptor} renovation${locationContext}. ${damageRepair} ${areaInstructions} ${colorInstruction} Photorealistic, high quality, professional real estate photography. Every inch of this space is clean, finished, and move-in ready.`;
   }
 
-  /**
-   * Area-specific renovation instructions
-   */
   static getAreaInstructions(primaryArea, style, colorScheme, budgetTier) {
     const areaMap = {
       'Exterior': this.getExteriorInstructions(style, colorScheme, budgetTier),
@@ -43,9 +33,6 @@ class ReplicatePromptBuilder {
     return areaMap[primaryArea] || areaMap['Exterior'];
   }
 
-  /**
-   * Exterior renovation instructions
-   */
   static getExteriorInstructions(style, colorScheme, budgetTier) {
     const paintMap = {
       'Warm tones': 'warm beige and cream tones',
@@ -67,9 +54,6 @@ class ReplicatePromptBuilder {
     return `${material} in ${color}. Lush green lawn, trimmed hedges, and clean driveway. Preserve the exact roof line, chimney, and architectural structure.`;
   }
 
-  /**
-   * Kitchen renovation instructions
-   */
   static getKitchenInstructions(style, budgetTier) {
     const kitchenMap = {
       'Budget-Friendly': 'Repainted cabinets, new hardware, clean countertops, and updated lighting.',
@@ -89,12 +73,9 @@ class ReplicatePromptBuilder {
     const budget = kitchenMap[budgetTier] || kitchenMap['Mid-Range'];
     const styleDetail = styleMap[style] || styleMap['Modern'];
 
-    return `${budget} ${styleDetail} Preserve the kitchen layout and structural walls.`;
+    return `${budget} ${styleDetail} All walls smooth, clean, freshly plastered and painted.`;
   }
 
-  /**
-   * Bathroom renovation instructions
-   */
   static getBathroomInstructions(style, budgetTier) {
     const bathroomMap = {
       'Budget-Friendly': 'Repainted walls, new fixtures, updated vanity mirror, and clean tile.',
@@ -114,12 +95,9 @@ class ReplicatePromptBuilder {
     const budget = bathroomMap[budgetTier] || bathroomMap['Mid-Range'];
     const styleDetail = styleMap[style] || styleMap['Modern'];
 
-    return `${budget} ${styleDetail} Preserve the bathroom layout and plumbing positions.`;
+    return `${budget} ${styleDetail} All walls smooth, clean, freshly plastered and painted.`;
   }
 
-  /**
-   * Bedroom renovation instructions
-   */
   static getBedroomInstructions(style, budgetTier) {
     const bedroomMap = {
       'Budget-Friendly': 'Fresh paint, updated lighting, and clean styling.',
@@ -139,12 +117,9 @@ class ReplicatePromptBuilder {
     const budget = bedroomMap[budgetTier] || bedroomMap['Mid-Range'];
     const styleDetail = styleMap[style] || styleMap['Modern'];
 
-    return `${budget} ${styleDetail} Preserve the room layout and window positions.`;
+    return `${budget} ${styleDetail} All walls smooth, clean, freshly plastered and painted.`;
   }
 
-  /**
-   * Living room renovation instructions
-   */
   static getLivingRoomInstructions(style, budgetTier) {
     const livingMap = {
       'Budget-Friendly': 'Fresh paint, updated lighting, and rearranged furniture layout.',
@@ -164,12 +139,9 @@ class ReplicatePromptBuilder {
     const budget = livingMap[budgetTier] || livingMap['Mid-Range'];
     const styleDetail = styleMap[style] || styleMap['Modern'];
 
-    return `${budget} ${styleDetail} Preserve the room layout and architectural features.`;
+    return `${budget} ${styleDetail} All walls smooth, clean, freshly plastered and painted.`;
   }
 
-  /**
-   * Color instruction appended to all prompts
-   */
   static getColorInstruction(colorScheme) {
     const colorMap = {
       'Warm tones': 'Use warm beige, cream, and terracotta tones throughout.',
@@ -181,9 +153,6 @@ class ReplicatePromptBuilder {
     return colorMap[colorScheme] || colorMap['Neutral'];
   }
 
-  /**
-   * Style descriptor prefix for the prompt
-   */
   static getStyleDescriptor(style, budgetTier) {
     const descriptors = {
       'Modern': 'Modern',
@@ -206,9 +175,6 @@ class ReplicatePromptBuilder {
     return `${styleStr} ${tierStr}`;
   }
 
-  /**
-   * Negative prompt — area-aware
-   */
   static buildNegativePrompt(primaryArea) {
     const base = [
       'cartoon',
@@ -222,7 +188,16 @@ class ReplicatePromptBuilder {
       'watermark',
       'text',
       'logo',
-      'people'
+      'people',
+      'mold',
+      'water damage',
+      'stains',
+      'peeling paint',
+      'broken walls',
+      'damaged surfaces',
+      'deteriorated',
+      'dirty',
+      'cracked walls'
     ];
 
     const exteriorExtra = [

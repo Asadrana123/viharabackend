@@ -5,11 +5,6 @@ const RenovationRequest = require("../model/renovationRequestModel");
 const RenovationContractorService = require("../services/renovationContractorService");
 const Product = require("../model/productModel");
 
-/**
- * Generate renovation visualization images
- * POST /api/property-renovation/generate-renovation-images
- */
-
 exports.getContractors = async (req, res) => {
   try {
     const { propertyId } = req.params;
@@ -20,13 +15,18 @@ exports.getContractors = async (req, res) => {
       return res.status(404).json({ success: false, error: "Property not found" });
     }
 
-    const contractors = await RenovationContractorService.findContractors(
+    const result = await RenovationContractorService.findContractors(
       property.city,
       property.state,
       area || 'General renovation'
     );
 
-    return res.status(200).json({ success: true, contractors });
+    return res.status(200).json({
+      success: true,
+      contractors: result.contractors,
+      isFallback: result.isFallback,
+      fallbackNotice: result.fallbackNotice || null
+    });
   } catch (error) {
     console.error("Error in getContractors:", error);
     return res.status(500).json({ success: false, error: error.message });
@@ -38,7 +38,6 @@ exports.generateRenovationImages = async (req, res) => {
     const { propertyId, selectedImage, renovationData } = req.body;
     const userId = req.user._id;
 
-    // Validate required fields
     if (!propertyId || !selectedImage || !renovationData) {
       return res.status(400).json({
         success: false,
@@ -46,34 +45,22 @@ exports.generateRenovationImages = async (req, res) => {
       });
     }
 
-    // Fetch property from database
     const property = await Product.findById(propertyId);
     if (!property) {
-      return res.status(404).json({
-        success: false,
-        error: "Property not found"
-      });
+      return res.status(404).json({ success: false, error: "Property not found" });
     }
 
-    // Validate input data
     const validation = RenovationCostService.validateInputs(
-      {
-        state: property.state,
-        city: property.city,
-        squareFootage: property.squareFootage
-      },
+      { state: property.state, city: property.city, squareFootage: property.squareFootage },
       renovationData
     );
 
     if (!validation.isValid) {
-      return res.status(400).json({
-        success: false,
-        error: validation.error
-      });
+      return res.status(400).json({ success: false, error: validation.error });
     }
 
-    // Calculate renovation cost
-    const costAnalysis = RenovationCostService.calculateRenovationCost(
+    // Now async — Gemini first, fallback to constants
+    const costAnalysis = await RenovationCostService.calculateRenovationCost(
       {
         state: property.state,
         city: property.city,
@@ -83,17 +70,11 @@ exports.generateRenovationImages = async (req, res) => {
       renovationData
     );
 
-    // Build Replicate prompt
     const { prompt, negativePrompt } = ReplicatePromptBuilder.buildPrompts(
-      {
-        city: property.city,
-        state: property.state,
-        propertyType: property.propertyType
-      },
+      { city: property.city, state: property.state, propertyType: property.propertyType },
       renovationData
     );
 
-    // Create renovation request record (status: pending)
     const renovationRequest = new RenovationRequest({
       userId,
       propertyId,
@@ -105,15 +86,8 @@ exports.generateRenovationImages = async (req, res) => {
 
     await renovationRequest.save();
 
-    // Start image generation in background (don't wait)
-    generateRenovationImagesAsync(
-      renovationRequest._id,
-      selectedImage,
-      prompt,
-      negativePrompt
-    );
+    generateRenovationImagesAsync(renovationRequest._id, selectedImage, prompt, negativePrompt);
 
-    // Return immediate response with cost analysis
     return res.status(200).json({
       success: true,
       requestId: renovationRequest._id,
@@ -138,10 +112,6 @@ exports.generateRenovationImages = async (req, res) => {
   }
 };
 
-/**
- * Get renovation request status and results
- * GET /api/property-renovation/renovation-request/:requestId
- */
 exports.getRenovationRequest = async (req, res) => {
   try {
     const { requestId } = req.params;
@@ -150,18 +120,11 @@ exports.getRenovationRequest = async (req, res) => {
     const renovationRequest = await RenovationRequest.findById(requestId);
 
     if (!renovationRequest) {
-      return res.status(404).json({
-        success: false,
-        error: "Renovation request not found"
-      });
+      return res.status(404).json({ success: false, error: "Renovation request not found" });
     }
 
-    // Verify user owns this request
     if (renovationRequest.userId.toString() !== userId.toString()) {
-      return res.status(403).json({
-        success: false,
-        error: "Unauthorized access"
-      });
+      return res.status(403).json({ success: false, error: "Unauthorized access" });
     }
 
     const responseData = {
@@ -172,7 +135,6 @@ exports.getRenovationRequest = async (req, res) => {
       message: getStatusMessage(renovationRequest.status)
     };
 
-    // Include images if completed
     if (renovationRequest.status === "completed") {
       responseData.images = {
         before: renovationRequest.imageUrls.before,
@@ -191,44 +153,26 @@ exports.getRenovationRequest = async (req, res) => {
   }
 };
 
-/**
- * Background function — generates image via Replicate without blocking response
- */
 async function generateRenovationImagesAsync(requestId, propertyImage, prompt, negativePrompt) {
   try {
-    // Update status to processing
     await RenovationRequest.findByIdAndUpdate(requestId, { status: "processing" });
 
-    // Call Replicate to transform property image
-    const result = await ReplicateService.generateRenovationImage(
-      propertyImage,
-      prompt,
-      negativePrompt
-    );
+    const result = await ReplicateService.generateRenovationImage(propertyImage, prompt, negativePrompt);
 
-    // Save results
     await RenovationRequest.findByIdAndUpdate(requestId, {
       status: "completed",
-      imageUrls: {
-        before: propertyImage,
-        after: result.imageUrl
-      },
+      imageUrls: { before: propertyImage, after: result.imageUrl },
       description: result.description
     });
 
     console.log(`✓ Renovation visualization generated for request: ${requestId}`);
   } catch (error) {
     console.error(`✗ Error generating renovation images for request ${requestId}:`, error);
-
-    await RenovationRequest.findByIdAndUpdate(requestId, {
-      status: "failed"
-    }).catch(err => console.error("Error updating failed status:", err));
+    await RenovationRequest.findByIdAndUpdate(requestId, { status: "failed" })
+      .catch(err => console.error("Error updating failed status:", err));
   }
 }
 
-/**
- * Status messages
- */
 function getStatusMessage(status) {
   const messages = {
     pending: "Generating your renovation visualization...",

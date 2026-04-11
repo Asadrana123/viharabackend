@@ -12,158 +12,71 @@ const {
   BATHROOM_ROI_BY_TIER,
   BEDROOM_ROI_BY_TIER,
   LIVING_ROOM_ROI_BY_TIER,
-  getCostContextMessage
+  getCostContextMessage,
+  getDataSource,
+  getRegionForState
 } = require("../config/renovationConstants");
+
+const GeminiRenovationService = require("./geminiRenovationService");
 
 class RenovationCostService {
 
   /**
-   * Main entry point — routes to area-specific calculation
+   * Main entry point — tries Gemini first, falls back to constants
    */
-  static calculateRenovationCost(propertyData, renovationData) {
+  static async calculateRenovationCost(propertyData, renovationData) {
     try {
-      const { primaryArea } = renovationData;
+      // Attempt Gemini real-time fetch
+      const geminiResult = await GeminiRenovationService.fetchRenovationCosts(
+        propertyData,
+        renovationData
+      );
 
-      switch (primaryArea) {
-        case 'Exterior':
-          return this.calculateExteriorCost(propertyData, renovationData);
-        case 'Kitchen':
-          return this.calculateInteriorCost(propertyData, renovationData, KITCHEN_RENOVATION_ITEMS, KITCHEN_ROI_BY_TIER);
-        case 'Bathroom':
-          return this.calculateInteriorCost(propertyData, renovationData, BATHROOM_RENOVATION_ITEMS, BATHROOM_ROI_BY_TIER);
-        case 'Bedroom':
-          return this.calculateInteriorCost(propertyData, renovationData, BEDROOM_RENOVATION_ITEMS, BEDROOM_ROI_BY_TIER);
-        case 'Living Room':
-          return this.calculateInteriorCost(propertyData, renovationData, LIVING_ROOM_RENOVATION_ITEMS, LIVING_ROOM_ROI_BY_TIER);
-        default:
-          throw new Error(`Unknown renovation area: ${primaryArea}`);
+      if (geminiResult) {
+        return this.buildCostAnalysisFromGemini(geminiResult, propertyData, renovationData);
       }
+
+      // Fallback to constants
+      console.warn("RenovationCostService: Gemini unavailable, falling back to constants");
+      return this.calculateFromConstants(propertyData, renovationData);
     } catch (error) {
-      console.error("Error calculating renovation cost:", error);
-      throw error;
+      console.error("RenovationCostService.calculateRenovationCost error:", error);
+      return this.calculateFromConstants(propertyData, renovationData);
     }
   }
 
   /**
-   * Calculate itemized exterior renovation cost
+   * Build cost analysis from Gemini response
    */
-  static calculateExteriorCost(propertyData, renovationData) {
-    const { state, city, squareFootage, lotSize } = propertyData;
-    const { budgetTier } = renovationData;
-
-    const primaryWorkByTier = {
-      'Budget-Friendly': 'Repaint only',
-      'Mid-Range': 'Update roof/siding',
-      'Premium': 'Update roof/siding',
-      'Luxury': 'Update roof/siding'
-    };
-
-    const focusAreaByTier = {
-      'Budget-Friendly': 'Front entrance',
-      'Mid-Range': 'Landscaping',
-      'Premium': 'All',
-      'Luxury': 'All'
-    };
-
-    const primaryWork = primaryWorkByTier[budgetTier] || 'Repaint only';
-    const focusArea = focusAreaByTier[budgetTier] || 'Front entrance';
-
-    const stateMultiplier = this.getStateMultiplier(state);
-    const cityMultiplier = this.getCityMultiplier(city) || stateMultiplier;
-
-    const lineItems = this.buildExteriorLineItems(
-      primaryWork,
-      focusArea,
-      budgetTier,
-      cityMultiplier,
-      squareFootage,
-      lotSize
-    );
-
-    const subtotal = lineItems.reduce((sum, item) => sum + item.cost, 0);
-    const contingencyAmount = Math.round(subtotal * CONTINGENCY_PERCENTAGE);
-    const finalCost = subtotal + contingencyAmount;
-
-    const costRange = {
-      min: Math.round(finalCost * 0.85),
-      max: Math.round(finalCost * 1.15)
-    };
-
-    const roiData = EXTERIOR_ROI_BY_PROJECT[primaryWork] || EXTERIOR_ROI_BY_PROJECT['Repaint only'];
-    const estimatedValueIncrease = Math.round(finalCost * (roiData.recovery / 100));
-    const marketContextMessage = getCostContextMessage(state, stateMultiplier);
-
-    return {
-      finalCost: Math.round(finalCost),
-      costRange,
-      lineItems,
-      contingency: {
-        percentage: Math.round(CONTINGENCY_PERCENTAGE * 100),
-        amount: contingencyAmount,
-        reason: 'Standard 12% contingency buffer for unexpected costs, permit fees, and site preparation'
-      },
-      breakdown: {
-        primaryWork,
-        focusArea,
-        tier: budgetTier,
-        location: `${city}, ${state}`,
-        subtotal: Math.round(subtotal)
-      },
-      marketContext: {
-        state,
-        city,
-        stateMultiplier,
-        cityMultiplier,
-        message: marketContextMessage,
-        dataSource: 'Remodeling Magazine 2025 Cost vs Value Report — South Region'
-      },
-      roiEstimate: {
-        estimatedValueIncrease,
-        recoveryPercentage: roiData.recovery,
-        roiMessage: roiData.insight,
-        source: 'NAR 2025 Remodeling Impact Report'
-      }
-    };
-  }
-
-  /**
-   * Calculate itemized interior renovation cost
-   * Shared logic for Kitchen, Bathroom, Bedroom, Living Room
-   * @param {Object} propertyData
-   * @param {Object} renovationData
-   * @param {Object} renovationItems  - area-specific constants (e.g. KITCHEN_RENOVATION_ITEMS)
-   * @param {Object} roiByTier        - area-specific ROI by budget tier
-   */
-  static calculateInteriorCost(propertyData, renovationData, renovationItems, roiByTier) {
+  static buildCostAnalysisFromGemini(geminiResult, propertyData, renovationData) {
     const { state, city } = propertyData;
     const { primaryArea, budgetTier } = renovationData;
 
-    const stateMultiplier = this.getStateMultiplier(state);
-    const cityMultiplier = this.getCityMultiplier(city) || stateMultiplier;
-
-    // Build itemized line items from all items in the area constants
-    const lineItems = this.buildInteriorLineItems(
-      renovationItems,
-      budgetTier,
-      cityMultiplier
-    );
+    const lineItems = geminiResult.lineItems.map(item => ({
+      item: item.item,
+      description: item.description,
+      costBasis: item.costBasis,
+      cost: Math.round(item.cost),
+      roiRecovery: item.roiRecovery,
+      formula: {
+        source: 'gemini',
+        regionalFactor: geminiResult.regionalFactor
+      }
+    }));
 
     const subtotal = lineItems.reduce((sum, item) => sum + item.cost, 0);
     const contingencyAmount = Math.round(subtotal * CONTINGENCY_PERCENTAGE);
     const finalCost = subtotal + contingencyAmount;
 
-    const costRange = {
-      min: Math.round(finalCost * 0.85),
-      max: Math.round(finalCost * 1.15)
-    };
-
-    const roiData = roiByTier[budgetTier] || roiByTier['Mid-Range'];
+    const roiData = this.getRoiData(primaryArea, budgetTier);
     const estimatedValueIncrease = Math.round(finalCost * (roiData.recovery / 100));
-    const marketContextMessage = getCostContextMessage(state, stateMultiplier);
 
     return {
       finalCost: Math.round(finalCost),
-      costRange,
+      costRange: {
+        min: Math.round(finalCost * 0.85),
+        max: Math.round(finalCost * 1.15)
+      },
       lineItems,
       contingency: {
         percentage: Math.round(CONTINGENCY_PERCENTAGE * 100),
@@ -179,10 +92,11 @@ class RenovationCostService {
       marketContext: {
         state,
         city,
-        stateMultiplier,
-        cityMultiplier,
-        message: marketContextMessage,
-        dataSource: 'Remodeling Magazine 2025 Cost vs Value Report | Tell Projects Houston 2025 | Angi 2025'
+        region: geminiResult.region || getRegionForState(state),
+        regionalFactor: geminiResult.regionalFactor,
+        message: getCostContextMessage(state, geminiResult.regionalFactor || 1.0),
+        dataSource: geminiResult.dataSource,
+        source: 'gemini'
       },
       roiEstimate: {
         estimatedValueIncrease,
@@ -194,13 +108,125 @@ class RenovationCostService {
   }
 
   /**
-   * Build itemized line items for interior areas
-   * Loops all items in the area constants and applies tier + location multipliers
+   * Fallback — calculate from constants (no Houston references, correct region label)
    */
-  static buildInteriorLineItems(renovationItems, budgetTier, cityMultiplier) {
+  static calculateFromConstants(propertyData, renovationData) {
+    const { primaryArea } = renovationData;
+
+    switch (primaryArea) {
+      case 'Exterior':
+        return this.calculateExteriorCost(propertyData, renovationData);
+      case 'Kitchen':
+        return this.calculateInteriorCost(propertyData, renovationData, KITCHEN_RENOVATION_ITEMS, KITCHEN_ROI_BY_TIER);
+      case 'Bathroom':
+        return this.calculateInteriorCost(propertyData, renovationData, BATHROOM_RENOVATION_ITEMS, BATHROOM_ROI_BY_TIER);
+      case 'Bedroom':
+        return this.calculateInteriorCost(propertyData, renovationData, BEDROOM_RENOVATION_ITEMS, BEDROOM_ROI_BY_TIER);
+      case 'Living Room':
+        return this.calculateInteriorCost(propertyData, renovationData, LIVING_ROOM_RENOVATION_ITEMS, LIVING_ROOM_ROI_BY_TIER);
+      default:
+        throw new Error(`Unknown renovation area: ${primaryArea}`);
+    }
+  }
+
+  /**
+   * Fallback exterior cost calculation
+   */
+  static calculateExteriorCost(propertyData, renovationData) {
+    const { state, city, squareFootage, lotSize } = propertyData;
+    const { budgetTier } = renovationData;
+
+    const primaryWorkByTier = {
+      'Budget-Friendly': 'Repaint only',
+      'Mid-Range': 'Update roof/siding',
+      'Premium': 'Update roof/siding',
+      'Luxury': 'Update roof/siding'
+    };
+    const focusAreaByTier = {
+      'Budget-Friendly': 'Front entrance',
+      'Mid-Range': 'Landscaping',
+      'Premium': 'All',
+      'Luxury': 'All'
+    };
+
+    const primaryWork = primaryWorkByTier[budgetTier] || 'Repaint only';
+    const focusArea = focusAreaByTier[budgetTier] || 'Front entrance';
+
+    const locationMultiplier = this.getLocationMultiplier(state, city);
+    const lineItems = this.buildExteriorLineItems(primaryWork, focusArea, budgetTier, locationMultiplier, squareFootage, lotSize);
+
+    return this.assembleResult(lineItems, propertyData, renovationData, primaryWork, EXTERIOR_ROI_BY_PROJECT[primaryWork] || EXTERIOR_ROI_BY_PROJECT['Repaint only'], locationMultiplier);
+  }
+
+  /**
+   * Fallback interior cost calculation
+   */
+  static calculateInteriorCost(propertyData, renovationData, renovationItems, roiByTier) {
+    const { state, city } = propertyData;
+    const { primaryArea, budgetTier } = renovationData;
+
+    const locationMultiplier = this.getLocationMultiplier(state, city);
+    const lineItems = this.buildInteriorLineItems(renovationItems, budgetTier, locationMultiplier);
+    const roiData = roiByTier[budgetTier] || roiByTier['Mid-Range'];
+
+    return this.assembleResult(lineItems, propertyData, renovationData, primaryArea, roiData, locationMultiplier);
+  }
+
+  /**
+   * Shared result assembly for fallback path
+   */
+  static assembleResult(lineItems, propertyData, renovationData, primaryWork, roiData, locationMultiplier) {
+    const { state, city } = propertyData;
+    const { primaryArea, budgetTier } = renovationData;
+
+    const subtotal = lineItems.reduce((sum, item) => sum + item.cost, 0);
+    const contingencyAmount = Math.round(subtotal * CONTINGENCY_PERCENTAGE);
+    const finalCost = subtotal + contingencyAmount;
+    const estimatedValueIncrease = Math.round(finalCost * (roiData.recovery / 100));
+
+    return {
+      finalCost: Math.round(finalCost),
+      costRange: {
+        min: Math.round(finalCost * 0.85),
+        max: Math.round(finalCost * 1.15)
+      },
+      lineItems,
+      contingency: {
+        percentage: Math.round(CONTINGENCY_PERCENTAGE * 100),
+        amount: contingencyAmount,
+        reason: 'Standard 12% contingency buffer for unexpected costs, permit fees, and material overruns'
+      },
+      breakdown: {
+        primaryWork,
+        tier: budgetTier,
+        location: `${city}, ${state}`,
+        subtotal: Math.round(subtotal)
+      },
+      marketContext: {
+        state,
+        city,
+        region: getRegionForState(state),
+        regionalFactor: locationMultiplier,
+        message: getCostContextMessage(state, locationMultiplier),
+        dataSource: getDataSource(state),
+        source: 'constants'
+      },
+      roiEstimate: {
+        estimatedValueIncrease,
+        recoveryPercentage: roiData.recovery,
+        roiMessage: roiData.insight,
+        source: 'NAR 2025 Remodeling Impact Report | Remodeling Magazine 2025 Cost vs Value'
+      }
+    };
+  }
+
+  /**
+   * Build interior line items — applies location multiplier only (no regional base baked in)
+   */
+  static buildInteriorLineItems(renovationItems, budgetTier, locationMultiplier) {
     return Object.entries(renovationItems).map(([itemKey, itemData]) => {
       const tierMultiplier = itemData.budgetTierMultipliers[budgetTier] || 1.0;
-      const rawCost = itemData.nationalAvgCost * itemData.houstonMultiplier * tierMultiplier * cityMultiplier;
+      const rawCost = itemData.nationalAvgCost * tierMultiplier * locationMultiplier;
 
       return {
         item: itemKey,
@@ -210,106 +236,96 @@ class RenovationCostService {
         roiRecovery: itemData.roiRecovery,
         formula: {
           nationalAvgCost: itemData.nationalAvgCost,
-          houstonMultiplier: itemData.houstonMultiplier,
-          tierMultiplier: tierMultiplier,
-          cityMultiplier: cityMultiplier
+          tierMultiplier,
+          locationMultiplier,
+          source: 'constants'
         }
       };
     });
   }
 
   /**
-   * Build itemized line items for exterior renovation
+   * Build exterior line items
    */
-  static buildExteriorLineItems(primaryWork, focusArea, budgetTier, cityMultiplier, squareFootage, lotSize) {
+  static buildExteriorLineItems(primaryWork, focusArea, budgetTier, locationMultiplier, squareFootage, lotSize) {
     const lineItems = [];
     const addedItems = new Set();
 
     const addItem = (itemKey) => {
       if (addedItems.has(itemKey)) return;
-
       const itemData = EXTERIOR_RENOVATION_ITEMS[itemKey];
       if (!itemData) return;
 
       const tierMultiplier = itemData.budgetTierMultipliers[budgetTier] || 1.0;
-      const rawCost = itemData.nationalAvgCost * itemData.houstonMultiplier * tierMultiplier * cityMultiplier;
-
-      let adjustedCost = rawCost;
+      let rawCost = itemData.nationalAvgCost * tierMultiplier * locationMultiplier;
 
       if (itemKey === 'Landscaping' && lotSize) {
-        const lotMultiplier = Math.min(Math.max(lotSize / 0.25, 0.5), 3.0);
-        adjustedCost = rawCost * lotMultiplier;
+        rawCost *= Math.min(Math.max(lotSize / 0.25, 0.5), 3.0);
       }
-
       if ((itemKey === 'Update roof/siding' || itemKey === 'Repaint only') && squareFootage) {
-        const sqftMultiplier = Math.min(Math.max(squareFootage / 2500, 0.6), 2.5);
-        adjustedCost = rawCost * sqftMultiplier;
+        rawCost *= Math.min(Math.max(squareFootage / 2500, 0.6), 2.5);
       }
 
       lineItems.push({
         item: itemKey,
         description: itemData.description,
         costBasis: itemData.costBasis,
-        cost: Math.round(adjustedCost),
+        cost: Math.round(rawCost),
         roiRecovery: itemData.roiRecovery,
         formula: {
           nationalAvgCost: itemData.nationalAvgCost,
-          houstonMultiplier: itemData.houstonMultiplier,
-          tierMultiplier: itemData.budgetTierMultipliers[budgetTier] || 1.0,
-          cityMultiplier: cityMultiplier
+          tierMultiplier,
+          locationMultiplier,
+          source: 'constants'
         }
       });
       addedItems.add(itemKey);
     };
 
     addItem(primaryWork);
-
-    if (focusArea !== primaryWork) {
-      addItem(focusArea);
-    }
-
-    if (primaryWork === 'All') {
-      return lineItems;
-    }
-
-    if (primaryWork !== 'Landscaping' && focusArea !== 'Landscaping') {
-      addItem('Landscaping');
+    if (focusArea !== primaryWork) addItem(focusArea);
+    if (primaryWork !== 'All') {
+      if (primaryWork !== 'Landscaping' && focusArea !== 'Landscaping') addItem('Landscaping');
     }
 
     return lineItems;
   }
 
-  static getStateMultiplier(state) {
+  /**
+   * Get location multiplier — city takes priority over state
+   */
+  static getLocationMultiplier(state, city) {
+    const cityMultiplier = RENOVATION_COST_MULTIPLIERS.city[city];
+    if (cityMultiplier) return cityMultiplier;
     return RENOVATION_COST_MULTIPLIERS.state[state] || 1.0;
   }
 
-  static getCityMultiplier(city) {
-    return RENOVATION_COST_MULTIPLIERS.city[city] || null;
+  /**
+   * Get ROI data for area + tier
+   */
+  static getRoiData(primaryArea, budgetTier) {
+    const roiMap = {
+      'Kitchen': KITCHEN_ROI_BY_TIER,
+      'Bathroom': BATHROOM_ROI_BY_TIER,
+      'Bedroom': BEDROOM_ROI_BY_TIER,
+      'Living Room': LIVING_ROOM_ROI_BY_TIER
+    };
+    const roiByTier = roiMap[primaryArea];
+    if (roiByTier) return roiByTier[budgetTier] || roiByTier['Mid-Range'];
+    return { recovery: 65, insight: 'Typical renovation recovers ~65% of cost in home value' };
   }
 
   /**
    * Validate inputs
    */
   static validateInputs(propertyData, renovationData) {
-    if (!propertyData.state) {
-      return { isValid: false, error: "State is required" };
-    }
-    if (!propertyData.squareFootage || propertyData.squareFootage <= 0) {
-      return { isValid: false, error: "Valid square footage is required" };
-    }
-    if (!renovationData.budgetTier) {
-      return { isValid: false, error: "Budget tier is required" };
-    }
-    if (!renovationData.primaryArea) {
-      return { isValid: false, error: "Primary area is required" };
-    }
-    if (!RENOVATION_COST_TIERS[renovationData.budgetTier]) {
-      return { isValid: false, error: "Invalid budget tier" };
-    }
+    if (!propertyData.state) return { isValid: false, error: "State is required" };
+    if (!propertyData.squareFootage || propertyData.squareFootage <= 0) return { isValid: false, error: "Valid square footage is required" };
+    if (!renovationData.budgetTier) return { isValid: false, error: "Budget tier is required" };
+    if (!renovationData.primaryArea) return { isValid: false, error: "Primary area is required" };
+    if (!RENOVATION_COST_TIERS[renovationData.budgetTier]) return { isValid: false, error: "Invalid budget tier" };
     const validAreas = ['Kitchen', 'Bathroom', 'Living Room', 'Bedroom', 'Exterior'];
-    if (!validAreas.includes(renovationData.primaryArea)) {
-      return { isValid: false, error: "Invalid renovation area" };
-    }
+    if (!validAreas.includes(renovationData.primaryArea)) return { isValid: false, error: "Invalid renovation area" };
     return { isValid: true, error: null };
   }
 }
