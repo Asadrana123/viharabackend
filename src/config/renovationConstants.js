@@ -282,7 +282,7 @@ const EXTERIOR_ROI_BY_PROJECT = {
 // ==================== REPLICATE MODEL CONFIG ====================
 const REPLICATE_CONFIG = {
   model: 'adirik/interior-design:76604baddc85b1b4616e1c6475eca080da339c8875bd4996705440484a6eac38',
-  promptStrength: 0.45,  // Increased to ensure damage repair and full transformation
+  promptStrength: 0.5,  // Increased to ensure damage repair and full transformation
   numInferenceSteps: 50,
   guidanceScale: 7.5
 };
