@@ -6,10 +6,9 @@ const getCookieOptions = () => {
   return {
     httpOnly: true,
     path: "/",
-    // Local: secure=false, sameSite='lax'
-    // Production: secure=true, sameSite='none'
     secure: isProduction,
     sameSite: isProduction ? "none" : "lax",
+    ...(isProduction && { domain: ".vihara.ai" }),
   };
 };
 
