@@ -5,6 +5,8 @@ const catchAsyncError = require("../middleware/catchAsyncError");
 const Errorhandler = require("../utils/errorhandler");
 const sendEmail = require("../utils/sendEmail");
 const { createRegistrationPendingEmail, createRegistrationApprovedEmail } = require("../utils/emailTemplates");
+const mongoose = require("mongoose");
+const validator = require("validator");
 // Submit a registration request for an auction
 exports.submitAuctionRegistration = catchAsyncError(
   async (req, res, next) => {
@@ -16,13 +18,24 @@ exports.submitAuctionRegistration = catchAsyncError(
       email,
       mobilePhone,
       address
-      // buyerInfo,
-      // buyerType,
-      // companyInfo,
-      // legalAgreements
-      // bidAmount,
-      // buyersPremium
     } = req.body;
+
+    // Validate required fields
+    if (!userId || !auctionId || !firstName || !lastName || !email || !mobilePhone) {
+      return next(new Errorhandler("Please provide all required fields: userId, auctionId, firstName, lastName, email, and mobilePhone", 400));
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return next(new Errorhandler("Invalid user ID format", 400));
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(auctionId)) {
+      return next(new Errorhandler("Invalid auction ID format", 400));
+    }
+
+    if (!validator.isEmail(email)) {
+      return next(new Errorhandler("Please provide a valid email address", 400));
+    }
 
     // Check if user exists
     const user = await User.findById(userId);
@@ -118,11 +131,22 @@ exports.getRegistrationStatus = catchAsyncError(
   async (req, res, next) => {
     const { userId, auctionId } = req.query;
 
+    if (!userId || !auctionId) {
+      return next(new Errorhandler("Please provide both userId and auctionId query parameters", 400));
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return next(new Errorhandler("Invalid user ID format", 400));
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(auctionId)) {
+      return next(new Errorhandler("Invalid auction ID format", 400));
+    }
+
     const registration = await AuctionRegistration.findOne({
       userId,
       auctionId
     });
-    console.log(registration);
     if (!registration) {
       return res.status(200).json({
         success: true,
@@ -143,13 +167,18 @@ exports.getRegistrationStatus = catchAsyncError(
 // Admin: Get all registration requests (with pagination)
 exports.getAllRegistrations = catchAsyncError(
   async (req, res, next) => {
-    const { status, page = 1, limit = 10 } = req.query;
+    const { status } = req.query;
 
     const query = {};
     if (status) {
+      if (!["pending", "approved", "rejected"].includes(status)) {
+        return next(new Errorhandler("Invalid status filter. Must be one of: pending, approved, rejected", 400));
+      }
       query.status = status;
     }
 
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 10));
     const skip = (page - 1) * limit;
 
     const registrations = await AuctionRegistration.find(query)
@@ -157,7 +186,7 @@ exports.getAllRegistrations = catchAsyncError(
       .populate('auctionId', 'street city state')
       .sort({ submittedAt: -1 })
       .skip(skip)
-      .limit(parseInt(limit));
+      .limit(limit);
 
     const total = await AuctionRegistration.countDocuments(query);
 
@@ -166,7 +195,7 @@ exports.getAllRegistrations = catchAsyncError(
       registrations,
       pagination: {
         total,
-        page: parseInt(page),
+        page,
         pages: Math.ceil(total / limit)
       }
     });
@@ -178,10 +207,19 @@ exports.getAllRegistrations = catchAsyncError(
 exports.updateRegistrationStatus = catchAsyncError(
   async (req, res, next) => {
     const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return next(new Errorhandler("Invalid registration ID format", 400));
+    }
+
     const { status } = req.body;
 
+    if (!status) {
+      return next(new Errorhandler("Please provide a status", 400));
+    }
+
     if (!["pending", "approved", "rejected"].includes(status)) {
-      return next(new Errorhandler("Invalid status", 400));
+      return next(new Errorhandler("Invalid status. Must be one of: pending, approved, rejected", 400));
     }
 
     const registration = await AuctionRegistration.findById(id);

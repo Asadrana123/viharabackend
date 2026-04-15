@@ -15,6 +15,10 @@ exports.getAutoBiddingSettings = catchAsyncError(
     const { id } = req.params; // auctionId
     const userId = req.user._id;
 
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return next(new ErrorHandler("Invalid auction ID format", 400));
+    }
+
     // Check if user is registered for this auction
     const registration = await AuctionRegistration.findOne({
       userId,
@@ -45,8 +49,20 @@ exports.saveAutoBiddingSettings = catchAsyncError(
     const userId = req.user._id;
 
     // Validate input
-    if (!auctionId || maxAmount === undefined) {
-      return next(new ErrorHandler("Missing required fields", 400));
+    if (!auctionId || maxAmount === undefined || enabled === undefined) {
+      return next(new ErrorHandler("Missing required fields: auctionId, enabled, and maxAmount are required", 400));
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(auctionId)) {
+      return next(new ErrorHandler("Invalid auction ID format", 400));
+    }
+
+    if (typeof maxAmount !== 'number' || !Number.isFinite(maxAmount) || maxAmount <= 0) {
+      return next(new ErrorHandler("maxAmount must be a positive number", 400));
+    }
+
+    if (increment !== undefined && (typeof increment !== 'number' || !Number.isFinite(increment) || increment <= 0)) {
+      return next(new ErrorHandler("increment must be a positive number", 400));
     }
 
     // Check if user is registered for this auction
@@ -184,6 +200,10 @@ exports.getAutoBiddingInfo = catchAsyncError(
     const { id } = req.params; // auctionId
     const userId = req.user._id;
 
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return next(new ErrorHandler("Invalid auction ID format", 400));
+    }
+
     // Check if user is registered for this auction
     const registration = await AuctionRegistration.findOne({
       userId,
@@ -220,6 +240,10 @@ exports.disableAutoBidding = catchAsyncError(
   async (req, res, next) => {
     const { id } = req.params; // auctionId
     const userId = req.user._id;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return next(new ErrorHandler("Invalid auction ID format", 400));
+    }
 
     // Find existing settings
     const settings = await AutoBidding.findOne({

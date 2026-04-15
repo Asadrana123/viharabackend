@@ -6,16 +6,37 @@ const sendToken = require("../utils/getToken");
 const ManualBid = require("../model/manualBiddingModel");
 const AutoBidding = require("../model/autoBiddingModel");
 const Product = require("../model/productModel");
+const mongoose = require("mongoose");
+const validator = require("validator");
 
 // Create an admin account
 exports.CreateAdmin = catchAsyncError(
-  async (req, res) => {
-    console.log(req.body);
-    const adminData = {
-      ...req.body,
+  async (req, res, next) => {
+    const { name, email, password } = req.body;
+
+    if (!name || !email || !password) {
+      return next(new Errorhandler("Please provide name, email, and password", 400));
+    }
+
+    if (!validator.isEmail(email)) {
+      return next(new Errorhandler("Please provide a valid email address", 400));
+    }
+
+    if (password.length < 6) {
+      return next(new Errorhandler("Password must be at least 6 characters", 400));
+    }
+
+    const existingAdmin = await adminModel.findOne({ email });
+    if (existingAdmin) {
+      return next(new Errorhandler("An admin with this email already exists", 409));
+    }
+
+    const newAdmin = await adminModel.create({
+      name,
+      email,
+      password,
       role: "admin"
-    };
-    const newAdmin = await adminModel.create(adminData);
+    });
     sendToken(newAdmin, 201, res);
   }
 );
@@ -44,6 +65,10 @@ exports.getAllUsers = catchAsyncError(
 // Update user role
 exports.updateUserRole = catchAsyncError(
   async (req, res, next) => {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return next(new Errorhandler("Invalid user ID format", 400));
+    }
+
     const { role } = req.body;
 
     if (!role || !["user", "admin"].includes(role)) {
@@ -71,6 +96,10 @@ exports.updateUserRole = catchAsyncError(
 // Delete user
 exports.deleteUser = catchAsyncError(
   async (req, res, next) => {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return next(new Errorhandler("Invalid user ID format", 400));
+    }
+
     const user = await userModel.findById(req.params.id);
 
     if (!user) {
@@ -92,19 +121,25 @@ exports.deleteUser = catchAsyncError(
 exports.getAuctionBids = catchAsyncError(
   async (req, res, next) => {
     const { auctionId } = req.params;
-    const { page = 1, limit = 50 } = req.query;
+
+    if (!mongoose.Types.ObjectId.isValid(auctionId)) {
+      return next(new Errorhandler("Invalid auction ID format", 400));
+    }
+
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
 
     const auction = await Product.findById(auctionId).select('productName street city state');
     if (!auction) {
       return next(new Errorhandler("Auction not found", 404));
     }
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const skip = (page - 1) * limit;
 
     const manualBids = await ManualBid.find({ auctionId })
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(parseInt(limit))
+      .limit(limit)
       .lean();
 
     const totalBids = await ManualBid.countDocuments({ auctionId });
@@ -141,8 +176,8 @@ exports.getAuctionBids = catchAsyncError(
       bids,
       pagination: {
         total: totalBids,
-        page: parseInt(page),
-        pages: Math.ceil(totalBids / parseInt(limit))
+        page,
+        pages: Math.ceil(totalBids / limit)
       }
     });
   }
