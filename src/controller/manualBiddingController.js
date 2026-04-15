@@ -15,7 +15,9 @@ exports.checkAuctionAccess = catchAsyncError(
     const { id } = req.params; // auction ID
     const userId = req.user._id;
 
-    console.log(`Checking access for user ${userId} to auction ${id}`);
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return next(new ErrorHandler("Invalid auction ID format", 400));
+    }
 
     // Get auction details
     const auction = await Product.findById(id);
@@ -162,8 +164,14 @@ exports.createManualBid = catchAsyncError(
 exports.getBidHistory = catchAsyncError(
   async (req, res, next) => {
     const { auctionId } = req.params;
-    const { limit = 50, page = 1 } = req.query;
     const userId = req.user._id;
+
+    if (!mongoose.Types.ObjectId.isValid(auctionId)) {
+      return next(new ErrorHandler("Invalid auction ID format", 400));
+    }
+
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
 
     // Check if user is registered for this auction
     const registration = await AuctionRegistration.findOne({
@@ -177,11 +185,11 @@ exports.getBidHistory = catchAsyncError(
     }
 
     // Get manual bids for this auction with pagination
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const skip = (page - 1) * limit;
     const bids = await ManualBid.find({ auctionId })
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(parseInt(limit));
+      .limit(limit);
 
     // Get total count for pagination
     const totalBids = await ManualBid.countDocuments({ auctionId });
@@ -194,9 +202,9 @@ exports.getBidHistory = catchAsyncError(
         bids: formattedBids,
         pagination: {
           total: totalBids,
-          page: parseInt(page),
-          limit: parseInt(limit),
-          pages: Math.ceil(totalBids / parseInt(limit))
+          page,
+          limit,
+          pages: Math.ceil(totalBids / limit)
         }
       }
     });
@@ -206,14 +214,17 @@ exports.getBidHistory = catchAsyncError(
 // Get bid history for current user across all auctions
 exports.getUserBidHistory = catchAsyncError(
   async (req, res, next) => {
-    const { limit = 20, page = 1 } = req.query;
     const userId = req.user._id;
+
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+
     // Get user's bids with pagination
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const skip = (page - 1) * limit;
     const bids = await ManualBid.find({ userId })
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(parseInt(limit));
+      .limit(limit);
     // Get total count for pagination
     const totalBids = await ManualBid.countDocuments({ userId });
 
@@ -225,8 +236,7 @@ exports.getUserBidHistory = catchAsyncError(
       // Determine if this is the winning bid
       const isWinningBid = auction &&
         auction.currentBidder &&
-        auction.currentBidder.toString() === userId.toString()
-      //&& auction.currentBid === bid.amount;
+        auction.currentBidder.toString() === userId.toString();
 
       return {
         bidId: bid._id,
@@ -247,9 +257,9 @@ exports.getUserBidHistory = catchAsyncError(
         bids: formattedBids,
         pagination: {
           total: totalBids,
-          page: parseInt(page),
-          limit: parseInt(limit),
-          pages: Math.ceil(totalBids / parseInt(limit))
+          page,
+          limit,
+          pages: Math.ceil(totalBids / limit)
         }
       }
     });
@@ -261,6 +271,10 @@ exports.getAuctionBiddingStatus = catchAsyncError(
   async (req, res, next) => {
     const { auctionId } = req.params;
     const userId = req.user._id;
+
+    if (!mongoose.Types.ObjectId.isValid(auctionId)) {
+      return next(new ErrorHandler("Invalid auction ID format", 400));
+    }
 
     // Check if user is registered for this auction
     const registration = await AuctionRegistration.findOne({
