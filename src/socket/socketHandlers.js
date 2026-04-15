@@ -6,7 +6,6 @@ const User = require('../model/userModel');
 const BidsManager = require('../utils/bidsManager');
 const mongoose = require('mongoose');
 
-// Store references to global state
 let activeAuctions;
 let userAuctions;
 let userSocketsMap;
@@ -14,10 +13,9 @@ let lastBroadcastTime;
 let userBidThrottle;
 let io;
 
-const BROADCAST_THROTTLE = 500; // ms between broadcasts
+const BROADCAST_THROTTLE = 500;
 const COOLDOWN = 2000;
 
-// Initialize handler with references to global state
 function initializeHandlers(ioInstance, auctionsMap, userAuctionsMap, socketsMap, broadcastMap, bidThrottleMap) {
   activeAuctions = auctionsMap;
   userAuctions = userAuctionsMap;
@@ -27,59 +25,51 @@ function initializeHandlers(ioInstance, auctionsMap, userAuctionsMap, socketsMap
   io = ioInstance;
 }
 
-// Register all event handlers for a connected socket
 function registerSocketHandlers(socket) {
-  // Join auction room
   socket.on('join-auction', async (auctionId) => {
     try {
       if (!rateLimiter.isAllowed(socket.userId, 'join-auction', auctionId)) {
         socket.emit('auction-error', 'Please wait before joining another auction');
         return;
       }
-      // Check if user is authorized to join this auction
-      const registration = await AuctionRegistration.findOne({
-        userId: socket.userId,
-        auctionId: auctionId,
-        status: 'approved'
-      });
 
-      if (!registration) {
-        socket.emit('auction-error', 'You do not have access to this auction');
-        return;
+      // Admin bypass — skip registration check
+      const isAdmin = socket.user?.role === 'admin';
+
+      if (!isAdmin) {
+        const registration = await AuctionRegistration.findOne({
+          userId: socket.userId,
+          auctionId: auctionId,
+          status: 'approved'
+        });
+
+        if (!registration) {
+          socket.emit('auction-error', 'You do not have access to this auction');
+          return;
+        }
       }
 
-      // Join the auction room
       socket.join(auctionId);
 
-      // Check if user already joined this auction with another socket
       const isFirstJoin = !userAuctions.get(socket.userId).has(auctionId);
-
-      // Track that this user joined this auction
       userAuctions.get(socket.userId).add(auctionId);
 
       console.log(`User ${socket.userId} joined auction: ${auctionId} (First join: ${isFirstJoin})`);
 
-      // Initialize auction data if not exists
       if (!activeAuctions.has(auctionId)) {
-        // Get auction details from database
         const auction = await Product.findById(auctionId);
         if (!auction) {
           socket.emit('auction-error', 'Auction not found');
           return;
         }
 
-        // Get the highest bid for this auction
         const highestBid = await BidsManager.getHighestBid(auctionId);
 
-        // Set default values
         let currentBidAmount = auction.currentBid;
         let currentBidder = null;
 
-        // If there's a highest bid, get its details
         if (highestBid) {
           currentBidAmount = highestBid.amount;
-
-          // Get bidder info
           const bidderUser = await User.findById(highestBid.userId).select('name');
           if (bidderUser) {
             currentBidder = {
@@ -89,46 +79,28 @@ function registerSocketHandlers(socket) {
           }
         }
 
-        // Get recent bids for this auction
         const recentBids = await BidsManager.getRecentBids(auctionId);
-
-        // Determine auction status
         const now = new Date();
-
-        // Handle end time properly
         let endTime;
 
-        // Handle auctionEndTime based on its format
         if (auction.auctionEndTime) {
-          // If it's a full date string
           if (typeof auction.auctionEndTime === 'string' && auction.auctionEndTime.includes('T')) {
             endTime = new Date(auction.auctionEndTime);
-          }
-          // If it's a Date object
-          else if (auction.auctionEndTime instanceof Date) {
+          } else if (auction.auctionEndTime instanceof Date) {
             endTime = auction.auctionEndTime;
-          }
-          // If it's just a time string (like "17:00")
-          else if (typeof auction.auctionEndTime === 'string') {
+          } else if (typeof auction.auctionEndTime === 'string') {
             endTime = new Date(auction.auctionEndDate);
             const timeParts = auction.auctionEndTime.split(':');
             if (timeParts.length >= 2) {
               endTime.setHours(parseInt(timeParts[0]), parseInt(timeParts[1]), 0, 0);
             }
           }
-        }
-        // Default to end date
-        else {
+        } else {
           endTime = new Date(auction.auctionEndDate);
         }
 
-        let auctionStatus = "active";
+        const auctionStatus = now > endTime ? "ended" : "active";
 
-        if (now > endTime) {
-          auctionStatus = "ended";
-        }
-
-        // Store auction data in memory
         activeAuctions.set(auctionId, {
           currentBid: currentBidAmount,
           currentBidder: currentBidder,
@@ -136,37 +108,29 @@ function registerSocketHandlers(socket) {
           recentBids: recentBids,
           endTime: endTime,
           auctionStatus: auctionStatus,
-          startBid: auction.startBid  // ← add this line
+          startBid: auction.startBid
         });
       }
 
-      // Update participants count only if this is user's first socket joining this auction
-      if (isFirstJoin) {
+      // Admins are observers — don't increment participant count
+      if (isFirstJoin && !isAdmin) {
         const auctionData = activeAuctions.get(auctionId);
         auctionData.participants += 1;
         activeAuctions.set(auctionId, auctionData);
       }
 
-      // Send current auction status to the joining user
       socket.emit('auction-status', activeAuctions.get(auctionId));
 
-      // Throttled broadcast of participant count (only if participant count changed)
-      if (isFirstJoin) {
+      if (isFirstJoin && !isAdmin) {
         const now = Date.now();
         const lastBroadcast = lastBroadcastTime.get(`participants:${auctionId}`) || 0;
-
         if (now - lastBroadcast > BROADCAST_THROTTLE) {
-          // Notify all users about updated participant count
           const auctionData = activeAuctions.get(auctionId);
-          io.to(auctionId).emit('participant-update', {
-            count: auctionData.participants
-          });
-
+          io.to(auctionId).emit('participant-update', { count: auctionData.participants });
           lastBroadcastTime.set(`participants:${auctionId}`, now);
         }
       }
 
-      // Calculate and emit minimum bid amounts
       const freshAuctionData = activeAuctions.get(auctionId);
       const bidLimits = await BidsManager.calculateMinimumBids(auctionId, freshAuctionData.currentBid || freshAuctionData.startBid);
       socket.emit('min-bid-update', bidLimits);
@@ -197,7 +161,6 @@ function registerSocketHandlers(socket) {
         return;
       }
 
-      // ADD THESE CHECKS:
       if (typeof bidAmount !== 'number' || !Number.isFinite(bidAmount)) {
         callback({ success: false, error: 'Bid amount must be a valid number' });
         return;
@@ -212,6 +175,7 @@ function registerSocketHandlers(socket) {
         callback({ success: false, error: 'Invalid auction ID' });
         return;
       }
+
       const auctionData = activeAuctions.get(auctionId);
       const auction = await Product.findById(auctionId);
       if (!auction) {
@@ -224,35 +188,21 @@ function registerSocketHandlers(socket) {
         callback({ success: false, error: 'Auction has ended' });
         return;
       }
+
       console.log(auction.currentBid, bidAmount);
       if (bidAmount <= auction.currentBid) {
         callback({ success: false, error: 'Bid must be higher than current bid' });
         return;
       }
 
-      // ✓ All within transaction
-      const newManualBid = await BidsManager.createManualBid(
-        auctionId,
-        socket.userId,
-        bidAmount,
-        session
-      );
+      const newManualBid = await BidsManager.createManualBid(auctionId, socket.userId, bidAmount, session);
+      const autoBidResult = await BidsManager.processAutoBids(auctionId, bidAmount, socket.userId, session);
 
-      const autoBidResult = await BidsManager.processAutoBids(
-        auctionId,
-        bidAmount,
-        socket.userId,
-        session
-      );
-
-      // ✓ Commit after ALL database operations
       await session.commitTransaction();
       transactionCommitted = true;
 
-      // ✓ Send acknowledgment BEFORE broadcast
       callback({ success: true, bidId: newManualBid._id, amount: bidAmount });
 
-      // ✓ NOW do socket broadcasts
       const newBid = {
         currentBid: bidAmount,
         currentBidder: { id: socket.userId, name: socket.user.name },
@@ -267,7 +217,6 @@ function registerSocketHandlers(socket) {
 
       io.to(auctionId).emit('bid-update', newBid);
 
-      // Handle auto bid broadcast
       if (autoBidResult) {
         const autoBidder = await User.findById(autoBidResult.userId).select('name');
         const autoBidUpdate = {
@@ -285,28 +234,23 @@ function registerSocketHandlers(socket) {
         io.to(auctionId).emit('bid-update', autoBidUpdate);
       }
 
-      // Extension logic (in-memory only, no DB)
-      const now = new Date();
+      const nowTime = new Date();
       const endTime = new Date(auctionData.endTime);
-      const timeLeftMs = endTime - now;
+      const timeLeftMs = endTime - nowTime;
 
       if (timeLeftMs > 0 && timeLeftMs < 5 * 60 * 1000) {
         const newEndTime = new Date(endTime.getTime() + 5 * 60 * 1000);
         auctionData.endTime = newEndTime;
         activeAuctions.set(auctionId, auctionData);
 
-        // SEPARATE transaction for extension
         await Product.findByIdAndUpdate(auctionId, {
           auctionEndTime: newEndTime,
           $inc: { auctionExtensionCount: 1 }
         });
 
-        io.to(auctionId).emit('auction-extended', {
-          endTime: newEndTime.toISOString()
-        });
+        io.to(auctionId).emit('auction-extended', { endTime: newEndTime.toISOString() });
       }
 
-      // Broadcast bid limits (calculation only)
       const bidLimits = await BidsManager.calculateMinimumBids(auctionId, auctionData.currentBid);
       io.to(auctionId).emit('min-bid-update', bidLimits);
 
@@ -321,13 +265,12 @@ function registerSocketHandlers(socket) {
     }
   });
 
-  // Handle auction timer
   socket.on('auction-timer', async (data) => {
     const now = Date.now();
     const lastBroadcast = lastBroadcastTime.get(`timer:${data.auctionId}`) || 0;
 
     if (!rateLimiter.isAllowed(socket.userId, 'auction-timer', data.auctionId)) {
-      return; // Silently ignore if rate limited
+      return;
     }
 
     if (now - lastBroadcast > BROADCAST_THROTTLE) {
@@ -354,22 +297,18 @@ function registerSocketHandlers(socket) {
               if (auction && auction.currentBid && auction.currentBidder) {
                 winningBidAmount = auction.currentBid;
                 winnerId = auction.currentBidder;
-
                 const winnerUser = await User.findById(winnerId).select('name');
                 winnerName = winnerUser ? winnerUser.name : 'Unknown';
-
                 console.log(`🏆 Winner determined: ${winnerName} (${winnerId}) with bid $${winningBidAmount}`);
               } else {
                 console.log('❌ No winner - auction ended with no bids');
               }
 
-              const updateData = {
+              await Product.findByIdAndUpdate(data.auctionId, {
                 currentBid: winningBidAmount,
                 currentBidder: winnerId,
-                status: "sold"  // This field exists in your model
-              };
-
-              await Product.findByIdAndUpdate(data.auctionId, updateData);
+                status: "sold"
+              });
 
               auctionData.auctionStatus = "ended";
               auctionData.winningBid = winningBidAmount;
@@ -382,23 +321,17 @@ function registerSocketHandlers(socket) {
                 winningBid: winningBidAmount,
                 winningBidder: winnerId,
                 winnerName: winnerName,
-                currentBidder: winnerId ? {
-                  id: winnerId,
-                  name: winnerName
-                } : null,
+                currentBidder: winnerId ? { id: winnerId, name: winnerName } : null,
                 endTime: auctionData.endTime,
                 participants: auctionData.participants || 0,
                 recentBids: auctionData.recentBids || []
               };
 
               console.log('📢 Broadcasting final results to all clients:', finalResults);
-
-              // ✅ THIS IS THE CRITICAL LINE
               io.to(data.auctionId).emit('auction-ended', finalResults);
 
             } catch (error) {
               console.error('Error finalizing auction:', error);
-
               io.to(data.auctionId).emit('auction-ended', {
                 auctionStatus: "ended",
                 hasWinner: false,
@@ -417,7 +350,6 @@ function registerSocketHandlers(socket) {
         if (newStatus !== auctionData.auctionStatus) {
           auctionData.auctionStatus = newStatus;
           activeAuctions.set(data.auctionId, auctionData);
-
           if (newStatus !== "ended") {
             io.to(data.auctionId).emit('auction-status', auctionData);
           }
@@ -426,38 +358,30 @@ function registerSocketHandlers(socket) {
     }
   });
 
-  // Handle explicit leave auction event
   socket.on('leave-auction', (auctionId) => {
     if (!rateLimiter.isAllowed(socket.userId, 'leave-auction', auctionId)) {
-      return; // Silently ignore if rate limited
+      return;
     }
     handleLeaveAuction(socket, auctionId);
   });
 
-  // Handle disconnection with cleanup
   socket.on('disconnect', () => {
     console.log(`User disconnected: ${socket.userId} (Socket ID: ${socket.id})`);
 
-    // Remove this socket from user's active sockets
     if (userSocketsMap.has(socket.userId)) {
       userSocketsMap.get(socket.userId).delete(socket.id);
 
-      // If this was the user's last socket, clean up all auctions this user was in
       if (userSocketsMap.get(socket.userId).size === 0) {
         userSocketsMap.delete(socket.userId);
 
-        // Update participant count for all auctions this user was in
         if (userAuctions.has(socket.userId)) {
           const userRooms = userAuctions.get(socket.userId);
           for (const auctionId of userRooms) {
             handleParticipantLeave(socket.userId, auctionId);
           }
-
-          // Clean up user tracking
           userAuctions.delete(socket.userId);
         }
 
-        // Clean up throttle entries (moved outside userAuctions check)
         for (const [key] of userBidThrottle.entries()) {
           if (key.startsWith(`${socket.userId}:`)) {
             userBidThrottle.delete(key);
@@ -465,46 +389,34 @@ function registerSocketHandlers(socket) {
         }
       }
     }
-  })
+  });
 }
 
-// Helper function to handle leave auction
 function handleLeaveAuction(socket, auctionId) {
   if (userAuctions.has(socket.userId) && userAuctions.get(socket.userId).has(auctionId)) {
-    // Remove this auction from the user's joined auctions
     userAuctions.get(socket.userId).delete(auctionId);
-
-    // Leave the room
     socket.leave(auctionId);
 
-    // Check if this was the user's last socket in this auction
     const userHasOtherSocketsInAuction = Array.from(io.sockets.sockets.values())
       .some(s => s.id !== socket.id && s.userId === socket.userId && s.rooms.has(auctionId));
 
-    // Only update participant count if this was the user's last socket in this auction
     if (!userHasOtherSocketsInAuction) {
       handleParticipantLeave(socket.userId, auctionId);
     }
   }
 }
 
-// Helper function to handle participant leaving
 function handleParticipantLeave(userId, auctionId) {
   const auctionData = activeAuctions.get(auctionId);
   if (auctionData) {
     auctionData.participants = Math.max(0, auctionData.participants - 1);
     activeAuctions.set(auctionId, auctionData);
 
-    // Throttled broadcast of participant update
     const now = Date.now();
     const lastBroadcast = lastBroadcastTime.get(`participants:${auctionId}`) || 0;
 
     if (now - lastBroadcast > BROADCAST_THROTTLE) {
-      // Notify remaining users
-      io.to(auctionId).emit('participant-update', {
-        count: auctionData.participants
-      });
-
+      io.to(auctionId).emit('participant-update', { count: auctionData.participants });
       lastBroadcastTime.set(`participants:${auctionId}`, now);
     }
   }

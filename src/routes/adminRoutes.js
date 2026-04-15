@@ -1,10 +1,11 @@
 const express = require("express");
 const { isAuthenticated, authorizeRoles } = require("../middleware/auth");
-const { 
-  CreateAdmin, 
+const {
+  CreateAdmin,
   updateUserRole,
   deleteUser,
-  getAllUsers
+  getAllUsers,
+  getAuctionBids
 } = require("../controller/adminController");
 const {
   getAllRegistrations,
@@ -55,6 +56,14 @@ router.put(
   isAuthenticated,
   authorizeRoles("admin"),
   updateRegistrationStatus
+);
+
+// Auction bids route
+router.get(
+  "/auction/:auctionId/bids",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  getAuctionBids
 );
 
 module.exports = router;
