@@ -7,7 +7,7 @@ class GeminiRenovationService {
       throw new Error("GEMINI_API_KEY environment variable is not set");
     }
     this.client = new GoogleGenerativeAI(apiKey);
-    this.modelName = "gemini-2.5-flash";
+    this.modelName = "gemini-2.0-flash-lite";
   }
 
   /**
