@@ -11,7 +11,6 @@ class BidsManager {
       ManualBid.findOne({ auctionId }).sort({ amount: -1, createdAt: -1 }).limit(1),
       5000
     );
-
     if (!highestManualBid) {
       return null;
     }

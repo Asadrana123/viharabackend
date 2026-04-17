@@ -67,7 +67,6 @@ function registerSocketHandlers(socket) {
 
         let currentBidAmount = auction.currentBid;
         let currentBidder = null;
-
         if (highestBid) {
           currentBidAmount = highestBid.amount;
           const bidderUser = await User.findById(highestBid.userId).select('name');
