@@ -5,12 +5,38 @@ const Errorhandler = require('../utils/errorhandler');
 
 exports.createLead = catchAsyncError(async (req, res, next) => {
   const { name, email, phone } = req.body;
-
-  if (!name || !email || !phone) {
-    return next(new Errorhandler('Name, email and phone are required', 400));
+   console.log(name,email,phone);
+  // name and phone are required
+  if (!name || !phone) {
+    return next(new Errorhandler('Name and phone number are required', 400));
   }
 
-  const lead = await LandingPageLead.create({ name, email, phone });
+  // validate email format only if provided
+  if (email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return next(new Errorhandler('Please enter a valid email address', 400));
+    }
+  }
 
-  res.status(201).json({ success: true, lead });
+  try {
+    const lead = await LandingPageLead.create({
+      name,
+      phone,
+      ...(email && { email }), // only include email if provided
+    });
+
+    res.status(201).json({ success: true, lead });
+
+  } catch (err) {
+    // MongoDB duplicate key error
+    if (err.code === 11000) {
+      const field = Object.keys(err.keyPattern)[0];
+      const message = field === 'phone'
+        ? 'This phone number is already registered'
+        : 'This email address is already registered';
+      return next(new Errorhandler(message, 409));
+    }
+    return next(err);
+  }
 });
