@@ -14,7 +14,7 @@ exports.checkAuctionAccess = catchAsyncError(
   async (req, res, next) => {
     const { id } = req.params; // auction ID
     const userId = req.user._id;
-
+    
     console.log(`Checking access for user ${userId} to auction ${id}`);
 
     // Get auction details
@@ -69,7 +69,6 @@ exports.checkAuctionAccess = catchAsyncError(
 exports.createManualBid = catchAsyncError(
   async (req, res, next) => {
     const { auctionId, amount } = req.body;
-
     if (!auctionId || !amount) {
       return next(new ErrorHandler("Missing required fields", 400));
     }

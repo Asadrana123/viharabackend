@@ -129,33 +129,33 @@ exports.saveAutoBiddingSettings = catchAsyncError(
       const session = await mongoose.startSession();
       session.startTransaction();
       let transactionCommitted = false;
-      try {
-        const isHighestBidder = auction.currentBidder &&
-          auction.currentBidder.toString() === userId.toString();
+      // try {
+      //   const isHighestBidder = auction.currentBidder &&
+      //     auction.currentBidder.toString() === userId.toString();
 
-        if (!isHighestBidder) {
-          const initialBidAmount = currentBid + (increment || 1000);
+      //   if (!isHighestBidder) {
+      //     const initialBidAmount = currentBid + (increment || 1000);
 
-          if (initialBidAmount <= maxAmount) {
-            const bidCreated = await BidsManager.createManualBid(
-              auctionId,
-              userId,
-              initialBidAmount,
-              session
-            );
-          }
-        }
+      //     if (initialBidAmount <= maxAmount) {
+      //       const bidCreated = await BidsManager.createManualBid(
+      //         auctionId,
+      //         userId,
+      //         initialBidAmount,
+      //         session
+      //       );
+      //     }
+      //   }
 
-        await session.commitTransaction();
-        transactionCommitted = true;
-      } catch (error) {
-        if (!transactionCommitted) {
-          await session.abortTransaction();
-        }
-        console.error('Error placing initial auto bid:', error);
-      } finally {
-        session.endSession();
-      }
+      //   await session.commitTransaction();
+      //   transactionCommitted = true;
+      // } catch (error) {
+      //   if (!transactionCommitted) {
+      //     await session.abortTransaction();
+      //   }
+      //   console.error('Error placing initial auto bid:', error);
+      // } finally {
+      //   session.endSession();
+      // }
 
       // ✅ NEW: Broadcast min-bid-update if 2+ auto-bids enabled
       const enabledAutoBidCount = await AutoBidding.countDocuments({
