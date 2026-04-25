@@ -171,12 +171,14 @@ class BidsManager {
       5000
     );
 
-    const auction = await withTimeout(Product.findById(auctionId).select('minIncrement'), 5000);
+    const auction = await withTimeout(Product.findById(auctionId).select('minIncrement startBid'), 5000);
     const increment = auction?.minIncrement || 1000;
-
-    let minManualBid = currentBid + increment;
+    const hasBids = await withTimeout(
+      ManualBid.exists({ auctionId }),
+      5000
+    );
+    let minManualBid = hasBids ? currentBid + increment : auction?.startBid;
     let minAutoBidAmount = 0;
-
     // If there are auto-bids, calculate minimum manual bid
     if (autoBidSettings.length > 0) {
       // Highest auto-bid
