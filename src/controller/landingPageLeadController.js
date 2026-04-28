@@ -3,6 +3,27 @@ const LandingPageLead = require('../model/landingPageLeadModel');
 const catchAsyncError = require('../middleware/catchAsyncError');
 const Errorhandler = require('../utils/errorhandler');
 
+exports.getAllLeads = catchAsyncError(async (req, res, next) => {
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 20;
+  const skip = (page - 1) * limit;
+
+  const [leads, total] = await Promise.all([
+    LandingPageLead.find().sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+    LandingPageLead.countDocuments()
+  ]);
+
+  res.status(200).json({
+    success: true,
+    leads,
+    pagination: {
+      total,
+      page,
+      pages: Math.ceil(total / limit)
+    }
+  });
+});
+
 exports.createLead = catchAsyncError(async (req, res, next) => {
   const { name, email, phone } = req.body;
    console.log(name,email,phone);
