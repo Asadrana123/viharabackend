@@ -50,7 +50,7 @@ exports.createLead = catchAsyncError(async (req, res, next) => {
 
     // Notify senior — fire and forget, don't block the response
     sendEmail(
-      'asadlukman246@gmail.com',
+      'vin@vihara.ai',
       'Vihara',
       'New Lead Registered on Vihara',
       getNewLeadEmail(name, phone, email, new Date(lead.createdAt).toLocaleString())
