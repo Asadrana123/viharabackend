@@ -2,6 +2,8 @@
 const LandingPageLead = require('../model/landingPageLeadModel');
 const catchAsyncError = require('../middleware/catchAsyncError');
 const Errorhandler = require('../utils/errorhandler');
+const sendEmail = require('../utils/sendEmail');
+const getNewLeadEmail = require('../htmlPages/newLeadEmail');
 
 exports.getAllLeads = catchAsyncError(async (req, res, next) => {
   const page = parseInt(req.query.page) || 1;
@@ -26,13 +28,12 @@ exports.getAllLeads = catchAsyncError(async (req, res, next) => {
 
 exports.createLead = catchAsyncError(async (req, res, next) => {
   const { name, email, phone } = req.body;
-   console.log(name,email,phone);
-  // name and phone are required
+  console.log(name, email, phone);
+
   if (!name || !phone) {
     return next(new Errorhandler('Name and phone number are required', 400));
   }
 
-  // validate email format only if provided
   if (email) {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
@@ -44,13 +45,20 @@ exports.createLead = catchAsyncError(async (req, res, next) => {
     const lead = await LandingPageLead.create({
       name,
       phone,
-      ...(email && { email }), // only include email if provided
+      ...(email && { email }),
     });
 
+    // Notify senior — fire and forget, don't block the response
+    sendEmail(
+      'asadlukman246@gmail.com',
+      'Vihara',
+      'New Lead Registered on Vihara',
+      getNewLeadEmail(name, phone, email, new Date(lead.createdAt).toLocaleString())
+    );
+    
     res.status(201).json({ success: true, lead });
 
   } catch (err) {
-    // MongoDB duplicate key error
     if (err.code === 11000) {
       const field = Object.keys(err.keyPattern)[0];
       const message = field === 'phone'
