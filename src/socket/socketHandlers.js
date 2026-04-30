@@ -257,7 +257,15 @@ function registerSocketHandlers(socket) {
       if (!transactionCommitted) {
         await session.abortTransaction();
       }
-      callback({ success: false, error: error.message });
+      const isWriteConflict =
+        error.code === 112 ||
+        (error.errorLabels && error.errorLabels.includes('TransientTransactionError'));
+
+      const friendlyMessage = isWriteConflict
+        ? 'Another user bid was just placed. Please try again.'
+        : error.message;
+
+      callback({ success: false, error: friendlyMessage });
       console.error('Bid error:', error);
     } finally {
       await session.endSession();
