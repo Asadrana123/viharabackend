@@ -80,24 +80,8 @@ function registerSocketHandlers(socket) {
 
         const recentBids = await BidsManager.getRecentBids(auctionId);
         const now = new Date();
-        let endTime;
-
-        if (auction.auctionEndTime) {
-          if (typeof auction.auctionEndTime === 'string' && auction.auctionEndTime.includes('T')) {
-            endTime = new Date(auction.auctionEndTime);
-          } else if (auction.auctionEndTime instanceof Date) {
-            endTime = auction.auctionEndTime;
-          } else if (typeof auction.auctionEndTime === 'string') {
-            endTime = new Date(auction.auctionEndDate);
-            const timeParts = auction.auctionEndTime.split(':');
-            if (timeParts.length >= 2) {
-              endTime.setHours(parseInt(timeParts[0]), parseInt(timeParts[1]), 0, 0);
-            }
-          }
-        } else {
-          endTime = new Date(auction.auctionEndDate);
-        }
-
+        // Read from DB field auctionEndDate, store in memory as endTime (frontend expects endTime)
+        const endTime = new Date(auction.auctionEndDate);
         const auctionStatus = now > endTime ? "ended" : "active";
 
         activeAuctions.set(auctionId, {
@@ -105,7 +89,7 @@ function registerSocketHandlers(socket) {
           currentBidder: currentBidder,
           participants: 0,
           recentBids: recentBids,
-          endTime: endTime,
+          endTime: endTime,             // frontend expects endTime
           auctionStatus: auctionStatus,
           startBid: auction.startBid
         });
@@ -234,16 +218,16 @@ function registerSocketHandlers(socket) {
       }
 
       const nowTime = new Date();
-      const endTime = new Date(auctionData.endTime);
+      const endTime = new Date(auctionData.endTime);  // read from memory as endTime
       const timeLeftMs = endTime - nowTime;
 
       if (timeLeftMs > 0 && timeLeftMs < 5 * 60 * 1000) {
         const newEndTime = new Date(endTime.getTime() + 5 * 60 * 1000);
-        auctionData.endTime = newEndTime;
+        auctionData.endTime = newEndTime;              // keep in memory as endTime
         activeAuctions.set(auctionId, auctionData);
 
         await Product.findByIdAndUpdate(auctionId, {
-          auctionEndTime: newEndTime,
+          auctionEndDate: newEndTime,                  // save to DB as auctionEndDate
           $inc: { auctionExtensionCount: 1 }
         });
 
@@ -329,7 +313,7 @@ function registerSocketHandlers(socket) {
                 winningBidder: winnerId,
                 winnerName: winnerName,
                 currentBidder: winnerId ? { id: winnerId, name: winnerName } : null,
-                endTime: auctionData.endTime,
+                endTime: auctionData.endTime,          // frontend expects endTime
                 participants: auctionData.participants || 0,
                 recentBids: auctionData.recentBids || []
               };
@@ -346,7 +330,7 @@ function registerSocketHandlers(socket) {
                 winningBidder: null,
                 winnerName: null,
                 currentBidder: null,
-                endTime: auctionData.endTime
+                endTime: auctionData.endTime           // frontend expects endTime
               });
             }
           }
