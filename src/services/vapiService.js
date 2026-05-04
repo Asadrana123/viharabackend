@@ -26,7 +26,7 @@ const parsePhones = (phonesStr) => {
     .filter((p) => p.length > 6)
     .map((p) => {
       const digits = p.replace(/\D/g, "");
-      if (digits.length === 10) return `+1${digits}`;
+      if (digits.length === 10) return `+91${digits}`;
       if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
       return null;
     })
