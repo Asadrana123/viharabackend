@@ -27,7 +27,8 @@ const renovationRoutes = require("./routes/renovationRoutes");
 const investmentCalculatorRoutes = require("./routes/investmentCalculatorRoutes");
 const coreLogicRoutes = require("./routes/coreLogicRoutes");
 const errorMiddleware = require("./middleware/error");
-const landingPageLeadRoutes=require("./routes/landingPageLeadRoutes")
+const landingPageLeadRoutes = require("./routes/landingPageLeadRoutes")
+const vapiRoutes = require("./routes/vapiRoutes");
 // Middleware
 app.use(cookieParser());
 app.use(cors(expressCorsOptions));
@@ -67,7 +68,8 @@ app.use("/api", unsubscribeRoutes);
 app.use("/api/property-renovation", renovationRoutes);
 app.use('/api/v1/investment-calculator', investmentCalculatorRoutes);
 app.use("/api/v1/corelogic", coreLogicRoutes);
-app.use("/api/landing/",landingPageLeadRoutes)
+app.use("/api/landing/", landingPageLeadRoutes)
+app.use("/api/vapi", vapiRoutes);
 // Error Middleware
 app.use(errorMiddleware);
 

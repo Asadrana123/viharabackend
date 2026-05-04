@@ -4,6 +4,8 @@ const AutoBidding = require('../model/autoBiddingModel');
 const Product = require('../model/productModel');
 const User = require('../model/userModel');
 const withTimeout = require('./queryTimeoutWrapper');
+const sendEmail = require('./sendEmail');
+const { getOutbidEmailTemplate } = require('./emailTemplates');
 class BidsManager {
   // Get the highest bid for an auction from manual bids
   static async getHighestBid(auctionId) {
@@ -57,12 +59,17 @@ class BidsManager {
     return formattedBids;
   }
 
-  // Create a new manual bid
+ // Create a new manual bid
   static async createManualBid(auctionId, userId, amount, session = null) {
     const auction = await withTimeout(Product.findById(auctionId, null, { session }), 5000);
     if (amount <= auction.currentBid) {
       throw new Error('Bid is no longer valid');
     }
+
+    // Capture previous highest bidder BEFORE overwriting
+    const previousBidderId = auction.currentBidder;
+    const previousBid = auction.currentBid;
+
     // Create the new bid
     const newBid = new ManualBid({
       auctionId,
@@ -82,6 +89,41 @@ class BidsManager {
       },
       { session }
     ), 5000);
+
+    // Send outbid email if there was a previous bidder and it's a different user
+    if (
+      previousBidderId &&
+      previousBidderId.toString() !== userId.toString()
+    ) {
+      // Fire-and-forget — don't await, don't block the bid flow
+      User.findById(previousBidderId).select('name email').lean()
+        .then(outbidUser => {
+          console.log(outbidUser);
+          if (!outbidUser || !outbidUser.email) return;
+
+          const propertyAddress = [auction.street, auction.city, auction.state]
+            .filter(Boolean)
+            .join(', ');
+
+          const auctionLink = `${process.env.FRONTEND_URL}/auction-bid/${auctionId}`;
+
+          const html = getOutbidEmailTemplate({
+            name: outbidUser.name || 'Bidder',
+            propertyAddress,
+            yourBid: previousBid,
+            newBid: amount,
+            auctionLink
+          });
+
+          sendEmail(
+            outbidUser.email,
+            outbidUser.name,
+            `You've been outbid on ${propertyAddress}`,
+            html
+          );
+        })
+        .catch(err => console.error('Outbid email error:', err));
+    }
 
     return newBid;
   }

@@ -3,9 +3,11 @@ const AuctionRegistration = require('../model/auctionRegistration');
 const rateLimiter = require('../middleware/socketRateLimitMiddleware');
 const Product = require('../model/productModel');
 const User = require('../model/userModel');
+const ManualBid = require('../model/manualBiddingModel');
 const BidsManager = require('../utils/bidsManager');
 const mongoose = require('mongoose');
-
+const sendEmail = require('../utils/sendEmail');
+const { getOutbidEmailTemplate, getAuctionWonEmailTemplate, getAuctionLostEmailTemplate } = require('../utils/emailTemplates');
 let activeAuctions;
 let userAuctions;
 let userSocketsMap;
@@ -300,7 +302,51 @@ function registerSocketHandlers(socket) {
                 currentBidder: winnerId,
                 status: "sold"
               });
+              // Send result emails to all bidders (fire-and-forget)
+              if (winnerId) {
+                ManualBid.distinct('userId', { auctionId: data.auctionId })
+                  .then(async (bidderIds) => {
+                    if (!bidderIds || bidderIds.length === 0) return;
 
+                    const bidders = await User.find({ _id: { $in: bidderIds } })
+                      .select('name email')
+                      .lean();
+
+                    const propertyAddress = [auction.street, auction.city, auction.state]
+                      .filter(Boolean)
+                      .join(', ');
+
+                    const auctionLink = `${process.env.FRONTEND_URL}/auction-bid/${auctionId}`;
+
+                    for (const bidder of bidders) {
+                      if (!bidder.email) continue;
+
+                      const isWinner = bidder._id.toString() === winnerId.toString();
+
+                      const html = isWinner
+                        ? getAuctionWonEmailTemplate({
+                          name: bidder.name || 'Bidder',
+                          propertyAddress,
+                          winningBid: winningBidAmount,
+                          auctionLink
+                        })
+                        : getAuctionLostEmailTemplate({
+                          name: bidder.name || 'Bidder',
+                          propertyAddress,
+                          winningBid: winningBidAmount,
+                          winnerName,
+                          auctionLink
+                        });
+
+                      const subject = isWinner
+                        ? `🎉 Congratulations! You won the auction for ${propertyAddress}`
+                        : `Auction ended for ${propertyAddress}`;
+
+                      sendEmail(bidder.email, bidder.name, subject, html);
+                    }
+                  })
+                  .catch(err => console.error('Auction result emails error:', err));
+              }
               auctionData.auctionStatus = "ended";
               auctionData.winningBid = winningBidAmount;
               auctionData.winningBidder = winnerId;
