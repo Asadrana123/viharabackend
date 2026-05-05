@@ -138,50 +138,6 @@ const createWelcomeEmail = (newUser, clientUrl) => {
                     </tr>
                     <tr>
                         <td bgcolor="#4a5568" style="padding: 30px 40px; background-color: #4a5568;" class="mobile-padding">
-                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-                                <tr>
-                                    <td class="footer-logo-section" style="padding-bottom: 20px;">
-                                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-                                            <tr>
-                                                <td align="left" valign="middle" style="width: 50%;">
-                                                    <img src="https://res.cloudinary.com/my1chatapp/image/upload/v1758125574/XmHome_yfauw5.png" 
-                                                         alt="Equal Housing" 
-                                                         width="40" 
-                                                         height="40"
-                                                         style="display: block; border: 0; outline: none; text-decoration: none;">
-                                                </td>
-                                                <td align="right" valign="middle" style="width: 50%;">
-                                                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 0;">
-                                                        <tr class="social-icons-row">
-                                                            <td style="padding: 0 5px;">
-                                                                <a href="https://www.facebook.com/profile.php?id=61556248807076" style="display: inline-block; text-decoration: none;">
-                                                                    <img src="https://res.cloudinary.com/my1chatapp/image/upload/v1758121455/FbIcon_edgimr.png" alt="Facebook" width="40" height="40" style="display: block; border: 0; outline: none; text-decoration: none; border-radius: 50%;">
-                                                                </a>
-                                                            </td>
-                                                            <td style="padding: 0 5px;">
-                                                                <a href="https://www.instagram.com/vihara.ai/" style="display: inline-block; text-decoration: none;">
-                                                                    <img src="https://res.cloudinary.com/my1chatapp/image/upload/v1768646620/insta-icon_yab7b2.webp" alt="Instagram" width="40" height="40" style="display: block; border: 0; outline: none; text-decoration: none; border-radius: 50%;">
-                                                                </a>
-                                                            </td>
-                                                            <td style="padding: 0 5px;">
-                                                                <a href="https://www.linkedin.com/company/vihara-ai/" style="display: inline-block; text-decoration: none;">
-                                                                    <img src="https://res.cloudinary.com/my1chatapp/image/upload/v1758121456/LdIcon_rvaqhn.png" alt="LinkedIn" width="40" height="40" style="display: block; border: 0; outline: none; text-decoration: none; border-radius: 50%;">
-                                                                </a>
-                                                            </td>
-                                                        </tr>
-                                                    </table>
-                                                </td>
-                                            </tr>
-                                        </table>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td style="padding-bottom: 15px;">
-                                        <p style="margin: 0; font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif; font-size: 12px; line-height: 1.4; color: #d1d5db; text-align: center;" class="mobile-text">
-                                            RL Auction Inc.<br>1335 S Milpitas Blvd, Milpitas, California 95035.
-                                        </p>
-                                    </td>
-                                </tr>
                                 <tr>
                                     <td align="center">
                                         <p style="margin: 0; font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif; font-size: 12px; line-height: 1.4; color: #d1d5db; text-align: center;" class="mobile-text">
