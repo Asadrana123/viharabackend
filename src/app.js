@@ -29,6 +29,7 @@ const coreLogicRoutes = require("./routes/coreLogicRoutes");
 const errorMiddleware = require("./middleware/error");
 const landingPageLeadRoutes = require("./routes/landingPageLeadRoutes")
 const vapiRoutes = require("./routes/vapiRoutes");
+const sellerRoutes = require("./routes/sellerRoutes");
 // Middleware
 app.use(cookieParser());
 app.use(cors(expressCorsOptions));
@@ -70,6 +71,7 @@ app.use('/api/v1/investment-calculator', investmentCalculatorRoutes);
 app.use("/api/v1/corelogic", coreLogicRoutes);
 app.use("/api/landing/", landingPageLeadRoutes)
 app.use("/api/vapi", vapiRoutes);
+app.use("/api/v1/seller", sellerRoutes);
 // Error Middleware
 app.use(errorMiddleware);
 

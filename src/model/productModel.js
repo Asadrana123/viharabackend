@@ -177,6 +177,11 @@ const productSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
+    sellerId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "userModel",
+        default: null
+    },
 
     // ============================================
     // COORDINATES (For Map Display - CoreLogic Integration)

@@ -48,7 +48,7 @@ async function sendLastHourReminderEmails(auctionId) {
       .filter(Boolean)
       .join(', ');
 
-    const auctionLink = `https://vihara.ai/auction-bid/${auctionId}`;
+    const auctionLink = `${process.env.FRONTEND_URL}/auction-bid/${auctionId}`;
 
     // Fetch all approved registrants for this auction
     const registrations = await AuctionRegistration.find({
@@ -123,7 +123,13 @@ function registerSocketHandlers(socket) {
       // Admin bypass — skip registration check
       const isAdmin = socket.user?.role === 'admin';
 
-      if (!isAdmin) {
+      // Seller bypass — skip registration check if this auction belongs to them
+      const isSeller = !isAdmin && await Product.exists({
+        _id: auctionId,
+        sellerId: socket.userId
+      });
+
+      if (!isAdmin && !isSeller) {
         const registration = await AuctionRegistration.findOne({
           userId: socket.userId,
           auctionId: auctionId,
@@ -187,8 +193,8 @@ function registerSocketHandlers(socket) {
         }
       }
 
-      // Admins are observers — don't increment participant count
-      if (isFirstJoin && !isAdmin) {
+      // Admins and sellers are observers — don't increment participant count
+      if (isFirstJoin && !isAdmin && !isSeller) {
         const auctionData = activeAuctions.get(auctionId);
         auctionData.participants += 1;
         activeAuctions.set(auctionId, auctionData);
@@ -196,7 +202,7 @@ function registerSocketHandlers(socket) {
 
       socket.emit('auction-status', activeAuctions.get(auctionId));
 
-      if (isFirstJoin && !isAdmin) {
+      if (isFirstJoin && !isAdmin && !isSeller) {
         const now = Date.now();
         const lastBroadcast = lastBroadcastTime.get(`participants:${auctionId}`) || 0;
         if (now - lastBroadcast > BROADCAST_THROTTLE) {
@@ -406,7 +412,7 @@ function registerSocketHandlers(socket) {
                       .filter(Boolean)
                       .join(', ');
 
-                    const auctionLink = `https://vihara.ai/auction-bid/${data.auctionId}`;
+                    const auctionLink = `${process.env.FRONTEND_URL}/auction-bid/${data.auctionId}`;
 
                     for (const bidder of bidders) {
                       if (!bidder.email) continue;
