@@ -150,65 +150,6 @@ const createPasswordResetEmail = (userName, resetUrl) => {
                         <td bgcolor="#ffffff" style="padding: 30px 40px; background-color: #ffffff; text-align: center;" class="mobile-padding mobile-center">
                             <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                                 <tr>
-                                    <td align="center" style="padding-bottom: 20px;">
-                                        <p style="margin: 0; font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif; font-size: 18px; font-weight: bold; text-align: center;" class="dark-mode-text">
-                                            <span style="color: #4A90E2;">BEYOND</span> 
-                                            <span style="color: #7CB342;">THE BID.</span>
-                                        </p>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td align="center" style="padding-bottom: 20px;">
-                                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 0 auto;">
-                                            <tr>
-                                                <td style="padding: 0 8px;">
-                                                    <a href="#" style="display: inline-block; text-decoration: none;">
-                                                        <img src="https://res.cloudinary.com/my1chatapp/image/upload/v1758121455/FbIcon_edgimr.png" alt="Facebook" width="32" height="32" style="display: block; border: 0; border-radius: 50%; outline: none; text-decoration: none;">
-                                                    </a>
-                                                </td>
-                                                <td style="padding: 0 8px;">
-                                                    <a href="#" style="display: inline-block; text-decoration: none;">
-                                                        <img src="https://res.cloudinary.com/my1chatapp/image/upload/v1758121456/GlIcon_grsi7k.png" alt="Google+" width="32" height="32" style="display: block; border: 0; border-radius: 50%; outline: none; text-decoration: none;">
-                                                    </a>
-                                                </td>
-                                                <td style="padding: 0 8px;">
-                                                    <a href="#" style="display: inline-block; text-decoration: none;">
-                                                        <img src="https://res.cloudinary.com/my1chatapp/image/upload/v1758121456/LdIcon_rvaqhn.png" alt="LinkedIn" width="32" height="32" style="display: block; border: 0; border-radius: 50%; outline: none; text-decoration: none;">
-                                                    </a>
-                                                </td>
-                                                <td style="padding: 0 8px;">
-                                                    <a href="#" style="display: inline-block; text-decoration: none;">
-                                                        <img src="https://res.cloudinary.com/my1chatapp/image/upload/v1758121458/TrIcon_c7qoyb.png" alt="Twitter" width="32" height="32" style="display: block; border: 0; border-radius: 50%; outline: none; text-decoration: none;">
-                                                    </a>
-                                                </td>
-                                                <td style="padding: 0 8px;">
-                                                    <a href="#" style="display: inline-block; text-decoration: none;">
-                                                        <img src="https://res.cloudinary.com/my1chatapp/image/upload/v1758121465/YtIcon_zyidvg.png" alt="YouTube" width="32" height="32" style="display: block; border: 0; border-radius: 50%; outline: none; text-decoration: none;">
-                                                    </a>
-                                                </td>
-                                            </tr>
-                                        </table>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td align="center" style="padding-bottom: 20px;">
-                                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 0 auto;">
-                                            <tr>
-                                                <td style="padding: 0 5px;">
-                                                    <a href="#" style="display: inline-block; text-decoration: none;">
-                                                        <img src="https://res.cloudinary.com/my1chatapp/image/upload/v1758121238/PlayStore_dnjfli.png" alt="Get it on Google Play" width="110" height="40" style="display: block; border: 0; outline: none; text-decoration: none;">
-                                                    </a>
-                                                </td>
-                                                <td style="padding: 0 5px;">
-                                                    <a href="#" style="display: inline-block; text-decoration: none;">
-                                                        <img src="https://res.cloudinary.com/my1chatapp/image/upload/v1758120827/AppStore_msm0jt.png" alt="Download on the App Store" width="110" height="40" style="display: block; border: 0; outline: none; text-decoration: none;">
-                                                    </a>
-                                                </td>
-                                            </tr>
-                                        </table>
-                                    </td>
-                                </tr>
-                                <tr>
                                     <td align="center" style="padding-bottom: 15px;">
                                         <p style="margin: 0; font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif; font-size: 12px; color: #666666; text-align: center; line-height: 1.4;" class="mobile-text">
                                             <a href="#" style="color: #666666; text-decoration: none; margin: 0 5px;">Licensing & Disclosures</a> |
@@ -220,7 +161,7 @@ const createPasswordResetEmail = (userName, resetUrl) => {
                                 <tr>
                                     <td align="center" style="padding-bottom: 5px;">
                                         <p style="margin: 0; font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif; font-size: 12px; color: #666666; text-align: center; line-height: 1.4;" class="mobile-text">
-                                            Inc. 1335 S Milpitas Blvd Milpitas, California 95035
+                                           1335 S Milpitas Blvd Milpitas, California 95035
                                         </p>
                                     </td>
                                 </tr>
