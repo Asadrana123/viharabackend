@@ -77,7 +77,7 @@ const sendEbookEmail = async (email, name) => {
               <li>Tips for renovation and maximizing ROI</li>
             </ul>
             <p>If you have any questions after reviewing the material, feel free to contact our team.</p>
-            <p><a href="${process.env.CLIENT_URL}/resources/distressed-properties-guide.pdf" class="button">Download Your E-Book</a></p>
+            <p><a href="${process.env.FRONTEND_URL}/resources/distressed-properties-guide.pdf" class="button">Download Your E-Book</a></p>
             <p>Happy investing!</p>
             <p>The Vihara Team</p>
           </div>

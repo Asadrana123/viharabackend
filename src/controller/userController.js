@@ -42,7 +42,7 @@ exports.CreateUser = catchAsyncError(
     });
 
     // Create welcome email
-    const welcomeEmailHtml = createWelcomeEmail(newUser, process.env.CLIENT_URL);
+    const welcomeEmailHtml = createWelcomeEmail(newUser, process.env.FRONTEND_URL);
 
     try {
       // Send welcome email

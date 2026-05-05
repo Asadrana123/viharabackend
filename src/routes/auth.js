@@ -78,7 +78,7 @@ router.get("/logout", (req, res) => {
       return next(err);
     }
     // After logout, redirect the user to the client application URL
-    res.redirect(process.env.CLIENT_URL);
+    res.redirect(process.env.FRONTEND_URL);
   });
 });
 
