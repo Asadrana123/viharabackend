@@ -7,7 +7,11 @@ const ManualBid = require('../model/manualBiddingModel');
 const BidsManager = require('../utils/bidsManager');
 const mongoose = require('mongoose');
 const sendEmail = require('../utils/sendEmail');
-const { getOutbidEmailTemplate, getAuctionWonEmailTemplate, getAuctionLostEmailTemplate } = require('../utils/emailTemplates');
+const getOutbidEmailTemplate = require('../htmlPages/outbidEmail');
+const getAuctionWonEmailTemplate = require('../htmlPages/auctionWonEmail');
+const getAuctionLostEmailTemplate = require('../htmlPages/auctionLostEmail');
+const getLastHourReminderEmailTemplate = require('../htmlPages/lastHourReminderEmail');
+
 let activeAuctions;
 let userAuctions;
 let userSocketsMap;
@@ -18,6 +22,9 @@ let io;
 const BROADCAST_THROTTLE = 500;
 const COOLDOWN = 2000;
 
+// Track scheduled reminder timeouts so we can cancel/reschedule on date change
+const reminderTimeouts = new Map(); // auctionId -> timeoutId
+
 function initializeHandlers(ioInstance, auctionsMap, userAuctionsMap, socketsMap, broadcastMap, bidThrottleMap) {
   activeAuctions = auctionsMap;
   userAuctions = userAuctionsMap;
@@ -26,6 +33,84 @@ function initializeHandlers(ioInstance, auctionsMap, userAuctionsMap, socketsMap
   userBidThrottle = bidThrottleMap;
   io = ioInstance;
 }
+
+// ─── Last-Hour Reminder ───────────────────────────────────────────────────────
+
+async function sendLastHourReminderEmails(auctionId) {
+  try {
+    const auction = await Product.findById(auctionId).lean();
+    if (!auction) return;
+
+    // Re-check: if auction is already over by the time this fires, skip
+    if (new Date() >= new Date(auction.auctionEndDate)) return;
+
+    const propertyAddress = [auction.street, auction.city, auction.state]
+      .filter(Boolean)
+      .join(', ');
+
+    const auctionLink = `${process.env.FRONTEND_URL}/auction-bid/${auctionId}`;
+
+    // Fetch all approved registrants for this auction
+    const registrations = await AuctionRegistration.find({
+      auctionId,
+      status: 'approved'
+    }).select('userId').lean();
+
+    if (!registrations.length) return;
+
+    const userIds = registrations.map(r => r.userId);
+    const users = await User.find({ _id: { $in: userIds } })
+      .select('name email')
+      .lean();
+
+    for (const user of users) {
+      if (!user.email) continue;
+
+      const html = getLastHourReminderEmailTemplate({
+        name: user.name || 'Bidder',
+        propertyAddress,
+        currentBid: auction.currentBid,
+        auctionLink,
+        endTime: auction.auctionEndDate
+      });
+
+      sendEmail(
+        user.email,
+        user.name,
+        `⏰ 1 Hour Left to Bid on ${propertyAddress}`,
+        html
+      );
+    }
+
+    console.log(`Last-hour reminder sent for auction ${auctionId} to ${users.length} bidder(s)`);
+  } catch (err) {
+    console.error(`Last-hour reminder error for auction ${auctionId}:`, err);
+  }
+}
+
+function scheduleLastHourReminder(auctionId, endTime) {
+  // Cancel any existing scheduled reminder for this auction
+  if (reminderTimeouts.has(auctionId)) {
+    clearTimeout(reminderTimeouts.get(auctionId));
+    reminderTimeouts.delete(auctionId);
+  }
+
+  const ONE_HOUR_MS = 60 * 60 * 1000;
+  const msUntilReminder = new Date(endTime).getTime() - Date.now() - ONE_HOUR_MS;
+
+  // Only schedule if the reminder time is in the future
+  if (msUntilReminder <= 0) return;
+
+  const timeoutId = setTimeout(() => {
+    reminderTimeouts.delete(auctionId);
+    sendLastHourReminderEmails(auctionId);
+  }, msUntilReminder);
+
+  reminderTimeouts.set(auctionId, timeoutId);
+  console.log(`Last-hour reminder scheduled for auction ${auctionId} in ${Math.round(msUntilReminder / 60000)} min`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 function registerSocketHandlers(socket) {
   socket.on('join-auction', async (auctionId) => {
@@ -95,6 +180,11 @@ function registerSocketHandlers(socket) {
           auctionStatus: auctionStatus,
           startBid: auction.startBid
         });
+
+        // Schedule last-hour reminder when auction is first loaded into memory
+        if (auctionStatus === 'active') {
+          scheduleLastHourReminder(auctionId, endTime);
+        }
       }
 
       // Admins are observers — don't increment participant count
@@ -316,7 +406,7 @@ function registerSocketHandlers(socket) {
                       .filter(Boolean)
                       .join(', ');
 
-                    const auctionLink = `${process.env.FRONTEND_URL}/auction-bid/${auctionId}`;
+                    const auctionLink = `${process.env.FRONTEND_URL}/auction-bid/${data.auctionId}`;
 
                     for (const bidder of bidders) {
                       if (!bidder.email) continue;
@@ -414,8 +504,11 @@ function registerSocketHandlers(socket) {
     if (auctionData) {
       if (auctionEndDate) {
         auctionData.endTime = new Date(auctionEndDate);
+        activeAuctions.set(auctionId, auctionData);
+
+        // Reschedule last-hour reminder with the new end time
+        scheduleLastHourReminder(auctionId, auctionData.endTime);
       }
-      activeAuctions.set(auctionId, auctionData);
     }
 
     // Broadcast updated dates to all room participants

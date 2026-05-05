@@ -4,7 +4,8 @@ const User = require("../model/userModel");
 const catchAsyncError = require("../middleware/catchAsyncError");
 const Errorhandler = require("../utils/errorhandler");
 const sendEmail = require("../utils/sendEmail");
-const { createRegistrationPendingEmail, createRegistrationApprovedEmail } = require("../utils/emailTemplates");
+const createRegistrationPendingEmail=require('../htmlPages/registrationPendingEmail');
+const createRegistrationApprovedEmail=require('../htmlPages/registrationApprovedEmail');
 // Submit a registration request for an auction
 exports.submitAuctionRegistration = catchAsyncError(
   async (req, res, next) => {

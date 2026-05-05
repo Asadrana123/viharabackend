@@ -5,7 +5,7 @@ const Product = require('../model/productModel');
 const User = require('../model/userModel');
 const withTimeout = require('./queryTimeoutWrapper');
 const sendEmail = require('./sendEmail');
-const { getOutbidEmailTemplate } = require('./emailTemplates');
+const getOutbidEmailTemplate=require('../htmlPages/outbidEmail')
 class BidsManager {
   // Get the highest bid for an auction from manual bids
   static async getHighestBid(auctionId) {
