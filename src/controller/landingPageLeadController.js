@@ -18,17 +18,12 @@ exports.getAllLeads = catchAsyncError(async (req, res, next) => {
   res.status(200).json({
     success: true,
     leads,
-    pagination: {
-      total,
-      page,
-      pages: Math.ceil(total / limit)
-    }
+    pagination: { total, page, pages: Math.ceil(total / limit) }
   });
 });
 
 exports.createLead = catchAsyncError(async (req, res, next) => {
-  const { name, email, phone } = req.body;
-  console.log(name, email, phone);
+  const { name, email, phone, utm_source, utm_medium, utm_campaign, utm_content } = req.body;
 
   if (!name || !phone) {
     return next(new Errorhandler('Name and phone number are required', 400));
@@ -46,16 +41,19 @@ exports.createLead = catchAsyncError(async (req, res, next) => {
       name,
       phone,
       ...(email && { email }),
+      utm_source: utm_source || null,
+      utm_medium: utm_medium || null,
+      utm_campaign: utm_campaign || null,
+      utm_content: utm_content || null,
     });
 
-    // Notify senior — fire and forget, don't block the response
     sendEmail(
       'vin@vihara.ai',
       'Vihara',
       'New Lead Registered on Vihara',
       getNewLeadEmail(name, phone, email, new Date(lead.createdAt).toLocaleString())
     );
-    
+
     res.status(201).json({ success: true, lead });
 
   } catch (err) {

@@ -11,9 +11,9 @@ const landingPageLeadSchema = new mongoose.Schema(
     email: {
       type: String,
       trim: true,
-      unique:true,
+      unique: true,
       lowercase: true,
-      sparse: true, // allows multiple docs with no email (null/undefined)
+      sparse: true,
       match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Please enter a valid email address'],
     },
     phone: {
@@ -22,11 +22,14 @@ const landingPageLeadSchema = new mongoose.Schema(
       trim: true,
       unique: true,
     },
+    utm_source: { type: String, trim: true, default: null },
+    utm_medium: { type: String, trim: true, default: null },
+    utm_campaign: { type: String, trim: true, default: null },
+    utm_content: { type: String, trim: true, default: null },
   },
   { timestamps: true }
 );
 
-// Unique email only when provided
 landingPageLeadSchema.index({ email: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model('LandingPageLead', landingPageLeadSchema);
