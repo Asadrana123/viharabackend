@@ -25,7 +25,7 @@ const createRegistrationApprovedEmail = (userName, propertyAddress, propertyCity
                 <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                     <tr>
                         <td align="center" style="padding-bottom: 25px;">
-                            <a href="${process.env.FRONTEND_URL}/auction-bid/${propertyId}" style="display: inline-block; background-color: #0384FB; color: white; padding: 15px 40px; text-decoration: none; border-radius: 4px; font-weight: bold;">Start Bidding Now</a>
+                            <a href="https://vihara.ai/auction-bid/${propertyId}" style="display: inline-block; background-color: #0384FB; color: white; padding: 15px 40px; text-decoration: none; border-radius: 4px; font-weight: bold;">Start Bidding Now</a>
                         </td>
                     </tr>
                 </table>

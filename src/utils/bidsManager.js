@@ -105,7 +105,7 @@ class BidsManager {
             .filter(Boolean)
             .join(', ');
 
-          const auctionLink = `${process.env.FRONTEND_URL}/auction-bid/${auctionId}`;
+          const auctionLink = `https://vihara.ai/auction-bid/${auctionId}`;
 
           const html = getOutbidEmailTemplate({
             name: outbidUser.name || 'Bidder',

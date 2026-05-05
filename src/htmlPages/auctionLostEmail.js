@@ -60,7 +60,7 @@ const getAuctionLostEmailTemplate = ({ name, propertyAddress, winningBid, winner
       </div>
       <p>There are more great properties available. Don't give up!</p>
       <div class="cta-wrapper">
-        <a href="${process.env.FRONTEND_URL}/auctions" class="cta-button">Browse More Auctions</a>
+        <a href="https://vihara.ai/auctions" class="cta-button">Browse More Auctions</a>
       </div>
     </div>
     <div class="footer">

@@ -42,7 +42,7 @@ exports.CreateUser = catchAsyncError(
     });
 
     // Create welcome email
-    const welcomeEmailHtml = createWelcomeEmail(newUser, process.env.FRONTEND_URL);
+    const welcomeEmailHtml = createWelcomeEmail(newUser, 'https://vihara.ai');
 
     try {
       // Send welcome email

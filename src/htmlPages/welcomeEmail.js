@@ -105,7 +105,7 @@ const createWelcomeEmail = (newUser, clientUrl) => {
                                         <table role="presentation" cellspacing="0" cellpadding="0" border="0">
                                             <tr>
                                                 <td align="center" bgcolor="#0384FB" style="border-radius: 4px; background-color: #0384FB;">
-                                                    <a href="${clientUrl}" 
+                                                    <a href="https://vihara.ai" 
                                                        style="display: inline-block; padding: 15px 40px; font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif; font-size: 16px; font-weight: bold; color: #ffffff; text-decoration: none; border-radius: 4px; -webkit-text-size-adjust: none; mso-padding-alt: 0; box-sizing: border-box;" 
                                                        class="mobile-button">
                                                         <!--[if mso]><i style="letter-spacing: 40px; mso-font-width: -100%; mso-text-raise: 20pt;">&nbsp;</i><![endif]-->

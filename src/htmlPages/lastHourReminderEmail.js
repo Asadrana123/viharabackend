@@ -86,7 +86,7 @@ function getLastHourReminderEmailTemplate({ name, propertyAddress, currentBid, a
 
               <p style="margin:28px 0 0;color:#888888;font-size:13px;text-align:center;line-height:1.6;">
                 If you have any questions, reply to this email or visit
-                <a href="${process.env.FRONTEND_URL || 'https://vihara.ai'}" style="color:#e85d04;">vihara.ai</a>.
+                <a href="https://vihara.ai" style="color:#e85d04;">vihara.ai</a>.
               </p>
             </td>
           </tr>

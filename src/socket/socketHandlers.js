@@ -48,7 +48,7 @@ async function sendLastHourReminderEmails(auctionId) {
       .filter(Boolean)
       .join(', ');
 
-    const auctionLink = `${process.env.FRONTEND_URL}/auction-bid/${auctionId}`;
+    const auctionLink = `https://vihara.ai/auction-bid/${auctionId}`;
 
     // Fetch all approved registrants for this auction
     const registrations = await AuctionRegistration.find({
@@ -406,7 +406,7 @@ function registerSocketHandlers(socket) {
                       .filter(Boolean)
                       .join(', ');
 
-                    const auctionLink = `${process.env.FRONTEND_URL}/auction-bid/${data.auctionId}`;
+                    const auctionLink = `https://vihara.ai/auction-bid/${data.auctionId}`;
 
                     for (const bidder of bidders) {
                       if (!bidder.email) continue;
