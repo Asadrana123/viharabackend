@@ -137,7 +137,7 @@ const createWelcomeEmail = (newUser, clientUrl) => {
                         </td>
                     </tr>
                     <tr>
-                        <td bgcolor="#4a5568" style="padding: 30px 40px; background-color: #4a5568;" class="mobile-padding">
+                        <td  class="mobile-padding">
                                 <tr>
                                     <td align="center">
                                         <p style="margin: 0; font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif; font-size: 12px; line-height: 1.4; color: #d1d5db; text-align: center;" class="mobile-text">
