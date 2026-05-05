@@ -224,7 +224,7 @@ function registerSocketHandlers(socket) {
       const timeLeftMs = endTime - nowTime;
 
       if (timeLeftMs > 0 && timeLeftMs < 5 * 60 * 1000) {
-        const newEndTime = new Date(endTime.getTime() + 5 * 60 * 1000);
+        const newEndTime = new Date(endTime.getTime() + 15 * 60 * 1000);
         auctionData.endTime = newEndTime;              // keep in memory as endTime
         activeAuctions.set(auctionId, auctionData);
 
@@ -400,6 +400,30 @@ function registerSocketHandlers(socket) {
       return;
     }
     handleLeaveAuction(socket, auctionId);
+  });
+
+  // Admin: update auction dates in memory when dates change via REST API
+  // This is also useful if admin is connected via socket and wants real-time ack
+  socket.on('admin-sync-auction-dates', (data) => {
+    if (socket.user?.role !== 'admin') return;
+
+    const { auctionId, auctionStartDate, auctionEndDate } = data;
+    if (!auctionId) return;
+
+    const auctionData = activeAuctions.get(auctionId);
+    if (auctionData) {
+      if (auctionEndDate) {
+        auctionData.endTime = new Date(auctionEndDate);
+      }
+      activeAuctions.set(auctionId, auctionData);
+    }
+
+    // Broadcast updated dates to all room participants
+    io.to(auctionId).emit('auction-dates-updated', {
+      auctionStartDate: auctionStartDate ? new Date(auctionStartDate) : undefined,
+      auctionEndDate: auctionEndDate ? new Date(auctionEndDate) : undefined,
+      endTime: auctionEndDate ? new Date(auctionEndDate) : undefined
+    });
   });
 
   socket.on('disconnect', () => {

@@ -5,7 +5,9 @@ const {
   updateUserRole,
   deleteUser,
   getAllUsers,
-  getAuctionBids
+  getAuctionBids,
+  updateAuctionDates,
+  updateAuctionStatus
 } = require("../controller/adminController");
 const {
   getAllRegistrations,
@@ -65,5 +67,18 @@ router.get(
   authorizeRoles("admin"),
   getAuctionBids
 );
+
+
+router.put('/auction/:auctionId/dates',
+  isAuthenticated,
+  authorizeRoles("admin"),
+  updateAuctionDates
+);
+
+router.put('/auction/:auctionId/status',
+  isAuthenticated,
+  authorizeRoles("admin"),
+  updateAuctionStatus);
+
 
 module.exports = router;
