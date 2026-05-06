@@ -16,13 +16,13 @@ exports.submitAuctionRegistration = catchAsyncError(
       lastName,
       email,
       mobilePhone,
-      address
-      // buyerInfo,
-      // buyerType,
-      // companyInfo,
-      // legalAgreements
-      // bidAmount,
-      // buyersPremium
+      address,
+      buyerInfo,
+      buyerType,
+      companyInfo,
+      legalAgreements,
+      bidAmount,
+      buyersPremium
     } = req.body;
 
     // Check if user exists
@@ -60,9 +60,9 @@ exports.submitAuctionRegistration = catchAsyncError(
       existingRegistration.email = email;
       existingRegistration.mobilePhone = mobilePhone;
       existingRegistration.address = address || null;
-      // existingRegistration.buyerType = buyerType;
-      // existingRegistration.companyInfo = companyInfo;
-      // existingRegistration.legalAgreements = legalAgreements;
+      existingRegistration.buyerType = buyerType;
+      existingRegistration.companyInfo = companyInfo;
+      existingRegistration.legalAgreements = legalAgreements;
       existingRegistration.status = "approved";
       existingRegistration.updatedAt = Date.now();
 
@@ -85,11 +85,11 @@ exports.submitAuctionRegistration = catchAsyncError(
       email: email,
       mobilePhone: mobilePhone,
       address: address || null,
-      // buyerType,
-      // companyInfo,
-      // legalAgreements,
-      // bidAmount,
-      // buyersPremium
+      buyerType,
+      companyInfo,
+      legalAgreements,
+      bidAmount,
+      buyersPremium
     });
 
     // Send pending approval email
