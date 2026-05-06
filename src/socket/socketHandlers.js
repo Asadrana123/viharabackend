@@ -438,7 +438,7 @@ function registerSocketHandlers(socket) {
                         ? `🎉 Congratulations! You won the auction for ${propertyAddress}`
                         : `Auction ended for ${propertyAddress}`;
 
-                      sendEmail(bidder.email, bidder.name, subject, html);
+                      // sendEmail(bidder.email, bidder.name, subject, html);
                     }
                   })
                   .catch(err => console.error('Auction result emails error:', err));
