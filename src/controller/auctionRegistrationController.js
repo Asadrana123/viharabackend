@@ -6,6 +6,7 @@ const Errorhandler = require("../utils/errorhandler");
 const sendEmail = require("../utils/sendEmail");
 const createRegistrationPendingEmail=require('../htmlPages/registrationPendingEmail');
 const createRegistrationApprovedEmail=require('../htmlPages/registrationApprovedEmail');
+const getAdminRegistrationNotificationEmail = require('../htmlPages/adminRegistrationNotificationEmail');
 // Submit a registration request for an auction
 exports.submitAuctionRegistration = catchAsyncError(
   async (req, res, next) => {
@@ -92,7 +93,7 @@ exports.submitAuctionRegistration = catchAsyncError(
       buyersPremium
     });
 
-    // Send pending approval email
+    // Send pending approval email to user
     try {
       const emailContent = createRegistrationPendingEmail(
         user.name,
@@ -103,6 +104,22 @@ exports.submitAuctionRegistration = catchAsyncError(
       sendEmail(user.email, user.name, "Auction Registration Received", emailContent);
     } catch (error) {
       console.error("Error sending registration pending email:", error);
+    }
+
+    // Notify admin about new registration (fire-and-forget)
+    try {
+      const propertyAddress = [auction.street, auction.city, auction.state].filter(Boolean).join(', ');
+      const adminHtml = getAdminRegistrationNotificationEmail({
+        userName: user.name,
+        userEmail: user.email,
+        phone: mobilePhone,
+        buyerType,
+        propertyAddress,
+        auctionId
+      });
+      sendEmail('vin@vihara.ai', 'Vihara Admin', `New Registration: ${propertyAddress}`, adminHtml);
+    } catch (error) {
+      console.error("Error sending admin registration notification:", error);
     }
 
     res.status(201).json({

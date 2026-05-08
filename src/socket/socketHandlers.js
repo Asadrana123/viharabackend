@@ -11,6 +11,7 @@ const getOutbidEmailTemplate = require('../htmlPages/outbidEmail');
 const getAuctionWonEmailTemplate = require('../htmlPages/auctionWonEmail');
 const getAuctionLostEmailTemplate = require('../htmlPages/auctionLostEmail');
 const getLastHourReminderEmailTemplate = require('../htmlPages/lastHourReminderEmail');
+const getAdminBidNotificationEmail = require('../htmlPages/adminBidNotificationEmail');
 
 let activeAuctions;
 let userAuctions;
@@ -48,7 +49,7 @@ async function sendLastHourReminderEmails(auctionId) {
       .filter(Boolean)
       .join(', ');
 
-    const auctionLink = `${process.env.FRONTEND_URL}/auction-bid/${auctionId}`;
+    const auctionLink = `https://vihara.ai/auction-bid/${auctionId}`;
 
     // Fetch all approved registrants for this auction
     const registrations = await AuctionRegistration.find({
@@ -108,6 +109,50 @@ function scheduleLastHourReminder(auctionId, endTime) {
 
   reminderTimeouts.set(auctionId, timeoutId);
   console.log(`Last-hour reminder scheduled for auction ${auctionId} in ${Math.round(msUntilReminder / 60000)} min`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─── Admin Helper: Broadcast active users list to all admins in a room ──────────
+
+function broadcastActiveUsersToAdmin(auctionId) {
+  const auctionData = activeAuctions.get(auctionId);
+  if (!auctionData) return;
+
+  const usersList = Array.from(auctionData.activeUsers.entries()).map(([id, info]) => ({
+    userId: id,
+    name: info.name
+  }));
+
+  // Emit only to admin sockets that are in this auction room
+  const roomSockets = io.sockets.adapter.rooms.get(auctionId);
+  if (!roomSockets) return;
+
+  for (const socketId of roomSockets) {
+    const s = io.sockets.sockets.get(socketId);
+    if (s && s.user?.role === 'admin') {
+      s.emit('active-users-update', { auctionId, users: usersList });
+    }
+  }
+}
+
+// ─── Admin Helper: Notify vin@vihara.ai on new bid ───────────────────────────
+
+function notifyAdminOnBid({ auctionId, bidderName, bidAmount, auctionData }) {
+  try {
+    const formattedAmount = `$${Number(bidAmount).toLocaleString('en-US')}`;
+    const subject = `New Bid Placed — ${formattedAmount}`;
+    const html = getAdminBidNotificationEmail({
+      bidderName,
+      bidAmount,
+      auctionId,
+      currentBid: auctionData?.currentBid || bidAmount,
+      participants: auctionData?.participants
+    });
+    sendEmail('vin@vihara.ai', 'Vihara Admin', subject, html);
+  } catch (err) {
+    console.error('Admin bid notification error:', err);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -184,7 +229,8 @@ function registerSocketHandlers(socket) {
           recentBids: recentBids,
           endTime: endTime,             // frontend expects endTime
           auctionStatus: auctionStatus,
-          startBid: auction.startBid
+          startBid: auction.startBid,
+          activeUsers: new Map()        // userId -> { name }
         });
 
         // Schedule last-hour reminder when auction is first loaded into memory
@@ -197,6 +243,7 @@ function registerSocketHandlers(socket) {
       if (isFirstJoin && !isAdmin && !isSeller) {
         const auctionData = activeAuctions.get(auctionId);
         auctionData.participants += 1;
+        auctionData.activeUsers.set(socket.userId, { name: socket.user?.name || 'Unknown' });
         activeAuctions.set(auctionId, auctionData);
       }
 
@@ -210,6 +257,19 @@ function registerSocketHandlers(socket) {
           io.to(auctionId).emit('participant-update', { count: auctionData.participants });
           lastBroadcastTime.set(`participants:${auctionId}`, now);
         }
+
+        // Emit updated active users list to all admins in this auction room
+        broadcastActiveUsersToAdmin(auctionId);
+      }
+
+      // If admin just joined, send them the current active users list immediately
+      if (isAdmin) {
+        const auctionData = activeAuctions.get(auctionId);
+        const usersList = Array.from(auctionData.activeUsers.entries()).map(([id, info]) => ({
+          userId: id,
+          name: info.name
+        }));
+        socket.emit('active-users-update', { auctionId, users: usersList });
       }
 
       const freshAuctionData = activeAuctions.get(auctionId);
@@ -297,6 +357,14 @@ function registerSocketHandlers(socket) {
       activeAuctions.set(auctionId, auctionData);
 
       io.to(auctionId).emit('bid-update', newBid);
+
+      // Notify admin about new bid (fire-and-forget)
+      notifyAdminOnBid({
+        auctionId,
+        bidderName: socket.user?.name || 'Unknown',
+        bidAmount: bidAmount,
+        auctionData
+      });
 
       if (autoBidResult) {
         const autoBidder = await User.findById(autoBidResult.userId).select('name');
@@ -570,6 +638,7 @@ function handleParticipantLeave(userId, auctionId) {
   const auctionData = activeAuctions.get(auctionId);
   if (auctionData) {
     auctionData.participants = Math.max(0, auctionData.participants - 1);
+    auctionData.activeUsers.delete(userId);
     activeAuctions.set(auctionId, auctionData);
 
     const now = Date.now();
@@ -579,6 +648,9 @@ function handleParticipantLeave(userId, auctionId) {
       io.to(auctionId).emit('participant-update', { count: auctionData.participants });
       lastBroadcastTime.set(`participants:${auctionId}`, now);
     }
+
+    // Notify admins about updated active users list
+    broadcastActiveUsersToAdmin(auctionId);
   }
 }
 const syncAuctionEndTime = (auctionId, auctionEndDate) => {
