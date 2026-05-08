@@ -49,7 +49,7 @@ async function sendLastHourReminderEmails(auctionId) {
       .filter(Boolean)
       .join(', ');
 
-    const auctionLink = `https://vihara.ai/auction-bid/${auctionId}`;
+    const auctionLink = `${process.env.FRONTEND_URL}/auction-bid/${auctionId}`;
 
     // Fetch all approved registrants for this auction
     const registrations = await AuctionRegistration.find({
@@ -115,18 +115,30 @@ function scheduleLastHourReminder(auctionId, endTime) {
 
 // ─── Admin Helper: Broadcast active users list to all admins in a room ──────────
 
+function getActiveUsersFromRoom(auctionId) {
+  const roomSockets = io.sockets.adapter.rooms.get(auctionId);
+  if (!roomSockets) return [];
+ 
+  const seen = new Set();
+  const usersList = [];
+
+  for (const socketId of roomSockets) {
+    const s = io.sockets.sockets.get(socketId);
+    if (!s) continue;
+   // if (s.user?.role === 'admin' || s.user?.role === 'seller') continue;
+    if (seen.has(s.userId)) continue; // deduplicate multi-tab users
+    seen.add(s.userId);
+    usersList.push({ userId: s.userId, name: s.user?.name || 'Unknown' });
+  }
+
+  return usersList;
+}
+
 function broadcastActiveUsersToAdmin(auctionId) {
-  const auctionData = activeAuctions.get(auctionId);
-  if (!auctionData) return;
-
-  const usersList = Array.from(auctionData.activeUsers.entries()).map(([id, info]) => ({
-    userId: id,
-    name: info.name
-  }));
-
-  // Emit only to admin sockets that are in this auction room
   const roomSockets = io.sockets.adapter.rooms.get(auctionId);
   if (!roomSockets) return;
+
+  const usersList = getActiveUsersFromRoom(auctionId);
 
   for (const socketId of roomSockets) {
     const s = io.sockets.sockets.get(socketId);
@@ -237,6 +249,17 @@ function registerSocketHandlers(socket) {
         if (auctionStatus === 'active') {
           scheduleLastHourReminder(auctionId, endTime);
         }
+
+        // Pre-populate activeUsers from any sockets already in this room
+        const existingRoom = io.sockets.adapter.rooms.get(auctionId);
+        if (existingRoom) {
+          for (const socketId of existingRoom) {
+            const s = io.sockets.sockets.get(socketId);
+            if (s && s.user?.role !== 'admin' && s.user?.role !== 'seller') {
+              activeAuctions.get(auctionId).activeUsers.set(s.userId, { name: s.user?.name || 'Unknown' });
+            }
+          }
+        }
       }
 
       // Admins and sellers are observers — don't increment participant count
@@ -264,11 +287,7 @@ function registerSocketHandlers(socket) {
 
       // If admin just joined, send them the current active users list immediately
       if (isAdmin) {
-        const auctionData = activeAuctions.get(auctionId);
-        const usersList = Array.from(auctionData.activeUsers.entries()).map(([id, info]) => ({
-          userId: id,
-          name: info.name
-        }));
+        const usersList = getActiveUsersFromRoom(auctionId);
         socket.emit('active-users-update', { auctionId, users: usersList });
       }
 
