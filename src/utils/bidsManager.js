@@ -249,7 +249,6 @@ class BidsManager {
   static async formatBidsWithUserInfo(bids) {
     // Extract unique user IDs
     const userIds = [...new Set(bids.map(bid => bid.userId))];
-
     // Fetch all users in ONE query
     const users = await withTimeout(
       User.find({ _id: { $in: userIds } }).select('_id name').lean(),

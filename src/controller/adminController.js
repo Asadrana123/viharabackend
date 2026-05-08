@@ -7,6 +7,8 @@ const ManualBid = require("../model/manualBiddingModel");
 const AutoBidding = require("../model/autoBiddingModel");
 const Product = require("../model/productModel");
 const mongoose = require('mongoose');
+const { syncAuctionEndTime } = require('../socket/socketHandlers');
+const io = require('../socket/getIoInstance').getIoInstance();
 // Create an admin account
 exports.CreateAdmin = catchAsyncError(
   async (req, res) => {
@@ -199,7 +201,6 @@ exports.updateAuctionDates = catchAsyncError(
     );
 
     // Emit socket event to update all connected clients in real time
-    const io = require('../socket/getIoInstance').getIoInstance();
     if (io) {
       // Update in-memory activeAuctions map via socket broadcast
       io.to(auctionId).emit('auction-dates-updated', {
@@ -246,9 +247,8 @@ exports.updateAuctionStatus = catchAsyncError(
     if (!updatedAuction) {
       return next(new Errorhandler("Auction not found", 404));
     }
-
-    // Broadcast status change to all connected clients in real time
-    const io = require('../socket/getIoInstance').getIoInstance();
+    // Sync in-memory auction map so new joiners get fresh endTime immediately
+    syncAuctionEndTime(auctionId, updates.auctionEndDate);
     if (io) {
       io.to(auctionId).emit('auction-status-changed', { status });
     }

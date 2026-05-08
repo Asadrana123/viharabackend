@@ -1,5 +1,5 @@
 // htmlPages/lastHourReminderEmail.js
-
+const {formattedTime}=require('../utils/formateData');
 /**
  * @param {Object} params
  * @param {string} params.name - Bidder's name
@@ -13,13 +13,7 @@ function getLastHourReminderEmailTemplate({ name, propertyAddress, currentBid, a
     ? `$${Number(currentBid).toLocaleString('en-US')}`
     : 'No bids yet';
 
-  const formattedEndTime = endTime
-    ? new Date(endTime).toLocaleString('en-US', {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-        timeZone: 'America/Chicago'
-      })
-    : '';
+  const formattedEndTime = formattedTime(endTime);
 
   return `
 <!DOCTYPE html>
@@ -67,7 +61,7 @@ function getLastHourReminderEmailTemplate({ name, propertyAddress, currentBid, a
                   <td style="padding:20px 24px;">
                     <p style="margin:0 0 8px;color:#888888;font-size:12px;text-transform:uppercase;letter-spacing:1px;">Current Highest Bid</p>
                     <p style="margin:0 0 16px;color:#1a1a2e;font-size:28px;font-weight:bold;">${formattedBid}</p>
-                    ${formattedEndTime ? `<p style="margin:0;color:#888888;font-size:13px;">Auction ends: <strong style="color:#555;">${formattedEndTime} CT</strong></p>` : ''}
+                    ${formattedEndTime ? `<p style="margin:0;color:#888888;font-size:13px;">Auction ends: <strong style="color:#555;">${formattedEndTime} PST</strong></p>` : ''}
                   </td>
                 </tr>
               </table>

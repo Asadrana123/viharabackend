@@ -435,7 +435,7 @@ function registerSocketHandlers(socket) {
                         });
 
                       const subject = isWinner
-                        ? `🎉 Congratulations! You won the auction for ${propertyAddress}`
+                        ? `🎉 You were the highest bidder for ${propertyAddress}`
                         : `Auction ended for ${propertyAddress}`;
 
                       // sendEmail(bidder.email, bidder.name, subject, html);
@@ -581,8 +581,17 @@ function handleParticipantLeave(userId, auctionId) {
     }
   }
 }
-
+const syncAuctionEndTime = (auctionId, auctionEndDate) => {
+  const auctionData = activeAuctions.get(auctionId);
+  if (!auctionData) return; // not in memory yet — next join will fetch fresh from DB
+  if (auctionEndDate) {
+    auctionData.endTime = new Date(auctionEndDate);
+    activeAuctions.set(auctionId, auctionData);
+    scheduleLastHourReminder(auctionId, auctionData.endTime);
+  }
+};
 module.exports = {
   initializeHandlers,
-  registerSocketHandlers
+  registerSocketHandlers,
+  syncAuctionEndTime
 };
