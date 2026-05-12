@@ -125,7 +125,7 @@ function getActiveUsersFromRoom(auctionId) {
   for (const socketId of roomSockets) {
     const s = io.sockets.sockets.get(socketId);
     if (!s) continue;
-   // if (s.user?.role === 'admin' || s.user?.role === 'seller') continue;
+   if (s.user?.role === 'admin' || s.user?.role === 'seller') continue;
     if (seen.has(s.userId)) continue; // deduplicate multi-tab users
     seen.add(s.userId);
     usersList.push({ userId: s.userId, name: s.user?.name || 'Unknown' });

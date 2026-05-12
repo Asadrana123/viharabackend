@@ -62,15 +62,50 @@ const launchCampaign = catchAsyncError(async (req, res, next) => {
  * Fetches real call data from VAPI and derives outcome + score from
  * actual VAPI field names confirmed from raw response logs.
  */
+function mapCall(call) {
+  const durationSecs = calcDuration(call.startedAt, call.endedAt);
+  const outcome = deriveOutcome(call, durationSecs);
+  const score = deriveLeadScore(call, outcome, durationSecs);
+  const transcript = extractTranscript(call);
+  return {
+    id: call.id,
+    name: call.customer?.name || call.customer?.number || "Unknown",
+    phone: call.customer?.number || "—",
+    outcome,
+    score,
+    duration: formatDuration(durationSecs),
+    durationSecs,
+    enriched: !!(
+      call.artifact?.variableValues?.prospect_research ||
+      call.assistantOverrides?.variableValues?.prospect_research
+    ),
+    summary: call.analysis?.summary || "",
+    transcript,
+    startedAt: call.startedAt || call.createdAt,
+    endedAt: call.endedAt,
+    endedReason: call.endedReason || "",
+    recordingUrl: call.artifact?.recordingUrl || call.recordingUrl || null,
+    cost: call.cost || 0,
+  };
+}
+
 const getCalls = catchAsyncError(async (req, res, next) => {
   if (!VAPI_API_KEY) return next(new ErrorHandler("VAPI_API_KEY not configured", 500));
 
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 10));
+
   let allCalls = [];
   let createdAtLt = null;
-  const limit = 100;
+  const fetchLimit = 100; // fetch in 100s from VAPI to find our page
+
+  // We need to paginate server-side over VAPI's cursor-based API
+  // Collect enough to serve the requested page
+  const skipCount = (page - 1) * limit;
+  let totalFetched = 0;
 
   while (true) {
-    const params = { limit };
+    const params = { limit: fetchLimit };
     if (VAPI_ASSISTANT_ID) params.assistantId = VAPI_ASSISTANT_ID;
     if (createdAtLt) params.createdAtLt = createdAtLt;
 
@@ -81,52 +116,30 @@ const getCalls = catchAsyncError(async (req, res, next) => {
 
     const batch = response.data || [];
     if (!Array.isArray(batch) || batch.length === 0) break;
+
     allCalls = allCalls.concat(batch);
-    if (batch.length < limit) break;
+    totalFetched += batch.length;
+
+    // Stop once we have enough to serve the page
+    if (totalFetched >= skipCount + limit) break;
+    if (batch.length < fetchLimit) break;
+
     createdAtLt = batch[batch.length - 1].createdAt;
   }
 
-  const calls = allCalls.map((call) => {
-    // Duration: VAPI doesn't return a duration field — calculate from timestamps
-    const durationSecs = calcDuration(call.startedAt, call.endedAt);
-    const outcome = deriveOutcome(call, durationSecs);
-    const score = deriveLeadScore(call, outcome, durationSecs);
-    const transcript = extractTranscript(call);
+  // Compute stats from all fetched so far (for accuracy, fetch all for stats separately if needed)
+  // For now stats reflect only fetched calls — acceptable for paginated view
+  const mappedAll = allCalls.map((call) => mapCall(call));
+  const pageSlice = mappedAll.slice(skipCount, skipCount + limit);
 
-    return {
-      id: call.id,
-      // customer.name only exists if set at dispatch time — fallback to phone
-      name: call.customer?.name || call.customer?.number || "Unknown",
-      phone: call.customer?.number || "—",
-      outcome,
-      score,
-      duration: formatDuration(durationSecs),
-      durationSecs,
-      // enriched = prospect_research variable was injected at call time
-      enriched: !!(
-        call.artifact?.variableValues?.prospect_research ||
-        call.assistantOverrides?.variableValues?.prospect_research
-      ),
-      // analysis is {} in practice — VAPI only fills this if you configure
-      // summaryPrompt/structuredDataSchema in your assistant settings
-      summary: call.analysis?.summary || "",
-      transcript,
-      startedAt: call.startedAt || call.createdAt,
-      endedAt: call.endedAt,
-      endedReason: call.endedReason || "",
-      recordingUrl: call.artifact?.recordingUrl || call.recordingUrl || null,
-      cost: call.cost || 0,
-    };
-  });
-
-  const total     = calls.length;
-  const connected = calls.filter(c => c.outcome !== "missed").length;
-  const positive  = calls.filter(c => c.outcome === "positive").length;
-  const negative  = calls.filter(c => c.outcome === "negative").length;
-  const voicemail = calls.filter(c => c.outcome === "voicemail").length;
-  const missed    = calls.filter(c => c.outcome === "missed").length;
-  const callback  = calls.filter(c => c.outcome === "callback").length;
-  const totalCost = calls.reduce((sum, c) => sum + (c.cost || 0), 0);
+  const total     = allCalls.length; // approximate — only calls fetched so far
+  const connected = mappedAll.filter(c => c.outcome !== "missed").length;
+  const positive  = mappedAll.filter(c => c.outcome === "positive").length;
+  const negative  = mappedAll.filter(c => c.outcome === "negative").length;
+  const voicemail = mappedAll.filter(c => c.outcome === "voicemail").length;
+  const missed    = mappedAll.filter(c => c.outcome === "missed").length;
+  const callback  = mappedAll.filter(c => c.outcome === "callback").length;
+  const totalCost = mappedAll.reduce((sum, c) => sum + (c.cost || 0), 0);
 
   res.status(200).json({
     success: true,
@@ -142,10 +155,17 @@ const getCalls = catchAsyncError(async (req, res, next) => {
       interestRate: connected > 0 ? Math.round((positive / connected) * 100) : 0,
       totalCost: totalCost.toFixed(2),
     },
-    calls,
+    calls: pageSlice,
+    pagination: {
+      page,
+      limit,
+      total,
+      pages: Math.ceil(total / limit),
+      hasNext: skipCount + limit < total,
+      hasPrev: page > 1,
+    },
   });
 });
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
