@@ -49,7 +49,7 @@ async function sendLastHourReminderEmails(auctionId) {
       .filter(Boolean)
       .join(', ');
 
-    const auctionLink = `${process.env.FRONTEND_URL}/auction-bid/${auctionId}`;
+    const auctionLink = `https://www.vihara.ai//auction-bid/${auctionId}`;
 
     // Fetch all approved registrants for this auction
     const registrations = await AuctionRegistration.find({
