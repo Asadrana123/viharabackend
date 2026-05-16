@@ -11,7 +11,7 @@
 const getAdminBidNotificationEmail = ({ bidderName, bidAmount, auctionId, currentBid, participants }) => {
   const formattedBid = `$${Number(bidAmount).toLocaleString('en-US')}`;
   const formattedCurrent = `$${Number(currentBid || bidAmount).toLocaleString('en-US')}`;
-  const auctionLink = `${process.env.FRONTEND_URL}/auction-bid/${auctionId}`;
+  const auctionLink = `https://www.vihara.ai/auction-bid/${auctionId}`;
 
   return `
     <!DOCTYPE html>

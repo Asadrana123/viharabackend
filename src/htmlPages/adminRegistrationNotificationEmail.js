@@ -10,7 +10,7 @@
  * @returns {string} HTML string
  */
 const getAdminRegistrationNotificationEmail = ({ userName, userEmail, phone, buyerType, propertyAddress, auctionId }) => {
-  const auctionLink = `${process.env.FRONTEND_URL}/auction-bid/${auctionId}`;
+  const auctionLink = `https://www.vihara.ai/auction-bid/${auctionId}`;
 
   return `
     <!DOCTYPE html>
