@@ -247,8 +247,7 @@ exports.updateAuctionStatus = catchAsyncError(
     if (!updatedAuction) {
       return next(new Errorhandler("Auction not found", 404));
     }
-    // Sync in-memory auction map so new joiners get fresh endTime immediately
-    syncAuctionEndTime(auctionId, updates.auctionEndDate);
+
     if (io) {
       io.to(auctionId).emit('auction-status-changed', { status });
     }
