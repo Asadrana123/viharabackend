@@ -27,9 +27,11 @@ const renovationRoutes = require("./routes/renovationRoutes");
 const investmentCalculatorRoutes = require("./routes/investmentCalculatorRoutes");
 const coreLogicRoutes = require("./routes/coreLogicRoutes");
 const errorMiddleware = require("./middleware/error");
-const landingPageLeadRoutes = require("./routes/landingPageLeadRoutes")
+const landingPageLeadRoutes = require("./routes/landingPageLeadRoutes");
 const vapiRoutes = require("./routes/vapiRoutes");
 const sellerRoutes = require("./routes/sellerRoutes");
+const contentRoutes = require("./routes/contentRoutes"); // ← ADD
+
 // Middleware
 app.use(cookieParser());
 app.use(cors(expressCorsOptions));
@@ -37,8 +39,8 @@ app.use(bodyParser.json());
 
 // MongoDB Connection with Connection Pooling
 mongoose.connect(process.env.DB_URI, {
-  maxPoolSize: 50,        // Increase from default 10 to 50
-  minPoolSize: 10,        // Keep minimum 10 connections ready
+  maxPoolSize: 50,
+  minPoolSize: 10,
   serverSelectionTimeoutMS: 5000,
   socketTimeoutMS: 45000,
   retryWrites: true,
@@ -69,9 +71,11 @@ app.use("/api", unsubscribeRoutes);
 app.use("/api/property-renovation", renovationRoutes);
 app.use('/api/v1/investment-calculator', investmentCalculatorRoutes);
 app.use("/api/v1/corelogic", coreLogicRoutes);
-app.use("/api/landing/", landingPageLeadRoutes)
+app.use("/api/landing/", landingPageLeadRoutes);
 app.use("/api/vapi", vapiRoutes);
 app.use("/api/v1/seller", sellerRoutes);
+app.use("/api/content", contentRoutes); // ← ADD
+
 // Error Middleware
 app.use(errorMiddleware);
 
