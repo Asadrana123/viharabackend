@@ -2,6 +2,76 @@ const ContentPost = require("../model/contentPostModel");
 const catchAsyncError = require("../middleware/catchAsyncError");
 const Errorhandler = require("../utils/errorhandler");
 
+const axios = require("axios");
+
+const SYSTEM_PROMPT = `You are the LinkedIn content writer for Vihara, a US real estate auction platform.
+
+BRAND: Professional, data-driven, credible. Website: vihara.ai
+
+POST RULES:
+- 150-300 words
+- First line = strong hook (stat, contrast, prediction, or challenge)
+- Cite every data source inline (e.g. "per NAR", "ATTOM data shows")
+- One CTA at the end only
+- 3-5 hashtags: #USHousingMarket #RealEstateInvesting #Vihara #PropTech #DistressedAssets
+- Never start with "I am happy to share"
+- Professional, not salesy
+- No predictions stated as facts - use "suggests", "indicates", "points to"
+
+RESPONSE FORMAT - return ONLY valid JSON, nothing else:
+{
+  "hookLine": "The first 1-2 sentences only",
+  "postText": "Full post text including hook, body, CTA, and hashtags",
+  "ctaUsed": "The exact CTA line used",
+  "hashtags": ["tag1","tag2","tag3"],
+  "dataPoints": [
+    { "stat": "the stat used", "source": "named source", "date": "approx date/month" }
+  ],
+  "visualType": "one of: stat-card | bar-chart | line-chart | split-graphic | carousel | video-walkthrough | avatar-video | stat-video | marketing-video",
+  "visualBrief": "2-3 punchy lines for the graphic. Include the key number prominently."
+}`;
+
+// --- AI GENERATE POST -------------------------------------------------------
+exports.generatePost = catchAsyncError(async (req, res, next) => {
+  const { topic, pillar } = req.body;
+
+  if (!topic || !pillar) {
+    return next(new Errorhandler("topic and pillar are required", 400));
+  }
+
+  const userMessage = `Write a LinkedIn post for Vihara.\n\nPILLAR: ${pillar}\nTOPIC: ${topic}\n\nSearch for the most recent real data from Zillow, Redfin, NAR, FRED, ATTOM, or Census Bureau to back this post. Use real stats with named sources. Data must be from the last 60 days where possible.\n\nReturn ONLY the JSON object specified.`;
+
+  const response = await axios.post(
+    "https://api.anthropic.com/v1/messages",
+    {
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 1000,
+      system: SYSTEM_PROMPT,
+      tools: [{ type: "web_search_20250305", name: "web_search" }],
+      messages: [{ role: "user", content: userMessage }],
+    },
+    {
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": process.env.ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+    }
+  );
+
+  const textBlock = response.data.content?.find((b) => b.type === "text");
+  if (!textBlock) {
+    return next(new Errorhandler("No text returned from AI", 500));
+  }
+
+  const raw = textBlock.text.replace(/```json|```/g, "").trim();
+  const parsed = JSON.parse(raw);
+
+  res.status(200).json({ success: true, result: parsed });
+});
+
+
+
 // ─── CREATE (save draft) ────────────────────────────────────────────────────
 exports.createPost = catchAsyncError(async (req, res, next) => {
   const {
@@ -246,4 +316,29 @@ exports.getStats = catchAsyncError(async (req, res) => {
       pillarBreakdown,
     },
   });
+});
+
+// ─── GENERATE VISUAL (Higgsfield) ────────────────────────────────────────────
+exports.generateVisual = catchAsyncError(async (req, res, next) => {
+  const post = await ContentPost.findById(req.params.id);
+  if (!post) return next(new Errorhandler("Post not found", 404));
+
+  if (!post.visualBrief) {
+    return next(new Errorhandler("Visual brief is required before generating an image", 400));
+  }
+
+  const { generateLinkedInGraphic } = require("../services/higgsfieldService");
+  const imageUrl = await generateLinkedInGraphic(
+    post.visualBrief,
+    post.pillar,
+    post.dataPoints,
+    post.postText,
+    post.hookLine,
+    post.visualType,  // ← add
+    post.topic        // ← add
+  );
+  post.generatedImageUrl = imageUrl;
+  await post.save();
+
+  res.status(200).json({ success: true, imageUrl, post });
 });

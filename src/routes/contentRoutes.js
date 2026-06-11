@@ -13,6 +13,8 @@ const {
   markPublished,
   deletePost,
   getStats,
+  generatePost,
+  generateVisual,
 } = require("../controller/contentController");
 
 // All routes require authentication + admin role
@@ -20,6 +22,10 @@ router.use(isAuthenticated, authorizeRoles("admin"));
 
 // Stats
 router.get("/stats", getStats);
+
+// AI Generate
+router.post("/generate", generatePost);
+router.post("/:id/generate-visual", generateVisual);
 
 // CRUD
 router.post("/", createPost);
