@@ -25,22 +25,20 @@ exports.getAllLeads = catchAsyncError(async (req, res, next) => {
 exports.createLead = catchAsyncError(async (req, res, next) => {
   const { name, email, phone, utm_source, utm_medium, utm_campaign, utm_content } = req.body;
 
-  if (!name || !phone) {
-    return next(new Errorhandler('Name and phone number are required', 400));
+  if (!name || !email || !phone) {
+    return next(new Errorhandler('Name, email and phone number are required', 400));
   }
 
-  if (email) {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return next(new Errorhandler('Please enter a valid email address', 400));
-    }
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return next(new Errorhandler('Please enter a valid email address', 400));
   }
 
   try {
     const lead = await LandingPageLead.create({
       name,
+      email,
       phone,
-      ...(email && { email }),
       utm_source: utm_source || null,
       utm_medium: utm_medium || null,
       utm_campaign: utm_campaign || null,

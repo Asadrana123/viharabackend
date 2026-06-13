@@ -10,10 +10,10 @@ const landingPageLeadSchema = new mongoose.Schema(
     },
     email: {
       type: String,
+      required: [true, 'Email is required'],
       trim: true,
       unique: true,
       lowercase: true,
-      sparse: true,
       match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Please enter a valid email address'],
     },
     phone: {
@@ -29,7 +29,5 @@ const landingPageLeadSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
-
-landingPageLeadSchema.index({ email: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model('LandingPageLead', landingPageLeadSchema);
