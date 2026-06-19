@@ -31,7 +31,7 @@ const landingPageLeadRoutes = require("./routes/landingPageLeadRoutes");
 const vapiRoutes = require("./routes/vapiRoutes");
 const sellerRoutes = require("./routes/sellerRoutes");
 const contentRoutes = require("./routes/contentRoutes"); // ← ADD
-
+const careerRoutes=require('./routes/careerRoutes');
 // Middleware
 app.use(cookieParser());
 app.use(cors(expressCorsOptions));
@@ -75,7 +75,7 @@ app.use("/api/landing/", landingPageLeadRoutes);
 app.use("/api/vapi", vapiRoutes);
 app.use("/api/v1/seller", sellerRoutes);
 app.use("/api/content", contentRoutes); // ← ADD
-
+app.use("/api/careers", careerRoutes); // ← ADD
 // Error Middleware
 app.use(errorMiddleware);
 
