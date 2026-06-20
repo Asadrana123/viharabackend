@@ -4,6 +4,10 @@ const ReplicatePromptBuilder = require("../services/replicatePromptBuilder");
 const RenovationRequest = require("../model/renovationRequestModel");
 const RenovationContractorService = require("../services/renovationContractorService");
 const Product = require("../model/productModel");
+const {
+  hasHardcodedCosts,
+  buildHardcodedCostAnalysis
+} = require("../config/renovationPropertyCosts");
 
 exports.getContractors = async (req, res) => {
   try {
@@ -50,25 +54,38 @@ exports.generateRenovationImages = async (req, res) => {
       return res.status(404).json({ success: false, error: "Property not found" });
     }
 
-    const validation = RenovationCostService.validateInputs(
-      { state: property.state, city: property.city, squareFootage: property.squareFootage },
-      renovationData
-    );
+    // ── Cost Analysis: hardcoded first, dynamic fallback ──────────────────
+    let costAnalysis;
 
-    if (!validation.isValid) {
-      return res.status(400).json({ success: false, error: validation.error });
+    if (hasHardcodedCosts(propertyId)) {
+      costAnalysis = buildHardcodedCostAnalysis(propertyId, renovationData);
+      if (!costAnalysis) {
+        // Area not yet defined in hardcoded config — fall through to dynamic
+        console.warn(`[Renovation] Hardcoded config missing area "${renovationData.primaryArea}" for property ${propertyId}. Falling back to dynamic.`);
+      }
     }
 
-    // Now async — Gemini first, fallback to constants
-    const costAnalysis = await RenovationCostService.calculateRenovationCost(
-      {
-        state: property.state,
-        city: property.city,
-        squareFootage: property.squareFootage,
-        lotSize: property.lotSize
-      },
-      renovationData
-    );
+    if (!costAnalysis) {
+      const validation = RenovationCostService.validateInputs(
+        { state: property.state, city: property.city, squareFootage: property.squareFootage },
+        renovationData
+      );
+
+      if (!validation.isValid) {
+        return res.status(400).json({ success: false, error: validation.error });
+      }
+
+      costAnalysis = await RenovationCostService.calculateRenovationCost(
+        {
+          state: property.state,
+          city: property.city,
+          squareFootage: property.squareFootage,
+          lotSize: property.lotSize
+        },
+        renovationData
+      );
+    }
+    // ─────────────────────────────────────────────────────────────────────
 
     const { prompt, negativePrompt } = ReplicatePromptBuilder.buildPrompts(
       { city: property.city, state: property.state, propertyType: property.propertyType },
@@ -94,13 +111,13 @@ exports.generateRenovationImages = async (req, res) => {
       status: "pending",
       message: "Renovation visualization is being generated. Please wait...",
       costAnalysis: {
-        finalCost: costAnalysis.finalCost,
-        costRange: costAnalysis.costRange,
-        lineItems: costAnalysis.lineItems,
-        contingency: costAnalysis.contingency,
-        breakdown: costAnalysis.breakdown,
+        finalCost:     costAnalysis.finalCost,
+        costRange:     costAnalysis.costRange,
+        lineItems:     costAnalysis.lineItems,
+        contingency:   costAnalysis.contingency,
+        breakdown:     costAnalysis.breakdown,
         marketContext: costAnalysis.marketContext,
-        roiEstimate: costAnalysis.roiEstimate
+        roiEstimate:   costAnalysis.roiEstimate
       }
     });
   } catch (error) {
@@ -175,10 +192,10 @@ async function generateRenovationImagesAsync(requestId, propertyImage, prompt, n
 
 function getStatusMessage(status) {
   const messages = {
-    pending: "Generating your renovation visualization...",
+    pending:    "Generating your renovation visualization...",
     processing: "Transforming your property image...",
-    completed: "Your renovation visualization is ready!",
-    failed: "Failed to generate renovation visualization. Please try again."
+    completed:  "Your renovation visualization is ready!",
+    failed:     "Failed to generate renovation visualization. Please try again."
   };
   return messages[status] || "Processing...";
 }
