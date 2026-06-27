@@ -440,7 +440,14 @@ const productSchema = new mongoose.Schema({
             }
         }
     },
-
+    isTestProperty: {
+        type: Boolean,
+        default: false
+    },
+    allowedTestUsers: {
+        type: [String],
+        default: []
+    },
     // ============================================
     // TIMESTAMPS
     // ============================================

@@ -42,19 +42,33 @@ exports.createProduct = catchAsyncError(
 exports.getAllProducts = catchAsyncError(
     async (req, res) => {
         const targetIds = [
-            '695236a4acad197a54f80e95', 
+            '695236a4acad197a54f80e95',
             '69cf9ec217e006f5c4437c62'
         ];
 
-        // Find all products whose _id is in the targetIds array
-        const allProducts = await productModel.find({
-            _id: { $in: targetIds }
+        const userEmail = req.user?.email || null;
+
+        // Always fetch the two public production properties
+        const publicProducts = await productModel.find({
+            _id: { $in: targetIds },
+            isTestProperty: { $ne: true }
         });
 
-        return res.json({ 
-            success: true, 
+        // If authenticated, also fetch any test properties whitelisted for this email
+        let testProducts = [];
+        if (userEmail) {
+            testProducts = await productModel.find({
+                isTestProperty: true,
+                allowedTestUsers: userEmail
+            });
+        }
+
+        const allProducts = [...publicProducts, ...testProducts];
+
+        return res.json({
+            success: true,
             count: allProducts.length,
-            allProducts 
+            allProducts
         });
     }
 );

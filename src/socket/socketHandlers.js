@@ -118,14 +118,14 @@ function scheduleLastHourReminder(auctionId, endTime) {
 function getActiveUsersFromRoom(auctionId) {
   const roomSockets = io.sockets.adapter.rooms.get(auctionId);
   if (!roomSockets) return [];
- 
+
   const seen = new Set();
   const usersList = [];
 
   for (const socketId of roomSockets) {
     const s = io.sockets.sockets.get(socketId);
     if (!s) continue;
-   if (s.user?.role === 'admin' || s.user?.role === 'seller') continue;
+    if (s.user?.role === 'admin' || s.user?.role === 'seller') continue;
     if (seen.has(s.userId)) continue; // deduplicate multi-tab users
     seen.add(s.userId);
     usersList.push({ userId: s.userId, name: s.user?.name || 'Unknown' });
@@ -179,7 +179,23 @@ function registerSocketHandlers(socket) {
 
       // Admin bypass — skip registration check
       const isAdmin = socket.user?.role === 'admin';
+      
+      if (!isAdmin) {
+        const testProduct = await Product.findOne({
+          _id: auctionId,
+          isTestProperty: true
+        }).select('allowedTestUsers').lean();
 
+        if (testProduct) {
+          const allowed = Array.isArray(testProduct.allowedTestUsers) &&
+            testProduct.allowedTestUsers.includes(socket.user?.email);
+
+          if (!allowed) {
+            socket.emit('auction-error', 'You do not have access to this auction');
+            return;
+          }
+        }
+      }
       // Seller bypass — skip registration check if this auction belongs to them
       const isSeller = !isAdmin && await Product.exists({
         _id: auctionId,

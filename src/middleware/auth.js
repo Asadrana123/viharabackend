@@ -2,6 +2,7 @@ const catchAsyncError = require("./catchAsyncError");
 const Errorhandler = require("../utils/errorhandler");
 const userModel = require("../model/userModel");
 const adminModel = require("../model/adminModel");
+
 const jwt = require("jsonwebtoken");
 
 exports.isAuthenticated = catchAsyncError(async (req, res, next) => {
@@ -50,4 +51,19 @@ exports.authorizeRoles = (...roles) => {
 
     next();
   };
+};
+
+
+
+exports.optionalAuth = async (req, res, next) => {
+    try {
+        const token = req.cookies?.token;
+        if (!token) return next();
+
+        const decodedData = jwt.verify(token, process.env.secret);
+        req.user = await userModel.findById(decodedData.id).select('email');
+    } catch {
+        // Invalid/expired token — treat as unauthenticated, don't block
+    }
+    next();
 };
