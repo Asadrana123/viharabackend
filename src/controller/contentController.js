@@ -31,25 +31,21 @@ RESPONSE FORMAT - return ONLY valid JSON, nothing else:
   "visualBrief": "2-3 punchy lines for the graphic. Include the key number prominently."
 }`;
 
-// --- AI GENERATE POST -------------------------------------------------------
-exports.generatePost = catchAsyncError(async (req, res, next) => {
-  const { topic, pillar } = req.body;
+// ─── HELPERS ────────────────────────────────────────────────────────────────
 
-  if (!topic || !pillar) {
-    return next(new Errorhandler("topic and pillar are required", 400));
-  }
-
-  const userMessage = `Write a LinkedIn post for Vihara.\n\nPILLAR: ${pillar}\nTOPIC: ${topic}\n\nSearch for the most recent real data from Zillow, Redfin, NAR, FRED, ATTOM, or Census Bureau to back this post. Use real stats with named sources. Data must be from the last 60 days where possible.\n\nReturn ONLY the JSON object specified.`;
+// Calls Anthropic API and returns the first text block
+async function callClaude({ system, messages, tools }) {
+  const body = {
+    model: "claude-sonnet-4-5",
+    max_tokens: 1500,
+    system,
+    messages,
+  };
+  if (tools) body.tools = tools;
 
   const response = await axios.post(
     "https://api.anthropic.com/v1/messages",
-    {
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 1000,
-      system: SYSTEM_PROMPT,
-      tools: [{ type: "web_search_20250305", name: "web_search" }],
-      messages: [{ role: "user", content: userMessage }],
-    },
+    body,
     {
       headers: {
         "Content-Type": "application/json",
@@ -59,17 +55,112 @@ exports.generatePost = catchAsyncError(async (req, res, next) => {
     }
   );
 
-  const textBlock = response.data.content?.find((b) => b.type === "text");
-  if (!textBlock) {
-    return next(new Errorhandler("No text returned from AI", 500));
+  const textBlock = response.data.content?.filter((b) => b.type === "text").pop();
+  if (!textBlock) throw new Error("No text returned from Claude");
+  return textBlock.text;
+}
+
+// Pulls the first complete {...} JSON object out of any string
+function extractJSON(text) {
+  // Strip markdown fences first
+  const stripped = text.replace(/```json|```/g, "").trim();
+
+  // Try direct parse first (happy path)
+  try { return JSON.parse(stripped); } catch {}
+
+  // Find the first { and last } and try that substring
+  const start = stripped.indexOf("{");
+  const end   = stripped.lastIndexOf("}");
+  if (start !== -1 && end !== -1 && end > start) {
+    return JSON.parse(stripped.slice(start, end + 1));
   }
 
-  const raw = textBlock.text.replace(/```json|```/g, "").trim();
-  const parsed = JSON.parse(raw);
+  throw new Error("No JSON object found in response");
+}
 
-  res.status(200).json({ success: true, result: parsed });
+// Runs quality checks on a parsed post object
+// Returns { passed: bool, issues: string[] }
+function checkPost(parsed) {
+  const issues = [];
+
+  const wordCount = parsed.postText
+    ? parsed.postText.trim().split(/\s+/).filter(Boolean).length
+    : 0;
+
+  if (wordCount < 150) issues.push(`Word count is ${wordCount} — must be at least 150`);
+  if (wordCount > 300) issues.push(`Word count is ${wordCount} — must be 300 or fewer`);
+
+  if (!parsed.hookLine || parsed.hookLine.trim().length < 10)
+    issues.push("hookLine is missing or too short");
+
+  if (!parsed.ctaUsed || parsed.ctaUsed.trim().length < 5)
+    issues.push("ctaUsed (call to action) is missing");
+
+  const hashtags = Array.isArray(parsed.hashtags) ? parsed.hashtags : [];
+  if (hashtags.length < 3) issues.push(`Only ${hashtags.length} hashtag(s) — need at least 3`);
+  if (hashtags.length > 5) issues.push(`${hashtags.length} hashtags — maximum is 5`);
+
+  const dataPoints = Array.isArray(parsed.dataPoints) ? parsed.dataPoints : [];
+  const hasSource = dataPoints.some((dp) => dp.source && dp.source.trim().length > 0);
+  if (!hasSource) issues.push("No data point has a named source");
+
+  if (parsed.postText && parsed.postText.trim().toLowerCase().startsWith("i am happy to share"))
+    issues.push('Post must not start with "I am happy to share"');
+
+  return { passed: issues.length === 0, issues };
+}
+
+// --- AI GENERATE POST (with verification loop) ------------------------------
+exports.generatePost = catchAsyncError(async (req, res, next) => {
+  const { topic, pillar } = req.body;
+
+  if (!topic || !pillar) {
+    return next(new Errorhandler("topic and pillar are required", 400));
+  }
+
+  const userMessage = `Write a LinkedIn post for Vihara.\n\nPILLAR: ${pillar}\nTOPIC: ${topic}\n\nSearch for the most recent real data from Zillow, Redfin, NAR, FRED, ATTOM, or Census Bureau to back this post. Use real stats with named sources. Data must be from the last 60 days where possible.\n\nReturn ONLY the JSON object specified.`;
+
+  // ── Pass 1: generate the post ──────────────────────────────────────────
+  const raw1 = await callClaude({
+    system: SYSTEM_PROMPT,
+    messages: [{ role: "user", content: userMessage }],
+    tools: [{ type: "web_search_20250305", name: "web_search" }],
+  });
+
+  let parsed;
+  try {
+    parsed = extractJSON(raw1);
+  } catch {
+    return next(new Errorhandler("AI returned invalid JSON on first pass", 500));
+  }
+
+  // ── Verification: check the post against brand rules ──────────────────
+  const { passed, issues } = checkPost(parsed);
+
+  if (!passed) {
+    // ── Pass 2: fix the issues ──────────────────────────────────────────
+    const fixMessage = `The LinkedIn post you wrote has the following problems:\n\n${issues.map((i, n) => `${n + 1}. ${i}`).join("\n")}\n\nHere is the post to fix:\n${JSON.stringify(parsed, null, 2)}\n\nFix every problem listed above. Keep the same topic and data. Return ONLY the corrected JSON object — no explanation, no markdown.`;
+
+    const raw2 = await callClaude({
+      system: SYSTEM_PROMPT,
+      messages: [{ role: "user", content: fixMessage }],
+    });
+
+    try {
+      parsed = extractJSON(raw2);
+    } catch {
+      // Pass 2 JSON parse failed — return pass 1 result rather than crashing
+      console.warn("[ContentController] Pass 2 JSON parse failed, returning pass 1 result");
+    }
+  }
+
+  res.status(200).json({
+    success: true,
+    result: parsed,
+    // These two fields are for debugging — visible in your backend logs
+    _verification: { passed, issues },
+  });
 });
-
 
 
 // ─── CREATE (save draft) ────────────────────────────────────────────────────

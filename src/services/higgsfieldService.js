@@ -28,7 +28,7 @@ async function claudeGenerateHTML({ visualBrief, pillar, dataPoints, postText, h
   const response = await axios.post(
     "https://api.anthropic.com/v1/messages",
     {
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-5",
       max_tokens: 4000,
       system: `You are an expert HTML/CSS designer specializing in LinkedIn data graphics for real estate market content.
 
@@ -90,8 +90,13 @@ Return ONLY the complete HTML, starting with <!DOCTYPE html>:`,
         "x-api-key": process.env.ANTHROPIC_API_KEY,
         "anthropic-version": "2023-06-01",
       },
+      timeout: 60000,
     }
-  );
+  ).catch((err) => {
+    console.error("[Anthropic ERROR] Status:", err.response?.status);
+    console.error("[Anthropic ERROR] Body:", JSON.stringify(err.response?.data, null, 2));
+    throw err;
+  });
 
   let html = response.data.content[0].text.trim();
   html = html.replace(/^```html\n?/, "").replace(/^```\n?/, "").replace(/\n?```$/, "").trim();
@@ -100,32 +105,38 @@ Return ONLY the complete HTML, starting with <!DOCTYPE html>:`,
 
 // ── Puppeteer renders HTML to PNG — Windows compatible ────────────────────────
 async function renderToImage(html) {
+  console.log("[Puppeteer] Launching browser...");
   const browser = await puppeteer.launch({
     headless: "new",
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
   });
+  console.log("[Puppeteer] Browser launched.");
 
   const page = await browser.newPage();
   await page.setViewport({ width: 768, height: 1024, deviceScaleFactor: 2 });
+  console.log("[Puppeteer] Viewport set. Setting content...");
   
-  // Use domcontentloaded instead of networkidle0 to avoid timeout
   await page.setContent(html, { waitUntil: "domcontentloaded", timeout: 60000 });
+  console.log("[Puppeteer] Content set. Waiting 1s...");
   
-  // Small wait for any CSS rendering
   await new Promise(r => setTimeout(r, 1000));
+  console.log("[Puppeteer] Taking screenshot...");
 
   const imageBuffer = await page.screenshot({
     type: "png",
     fullPage: false,
     clip: { x: 0, y: 0, width: 768, height: 1024 },
   });
+  console.log("[Puppeteer] Screenshot taken. Closing browser...");
 
   await browser.close();
+  console.log("[Puppeteer] Browser closed. Returning buffer.");
   return imageBuffer;
 }
 
 // ── Upload to Cloudinary ──────────────────────────────────────────────────────
 async function uploadToCloudinary(imageBuffer) {
+  console.log("[Cloudinary] Uploading image, buffer size:", imageBuffer.length);
   const cloudinary = require("cloudinary").v2;
   cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -133,15 +144,15 @@ async function uploadToCloudinary(imageBuffer) {
     api_secret: process.env.CLOUDINARY_API_SECRET,
   });
 
-  const result = await new Promise((resolve, reject) => {
-    cloudinary.uploader.upload_stream(
-      { folder: "vihara-content", resource_type: "image" },
-      (error, result) => {
-        if (error) reject(error);
-        else resolve(result);
-      }
-    ).end(imageBuffer);
+  // Convert buffer to base64 data URI — avoids stream timeout issues
+  const base64 = imageBuffer.toString("base64");
+  const dataUri = `data:image/png;base64,${base64}`;
+
+  const result = await cloudinary.uploader.upload(dataUri, {
+    folder: "vihara-content",
+    resource_type: "image",
   });
 
+  console.log("[Cloudinary] Upload complete:", result.secure_url);
   return result.secure_url;
 }
