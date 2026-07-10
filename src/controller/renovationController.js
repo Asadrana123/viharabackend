@@ -4,6 +4,12 @@ const ReplicatePromptBuilder = require("../services/replicatePromptBuilder");
 const RenovationRequest = require("../model/renovationRequestModel");
 const RenovationContractorService = require("../services/renovationContractorService");
 const Product = require("../model/productModel");
+const BflService = require("../services/bflService");
+const BflPromptBuilder = require("../services/bflPromptBuilder");
+
+const USE_BFL = process.env.RENOVATION_IMAGE_PROVIDER === "bfl";
+const ImageService = USE_BFL ? BflService : ReplicateService;
+const PromptBuilder = USE_BFL ? BflPromptBuilder : ReplicatePromptBuilder;
 const {
   hasHardcodedCosts,
   buildHardcodedCostAnalysis
@@ -87,7 +93,7 @@ exports.generateRenovationImages = async (req, res) => {
     }
     // ─────────────────────────────────────────────────────────────────────
 
-    const { prompt, negativePrompt } = ReplicatePromptBuilder.buildPrompts(
+    const { prompt, negativePrompt } = PromptBuilder.buildPrompts(
       { city: property.city, state: property.state, propertyType: property.propertyType },
       renovationData
     );
@@ -174,7 +180,7 @@ async function generateRenovationImagesAsync(requestId, propertyImage, prompt, n
   try {
     await RenovationRequest.findByIdAndUpdate(requestId, { status: "processing" });
 
-    const result = await ReplicateService.generateRenovationImage(propertyImage, prompt, negativePrompt);
+    const result = await ImageService.generateRenovationImage(propertyImage, prompt, negativePrompt);
 
     await RenovationRequest.findByIdAndUpdate(requestId, {
       status: "completed",
@@ -182,7 +188,7 @@ async function generateRenovationImagesAsync(requestId, propertyImage, prompt, n
       description: result.description
     });
 
-    console.log(`✓ Renovation visualization generated for request: ${requestId}`);
+   console.log(`✓ Renovation visualization generated for request: ${requestId} (model: ${result.model})`);
   } catch (error) {
     console.error(`✗ Error generating renovation images for request ${requestId}:`, error);
     await RenovationRequest.findByIdAndUpdate(requestId, { status: "failed" })

@@ -286,7 +286,16 @@ const REPLICATE_CONFIG = {
   numInferenceSteps: 50,
   guidanceScale: 7.5
 };
-
+const BFL_CONFIG = {
+  baseUrl:           process.env.BFL_BASE_URL || 'https://api.bfl.ai/v1',
+  model:             process.env.BFL_MODEL || 'flux-kontext-pro',
+  outputFormat:      'jpeg',
+  safetyTolerance:   2,
+  promptUpsampling:  false,
+  pollIntervalMs:    1500,
+  pollTimeoutMs:     120000,
+  requestTimeoutMs:  30000
+};
 // ==================== KITCHEN RENOVATION ITEMS ====================
 const KITCHEN_RENOVATION_ITEMS = {
   'Cabinets': {
@@ -580,6 +589,7 @@ module.exports = {
   BEDROOM_ROI_BY_TIER,
   LIVING_ROOM_ROI_BY_TIER,
   REPLICATE_CONFIG,
+  BFL_CONFIG,
   getRegionForState,
   getDataSource,
   getCostContextMessage,
