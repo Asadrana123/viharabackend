@@ -44,6 +44,10 @@ const renovationRequestSchema = new mongoose.Schema({
         description: String,
         costBasis: String,
         cost: Number,
+        costRange: {
+          min: Number,
+          max: Number
+        },
         roiRecovery: Number
       }
     ],
@@ -64,8 +68,7 @@ const renovationRequestSchema = new mongoose.Schema({
     marketContext: {
       state: String,
       city: String,
-      stateMultiplier: Number,
-      cityMultiplier: Number,
+      regionalFactor: Number,
       message: String,
       dataSource: String
     },
@@ -76,6 +79,8 @@ const renovationRequestSchema = new mongoose.Schema({
       source: String
     }
   },
+
+  disclaimer: String,
 
   imageUrls: {
     before: String,
