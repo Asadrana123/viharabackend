@@ -96,7 +96,23 @@ const renovationRequestSchema = new mongoose.Schema({
   description: {
     type: String,
     default: ""
+  },
+
+  // Dashboard save marker.
+  //   null  -> transient/junk generation, eligible for auto-cleanup after 24h
+  //   Date  -> user explicitly saved it; appears on their dashboard, never cleaned
+  savedAt: {
+    type: Date,
+    default: null
   }
+}, {
+  timestamps: true // createdAt / updatedAt — createdAt drives the 24h cleanup window
 });
+
+// Cleanup job queries unsaved, older-than-24h records; index keeps it cheap.
+renovationRequestSchema.index({ savedAt: 1, createdAt: 1 });
+
+// Dashboard lists a user's saved renovations, newest first.
+renovationRequestSchema.index({ userId: 1, savedAt: -1 });
 
 module.exports = mongoose.model("renovationRequest", renovationRequestSchema);

@@ -176,6 +176,113 @@ exports.getRenovationRequest = async (req, res) => {
   }
 };
 
+/**
+ * POST /api/property-renovation/renovation-request/:requestId/save
+ * Mark a completed renovation as saved to the user's dashboard.
+ */
+exports.saveRenovation = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const userId = req.user._id;
+
+    const renovationRequest = await RenovationRequest.findById(requestId);
+    if (!renovationRequest) {
+      return res.status(404).json({ success: false, error: "Renovation request not found" });
+    }
+    if (renovationRequest.userId.toString() !== userId.toString()) {
+      return res.status(403).json({ success: false, error: "Unauthorized access" });
+    }
+    if (renovationRequest.status !== "completed") {
+      return res.status(400).json({ success: false, error: "Only completed renovations can be saved" });
+    }
+
+    renovationRequest.savedAt = new Date();
+    await renovationRequest.save();
+
+    return res.status(200).json({
+      success: true,
+      requestId: renovationRequest._id,
+      savedAt: renovationRequest.savedAt,
+      message: "Renovation saved to your dashboard"
+    });
+  } catch (error) {
+    console.error("Error in saveRenovation:", error);
+    return res.status(500).json({ success: false, error: error.message || "Failed to save renovation" });
+  }
+};
+
+/**
+ * DELETE /api/property-renovation/renovation-request/:requestId
+ * Discard a renovation the user chose not to keep (or remove a saved one).
+ */
+exports.deleteRenovation = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const userId = req.user._id;
+
+    const renovationRequest = await RenovationRequest.findById(requestId);
+    if (!renovationRequest) {
+      // Already gone — treat as success so the client can proceed with its exit.
+      return res.status(200).json({ success: true, message: "Renovation already removed" });
+    }
+    if (renovationRequest.userId.toString() !== userId.toString()) {
+      return res.status(403).json({ success: false, error: "Unauthorized access" });
+    }
+
+    await RenovationRequest.findByIdAndDelete(requestId);
+
+    return res.status(200).json({ success: true, message: "Renovation discarded" });
+  } catch (error) {
+    console.error("Error in deleteRenovation:", error);
+    return res.status(500).json({ success: false, error: error.message || "Failed to discard renovation" });
+  }
+};
+
+/**
+ * GET /api/property-renovation/saved-renovations
+ * List the current user's saved renovations, newest first, with property info.
+ */
+exports.getSavedRenovations = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    const saved = await RenovationRequest.find({
+      userId,
+      savedAt: { $ne: null },
+      status: "completed"
+    })
+      .sort({ savedAt: -1 })
+      .populate("propertyId", "street city state images")
+      .lean();
+
+    const renovations = saved.map((r) => ({
+      requestId: r._id,
+      savedAt: r.savedAt,
+      renovationData: r.renovationData,
+      costAnalysis: r.costAnalysis,
+      images: {
+        before: r.imageUrls?.before || null,
+        after: r.imageUrls?.after || null,
+        description: r.description || ""
+      },
+      property: r.propertyId
+        ? {
+            id: r.propertyId._id,
+            street: r.propertyId.street,
+            city: r.propertyId.city,
+            state: r.propertyId.state,
+            image: r.propertyId.images?.[0] || null
+          }
+        : null
+    }));
+
+    return res.status(200).json({ success: true, count: renovations.length, renovations });
+  } catch (error) {
+    console.error("Error in getSavedRenovations:", error);
+    return res.status(500).json({ success: false, error: error.message || "Failed to fetch saved renovations" });
+  }
+};
+
 async function generateRenovationImagesAsync(requestId, propertyImage, prompt, negativePrompt) {
   try {
     await RenovationRequest.findByIdAndUpdate(requestId, { status: "processing" });
