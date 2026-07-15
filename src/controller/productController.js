@@ -1,6 +1,14 @@
 const productModel = require("../model/productModel");
 const catchAsyncError = require("../middleware/catchAsyncError");
 const Errorhandler = require("../utils/errorhandler");
+exports.getProductById = catchAsyncError(async (req, res, next) => {
+    const product = await productModel.findById(req.params.id);
+    console.log(product);
+    if (!product) {
+        return next(new Errorhandler("Property not found", 404));
+    }
+    return res.json({ success: true, product });
+});
 exports.createProduct = catchAsyncError(
     async (req, res) => {
         const product = await productModel.create(req.body);
