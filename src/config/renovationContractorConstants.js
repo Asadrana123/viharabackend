@@ -122,6 +122,70 @@ const VERIFIED_CONTRACTORS = {
       yearsInBusiness: 20,
       source: "Google · Yelp"
     }
+  ],
+  'Bayonne': [
+    {
+      name: "Construction by Slawek LLC",
+      phone: "201-463-4038",
+      address: "Bayonne, NJ 07002",
+      rating: null,
+      reviewCount: null,
+      specialty: "Kitchen and bathroom remodeling, siding, window installation",
+      yearsInBusiness: 14,
+      source: "BBB"
+    },
+    {
+      name: "Calop Restoration and Remodelling LLC",
+      phone: "201-620-4779",
+      address: "566 Avenue C, Bayonne, NJ 07002",
+      rating: null,
+      reviewCount: null,
+      specialty: "General contracting and restoration",
+      yearsInBusiness: null,
+      source: "BBB"
+    }
+  ],
+  'Chicago': [
+    {
+      name: "A & J General Construction, Inc.",
+      phone: "773-734-2040",
+      address: "8848 S Houston Ave, Chicago, IL 60617",
+      rating: null,
+      reviewCount: null,
+      specialty: "Bathroom and kitchen remodeling, garages, and home additions",
+      yearsInBusiness: 23,
+      source: "BBB"
+    },
+    {
+      name: "A-Masonry Group Inc.",
+      phone: "708-656-2400",
+      address: "10958 S Halsted St, Chicago, IL 60628",
+      rating: null,
+      reviewCount: null,
+      specialty: "Tuckpointing, brick restoration, lintel replacement, parapet rebuilding",
+      yearsInBusiness: null,
+      source: "BBB"
+    },
+    {
+      name: "DMG Home Services",
+      phone: "773-629-2825",
+      address: "10212 S Indianapolis Ave, Chicago, IL 60617",
+      rating: null,
+      reviewCount: null,
+      specialty: "General contracting, interior and exterior renovations, roofing, decks",
+      yearsInBusiness: 19,
+      source: "BBB"
+    },
+    {
+      name: "Quinlan Construction - Decks & Renovations",
+      phone: "773-374-4507",
+      address: "10720 S Hoxie Ave, Chicago, IL 60617",
+      rating: null,
+      reviewCount: null,
+      specialty: "Home remodeling, kitchens, bathrooms, vinyl replacement windows",
+      yearsInBusiness: 16,
+      source: "BBB"
+    }
   ]
 };
 
