@@ -9,11 +9,11 @@
 
 const { buildAnalysisFromConfig } = require('./_shared');
 
-const oakland   = require('./oakland.adeline');
-const kingwood  = require('./kingwood.brookside');
-const cottage   = require('./bayonne.cottage');
-const elizabeth = require('./chicago.elizabeth');
-const colfax    = require('./chicago.colfax');
+const oakland   = require('./oakland_adeline');
+const kingwood  = require('./kingwood_brookside');
+const cottage   = require('./bayonne_cottage');
+const elizabeth = require('./chicago_elizabeth');
+const colfax    = require('./chicago_colfax');
 
 const PROPERTIES = [oakland, kingwood, cottage, elizabeth, colfax];
 
