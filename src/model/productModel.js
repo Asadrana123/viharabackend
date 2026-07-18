@@ -1,5 +1,11 @@
 const mongoose = require("mongoose");
-
+function slugify(str) {
+    return String(str || "")
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+}
 const productSchema = new mongoose.Schema({
     // ============================================
     // CORE AUCTION & PROPERTY FIELDS
@@ -448,6 +454,26 @@ const productSchema = new mongoose.Schema({
         type: [String],
         default: []
     },
+    slug: {
+        type: String,
+        unique: true,
+        sparse: true,   // many docs without a slug won't collide on null
+        lowercase: true,
+        trim: true,
+        index: true
+    },
+    showOnAuctions: {
+        type: Boolean,
+        default: false
+    },
+    isLandingPage: {
+        type: Boolean,
+        default: false
+    },
+    auctionEventLabel: {
+        type: String,
+        default: ""     // empty = no banner
+    },
     // ============================================
     // TIMESTAMPS
     // ============================================
@@ -465,9 +491,20 @@ const productSchema = new mongoose.Schema({
 productSchema.pre('save', async function (next) {
     this.updatedAt = Date.now();
 
-    // Update coordinates lastUpdated if coordinates changed
     if (this.isModified('coordinates.parcel') || this.isModified('coordinates.block')) {
         this.coordinates.lastUpdated = Date.now();
+    }
+
+    // Generate a stable, unique slug only when it's missing.
+    // Once set it never changes, so landing-page URLs stay stable.
+    if (!this.slug) {
+        const base = slugify(`${this.street} ${this.city}`) || 'property';
+        let candidate = base;
+        let counter = 2;
+        while (await this.constructor.findOne({ slug: candidate, _id: { $ne: this._id } })) {
+            candidate = `${base}-${counter++}`;
+        }
+        this.slug = candidate;
     }
 
     next();
