@@ -186,6 +186,80 @@ const VERIFIED_CONTRACTORS = {
       yearsInBusiness: 16,
       source: "BBB"
     }
+  ],
+  'Thomson': [
+    {
+      name: "Construction Residental",
+      phone: "706-361-0376",
+      address: "219 White Oak St, Thomson, GA 30824",
+      rating: null,
+      reviewCount: null,
+      specialty: "General residential construction and renovation",
+      yearsInBusiness: 19,
+      source: "Yellow Pages"
+    },
+    {
+      name: "Two State Construction Co",
+      phone: "706-595-2863",
+      address: "2292 Washington Rd, Thomson, GA 30824",
+      rating: null,
+      reviewCount: null,
+      specialty: "General contracting, roofing, project estimation (est. 1970)",
+      yearsInBusiness: 56,
+      source: "Yellow Pages"
+    },
+    {
+      name: "B B Construction",
+      phone: "706-361-0875",
+      address: "1540 Harrison Rd, Thomson, GA 30824",
+      rating: null,
+      reviewCount: null,
+      specialty: "Building construction and consulting",
+      yearsInBusiness: 14,
+      source: "Yellow Pages"
+    },
+    {
+      name: "Sims Roofing Co",
+      phone: "706-595-1472",
+      address: "630 Lakewood Dr, Thomson, GA 30824",
+      rating: null,
+      reviewCount: null,
+      specialty: "Roofing and home improvements",
+      yearsInBusiness: 76,
+      source: "Yellow Pages"
+    },
+    {
+      name: "Stewart-Corbitt General Construction",
+      phone: "706-595-4010",
+      address: "146 Railroad St Ste B, Thomson, GA 30824",
+      rating: null,
+      reviewCount: null,
+      specialty: "General construction and home building",
+      yearsInBusiness: null,
+      source: "Yellow Pages"
+    }
+  ],
+  'Matteson': [
+    {
+      name: "BFB Remodeling",
+      phone: "708-412-7802",
+      address: "Matteson, IL 60443",
+      rating: null,
+      reviewCount: null,
+      specialty: "Residential remodeling: painting, drywall, flooring, kitchen and bathroom",
+      yearsInBusiness: null,
+      source: "Yellow Pages"
+    },
+    {
+      name: "C C Remodelers Inc",
+      phone: "708-813-3553",
+      address: "4710 211th St, Matteson, IL 60443",
+      rating: null,
+      reviewCount: null,
+      specialty: "Kitchen planning and remodeling, general home improvements",
+      yearsInBusiness: null,
+      source: "Yellow Pages"
+    }
   ]
 };
 
