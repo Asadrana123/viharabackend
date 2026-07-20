@@ -4,7 +4,8 @@ const renovationRequestSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "userModel",
-    required: true
+    required: false,   // ← was true. null = anonymous/transient request
+    default: null
   },
 
   propertyId: {
@@ -92,27 +93,24 @@ const renovationRequestSchema = new mongoose.Schema({
     enum: ['pending', 'processing', 'completed', 'failed'],
     default: 'pending'
   },
-  
+
   description: {
     type: String,
     default: ""
   },
 
   // Dashboard save marker.
-  //   null  -> transient/junk generation, eligible for auto-cleanup after 24h
-  //   Date  -> user explicitly saved it; appears on their dashboard, never cleaned
+  //   null  -> transient/anonymous generation, eligible for auto-cleanup after 24h
+  //   Date  -> a logged-in user explicitly saved it; appears on their dashboard
   savedAt: {
     type: Date,
     default: null
   }
 }, {
-  timestamps: true // createdAt / updatedAt — createdAt drives the 24h cleanup window
+  timestamps: true
 });
 
-// Cleanup job queries unsaved, older-than-24h records; index keeps it cheap.
 renovationRequestSchema.index({ savedAt: 1, createdAt: 1 });
-
-// Dashboard lists a user's saved renovations, newest first.
 renovationRequestSchema.index({ userId: 1, savedAt: -1 });
 
 module.exports = mongoose.model("renovationRequest", renovationRequestSchema);

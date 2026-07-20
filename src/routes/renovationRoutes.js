@@ -9,24 +9,23 @@ const {
   getSavedRenovations
 } = require("../controller/renovationController");
 const catchAsyncError = require("../middleware/catchAsyncError");
-const { isAuthenticated } = require("../middleware/auth");
+const { isAuthenticated, optionalAuth } = require("../middleware/auth");
 
 
 /**
  * POST /api/property-renovation/generate-renovation-images
- * Generate renovation visualization images
+ * Generate renovation visualization images (public; associates userId if logged in)
  */
 router.post(
   "/generate-renovation-images",
-  isAuthenticated,
+  optionalAuth,
   catchAsyncError(generateRenovationImages)
 );
 
 /**
  * GET /api/property-renovation/saved-renovations
- * List the current user's saved renovations (dashboard).
- * NOTE: declared before the ":requestId" route so "saved-renovations"
- * is not captured as a requestId param.
+ * Dashboard list — logged-in only.
+ * NOTE: declared before ":requestId" so it isn't captured as a param.
  */
 router.get(
   "/saved-renovations",
@@ -36,34 +35,32 @@ router.get(
 
 /**
  * GET /api/property-renovation/renovation-request/:requestId
- * Get renovation request status and results
+ * Status + results (public — polling must work for anonymous users)
  */
 router.get(
   "/renovation-request/:requestId",
-  isAuthenticated,
+  optionalAuth,
   catchAsyncError(getRenovationRequest)
 );
 
 /**
  * POST /api/property-renovation/renovation-request/:requestId/save
- * Save a completed renovation to the user's dashboard.
  */
 router.post(
   "/renovation-request/:requestId/save",
-  isAuthenticated,
+  optionalAuth,
   catchAsyncError(saveRenovation)
 );
 
 /**
  * DELETE /api/property-renovation/renovation-request/:requestId
- * Discard a renovation (user chose not to keep it).
  */
 router.delete(
   "/renovation-request/:requestId",
-  isAuthenticated,
+  optionalAuth,
   catchAsyncError(deleteRenovation)
 );
 
-router.get('/contractors/:propertyId', isAuthenticated, catchAsyncError(getContractors));
+router.get('/contractors/:propertyId', optionalAuth, catchAsyncError(getContractors));
 
 module.exports = router;

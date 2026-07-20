@@ -15,6 +15,16 @@ const {
   buildHardcodedCostAnalysis
 } = require("../config/renovationPropertyCosts");
 
+/**
+ * Ownership check that tolerates anonymous records.
+ *   - record has no userId  -> transient/anonymous, accessible by requestId holder
+ *   - record has a userId    -> must be the same logged-in user
+ */
+function canAccessRecord(record, req) {
+  if (!record.userId) return true;
+  return !!req.user && record.userId.toString() === req.user._id.toString();
+}
+
 exports.getContractors = async (req, res) => {
   try {
     const { propertyId } = req.params;
@@ -46,7 +56,7 @@ exports.getContractors = async (req, res) => {
 exports.generateRenovationImages = async (req, res) => {
   try {
     const { propertyId, selectedImage, renovationData } = req.body;
-    const userId = req.user._id;
+    const userId = req.user?._id || null; // anonymous requests allowed
 
     if (!propertyId || !selectedImage || !renovationData) {
       return res.status(400).json({
@@ -66,7 +76,6 @@ exports.generateRenovationImages = async (req, res) => {
     if (hasHardcodedCosts(propertyId)) {
       costAnalysis = buildHardcodedCostAnalysis(propertyId, renovationData);
       if (!costAnalysis) {
-        // Area not yet defined in hardcoded config — fall through to dynamic
         console.warn(`[Renovation] Hardcoded config missing area "${renovationData.primaryArea}" for property ${propertyId}. Falling back to dynamic.`);
       }
     }
@@ -138,7 +147,6 @@ exports.generateRenovationImages = async (req, res) => {
 exports.getRenovationRequest = async (req, res) => {
   try {
     const { requestId } = req.params;
-    const userId = req.user._id;
 
     const renovationRequest = await RenovationRequest.findById(requestId);
 
@@ -146,7 +154,7 @@ exports.getRenovationRequest = async (req, res) => {
       return res.status(404).json({ success: false, error: "Renovation request not found" });
     }
 
-    if (renovationRequest.userId.toString() !== userId.toString()) {
+    if (!canAccessRecord(renovationRequest, req)) {
       return res.status(403).json({ success: false, error: "Unauthorized access" });
     }
 
@@ -178,32 +186,43 @@ exports.getRenovationRequest = async (req, res) => {
 
 /**
  * POST /api/property-renovation/renovation-request/:requestId/save
- * Mark a completed renovation as saved to the user's dashboard.
+ * Logged-in owner -> persist to dashboard.
+ * Anonymous       -> no-op success; record stays transient (24h cleanup).
  */
 exports.saveRenovation = async (req, res) => {
   try {
     const { requestId } = req.params;
-    const userId = req.user._id;
 
     const renovationRequest = await RenovationRequest.findById(requestId);
     if (!renovationRequest) {
       return res.status(404).json({ success: false, error: "Renovation request not found" });
     }
-    if (renovationRequest.userId.toString() !== userId.toString()) {
-      return res.status(403).json({ success: false, error: "Unauthorized access" });
-    }
     if (renovationRequest.status !== "completed") {
       return res.status(400).json({ success: false, error: "Only completed renovations can be saved" });
     }
 
-    renovationRequest.savedAt = new Date();
-    await renovationRequest.save();
+    // Owned record: enforce ownership, then persist.
+    if (renovationRequest.userId) {
+      if (!req.user || renovationRequest.userId.toString() !== req.user._id.toString()) {
+        return res.status(403).json({ success: false, error: "Unauthorized access" });
+      }
+      renovationRequest.savedAt = new Date();
+      await renovationRequest.save();
 
+      return res.status(200).json({
+        success: true,
+        requestId: renovationRequest._id,
+        savedAt: renovationRequest.savedAt,
+        message: "Renovation saved to your dashboard"
+      });
+    }
+
+    // Anonymous record: nothing to save to. Report success but keep it transient.
     return res.status(200).json({
       success: true,
       requestId: renovationRequest._id,
-      savedAt: renovationRequest.savedAt,
-      message: "Renovation saved to your dashboard"
+      savedAt: null,
+      message: "Saved for this session"
     });
   } catch (error) {
     console.error("Error in saveRenovation:", error);
@@ -213,19 +232,16 @@ exports.saveRenovation = async (req, res) => {
 
 /**
  * DELETE /api/property-renovation/renovation-request/:requestId
- * Discard a renovation the user chose not to keep (or remove a saved one).
  */
 exports.deleteRenovation = async (req, res) => {
   try {
     const { requestId } = req.params;
-    const userId = req.user._id;
 
     const renovationRequest = await RenovationRequest.findById(requestId);
     if (!renovationRequest) {
-      // Already gone — treat as success so the client can proceed with its exit.
       return res.status(200).json({ success: true, message: "Renovation already removed" });
     }
-    if (renovationRequest.userId.toString() !== userId.toString()) {
+    if (!canAccessRecord(renovationRequest, req)) {
       return res.status(403).json({ success: false, error: "Unauthorized access" });
     }
 
@@ -240,7 +256,7 @@ exports.deleteRenovation = async (req, res) => {
 
 /**
  * GET /api/property-renovation/saved-renovations
- * List the current user's saved renovations, newest first, with property info.
+ * Logged-in only (dashboard).
  */
 exports.getSavedRenovations = async (req, res) => {
   try {
