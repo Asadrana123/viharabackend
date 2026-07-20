@@ -82,14 +82,15 @@ exports.getProductBySlug = catchAsyncError(async (req, res, next) => {
 exports.getAllProductsAdmin = catchAsyncError(async (req, res) => {
     const products = await productModel
         .find({})
-        .select('productName street city state slug image showOnAuctions isLandingPage auctionEventLabel isTestProperty status')
+        .select('productName street city state slug image showOnAuctions isLandingPage auctionEventLabel isTestProperty status availableAreas')
         .sort({ createdAt: -1 });
     return res.json({ success: true, count: products.length, products });
 });
 
 // Admin — update only the listing-control fields for one property.
+// Admin — update only the listing-control fields for one property.
 exports.updateListingSettings = catchAsyncError(async (req, res, next) => {
-    const { showOnAuctions, isLandingPage, auctionEventLabel } = req.body;
+    const { showOnAuctions, isLandingPage, auctionEventLabel, availableAreas } = req.body;
 
     const product = await productModel.findById(req.params.id);
     if (!product) {
@@ -100,7 +101,17 @@ exports.updateListingSettings = catchAsyncError(async (req, res, next) => {
     if (typeof isLandingPage === 'boolean') product.isLandingPage = isLandingPage;
     if (typeof auctionEventLabel === 'string') product.auctionEventLabel = auctionEventLabel;
 
-    // validateBeforeSave: false — this endpoint only touches the 3 listing fields
+    // Validate manually — save() below runs with validateBeforeSave: false,
+    // so the schema enum won't guard this field.
+    if (availableAreas !== undefined) {
+        const VALID_AREAS = ['Exterior', 'Kitchen', 'Bathroom', 'Living Room', 'Bedroom'];
+        if (!Array.isArray(availableAreas) || availableAreas.some((a) => !VALID_AREAS.includes(a))) {
+            return next(new Errorhandler("Invalid availableAreas value", 400));
+        }
+        product.availableAreas = availableAreas;
+    }
+
+    // validateBeforeSave: false — this endpoint only touches the listing fields
     // above; it must not be blocked by unrelated pre-existing data gaps on
     // legacy fields (auctionStartTime, eventID, etc). The pre('save') hook
     // (slug generation) still runs regardless of this flag.
@@ -114,7 +125,8 @@ exports.updateListingSettings = catchAsyncError(async (req, res, next) => {
             slug: product.slug,
             showOnAuctions: product.showOnAuctions,
             isLandingPage: product.isLandingPage,
-            auctionEventLabel: product.auctionEventLabel
+            auctionEventLabel: product.auctionEventLabel,
+            availableAreas: product.availableAreas
         }
     });
 });

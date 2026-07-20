@@ -454,6 +454,11 @@ const productSchema = new mongoose.Schema({
         type: [String],
         default: []
     },
+     availableAreas: {
+        type: [String],
+        enum: ['Exterior', 'Kitchen', 'Bathroom', 'Living Room', 'Bedroom'],
+        default: []
+    },
     slug: {
         type: String,
         unique: true,
