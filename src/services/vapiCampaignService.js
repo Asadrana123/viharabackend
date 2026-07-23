@@ -91,14 +91,26 @@ const safeResearchSummary = async (contact, enrich) => {
 /**
  * Dispatch calls for one contact immediately and return the outcome.
  * Used by the admin "call one person" form.
+ *
+ * `property` and `promptConfig` are resolved by the controller and passed
+ * straight through to dispatchCall.
  */
-const runSingleCall = async (rawContact, { enrich = true } = {}) => {
+const runSingleCall = async (
+  rawContact,
+  { enrich = true, property, promptConfig } = {}
+) => {
   const contact = buildContact(rawContact);
   const researchSummary = await safeResearchSummary(contact, enrich);
 
   const calls = [];
   for (let i = 0; i < contact.phones.length; i++) {
-    calls.push(await dispatchCall(contact.phones[i], contact, researchSummary));
+    calls.push(
+      await dispatchCall(contact.phones[i], contact, {
+        researchSummary,
+        property,
+        promptConfig,
+      })
+    );
     if (i < contact.phones.length - 1) await delay(DELAY_BETWEEN_CALLS_MS);
   }
 
@@ -122,7 +134,7 @@ const pruneExpiredJobs = () => {
  * Register a campaign job. Does NOT start it — call runCampaign(jobId) after
  * the HTTP response has been sent.
  */
-const createCampaign = (contacts, { enrich = true } = {}) => {
+const createCampaign = (contacts, { enrich = true, property, promptConfig } = {}) => {
   pruneExpiredJobs();
 
   const id = crypto.randomUUID();
@@ -130,6 +142,7 @@ const createCampaign = (contacts, { enrich = true } = {}) => {
     id,
     status: "queued", // queued | running | completed | failed
     enrich,
+    property: property?.address || "",
     total: contacts.length,
     processed: 0,
     dispatched: 0,
@@ -141,7 +154,9 @@ const createCampaign = (contacts, { enrich = true } = {}) => {
     createdAt: new Date().toISOString(),
     createdAtMs: Date.now(),
     finishedAt: null,
-    _contacts: contacts, // internal — never serialised to the client
+    _contacts: contacts,       // internal — never serialised to the client
+    _property: property,       // internal
+    _promptConfig: promptConfig, // internal
   };
 
   CAMPAIGN_JOBS.set(id, job);
@@ -177,7 +192,13 @@ const runCampaign = async (jobId) => {
 
       const calls = [];
       for (const phone of contact.phones) {
-        calls.push(await dispatchCall(phone, contact, researchSummary));
+        calls.push(
+          await dispatchCall(phone, contact, {
+            researchSummary,
+            property: job._property,
+            promptConfig: job._promptConfig,
+          })
+        );
         await delay(DELAY_BETWEEN_CALLS_MS);
       }
 
@@ -205,6 +226,8 @@ const runCampaign = async (jobId) => {
     job.currentContact = null;
     job.finishedAt = new Date().toISOString();
     delete job._contacts;
+    delete job._property;
+    delete job._promptConfig;
   }
 };
 
@@ -215,7 +238,7 @@ const getCampaign = (jobId) => {
   const job = CAMPAIGN_JOBS.get(jobId);
   if (!job) return null;
 
-  const { _contacts, createdAtMs, ...safe } = job;
+  const { _contacts, _property, _promptConfig, createdAtMs, ...safe } = job;
   return {
     ...safe,
     progress: job.total > 0 ? Math.round((job.processed / job.total) * 100) : 0,

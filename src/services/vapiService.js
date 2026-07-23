@@ -1,10 +1,17 @@
 const axios = require("axios");
+const { buildVariableValues } = require("./vapiPromptService");
 
 const VAPI_API_KEY = process.env.VAPI_API_KEY;
 const VAPI_ASSISTANT_ID = process.env.VAPI_ASSISTANT_ID;
 const VAPI_PHONE_NUMBER_ID = process.env.VAPI_PHONE_NUMBER_ID;
 
-// Property details for current campaign
+// The model override must name a provider or VAPI rejects the payload.
+// These default to the assistant's dashboard config; override per environment.
+const VAPI_MODEL_PROVIDER = process.env.VAPI_MODEL_PROVIDER || "openai";
+const VAPI_MODEL = process.env.VAPI_MODEL || "gpt-4o";
+
+// Fallback property, kept for backwards compatibility with any caller that
+// still resolves without a propertyId. Live calls always pass a real property.
 const PROPERTY = {
   address: "1496 Adeline St, Oakland, California 94607",
   type: "3-bedroom 2-bathroom REO Bank Owned Townhome",
@@ -38,9 +45,48 @@ const parsePhones = (phonesStr) => {
 };
 
 /**
- * Dispatch a single call via VAPI
+ * Build the assistantOverrides payload. The admin-authored prompt replaces
+ * the dashboard assistant's system message; blank optional fields are omitted
+ * so the dashboard value is preserved rather than blanked out.
  */
-const dispatchCall = async (phoneNumber, person, researchSummary) => {
+const buildAssistantOverrides = (contact, researchSummary, property, promptConfig) => {
+  const overrides = {
+    variableValues: buildVariableValues(contact, researchSummary, property),
+  };
+
+  if (!promptConfig) return overrides;
+
+  if (promptConfig.systemPrompt) {
+    overrides.model = {
+      provider: VAPI_MODEL_PROVIDER,
+      model: VAPI_MODEL,
+      messages: [{ role: "system", content: promptConfig.systemPrompt }],
+    };
+  }
+  if (promptConfig.firstMessage) overrides.firstMessage = promptConfig.firstMessage;
+  if (promptConfig.voicemailMessage)
+    overrides.voicemailMessage = promptConfig.voicemailMessage;
+  if (promptConfig.endCallMessage)
+    overrides.endCallMessage = promptConfig.endCallMessage;
+
+  return overrides;
+};
+
+/**
+ * Dispatch a single call via VAPI.
+ *
+ * @param {string} phoneNumber      E.164 number
+ * @param {object} person          normalised contact
+ * @param {object} options
+ * @param {string} options.researchSummary  enrichment text ("" when skipped)
+ * @param {object} options.property         resolved property being pitched
+ * @param {object} options.promptConfig     admin-authored prompt for that property
+ */
+const dispatchCall = async (
+  phoneNumber,
+  person,
+  { researchSummary = "", property = PROPERTY, promptConfig = null } = {}
+) => {
   try {
     const response = await axios.post(
       "https://api.vapi.ai/call",
@@ -51,17 +97,12 @@ const dispatchCall = async (phoneNumber, person, researchSummary) => {
           number: phoneNumber,
           name: person.fullName,
         },
-        assistantOverrides: {
-          variableValues: {
-            prospect_name: person.fullName.split(" ")[0],
-            prospect_research: researchSummary,
-            property_address: PROPERTY.address,
-            property_type: PROPERTY.type,
-            property_price: PROPERTY.starting_bid,
-            estimated_arv: PROPERTY.estimate,
-            listing_url: PROPERTY.listing_url,
-          },
-        },
+        assistantOverrides: buildAssistantOverrides(
+          person,
+          researchSummary,
+          property,
+          promptConfig
+        ),
       },
       {
         headers: {
@@ -76,11 +117,18 @@ const dispatchCall = async (phoneNumber, person, researchSummary) => {
     );
     return { success: true, callId: response.data.id, phone: phoneNumber };
   } catch (err) {
+    const reason =
+      err.response?.data?.message ||
+      (Array.isArray(err.response?.data?.error)
+        ? err.response.data.error.join(", ")
+        : err.response?.data?.error) ||
+      err.message;
+
     console.error(
       `❌ Call failed: ${person.fullName} → ${phoneNumber}:`,
       err.response?.data || err.message
     );
-    return { success: false, phone: phoneNumber, error: err.message };
+    return { success: false, phone: phoneNumber, error: String(reason) };
   }
 };
 

@@ -8,6 +8,7 @@ const {
   getCampaign,
 } = require("../services/vapiCampaignService");
 const { resolveProperty } = require("../services/vapiPropertyService");
+const { resolvePromptConfig } = require("../services/vapiPromptService");
 const catchAsyncError = require("../middleware/catchAsyncError");
 const ErrorHandler = require("../utils/errorhandler");
 
@@ -15,9 +16,17 @@ const VAPI_API_KEY = process.env.VAPI_API_KEY;
 const VAPI_ASSISTANT_ID = process.env.VAPI_ASSISTANT_ID;
 
 /**
- * POST /api/vapi/call
- * Dispatch a call to a single contact entered from the admin panel.
+ * Resolve the property and its admin-authored prompt together.
+ * Both must exist before a call can be dispatched — there is no global
+ * fallback prompt, so an unconfigured property fails fast at the HTTP layer
+ * rather than 200 calls deep into a background worker.
  */
+const resolvePitch = async (propertyId) => {
+  const property = await resolveProperty(propertyId);
+  const promptConfig = await resolvePromptConfig(propertyId);
+  return { property, promptConfig };
+};
+
 /**
  * POST /api/vapi/call
  * Dispatch a call to a single contact entered from the admin panel.
@@ -32,6 +41,8 @@ const startSingleCall = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler("fullName is required", 400));
   if (!phone || !phone.trim())
     return next(new ErrorHandler("phone is required", 400));
+  if (!propertyId)
+    return next(new ErrorHandler("propertyId is required", 400));
 
   const contact = buildContact({ fullName, phones: phone, address, city, state, zip, email });
 
@@ -41,8 +52,9 @@ const startSingleCall = catchAsyncError(async (req, res, next) => {
     );
 
   let property;
+  let promptConfig;
   try {
-    property = await resolveProperty(propertyId);
+    ({ property, promptConfig } = await resolvePitch(propertyId));
   } catch (err) {
     return next(new ErrorHandler(err.message, err.statusCode || 400));
   }
@@ -50,6 +62,7 @@ const startSingleCall = catchAsyncError(async (req, res, next) => {
   const result = await runSingleCall(contact, {
     enrich: Boolean(enrich),
     property,
+    promptConfig,
   });
 
   const anySuccess = result.calls.some((c) => c.success);
@@ -73,16 +86,13 @@ const startSingleCall = catchAsyncError(async (req, res, next) => {
  * Accepts a CSV payload, queues a background campaign and returns a jobId.
  * Progress is polled via GET /api/vapi/campaign/:jobId.
  */
-/**
- * POST /api/vapi/launch-campaign
- * Accepts a CSV payload, queues a background campaign and returns a jobId.
- * Progress is polled via GET /api/vapi/campaign/:jobId.
- */
 const launchCampaign = catchAsyncError(async (req, res, next) => {
   const { csvData, enrich = true, propertyId } = req.body;
 
   if (!csvData || !csvData.trim())
     return next(new ErrorHandler("csvData is required", 400));
+  if (!propertyId)
+    return next(new ErrorHandler("propertyId is required", 400));
 
   let contacts;
   try {
@@ -91,16 +101,20 @@ const launchCampaign = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler(err.message, 400));
   }
 
-  // Resolve once up front so a bad propertyId fails fast instead of
-  // surfacing 200 calls deep into the background worker.
+  // Resolve once up front so a bad propertyId or a missing prompt fails fast.
   let property;
+  let promptConfig;
   try {
-    property = await resolveProperty(propertyId);
+    ({ property, promptConfig } = await resolvePitch(propertyId));
   } catch (err) {
     return next(new ErrorHandler(err.message, err.statusCode || 400));
   }
 
-  const job = createCampaign(contacts, { enrich: Boolean(enrich), property });
+  const job = createCampaign(contacts, {
+    enrich: Boolean(enrich),
+    property,
+    promptConfig,
+  });
 
   // Fire and forget — the worker updates job state in the background.
   runCampaign(job.id).catch((err) =>
@@ -236,6 +250,7 @@ const getCalls = catchAsyncError(async (req, res, next) => {
     },
   });
 });
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
