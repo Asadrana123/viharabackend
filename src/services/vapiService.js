@@ -26,6 +26,10 @@ const parsePhones = (phonesStr) => {
     .filter((p) => p.length > 6)
     .map((p) => {
       const digits = p.replace(/\D/g, "");
+      // India — must include the country code. A bare 10-digit number is
+      // ambiguous with US, so it is not auto-detected as Indian.
+      if (digits.length === 12 && digits.startsWith("91")) return `+${digits}`;
+      // US / Canada
       if (digits.length === 10) return `+1${digits}`;
       if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
       return null;

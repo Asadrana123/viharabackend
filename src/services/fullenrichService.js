@@ -50,7 +50,7 @@ const getEnrichmentResult = async (enrichmentId) => {
       if (status === "FAILED") return null;
 
       console.log(`Enrichment pending (attempt ${i + 1})... waiting 3s`);
-      await delay(3000);
+      await delay(6000);
     } catch (err) {
       console.error(`Fullenrich poll failed:`, err.message);
       return null;

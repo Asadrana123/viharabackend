@@ -1,60 +1,130 @@
-const Papa = require("papaparse");
 const axios = require("axios");
-const { enrichPerson, buildResearchSummary } = require("../services/fullenrichService");
-const { parsePhones, dispatchCall } = require("../services/vapiService");
+const {
+  buildContact,
+  parseContactsCsv,
+  runSingleCall,
+  createCampaign,
+  runCampaign,
+  getCampaign,
+} = require("../services/vapiCampaignService");
+const { resolveProperty } = require("../services/vapiPropertyService");
 const catchAsyncError = require("../middleware/catchAsyncError");
 const ErrorHandler = require("../utils/errorhandler");
 
 const VAPI_API_KEY = process.env.VAPI_API_KEY;
 const VAPI_ASSISTANT_ID = process.env.VAPI_ASSISTANT_ID;
 
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
 /**
- * POST /api/vapi/launch-campaign
+ * POST /api/vapi/call
+ * Dispatch a call to a single contact entered from the admin panel.
  */
-const launchCampaign = catchAsyncError(async (req, res, next) => {
-  const { csvData } = req.body;
-  if (!csvData) return next(new ErrorHandler("csvData is required", 400));
+/**
+ * POST /api/vapi/call
+ * Dispatch a call to a single contact entered from the admin panel.
+ */
+const startSingleCall = catchAsyncError(async (req, res, next) => {
+  const {
+    fullName, phone, address, city, state, zip, email,
+    enrich = true, propertyId,
+  } = req.body;
 
-  const parsed = Papa.parse(csvData, { header: true, skipEmptyLines: true });
-  if (!parsed.data || parsed.data.length === 0)
-    return next(new ErrorHandler("No contacts found in CSV", 400));
+  if (!fullName || !fullName.trim())
+    return next(new ErrorHandler("fullName is required", 400));
+  if (!phone || !phone.trim())
+    return next(new ErrorHandler("phone is required", 400));
 
-  const contacts = parsed.data.map((row) => ({
-    fullName: row["Full Name"] || "",
-    address: row["Address"] || "",
-    city: row["City"] || "",
-    state: row["State"] || "",
-    zip: row["Zip Code"] || "",
-    phones: parsePhones(row["Phones"]),
-    email: row["Emails"] ? row["Emails"].split("|")[0].trim() : null,
-  }));
+  const contact = buildContact({ fullName, phones: phone, address, city, state, zip, email });
 
-  const results = [];
-  for (const person of contacts) {
-    if (!person.fullName) continue;
-    if (!person.phones.length) {
-      results.push({ name: person.fullName, status: "skipped", reason: "no valid phones" });
-      continue;
-    }
-    const enrichment = await enrichPerson(person);
-    const researchSummary = buildResearchSummary(person, enrichment);
-    const callResults = [];
-    for (const phone of person.phones) {
-      const result = await dispatchCall(phone, person, researchSummary);
-      callResults.push(result);
-      await delay(2000);
-    }
-    results.push({ name: person.fullName, status: "dispatched", calls: callResults });
-    await delay(3000);
+  if (!contact.phones.length)
+    return next(
+      new ErrorHandler("Phone number is invalid. Use a 10-digit US number.", 400)
+    );
+
+  let property;
+  try {
+    property = await resolveProperty(propertyId);
+  } catch (err) {
+    return next(new ErrorHandler(err.message, err.statusCode || 400));
   }
+
+  const result = await runSingleCall(contact, {
+    enrich: Boolean(enrich),
+    property,
+  });
+
+  const anySuccess = result.calls.some((c) => c.success);
+  if (!anySuccess)
+    return next(
+      new ErrorHandler(
+        result.calls[0]?.error || "VAPI rejected the call request",
+        502
+      )
+    );
 
   res.status(200).json({
     success: true,
-    message: `Campaign complete — ${contacts.length} contacts processed`,
-    results,
+    message: `Call dispatched to ${result.name}`,
+    result,
   });
+});
+
+/**
+ * POST /api/vapi/launch-campaign
+ * Accepts a CSV payload, queues a background campaign and returns a jobId.
+ * Progress is polled via GET /api/vapi/campaign/:jobId.
+ */
+/**
+ * POST /api/vapi/launch-campaign
+ * Accepts a CSV payload, queues a background campaign and returns a jobId.
+ * Progress is polled via GET /api/vapi/campaign/:jobId.
+ */
+const launchCampaign = catchAsyncError(async (req, res, next) => {
+  const { csvData, enrich = true, propertyId } = req.body;
+
+  if (!csvData || !csvData.trim())
+    return next(new ErrorHandler("csvData is required", 400));
+
+  let contacts;
+  try {
+    contacts = parseContactsCsv(csvData);
+  } catch (err) {
+    return next(new ErrorHandler(err.message, 400));
+  }
+
+  // Resolve once up front so a bad propertyId fails fast instead of
+  // surfacing 200 calls deep into the background worker.
+  let property;
+  try {
+    property = await resolveProperty(propertyId);
+  } catch (err) {
+    return next(new ErrorHandler(err.message, err.statusCode || 400));
+  }
+
+  const job = createCampaign(contacts, { enrich: Boolean(enrich), property });
+
+  // Fire and forget — the worker updates job state in the background.
+  runCampaign(job.id).catch((err) =>
+    console.error(`❌ Unhandled campaign error (${job.id}):`, err)
+  );
+
+  res.status(202).json({
+    success: true,
+    message: `Campaign queued — ${contacts.length} contacts`,
+    jobId: job.id,
+    total: contacts.length,
+    property: property.address,
+  });
+});
+
+/**
+ * GET /api/vapi/campaign/:jobId
+ */
+const getCampaignStatus = catchAsyncError(async (req, res, next) => {
+  const job = getCampaign(req.params.jobId);
+  if (!job)
+    return next(new ErrorHandler("Campaign not found or expired", 404));
+
+  res.status(200).json({ success: true, job });
 });
 
 /**
@@ -179,23 +249,7 @@ function calcDuration(startedAt, endedAt) {
 }
 
 /**
- * Derive outcome using REAL endedReason values from VAPI logs:
- *
- * Confirmed "missed/failed" reasons:
- *   silence-timed-out, no-answer, call-start-error,
- *   call.in-progress.error-assistant-did-not-receive-customer-audio,
- *   twilio-failed-to-connect-call, customer-did-not-answer,
- *   customer-busy, pipeline-error, exceeded-max-duration
- *
- * Confirmed "connected" reasons:
- *   customer-ended-call, assistant-ended-call,
- *   assistant-forwarded-call
- *
- * Confirmed "voicemail":
- *   voicemail
- *
- * For connected calls, since analysis{} is empty, we parse the
- * raw transcript string which VAPI DOES populate.
+ * Derive outcome using REAL endedReason values from VAPI logs.
  */
 function deriveOutcome(call, durationSecs) {
   const reason = (call.endedReason || "").toLowerCase();
@@ -220,8 +274,6 @@ function deriveOutcome(call, durationSecs) {
   if (reason === "voicemail") return "voicemail";
 
   // ── Connected calls — parse the raw transcript string ────────────────────
-  // call.transcript is a plain string: "AI: ...\nUser: ...\nAI: ..."
-  // call.artifact.transcript is the same string — both confirmed in logs
   const transcript = (call.transcript || call.artifact?.transcript || "").toLowerCase();
 
   // If the call connected but duration was very short and no user spoke — missed
@@ -271,11 +323,7 @@ function deriveOutcome(call, durationSecs) {
 }
 
 /**
- * Score 0–100.
- * Since analysis{} is empty, score is based on:
- * - outcome type
- * - call duration (engagement signal)
- * - transcript keyword signals
+ * Score 0–100 based on outcome, duration and transcript keyword signals.
  */
 function deriveLeadScore(call, outcome, durationSecs) {
   if (outcome === "missed") return 0;
@@ -314,7 +362,6 @@ function deriveLeadScore(call, outcome, durationSecs) {
 /**
  * Extract transcript as [{role, text}] from call.messages array.
  * Confirmed from logs: roles are "bot" (not "assistant") and "user".
- * Filter out "system" role (the long prompt).
  */
 function extractTranscript(call) {
   // Prefer messages array for structured turn-by-turn
@@ -350,4 +397,9 @@ function formatDuration(secs) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-module.exports = { launchCampaign, getCalls };
+module.exports = {
+  launchCampaign,
+  getCalls,
+  startSingleCall,
+  getCampaignStatus,
+};

@@ -82,7 +82,7 @@ exports.getProductBySlug = catchAsyncError(async (req, res, next) => {
 exports.getAllProductsAdmin = catchAsyncError(async (req, res) => {
     const products = await productModel
         .find({})
-        .select('productName street city state slug image showOnAuctions isLandingPage auctionEventLabel isTestProperty status availableAreas')
+        .select('productName street city state slug image showOnAuctions isLandingPage auctionEventLabel isTestProperty status availableAreas startBid')
         .sort({ createdAt: -1 });
     return res.json({ success: true, count: products.length, products });
 });
