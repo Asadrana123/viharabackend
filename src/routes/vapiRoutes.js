@@ -32,6 +32,8 @@ router.get("/calls", getCalls);
 
 // Static variable catalogue — registered before /prompt/:propertyId so the
 // literal path is not swallowed by the param route.
+
+
 router.get("/prompt-variables", getPromptVariables);
 
 // Read / write the prompt for one property
