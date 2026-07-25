@@ -32,7 +32,7 @@ const vapiRoutes = require("./routes/vapiRoutes");
 const sellerRoutes = require("./routes/sellerRoutes");
 const contentRoutes = require("./routes/contentRoutes"); // ← ADD
 const careerRoutes=require('./routes/careerRoutes');
-// const { startRenovationCleanupJob } = require('./jobs/renovationCleanupJob');
+const { startRenovationCleanupJob } = require('./jobs/renovationCleanupJob');
 // Middleware
 app.use(cookieParser());
 app.use(cors(expressCorsOptions));
