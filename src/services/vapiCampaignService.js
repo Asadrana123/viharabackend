@@ -33,7 +33,13 @@ const buildContact = (raw = {}) => ({
 });
 
 /**
- * Parse a PropStream-style CSV export into normalised contacts.
+ * Parse a CSV export into normalised contacts.
+ *
+ * Header lookup is case/whitespace-insensitive and accepts more than one
+ * spelling per field, so two export shapes both work without edits:
+ *   • Lead-list export : Full Name, Phone Number, Email
+ *   • PropStream export : Full Name, Address, City, State, Zip Code, Phones, Emails
+ *
  * Throws if the payload contains no usable rows.
  */
 const parseContactsCsv = (csvData) => {
@@ -44,17 +50,35 @@ const parseContactsCsv = (csvData) => {
   }
 
   const contacts = parsed.data
-    .map((row) =>
-      buildContact({
-        fullName: row["Full Name"],
-        address: row["Address"],
-        city: row["City"],
-        state: row["State"],
-        zip: row["Zip Code"],
-        phones: row["Phones"],
-        email: row["Emails"] ? row["Emails"].split("|")[0] : null,
-      })
-    )
+    .map((row) => {
+      // Normalise this row's headers once: trim + lowercase every key so
+      // "Phone Number", " phones " and "PHONES" all resolve to the same cell.
+      const cell = {};
+      for (const key of Object.keys(row)) {
+        cell[String(key).trim().toLowerCase()] = row[key];
+      }
+
+      // Return the first alias that holds a non-empty value.
+      const pick = (...aliases) => {
+        for (const alias of aliases) {
+          const value = cell[alias];
+          if (value != null && String(value).trim() !== "") return value;
+        }
+        return undefined;
+      };
+
+      const emails = pick("emails", "email");
+
+      return buildContact({
+        fullName: pick("full name"),
+        address: pick("address"),
+        city: pick("city"),
+        state: pick("state"),
+        zip: pick("zip code"),
+        phones: pick("phones", "phone number"),
+        email: emails ? String(emails).split("|")[0] : null,
+      });
+    })
     .filter((c) => c.fullName);
 
   if (contacts.length === 0) {

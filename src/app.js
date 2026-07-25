@@ -47,12 +47,12 @@ mongoose.connect(process.env.DB_URI, {
   retryWrites: true,
   w: 'majority'
 })
-  // .then(() => {
-  //   console.log('MongoDB Connected with pool size: 50');
-  //   // Start the hourly cleanup of unsaved renovation records.
-  //   startRenovationCleanupJob();
-  // })
-  // .catch(err => console.log('MongoDB Connection Error:', err));
+  .then(() => {
+    console.log('MongoDB Connected with pool size: 50');
+    // Start the hourly cleanup of unsaved renovation records.
+    startRenovationCleanupJob();
+  })
+  .catch(err => console.log('MongoDB Connection Error:', err));
 
 // Home route
 app.get("/", (req, res) => {
