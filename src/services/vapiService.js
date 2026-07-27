@@ -8,8 +8,7 @@ const VAPI_PHONE_NUMBER_ID = process.env.VAPI_PHONE_NUMBER_ID;
 // The model override must name a provider or VAPI rejects the payload.
 // These default to the assistant's dashboard config; override per environment.
 const VAPI_MODEL_PROVIDER = process.env.VAPI_MODEL_PROVIDER || "openai";
-const VAPI_MODEL = process.env.VAPI_MODEL || "gpt-4o";
-
+const VAPI_MODEL = process.env.VAPI_MODEL || "gpt-5.1";
 // Fallback property, kept for backwards compatibility with any caller that
 // still resolves without a propertyId. Live calls always pass a real property.
 const PROPERTY = {
