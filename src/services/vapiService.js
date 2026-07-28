@@ -9,6 +9,22 @@ const VAPI_PHONE_NUMBER_ID = process.env.VAPI_PHONE_NUMBER_ID;
 // These default to the assistant's dashboard config; override per environment.
 const VAPI_MODEL_PROVIDER = process.env.VAPI_MODEL_PROVIDER || "openai";
 const VAPI_MODEL = process.env.VAPI_MODEL || "gpt-5.1";
+
+// Voicemail detection tuning (VAPI's recommended sales-outreach profile).
+// Sent on every call so behaviour is deterministic and does not depend on the
+// dashboard assistant's toggle. The message that gets spoken once voicemail is
+// detected is the per-property `voicemailMessage` authored in the Prompt tab;
+// if that is blank VAPI simply hangs up without leaving a message.
+const VOICEMAIL_DETECTION = {
+  provider: "vapi",
+  backoffPlan: {
+    maxRetries: 5,
+    startAtSeconds: 2,
+    frequencySeconds: 2.5,
+  },
+  beepMaxAwaitSeconds: 25,
+};
+
 // Fallback property, kept for backwards compatibility with any caller that
 // still resolves without a propertyId. Live calls always pass a real property.
 const PROPERTY = {
@@ -47,10 +63,14 @@ const parsePhones = (phonesStr) => {
  * Build the assistantOverrides payload. The admin-authored prompt replaces
  * the dashboard assistant's system message; blank optional fields are omitted
  * so the dashboard value is preserved rather than blanked out.
+ *
+ * voicemailDetection is always attached so an unanswered call that rings out
+ * to voicemail is detected and the voicemailMessage (when set) is left.
  */
 const buildAssistantOverrides = (contact, researchSummary, property, promptConfig) => {
   const overrides = {
     variableValues: buildVariableValues(contact, researchSummary, property),
+    voicemailDetection: VOICEMAIL_DETECTION,
   };
 
   if (!promptConfig) return overrides;

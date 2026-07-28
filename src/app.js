@@ -32,12 +32,12 @@ const vapiRoutes = require("./routes/vapiRoutes");
 const sellerRoutes = require("./routes/sellerRoutes");
 const contentRoutes = require("./routes/contentRoutes"); // ← ADD
 const careerRoutes=require('./routes/careerRoutes');
+const facebookRoutes = require("./routes/facebookRoutes");
 const { startRenovationCleanupJob } = require('./jobs/renovationCleanupJob');
 // Middleware
 app.use(cookieParser());
 app.use(cors(expressCorsOptions));
-app.use(bodyParser.json());
-
+app.use(bodyParser.json({ verify: (req, res, buf) => { req.rawBody = buf; } }));
 // MongoDB Connection with Connection Pooling
 mongoose.connect(process.env.DB_URI, {
   maxPoolSize: 50,
@@ -79,6 +79,7 @@ app.use("/api/v1/corelogic", coreLogicRoutes);
 app.use("/api/landing/", landingPageLeadRoutes);
 app.use("/api/vapi", vapiRoutes);
 app.use("/api/v1/seller", sellerRoutes);
+app.use("/api/facebook", facebookRoutes);
 app.use("/api/content", contentRoutes); // ← ADD
 app.use("/api/careers", careerRoutes); // ← ADD
 // Error Middleware
