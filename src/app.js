@@ -34,6 +34,7 @@ const contentRoutes = require("./routes/contentRoutes"); // ← ADD
 const careerRoutes=require('./routes/careerRoutes');
 const facebookRoutes = require("./routes/facebookRoutes");
 const { startRenovationCleanupJob } = require('./jobs/renovationCleanupJob');
+const leadCallRoutes = require("./routes/leadCallRoutes");
 const { startPolling } = require("./services/facebookPollingService");
 // Middleware
 app.use(cookieParser());
@@ -84,6 +85,7 @@ app.use("/api/v1/seller", sellerRoutes);
 app.use("/api/facebook", facebookRoutes);
 app.use("/api/content", contentRoutes); // ← ADD
 app.use("/api/careers", careerRoutes); // ← ADD
+app.use("/api/v1/lead", leadCallRoutes);
 // Error Middleware
 app.use(errorMiddleware);
 

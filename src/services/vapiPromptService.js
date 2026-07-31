@@ -8,6 +8,12 @@ const voicePromptModel = require("../model/voicePromptModel");
  */
 const PROMPT_VARIABLES = [
   {
+    key: "flips_per_year",
+    label: "Flips per year (from form)",
+    scope: "contact",
+    example: "10-50",
+  },
+  {
     key: "prospect_name",
     label: "Prospect first name",
     scope: "contact",
@@ -93,6 +99,8 @@ const PROMPT_VARIABLES = [
  * an absent key leaves a literal "{{var}}" in the spoken output.
  */
 const buildVariableValues = (contact = {}, researchSummary = "", property = {}) => ({
+  prospect_state: contact.state || "",
+  flips_per_year: contact.flipsPerYear || "",   // ← add this lineX
   prospect_name: (contact.fullName || "").split(" ")[0] || "",
   prospect_full_name: contact.fullName || "",
   prospect_research: researchSummary || "",
