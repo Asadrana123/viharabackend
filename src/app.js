@@ -34,6 +34,7 @@ const contentRoutes = require("./routes/contentRoutes"); // ← ADD
 const careerRoutes=require('./routes/careerRoutes');
 const facebookRoutes = require("./routes/facebookRoutes");
 const { startRenovationCleanupJob } = require('./jobs/renovationCleanupJob');
+const { startPolling } = require("./services/facebookPollingService");
 // Middleware
 app.use(cookieParser());
 app.use(cors(expressCorsOptions));
@@ -51,6 +52,7 @@ mongoose.connect(process.env.DB_URI, {
     console.log('MongoDB Connected with pool size: 50');
     // Start the hourly cleanup of unsaved renovation records.
     startRenovationCleanupJob();
+    startPolling();    
   })
   .catch(err => console.log('MongoDB Connection Error:', err));
 
