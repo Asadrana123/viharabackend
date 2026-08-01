@@ -11,6 +11,13 @@ const {
   upsertVoicePrompt,
   getPromptVariables,
 } = require("../controller/voicePromptController");
+
+const {
+  getUniversalPrompt,
+  upsertUniversalPrompt,
+} = require("../controller/universalVoicePromptController");
+
+
 const { isAuthenticated, authorizeRoles } = require("../middleware/auth");
 
 // All voice-agent routes are admin only
@@ -41,5 +48,10 @@ router
   .route("/prompt/:propertyId")
   .get(getVoicePrompt)
   .put(upsertVoicePrompt);
+
+
+router.get("/universal-prompt", getUniversalPrompt);
+router.put("/universal-prompt", upsertUniversalPrompt);
+
 
 module.exports = router;

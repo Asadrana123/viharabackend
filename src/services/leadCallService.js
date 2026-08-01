@@ -1,21 +1,30 @@
 // services/leadCallService.js
 //
-// Dispatches a single outbound call to a freshly-registered lead using ONE
-// universal prompt (config/universalVoicePrompt.js). No per-property lookup.
-// Reuses the existing VAPI primitives so call behaviour stays identical.
+// Dispatches a single outbound call to a registered lead using ONE universal
+// prompt. Prompt is read DB-first (admin-editable universalVoicePromptModel)
+// and falls back to config/universalVoicePrompt.js when none is saved.
 
 const { parsePhones, dispatchCall } = require("./vapiService");
-const UNIVERSAL_PROMPT = require("../config/universalVoicePrompt");
+const UNIVERSAL_PROMPT_FILE = require("../config/universalVoicePrompt");
+const universalVoicePromptModel = require("../model/universalVoicePromptModel");
 
-/**
- * @param {object} lead
- * @param {string} lead.fullName
- * @param {string} lead.phone     raw phone from the form
- * @param {string} [lead.city]
- * @param {string} [lead.state]
- * @param {string} [lead.email]
- * @param {string} [lead.flipsPerYear]
- */
+/** DB-first prompt load, with the hardcoded file as fallback. */
+const loadUniversalPrompt = async () => {
+  const saved = await universalVoicePromptModel
+    .findOne({ singletonKey: "universal" })
+    .lean();
+
+  if (saved && saved.systemPrompt) {
+    return {
+      systemPrompt: saved.systemPrompt,
+      firstMessage: saved.firstMessage || "",
+      voicemailMessage: saved.voicemailMessage || "",
+      endCallMessage: saved.endCallMessage || "",
+    };
+  }
+  return UNIVERSAL_PROMPT_FILE;
+};
+
 const dispatchRegistrationCall = async (lead = {}) => {
   const phones = parsePhones(lead.phone);
   if (!phones.length) {
@@ -30,10 +39,12 @@ const dispatchRegistrationCall = async (lead = {}) => {
     flipsPerYear: (lead.flipsPerYear || "").toString().trim(),
   };
 
+  const promptConfig = await loadUniversalPrompt();
+
   return dispatchCall(phones[0], contact, {
     researchSummary: "",
     property: {},
-    promptConfig: UNIVERSAL_PROMPT,
+    promptConfig,
   });
 };
 

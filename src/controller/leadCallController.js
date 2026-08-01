@@ -1,20 +1,18 @@
 // controller/leadCallController.js
 const catchAsyncError = require("../middleware/catchAsyncError");
 const ErrorHandler = require("../utils/errorhandler");
-const { dispatchRegistrationCall } = require("../services/leadCallService");
+const PersonaLead = require("../model/personaLeadModel");
+const { scheduleRegistrationCall } = require("../services/registrationCallService");
 
 /**
  * POST /api/v1/lead/register   (public)
- * Body: { fullName, email, phone, market, city, state, flipsPerYear,
- *         consent, consentText, consentTimestamp, marketLive, eventId }
- *
- * Consent gate (LEGAL): only place an automated/AI call when consent === true.
- * Without consent the lead is still accepted (email-only) — no call.
+ * Persists every persona-1 lead, then (only with consent) schedules the
+ * Maya call: 60s delay → call → retry after 60s if no answer.
  */
 const registerAndCall = catchAsyncError(async (req, res, next) => {
   const {
-    fullName, email, phone, market, city, state,
-    flipsPerYear, consent,
+    fullName, email, phone, market, city, state, flipsPerYear,
+    consent, consentText, consentTimestamp, marketLive, eventId,
   } = req.body;
 
   if (!fullName || !fullName.trim())
@@ -24,16 +22,27 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
   if (!phone || !phone.trim())
     return next(new ErrorHandler("phone is required", 400));
 
-  // TODO (persistence): save the lead — market, flipsPerYear, consent,
-  // consentText, consentTimestamp, IP, marketLive — into your landing-lead
-  // model (or merge with landingPageLeadRoutes). Calling works without this.
+  // Persist the lead so it shows in the admin Persona Leads tab.
+  await PersonaLead.create({
+    fullName: fullName.trim(),
+    email: email.trim(),
+    phone: phone.trim(),
+    market: market || "",
+    city: city || "",
+    state: state || "",
+    flipsPerYear: flipsPerYear ? String(flipsPerYear) : "",
+    consent: consent === true,
+    consentText: consentText || "",
+    consentTimestamp: consentTimestamp ? new Date(consentTimestamp) : null,
+    marketLive: marketLive === true,
+    eventId: eventId || "",
+  });
 
   let call = { attempted: false };
   if (consent === true) {
-    // Fire-and-forget so the form response is instant; the call rings within seconds.
-    dispatchRegistrationCall({ fullName, email, phone, city, state, flipsPerYear })
-      .then((r) => console.log("[lead-call]", fullName, r))
-      .catch((e) => console.error("[lead-call] failed:", e.message));
+    // Fire-and-forget — response is instant; first call rings ~60s later.
+    scheduleRegistrationCall({ fullName, email, phone, city, state, flipsPerYear })
+      .catch((e) => console.error("[lead-call] scheduling failed:", e.message));
     call = { attempted: true };
   } else {
     console.log(`[lead] email-only (no consent): ${email}`);
@@ -42,7 +51,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
   res.status(200).json({
     success: true,
     message: consent
-      ? "Registered — Maya is calling you now."
+      ? "Registered — Maya will call you shortly."
       : "Registered. (No calls — consent not given.)",
     call,
   });

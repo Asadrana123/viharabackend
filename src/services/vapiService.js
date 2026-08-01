@@ -151,4 +151,12 @@ const dispatchCall = async (
   }
 };
 
-module.exports = { parsePhones, dispatchCall, PROPERTY };
+
+const getCall = async (callId) => {
+  const { data } = await axios.get(`https://api.vapi.ai/call/${callId}`, {
+    headers: { Authorization: `Bearer ${VAPI_API_KEY}` },
+  });
+  return data;
+};
+
+module.exports = { parsePhones, dispatchCall, PROPERTY,getCall };
