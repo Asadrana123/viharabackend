@@ -17,8 +17,10 @@ const colfax     = require('./chicago_colfax');
 const chicago72nd = require('./chicago_72nd');
 const robin      = require('./thomson_robin');
 const crawford   = require('./matteson_crawford');
+const ogdensburg = require('./ogdensburg_rensselaer');
+const bigbear    = require('./bigbear_georgia');
 
-const PROPERTIES = [oakland, kingwood, cottage, elizabeth, colfax, chicago72nd, robin, crawford];
+const PROPERTIES = [oakland, kingwood, cottage, elizabeth, colfax, chicago72nd, robin, crawford, ogdensburg, bigbear];
 
 const PROPERTY_COSTS = PROPERTIES.reduce((map, p) => {
   map[p.id] = p.config;
@@ -62,5 +64,7 @@ module.exports = {
   COLFAX_PROPERTY_ID: colfax.id,
   CHICAGO_72ND_PROPERTY_ID: chicago72nd.id,
   ROBIN_PROPERTY_ID: robin.id,
-  CRAWFORD_PROPERTY_ID: crawford.id
+  CRAWFORD_PROPERTY_ID: crawford.id,
+  RENSSELAER_PROPERTY_ID: ogdensburg.id,
+  GEORGIA_PROPERTY_ID: bigbear.id
 };
