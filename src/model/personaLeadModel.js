@@ -13,7 +13,8 @@ const personaLeadSchema = new mongoose.Schema(
     market: { type: String, default: "", trim: true },   // "Austin, TX"
     city: { type: String, default: "", trim: true },
     state: { type: String, default: "", trim: true },
-    flipsPerYear: { type: String, default: "", trim: true },
+    buyerType: { type: String, default: "", trim: true },     // hold | wholesale | agent | explore
+    dealsClosed: { type: String, default: "", trim: true },   // 0 | 1–3 | 4–10 | 10+
 
     consent: { type: Boolean, default: false },
     consentText: { type: String, default: "" },

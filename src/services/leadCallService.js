@@ -36,7 +36,6 @@ const dispatchRegistrationCall = async (lead = {}) => {
     city: (lead.city || "").trim(),
     state: (lead.state || "").trim(),
     email: (lead.email || "").trim() || null,
-    flipsPerYear: (lead.flipsPerYear || "").toString().trim(),
   };
 
   const promptConfig = await loadUniversalPrompt();

@@ -10,8 +10,8 @@ const { scheduleRegistrationCall } = require("../services/registrationCallServic
  * Maya call: 60s delay → call → retry after 60s if no answer.
  */
 const registerAndCall = catchAsyncError(async (req, res, next) => {
-  const {
-    fullName, email, phone, market, city, state, flipsPerYear,
+ const {
+    fullName, email, phone, market, city, state, buyerType, dealsClosed,
     consent, consentText, consentTimestamp, marketLive, eventId,
   } = req.body;
 
@@ -30,7 +30,8 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
     market: market || "",
     city: city || "",
     state: state || "",
-    flipsPerYear: flipsPerYear ? String(flipsPerYear) : "",
+    buyerType: buyerType || "",
+    dealsClosed: dealsClosed || "",
     consent: consent === true,
     consentText: consentText || "",
     consentTimestamp: consentTimestamp ? new Date(consentTimestamp) : null,
@@ -41,7 +42,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
   let call = { attempted: false };
   if (consent === true) {
     // Fire-and-forget — response is instant; first call rings ~60s later.
-    scheduleRegistrationCall({ fullName, email, phone, city, state, flipsPerYear })
+    scheduleRegistrationCall({ fullName, email, phone, city, state, buyerType, dealsClosed })
       .catch((e) => console.error("[lead-call] scheduling failed:", e.message));
     call = { attempted: true };
   } else {
