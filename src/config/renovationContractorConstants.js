@@ -260,6 +260,110 @@ const VERIFIED_CONTRACTORS = {
       yearsInBusiness: null,
       source: "Yellow Pages"
     }
+  ],
+  'Big Bear Lake': [
+    {
+      name: "High Mountain Construction Inc.",
+      phone: "909-205-1669",
+      address: "41656 Big Bear Blvd, Big Bear Lake, CA 92315",
+      rating: 5.0,
+      reviewCount: null,
+      specialty: "General contracting, custom mountain homes, and major remodels",
+      yearsInBusiness: 10,
+      source: "Chamber of Commerce · CSLB"
+    },
+    {
+      name: "Bill Kawa Construction",
+      phone: "909-866-7378",
+      address: "39181 Peak Ln, Big Bear Lake, CA 92315",
+      rating: 5.0,
+      reviewCount: null,
+      specialty: "General home building and custom remodeling",
+      yearsInBusiness: null,
+      source: "Chamber of Commerce"
+    },
+    {
+      name: "Don Meyer Construction",
+      phone: "909-436-9117",
+      address: "PO Box 3103, Big Bear Lake, CA 92315",
+      rating: 5.0,
+      reviewCount: null,
+      specialty: "General contracting and residential building",
+      yearsInBusiness: null,
+      source: "BBB"
+    },
+    {
+      name: "Beckett Roofing",
+      phone: "909-991-9537",
+      address: "PO Box 897, Big Bear Lake, CA 92315",
+      rating: 5.0,
+      reviewCount: 20,
+      specialty: "Roof installation, repair, and ice/water protection",
+      yearsInBusiness: null,
+      source: "Yelp · Google"
+    },
+    {
+      name: "Herrera General Contractor",
+      phone: "951-965-3442",
+      address: "PO Box 890, Big Bear Lake, CA 92315",
+      rating: 5.0,
+      reviewCount: null,
+      specialty: "General contracting, remodeling, and home additions",
+      yearsInBusiness: null,
+      source: "BBB"
+    }
+  ],
+  'Ogdensburg': [
+    {
+      name: "Wayne Latham General Contractor",
+      phone: "315-375-4063",
+      address: "9264 State Highway 58, Ogdensburg, NY 13669",
+      rating: null,
+      reviewCount: null,
+      specialty: "General construction, home renovations, and roofing",
+      yearsInBusiness: null,
+      source: "Neighbors of Watertown"
+    },
+    {
+      name: "Bertrand's Construction, Inc.",
+      phone: "315-323-6219",
+      address: "540 English Settlement Rd, Ogdensburg, NY 13669",
+      rating: 5.0,
+      reviewCount: null,
+      specialty: "Home additions, roofing, electrical, plumbing, and general remodeling",
+      yearsInBusiness: null,
+      source: "Houzz"
+    },
+    {
+      "name": "Morley Bay Construction LLC",
+      "phone": null,
+      "address": "5881 State Highway 37, Ogdensburg, NY 13669",
+      "rating": null,
+      "reviewCount": null,
+      "specialty": "Bathroom design, custom building, and residential construction",
+      "yearsInBusiness": null,
+      "source": "BBB"
+    },
+    {
+      name: "Max Beggs Builders and Movers",
+      phone: "315-375-6653",
+      address: "431 Center Rd, Ogdensburg, NY 13669",
+      rating: null,
+      reviewCount: null,
+      specialty: "General construction, renovations, foundations, house lifting/moving",
+      yearsInBusiness: null,
+      source: "Neighbors of Watertown"
+    },
+    {
+      name: "Forrest & Richardson Inc.",
+      phone: "315-276-5364",
+      address: "Ogdensburg, NY 13669",
+      rating: null,
+      reviewCount: null,
+      specialty: "Concrete contracting, driveways, and tree services",
+      yearsInBusiness: null,
+      source: "BBB"
+    }
   ]
 };
 
