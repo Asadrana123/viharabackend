@@ -4,6 +4,7 @@ const ReplicatePromptBuilder = require("../services/replicatePromptBuilder");
 const RenovationRequest = require("../model/renovationRequestModel");
 const RenovationContractorService = require("../services/renovationContractorService");
 const Product = require("../model/productModel");
+const { scaleCostAnalysis } = require("../config/renovationCosts/scaleCostAnalysis");
 const BflService = require("../services/bflService");
 const BflPromptBuilder = require("../services/bflPromptBuilder");
 
@@ -101,7 +102,7 @@ exports.generateRenovationImages = async (req, res) => {
       );
     }
     // ─────────────────────────────────────────────────────────────────────
-
+    costAnalysis = scaleCostAnalysis(costAnalysis);
     const { prompt, negativePrompt } = PromptBuilder.buildPrompts(
       { city: property.city, state: property.state, propertyType: property.propertyType },
       renovationData
