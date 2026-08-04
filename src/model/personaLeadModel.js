@@ -23,6 +23,9 @@ const personaLeadSchema = new mongoose.Schema(
     marketLive: { type: Boolean, default: false },
     eventId: { type: String, default: "" },
 
+    // FullEnrich reverse-email profile (null when enrichment returns nothing).
+    enrichment: { type: mongoose.Schema.Types.Mixed, default: null },
+
     source: { type: String, default: "persona-1" },
   },
   { timestamps: true }
