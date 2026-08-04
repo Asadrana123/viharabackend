@@ -1,9 +1,14 @@
 // services/registrationCallService.js
 //
-// Orchestrates the registration-call flow for persona-1 leads:
-//   wait 60s → call → if NOT answered → wait 60s → call once more.
-// The second attempt exists to punch through Do-Not-Disturb, which
-// commonly lets a second call from the same number ring through.
+// Registration-call flow for persona-1 leads. AT MOST two calls, ever:
+//   wait 60s → call once, then:
+//     • answered                    → stop (no retry)
+//     • customer cut / declined     → stop (no retry)
+//     • rang out / no answer        → wait 60s → call once more → stop
+//
+// The retry fires ONLY on a genuine no-answer, so a person who actively
+// declines the first call is never called a second time. There is no third
+// attempt under any outcome.
 //
 // Runs as a fire-and-forget background task. The backend is a long-lived
 // Render process, so in-memory setTimeout timers are safe (same pattern as
@@ -12,34 +17,30 @@
 const { dispatchRegistrationCall } = require("./leadCallService");
 const { getCall } = require("./vapiService");
 
-const WAIT_MS = 60 * 1000;        // 60s before the first call, and before the retry
-const POLL_EVERY_MS = 10 * 1000;  // check call status every 10s
+const WAIT_MS = 60 * 1000;         // 60s before the first call, and before the retry
+const POLL_EVERY_MS = 10 * 1000;   // check call status every 10s
 const POLL_MAX_MS = 5 * 60 * 1000; // give up polling after 5 min (assume answered)
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// endedReasons that mean the human never actually picked up → retry.
-const NO_ANSWER_REASONS = new Set([
+// Retry ONLY on a genuine ring-out / no-answer. Every other ended reason —
+// answered, customer-busy (declined), customer-ended-call, errors — means the
+// person either picked up or actively cut the call, so we do NOT call again.
+const RETRY_REASONS = new Set([
   "no-answer",
   "customer-did-not-answer",
-  "customer-busy",
-  "voicemail",
   "silence-timed-out",
-  "twilio-failed-to-connect-call",
-  "call-start-error",
-  "pipeline-error",
+  "voicemail",
 ]);
 
-function isNoAnswer(call) {
+function shouldRetry(call) {
   const reason = String(call?.endedReason || "").toLowerCase();
-  if (NO_ANSWER_REASONS.has(reason)) return true;
-  if (reason.includes("error") || reason.includes("failed")) return true;
-  return false;
+  return RETRY_REASONS.has(reason);
 }
 
 /**
  * Poll VAPI until the call ends (or we time out).
- * @returns {{answered: boolean}}  answered=false only when it clearly rang out.
+ * @returns {{ retry: boolean }}  retry=true only on a clear no-answer.
  */
 async function pollCallOutcome(callId) {
   const startedAt = Date.now();
@@ -55,12 +56,14 @@ async function pollCallOutcome(callId) {
     }
 
     if (String(call.status).toLowerCase() === "ended") {
-      return { answered: !isNoAnswer(call) };
+      const retry = shouldRetry(call);
+      console.log(`[reg-call] ended reason="${call.endedReason}" → retry=${retry}`);
+      return { retry };
     }
   }
 
   // Still going after POLL_MAX_MS — they're almost certainly talking. No retry.
-  return { answered: true };
+  return { retry: false };
 }
 
 /**
@@ -74,19 +77,20 @@ const scheduleRegistrationCall = async (lead = {}) => {
   const first = await dispatchRegistrationCall(lead);
   console.log(`[reg-call] attempt 1 → ${who}:`, first);
 
-  // Couldn't even place the call (bad number / VAPI reject) — nothing to poll.
+  // Couldn't even place the call (bad number / VAPI reject) — nothing to poll,
+  // and we do not retry.
   if (!first.success || !first.callId) return;
 
-  const outcome = await pollCallOutcome(first.callId);
-  if (outcome.answered) {
-    console.log(`[reg-call] ${who} answered — no retry.`);
+  const { retry } = await pollCallOutcome(first.callId);
+  if (!retry) {
+    console.log(`[reg-call] ${who}: no retry (answered or declined).`);
     return;
   }
 
-  // ── Attempt 2 (after another 60s) — final ──────────────────────────────
+  // ── Attempt 2 (after another 60s) — final. No third attempt ever. ──────
   await delay(WAIT_MS);
   const second = await dispatchRegistrationCall(lead);
-  console.log(`[reg-call] attempt 2 (DND bypass) → ${who}:`, second);
+  console.log(`[reg-call] attempt 2 (no-answer retry) → ${who}:`, second);
 };
 
 module.exports = { scheduleRegistrationCall };
