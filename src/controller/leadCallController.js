@@ -14,7 +14,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
     fullName, email, phone, market, city, state, buyerType, dealsClosed,
     consent, consentText, consentTimestamp, marketLive, eventId,
   } = req.body;
-
+  
   if (!fullName || !fullName.trim())
     return next(new ErrorHandler("fullName is required", 400));
   if (!email || !email.trim())
@@ -46,6 +46,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
     let enrichment = null;
     try {
       enrichment = await enrichPerson({ fullName: fullName.trim(), email: email.trim() });
+      console.log(enrichment);
     } catch (e) {
       console.error("[lead-enrich] enrichment failed:", e.message);
     }
