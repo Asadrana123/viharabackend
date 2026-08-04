@@ -7,7 +7,6 @@ const universalVoicePromptSchema = new mongoose.Schema(
       type: String,
       required: [true, "systemPrompt is required"],
       trim: true,
-      maxlength: [20000, "systemPrompt cannot exceed 20000 characters"],
     },
     firstMessage: { type: String, default: "", trim: true, maxlength: 1000 },
     voicemailMessage: { type: String, default: "", trim: true, maxlength: 1000 },
