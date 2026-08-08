@@ -5,11 +5,10 @@ const EarlyAccessLead = require("../model/earlyAccessLeadModel");
 const { scheduleRegistrationCall } = require("../services/registrationCallService");
 const { enrichPerson } = require("../services/fullenrichService");
 const { syncEarlyAccessLead } = require("../services/brevoService");
+const { getCallsForPhones, normalisePhone } = require("../services/vapiCallsService");
 
 /**
  * POST /api/v1/early-access/register   (public)
- * Persists every early-access lead, then (only with consent) schedules the
- * Maya call — same 60s delay → call → no-answer retry flow as persona-1.
  */
 const registerAndCall = catchAsyncError(async (req, res, next) => {
   const {
@@ -24,7 +23,6 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
   if (!phone || !phone.trim())
     return next(new ErrorHandler("phone is required", 400));
 
-  // ── 1. Call immediately (fire-and-forget, only with consent) ────────────
   let call = { attempted: false };
   if (consent === true) {
     scheduleRegistrationCall({
@@ -37,7 +35,6 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
     console.log(`[early-access] email-only (no consent): ${email}`);
   }
 
-  // ── 2. Respond instantly — enrich + save run in the background ──────────
   res.status(200).json({
     success: true,
     message: consent
@@ -46,7 +43,6 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
     call,
   });
 
-  // ── 3. Enrich, then save. Save as-is if enrichment returns nothing ──────
   (async () => {
     let enrichment = null;
     try {
@@ -69,8 +65,6 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
         enrichment,
       });
 
-      // Sync to Brevo — adding the contact to the list triggers the
-      // welcome + drip automation. Non-throwing; never blocks lead save.
       syncEarlyAccessLead({ fullName, email, phone, markets, dealSize })
         .catch((e) => console.error("[brevo-sync] failed:", e.message));
     } catch (e) {
@@ -81,7 +75,9 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
 
 /**
  * GET /api/v1/early-access?page=&limit=
- * Paginated list for the admin Early Access Leads tab.
+ * Paginated list for the admin Early Access Leads tab. Each lead carries the
+ * VAPI calls placed to its phone number (text-only, newest first). The call
+ * lookup is best-effort — if VAPI is unreachable, `calls` is simply empty.
  */
 const getAllEarlyAccessLeads = catchAsyncError(async (req, res) => {
   const page = Math.max(1, parseInt(req.query.page) || 1);
@@ -93,9 +89,17 @@ const getAllEarlyAccessLeads = catchAsyncError(async (req, res) => {
     EarlyAccessLead.countDocuments(),
   ]);
 
+  const phones = leads.map((l) => l.phone).filter(Boolean);
+  const callsByPhone = await getCallsForPhones(phones);
+
+  const leadsWithCalls = leads.map((lead) => ({
+    ...lead,
+    calls: callsByPhone[normalisePhone(lead.phone)] || [],
+  }));
+
   res.status(200).json({
     success: true,
-    leads,
+    leads: leadsWithCalls,
     pagination: { page, limit, total, pages: Math.ceil(total / limit) },
   });
 });
