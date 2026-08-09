@@ -38,6 +38,7 @@ const { startRenovationCleanupJob } = require('./jobs/renovationCleanupJob');
 const leadCallRoutes = require("./routes/leadCallRoutes");
 const personaLeadRoutes = require("./routes/personaLeadRoutes");
 const earlyAccessLeadRoutes = require("./routes/earlyAccessLeadRoutes");
+const rb2bRoutes = require("./routes/rb2bRoutes");
 // Middleware
 app.use(cookieParser());
 app.use(cors(expressCorsOptions));
@@ -90,6 +91,7 @@ app.use("/api/v1/lead", leadCallRoutes);
 app.use("/api/capi", metaCapiRoutes);
 app.use("/api/v1/persona-lead", personaLeadRoutes);
 app.use("/api/v1/early-access", earlyAccessLeadRoutes);
+app.use("/api/v1/rb2b", rb2bRoutes);
 // Error Middleware
 app.use(errorMiddleware);
 
