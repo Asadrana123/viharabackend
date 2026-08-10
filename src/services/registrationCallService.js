@@ -1,18 +1,20 @@
 // services/registrationCallService.js
 //
-// Registration-call flow for persona-1 leads. AT MOST two calls, ever:
-//   wait 60s → call once, then:
-//     • answered                    → stop (no retry)
-//     • customer cut / declined     → stop (no retry)
-//     • rang out / no answer        → wait 60s → call once more → stop
+// Shared registration-call primitives.
 //
-// The retry fires ONLY on a genuine no-answer, so a person who actively
-// declines the first call is never called a second time. There is no third
-// attempt under any outcome.
+//   • runCallBurst(lead, opts)          — reusable "up to two calls in a row"
+//                                          burst. Used by BOTH the persona flow
+//                                          (below) and the early-access daily
+//                                          scheduler.
+//   • scheduleRegistrationCall(lead)    — PERSONA-1 flow. Unchanged behaviour:
+//                                          at most two calls, ever, then stop.
+//                                          No daily loop.
 //
-// Runs as a fire-and-forget background task. The backend is a long-lived
-// Render process, so in-memory setTimeout timers are safe (same pattern as
-// the in-memory campaign jobs / activeAuctions map).
+// The early-access daily-callback loop lives in earlyAccessCallScheduler.js and
+// reuses runCallBurst — persona behaviour is therefore untouched.
+//
+// Runs as fire-and-forget background work. The backend is a long-lived Render
+// process, so in-memory setTimeout timers inside a single burst are safe.
 
 const { dispatchRegistrationCall } = require("./leadCallService");
 const { getCall } = require("./vapiService");
@@ -23,9 +25,8 @@ const POLL_MAX_MS = 5 * 60 * 1000; // give up polling after 5 min (assume answer
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// Retry ONLY on a genuine ring-out / no-answer. Every other ended reason —
-// answered, customer-busy (declined), customer-ended-call, errors — means the
-// person either picked up or actively cut the call, so we do NOT call again.
+// PERSONA retry set — the original behaviour. Retry ONLY on a genuine
+// ring-out / no-answer; a person who actively declines is not called again.
 const RETRY_REASONS = new Set([
   "no-answer",
   "customer-did-not-answer",
@@ -33,16 +34,42 @@ const RETRY_REASONS = new Set([
   "voicemail",
 ]);
 
-function shouldRetry(call) {
+// EARLY-ACCESS "did not reach a human" set (broader). Used by the daily loop
+// where the ONLY stop condition is a genuine pickup — busy lines and dispatch
+// errors count as no-pickup and keep the loop going.
+const DID_NOT_CONNECT_REASONS = new Set([
+  "no-answer",
+  "customer-did-not-answer",
+  "customer-busy",
+  "silence-timed-out",
+  "voicemail",
+  "call-start-error",
+  "twilio-failed-to-connect-call",
+  "pipeline-error",
+]);
+
+// /*
+//  * Decide whether a completed call reached a human.
+//  * @param {object} call
+//  * @param {Set<string>} noPickupReasons  reasons that mean "no pickup"
+//  * @param {boolean} treatErrorsAsNoPickup  also treat any *error*/*failed* reason
+//  *                                          as no-pickup (early-access only)
+//  * @returns {boolean} true when the person engaged (a pickup)
+//  */
+function isPickup(call, noPickupReasons, treatErrorsAsNoPickup) {
   const reason = String(call?.endedReason || "").toLowerCase();
-  return RETRY_REASONS.has(reason);
+  if (!reason) return false;
+  if (noPickupReasons.has(reason)) return false;
+  if (treatErrorsAsNoPickup && (reason.includes("error") || reason.includes("failed")))
+    return false;
+  return true;
 }
 
 /**
  * Poll VAPI until the call ends (or we time out).
- * @returns {{ retry: boolean }}  retry=true only on a clear no-answer.
+ * @returns {{ connected: boolean }}  connected=true only when a human engaged.
  */
-async function pollCallOutcome(callId) {
+async function pollCallOutcome(callId, noPickupReasons, treatErrorsAsNoPickup) {
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < POLL_MAX_MS) {
@@ -56,41 +83,74 @@ async function pollCallOutcome(callId) {
     }
 
     if (String(call.status).toLowerCase() === "ended") {
-      const retry = shouldRetry(call);
-      console.log(`[reg-call] ended reason="${call.endedReason}" → retry=${retry}`);
-      return { retry };
+      const connected = isPickup(call, noPickupReasons, treatErrorsAsNoPickup);
+      console.log(`[reg-call] ended reason="${call.endedReason}" → connected=${connected}`);
+      return { connected };
     }
   }
 
-  // Still going after POLL_MAX_MS — they're almost certainly talking. No retry.
-  return { retry: false };
+  // Still going after POLL_MAX_MS — they're almost certainly talking. Pickup.
+  return { connected: true };
 }
 
 /**
- * Schedule the whole flow for one lead. Fire-and-forget from the controller.
+ * Reusable burst for ONE lead:
+ *   [optional initial wait] → call → if no pickup, wait 60s → call once more.
+ * Resolves when the burst finishes. Places at most two calls.
+ *
+ * @param {object} lead
+ * @param {object} [opts]
+ * @param {number} [opts.initialDelayMs=0]        wait before the first call
+ * @param {Set<string>} [opts.noPickupReasons]    reasons meaning "no pickup"
+ *                                                 (defaults to persona RETRY_REASONS)
+ * @param {boolean} [opts.treatErrorsAsNoPickup=false]
+ * @returns {{ connected: boolean }}
  */
-const scheduleRegistrationCall = async (lead = {}) => {
+async function runCallBurst(
+  lead = {},
+  { initialDelayMs = 0, noPickupReasons = RETRY_REASONS, treatErrorsAsNoPickup = false } = {}
+) {
   const who = lead.fullName || lead.phone || "lead";
+  if (initialDelayMs > 0) await delay(initialDelayMs);
 
-  // ── Attempt 1 (after 60s) ──────────────────────────────────────────────
-  await delay(WAIT_MS);
+  // ── Attempt 1 ──────────────────────────────────────────────────────────
   const first = await dispatchRegistrationCall(lead);
   console.log(`[reg-call] attempt 1 → ${who}:`, first);
+  if (!first.success || !first.callId) return { connected: false };
 
-  // Couldn't even place the call (bad number / VAPI reject) — nothing to poll,
-  // and we do not retry.
-  if (!first.success || !first.callId) return;
-
-  const { retry } = await pollCallOutcome(first.callId);
-  if (!retry) {
-    console.log(`[reg-call] ${who}: no retry (answered or declined).`);
-    return;
+  const firstOutcome = await pollCallOutcome(first.callId, noPickupReasons, treatErrorsAsNoPickup);
+  if (firstOutcome.connected) {
+    console.log(`[reg-call] ${who}: connected on attempt 1.`);
+    return { connected: true };
   }
 
-  // ── Attempt 2 (after another 60s) — final. No third attempt ever. ──────
+  // ── Attempt 2 (no pickup) — final call of this burst ───────────────────
   await delay(WAIT_MS);
   const second = await dispatchRegistrationCall(lead);
   console.log(`[reg-call] attempt 2 (no-answer retry) → ${who}:`, second);
+  if (!second.success || !second.callId) return { connected: false };
+
+  const secondOutcome = await pollCallOutcome(second.callId, noPickupReasons, treatErrorsAsNoPickup);
+  console.log(`[reg-call] ${who}: connected=${secondOutcome.connected} after burst.`);
+  return { connected: secondOutcome.connected };
+}
+
+/**
+ * PERSONA-1 registration flow — unchanged behaviour: wait 60s, call, retry once
+ * only on a genuine no-answer, then STOP. No daily loop.
+ */
+const scheduleRegistrationCall = async (lead = {}) => {
+  await runCallBurst(lead, {
+    initialDelayMs: WAIT_MS,
+    noPickupReasons: RETRY_REASONS,
+    treatErrorsAsNoPickup: false,
+  });
 };
 
-module.exports = { scheduleRegistrationCall };
+module.exports = {
+  scheduleRegistrationCall,
+  runCallBurst,
+  RETRY_REASONS,
+  DID_NOT_CONNECT_REASONS,
+  WAIT_MS,
+};

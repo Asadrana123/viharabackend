@@ -2,17 +2,27 @@
 const catchAsyncError = require("../middleware/catchAsyncError");
 const ErrorHandler = require("../utils/errorhandler");
 const EarlyAccessLead = require("../model/earlyAccessLeadModel");
-const { scheduleRegistrationCall } = require("../services/registrationCallService");
+const { scheduleEarlyAccessSignupCall } = require("../services/earlyAccessCallScheduler");
 const { enrichPerson } = require("../services/fullenrichService");
 const { syncEarlyAccessLead } = require("../services/brevoService");
 const { getCallsForPhones, normalisePhone } = require("../services/vapiCallsService");
 
 /**
  * POST /api/v1/early-access/register   (public)
+ *
+ * Flow (order matters):
+ *   1. Validate + normalize phone.
+ *   2. Create the lead — the unique email index is the dedup gate. A duplicate
+ *      email is rejected here (409) before any call is scheduled.
+ *   3. Schedule the Maya call (fire-and-forget, only with consent). This runs
+ *      the 2-in-60s burst and, on no-answer, starts the daily 1:32 PM callback
+ *      loop that continues until the lead picks up.
+ *   4. Respond.
+ *   5. Enrich + Brevo sync in the background; update the lead in place.
  */
 const registerAndCall = catchAsyncError(async (req, res, next) => {
   const {
-    fullName, email, phone, markets, dealSize,
+    fullName, email, phone, markets, dealSize, timezone,
     consent, consentText, consentTimestamp, eventId,
   } = req.body;
 
@@ -23,18 +33,53 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
   if (!phone || !phone.trim())
     return next(new ErrorHandler("phone is required", 400));
 
+  const normalizedEmail = email.trim().toLowerCase();
+  const phoneNormalized = normalisePhone(phone); // canonical E.164 for dedup + calling
+  if (!phoneNormalized)
+    return next(new ErrorHandler("Enter a valid phone number", 400));
+
+  // ── 1. Create the lead up front — dedup gate via the unique email index ──
+  let lead;
+  try {
+    lead = await EarlyAccessLead.create({
+      fullName: fullName.trim(),
+      email: normalizedEmail,
+      phone: phone.trim(),          // raw, as entered (for display)
+      phoneNormalized,              // canonical, for the scheduler's dedup + dispatch
+      markets: markets || "",
+      dealSize: dealSize || "",
+      timezone: timezone || "",
+      consent: consent === true,
+      consentText: consentText || "",
+      consentTimestamp: consentTimestamp ? new Date(consentTimestamp) : null,
+      eventId: eventId || "",
+    });
+  } catch (err) {
+    if (err && err.code === 11000) {
+      return next(new ErrorHandler("This email is already registered.", 409));
+    }
+    throw err; // unexpected — let catchAsyncError surface it
+  }
+
+  // ── 2. Schedule the call (fire-and-forget, only with consent) ───────────
   let call = { attempted: false };
   if (consent === true) {
-    scheduleRegistrationCall({
-      fullName, email, phone,
-      market: markets || "",
-      dealSize: dealSize || "",
+    scheduleEarlyAccessSignupCall({
+      leadId: lead._id,
+      fullName: lead.fullName,
+      email: lead.email,
+      phone: lead.phone,
+      phoneNormalized: lead.phoneNormalized,
+      timezone: lead.timezone,
+      market: lead.markets,
+      dealSize: lead.dealSize,
     }).catch((e) => console.error("[early-access-call] scheduling failed:", e.message));
     call = { attempted: true };
   } else {
-    console.log(`[early-access] email-only (no consent): ${email}`);
+    console.log(`[early-access] email-only (no consent): ${lead.email}`);
   }
 
+  // ── 3. Respond ──────────────────────────────────────────────────────────
   res.status(200).json({
     success: true,
     message: consent
@@ -43,32 +88,28 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
     call,
   });
 
+  // ── 4. Enrich + Brevo sync in the background; update the lead in place ───
   (async () => {
     let enrichment = null;
     try {
-      enrichment = await enrichPerson({ fullName: fullName.trim(), email: email.trim() });
+      enrichment = await enrichPerson({ fullName: lead.fullName, email: lead.email });
     } catch (e) {
       console.error("[early-access-enrich] enrichment failed:", e.message);
     }
 
     try {
-      await EarlyAccessLead.create({
-        fullName: fullName.trim(),
-        email: email.trim(),
-        phone: phone.trim(),
-        markets: markets || "",
-        dealSize: dealSize || "",
-        consent: consent === true,
-        consentText: consentText || "",
-        consentTimestamp: consentTimestamp ? new Date(consentTimestamp) : null,
-        eventId: eventId || "",
-        enrichment,
-      });
-
-      syncEarlyAccessLead({ fullName, email, phone, markets, dealSize })
-        .catch((e) => console.error("[brevo-sync] failed:", e.message));
+      if (enrichment) {
+        await EarlyAccessLead.updateOne({ _id: lead._id }, { $set: { enrichment } });
+      }
+      syncEarlyAccessLead({
+        fullName: lead.fullName,
+        email: lead.email,
+        phone: lead.phone,
+        markets: lead.markets,
+        dealSize: lead.dealSize,
+      }).catch((e) => console.error("[brevo-sync] failed:", e.message));
     } catch (e) {
-      console.error("[early-access-save] persist failed:", e.message);
+      console.error("[early-access-save] update failed:", e.message);
     }
   })();
 });
