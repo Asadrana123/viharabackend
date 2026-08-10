@@ -44,7 +44,6 @@ const getEnrichmentResult = async (enrichmentId) => {
       const status = response.data.status;
       if (status === "FINISHED") {
         const profile = response.data.data?.[0]?.profile || null;
-        console.log("Enrichment result:", JSON.stringify(profile, null, 2));
         return profile;
       }
       if (status === "FAILED") return null;
