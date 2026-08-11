@@ -1,0 +1,348 @@
+{
+  "productName": "401 Rensselaer Ave, Ogdensburg, NY 13669",
+  "auctionStartDate": null,
+  "auctionStartTime": "9:00 AM",
+  "auctionEndDate": null,
+  "auctionEndTime": "5:00 PM",
+  "reservePrice": 0,
+  "minIncrement": 0,
+  "emd": 0,
+  "commission": 0,
+  "startBid": 40000,
+  "currentBid": 0,
+  "currentBidder": null,
+  "propertyDescription": "Charming home on a spacious, quiet lot close to amenities. A covered front porch greets you at the entrance, and the interior offers an open floor plan with lots of natural light. In-ground pool for the summer months, plus a detached garage for extra storage or covered parking. Built in 1918, approximately 2,048 sq ft on a 5,750 sq ft lot.",
+  "assetType": "Reo Bank Owned",
+  "propertyType": "Single Family",
+  "occupancyStatus": "Occupied",
+  "street": "401 Rensselaer Ave",
+  "city": "Ogdensburg",
+  "county": "St. Lawrence",
+  "state": "NY",
+  "zipCode": "13669",
+  "beds": 3,
+  "baths": 1.5,
+  "squareFootage": 2048,
+  "lotSize": 5750,
+  "yearBuilt": 1918,
+  "monthlyHOADues": 0,
+  "apn": "401200 59.022-2-36",
+  "eventID": "TBD",
+  "trusteeSaleNumber": "TBD",
+  "image": "https://res.cloudinary.com/sbu92hru/image/upload/v1785588694/b225762127be73d2df1deccf445f642a-cc_ft_576_xbkm8b.webp",
+  "otherImages": [
+    "https://res.cloudinary.com/sbu92hru/image/upload/v1785588694/b225762127be73d2df1deccf445f642a-cc_ft_576_xbkm8b.webp",
+    "https://res.cloudinary.com/sbu92hru/image/upload/v1785588694/401-11_k3przs.webp",
+    "https://res.cloudinary.com/sbu92hru/image/upload/v1785588692/401-10_u4w8di.webp",
+    "https://res.cloudinary.com/sbu92hru/image/upload/v1785588692/401-9_uxn7hw.webp",
+    "https://res.cloudinary.com/sbu92hru/image/upload/v1785588692/401-8_a5gjn3.webp",
+    "https://res.cloudinary.com/sbu92hru/image/upload/v1785588691/401-6_ufmekm.webp",
+    "https://res.cloudinary.com/sbu92hru/image/upload/v1785588691/401-7_kldu5b.webp",
+    "https://res.cloudinary.com/sbu92hru/image/upload/v1785588691/401-5_q5m3ld.webp",
+    "https://res.cloudinary.com/sbu92hru/image/upload/v1785588690/401-2_or0srn.webp",
+    "https://res.cloudinary.com/sbu92hru/image/upload/v1785588691/401-4_fdmsdp.webp",
+    "https://res.cloudinary.com/sbu92hru/image/upload/v1785588690/401-3_dmahub.webp"
+  ],
+  "onlineOrInPerson": "Online",
+  "bidderEmails": [],
+  "threeDTourId": null,
+  "threeDTourMetadata": {
+    "title": null,
+    "description": null,
+    "isActive": true
+  },
+  "status": "pending",
+  "featured": false,
+  "sellerId": null,
+  "coordinates": {
+    "parcel": {
+      "lat": null,
+      "lng": null
+    },
+    "block": {
+      "lat": null,
+      "lng": null
+    },
+    "sourceData": "city",
+    "lastUpdated": {
+      "$date": "2026-08-01T13:13:43.216Z"
+    }
+  },
+  "propertyDetails": {
+    "interiorDetails": {
+      "bedroomsBathrooms": [
+        "3 Bedrooms",
+        "1.5 Bathrooms"
+      ],
+      "masterBathroom": [],
+      "rooms": [],
+      "heating": ["Forced Air"],
+      "cooling": [],
+      "interiorFeatures": [
+        "2,048 sq ft living area",
+        "1.75 stories",
+        "Full Basement",
+        "1 fireplace",
+        "Open floor plan"
+      ]
+    },
+    "exteriorDetails": {
+      "parking": [
+        "1 Parking Space",
+        "Detached Garage"
+      ],
+      "lotFeatures": ["5,750 sq ft lot"],
+      "exteriorFeatures": [
+        "Covered front porch",
+        "Vinyl in-ground pool"
+      ],
+      "constructionFeatures": [
+        "Single Family Residential",
+        "Traditional style",
+        "Wood exterior wall",
+        "Built 1918"
+      ]
+    },
+    "community": {
+      "communityInfo": [],
+      "hoa": []
+    }
+  },
+  "listingAgent": {
+    "name": "",
+    "company": "",
+    "phone": "",
+    "email": "",
+    "licenseNumber": "",
+    "image": ""
+  },
+  "investmentData": {
+    "valuation": {
+      "ViharaValue": 133000,
+      "highRange": null,
+      "lowRange": null,
+      "confidenceScore": null,
+      "evaluatedDate": {
+        "$date": "2026-08-01T00:00:00.000Z"
+      }
+    },
+    "rental": {
+      "estimatedMonthlyRent": 1064,
+      "estimatedAnnualRent": 12768,
+      "rentalValue": 1064,
+      "highRange": null,
+      "lowRange": null,
+      "averageRentalTrend": 4.74,
+      "vacancyRate": null
+    },
+    "taxData": {
+      "annualPropertyTax": 4606,
+      "assessedValue": 100000,
+      "assessmentYear": 2025,
+      "landValue": 6800,
+      "improvementValue": 93200
+    },
+    "comparables": [
+      {
+        "address": "201 Albany Ave, Ogdensburg, NY 13669",
+        "beds": 3,
+        "baths": 1,
+        "sqft": 1936,
+        "salePrice": 153000,
+        "pricePerSqft": 79,
+        "saleDate": {
+          "$date": "2025-08-09T00:00:00.000Z"
+        },
+        "_id": {
+          "$oid": "6a6df107c3c887ac5ab9c01f"
+        }
+      },
+      {
+        "address": "401 Mansion Ave, Ogdensburg, NY 13669",
+        "beds": 3,
+        "baths": 1,
+        "sqft": 1871,
+        "salePrice": 265000,
+        "pricePerSqft": 142,
+        "saleDate": {
+          "$date": "2025-09-12T00:00:00.000Z"
+        },
+        "_id": {
+          "$oid": "6a6df107c3c887ac5ab9c020"
+        }
+      },
+      {
+        "address": "504 Main St, Ogdensburg, NY 13669",
+        "beds": 5,
+        "baths": 2,
+        "sqft": 1871,
+        "salePrice": 85000,
+        "pricePerSqft": 45,
+        "saleDate": {
+          "$date": "2025-09-09T00:00:00.000Z"
+        },
+        "_id": {
+          "$oid": "6a6df107c3c887ac5ab9c021"
+        }
+      },
+      {
+        "address": "221 Adams Ave, Ogdensburg, NY 13669",
+        "beds": 4,
+        "baths": 1.5,
+        "sqft": 1680,
+        "salePrice": 25300,
+        "pricePerSqft": 15,
+        "saleDate": {
+          "$date": "2025-11-01T00:00:00.000Z"
+        },
+        "_id": {
+          "$oid": "6a6df107c3c887ac5ab9c022"
+        }
+      },
+      {
+        "address": "421 Mansion Ave, Ogdensburg, NY 13669",
+        "beds": 3,
+        "baths": 2,
+        "sqft": 1668,
+        "salePrice": 115000,
+        "pricePerSqft": 69,
+        "saleDate": {
+          "$date": "2025-09-15T00:00:00.000Z"
+        },
+        "_id": {
+          "$oid": "6a6df107c3c887ac5ab9c023"
+        }
+      },
+      {
+        "address": "702 Main St, Ogdensburg, NY 13669",
+        "beds": 3,
+        "baths": 2,
+        "sqft": 1824,
+        "salePrice": 110000,
+        "pricePerSqft": 60,
+        "saleDate": {
+          "$date": "2026-02-05T00:00:00.000Z"
+        },
+        "_id": {
+          "$oid": "6a6df107c3c887ac5ab9c024"
+        }
+      }
+    ],
+    "priceHistory": [
+      {
+        "year": 2025,
+        "event": "Sold",
+        "price": 72681,
+        "pricePerSqft": null,
+        "_id": {
+          "$oid": "6a6df107c3c887ac5ab9c025"
+        }
+      },
+      {
+        "year": 2026,
+        "event": "Listed",
+        "price": 59900,
+        "pricePerSqft": 29,
+        "_id": {
+          "$oid": "6a6df107c3c887ac5ab9c026"
+        }
+      }
+    ],
+    "taxHistory": [
+      {
+        "year": 2025,
+        "propertyTax": 4606,
+        "taxChange": "",
+        "taxAssessment": 100000,
+        "assessmentChange": "",
+        "_id": {
+          "$oid": "6a6df107c3c887ac5ab9c027"
+        }
+      }
+    ]
+  },
+  "marketInsights": {
+    "medianListPrice": 187090,
+    "medianSoldPrice": 86760,
+    "daysOnMarket": 180,
+    "salesListPrice": null,
+    "trends": {
+      "listPrice": "up",
+      "soldPrice": "down",
+      "daysOnMarket": "up",
+      "salesRatio": ""
+    }
+  },
+  "schools": {
+    "public": [],
+    "private": []
+  },
+  "walkScores": {
+    "walkScore": null,
+    "transitScore": null,
+    "bikeScore": null
+  },
+  "comparableMarket": [],
+  "areaStatistics": {
+    "property": {
+      "address": "",
+      "beds": null,
+      "baths": null,
+      "sqft": null
+    },
+    "areaStats": {
+      "zip": {
+        "population": null,
+        "populationDensity": null,
+        "peoplePerHousehold": null,
+        "medianAge": null,
+        "medianHouseholdIncome": null,
+        "averageIncome": null
+      },
+      "city": {
+        "population": null,
+        "populationDensity": null,
+        "peoplePerHousehold": null,
+        "medianAge": null,
+        "medianHouseholdIncome": null,
+        "averageIncome": null
+      },
+      "county": {
+        "population": null,
+        "populationDensity": null,
+        "peoplePerHousehold": null,
+        "medianAge": null,
+        "medianHouseholdIncome": null,
+        "averageIncome": null
+      },
+      "national": {
+        "population": null,
+        "populationDensity": null,
+        "peoplePerHousehold": null,
+        "medianAge": null,
+        "medianHouseholdIncome": null,
+        "averageIncome": null
+      }
+    }
+  },
+  "isTestProperty": false,
+  "allowedTestUsers": [],
+  "availableAreas": [
+    "Exterior",
+    "Kitchen",
+    "Living Room",
+    "Bathroom",
+    "Bedroom"
+  ],
+  "slug": "401-rensselaer-ave-ogdensburg",
+  "showOnAuctions": false,
+  "isLandingPage": true,
+  "auctionEventLabel": "",
+  "createdAt": {
+    "$date": "2026-08-01T13:13:43.208Z"
+  },
+  "updatedAt": {
+    "$date": "2026-08-01T13:14:22.573Z"
+  },
+  "__v": 1
+}

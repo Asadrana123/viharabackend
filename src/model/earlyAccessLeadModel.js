@@ -28,6 +28,7 @@ const earlyAccessLeadSchema = new mongoose.Schema(
     phoneNormalized: { type: String, default: "", trim: true },
 
     markets: { type: String, default: "", trim: true },   // free text: "New York, California, nationwide"
+    buyerType: { type: String, default: "", trim: true }, // Flipper | Investor | Diversifier | Operator
     dealSize: { type: String, default: "", trim: true },  // Under $100K | $100K–$500K | $500K–$1M | $1M+
 
     // IANA timezone captured silently from the browser at submit

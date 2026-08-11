@@ -1,28 +1,33 @@
-// controller/earlyAccessLeadController.js
+// controller/rensselaerAveLeadController.js
 const catchAsyncError = require("../middleware/catchAsyncError");
 const ErrorHandler = require("../utils/errorhandler");
-const EarlyAccessLead = require("../model/earlyAccessLeadModel");
-const { scheduleEarlyAccessSignupCall } = require("../services/earlyAccessCallScheduler");
+const RensselaerAveLead = require("../model/rensselaerAveLeadModel");
+const { scheduleRensselaerAveSignupCall } = require("../services/rensselaerAveCallScheduler");
 const { enrichPerson } = require("../services/fullenrichService");
-const { syncEarlyAccessLead } = require("../services/brevoService");
 const { getCallsForPhones, normalisePhone } = require("../services/vapiCallsService");
 
+// NOTE ON BREVO: early access syncs to its dedicated buyer list
+// (BREVO_EARLY_ACCESS_LIST_ID). These are single-property auction registrants, so
+// they should NOT land in that list. If you want them in Brevo, add a dedicated
+// list id + a syncRensselaerAveLead() in brevoService and call it in the background
+// block below (fire-and-forget), same shape as syncEarlyAccessLead. Left out on
+// purpose rather than polluting the early-access list.
+
 /**
- * POST /api/v1/early-access/register   (public)
+ * POST /api/v1/rensselaer-ave/register   (public)
  *
  * Flow (order matters):
- *   1. Validate + normalize phone.
- *   2. Create the lead — the unique email index is the dedup gate. A duplicate
- *      email is rejected here (409) before any call is scheduled.
- *   3. Schedule the Maya call (fire-and-forget, only with consent). This runs
- *      the 2-in-60s burst and, on no-answer, starts the daily 1:32 PM callback
- *      loop that continues until the lead picks up.
+ *   1. Validate + normalize phone (email is OPTIONAL on this page).
+ *   2. Create the lead — the unique phoneNormalized index is the dedup gate.
+ *      A duplicate phone is rejected here (409) before any call is scheduled.
+ *   3. Schedule the Maya call for THIS property (fire-and-forget, only with
+ *      consent) — the 2-in-60s burst + daily callback loop.
  *   4. Respond.
- *   5. Enrich + Brevo sync in the background; update the lead in place.
+ *   5. Enrich in the background; update the lead in place.
  */
 const registerAndCall = catchAsyncError(async (req, res, next) => {
   const {
-    fullName, email, phone, markets, buyerType, dealSize, timezone,
+    fullName, phone, email, buyerType, timezone,
     consent, consentText, consentTimestamp, eventId,
   } = req.body;
 
@@ -33,22 +38,21 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
   if (!phone || !phone.trim())
     return next(new ErrorHandler("phone is required", 400));
 
-  const normalizedEmail = email.trim().toLowerCase();
   const phoneNormalized = normalisePhone(phone); // canonical E.164 for dedup + calling
   if (!phoneNormalized)
     return next(new ErrorHandler("Enter a valid phone number", 400));
 
-  // ── 1. Create the lead up front — dedup gate via the unique email index ──
+  const normalizedEmail = email.trim().toLowerCase();
+
+  // ── 1. Create the lead up front — dedup gate via the unique phone index ──
   let lead;
   try {
-    lead = await EarlyAccessLead.create({
+    lead = await RensselaerAveLead.create({
       fullName: fullName.trim(),
-      email: normalizedEmail,
       phone: phone.trim(),          // raw, as entered (for display)
-      phoneNormalized,              // canonical, for the scheduler's dedup + dispatch
-      markets: markets || "",
+      phoneNormalized,              // canonical, unique dedup gate
+      email: normalizedEmail,
       buyerType: buyerType || "",
-      dealSize: dealSize || "",
       timezone: timezone || "",
       consent: consent === true,
       consentText: consentText || "",
@@ -57,7 +61,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
     });
   } catch (err) {
     if (err && err.code === 11000) {
-      return next(new ErrorHandler("This email is already registered.", 409));
+      return next(new ErrorHandler("This phone number is already registered.", 409));
     }
     throw err; // unexpected — let catchAsyncError surface it
   }
@@ -65,20 +69,18 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
   // ── 2. Schedule the call (fire-and-forget, only with consent) ───────────
   let call = { attempted: false };
   if (consent === true) {
-    scheduleEarlyAccessSignupCall({
+    scheduleRensselaerAveSignupCall({
       leadId: lead._id,
       fullName: lead.fullName,
-      email: lead.email,
       phone: lead.phone,
       phoneNormalized: lead.phoneNormalized,
       timezone: lead.timezone,
-      market: lead.markets,
+      email: lead.email,
       buyerType: lead.buyerType,
-      dealSize: lead.dealSize,
-    }).catch((e) => console.error("[early-access-call] scheduling failed:", e.message));
+    }).catch((e) => console.error("[rensselaer-ave-call] scheduling failed:", e.message));
     call = { attempted: true };
   } else {
-    console.log(`[early-access] email-only (no consent): ${lead.email}`);
+    console.log(`[rensselaer-ave] no-consent registration: ${lead.phoneNormalized}`);
   }
 
   // ── 3. Respond ──────────────────────────────────────────────────────────
@@ -90,46 +92,37 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
     call,
   });
 
-  // ── 4. Enrich + Brevo sync in the background; update the lead in place ───
+  // ── 4. Enrich in the background; update the lead in place ───────────────
   (async () => {
-    let enrichment = null;
     try {
-      enrichment = await enrichPerson({ fullName: lead.fullName, email: lead.email });
-    } catch (e) {
-      console.error("[early-access-enrich] enrichment failed:", e.message);
-    }
-
-    try {
-      if (enrichment) {
-        await EarlyAccessLead.updateOne({ _id: lead._id }, { $set: { enrichment } });
-      }
-      syncEarlyAccessLead({
+      const enrichment = await enrichPerson({
         fullName: lead.fullName,
-        email: lead.email,
-        phone: lead.phone,
-        markets: lead.markets,
-        dealSize: lead.dealSize,
-      }).catch((e) => console.error("[brevo-sync] failed:", e.message));
+        email: lead.email || undefined,
+        phone: lead.phoneNormalized,
+      });
+      if (enrichment) {
+        await RensselaerAveLead.updateOne({ _id: lead._id }, { $set: { enrichment } });
+      }
     } catch (e) {
-      console.error("[early-access-save] update failed:", e.message);
+      console.error("[rensselaer-ave-enrich] enrichment failed:", e.message);
     }
   })();
 });
 
 /**
- * GET /api/v1/early-access?page=&limit=
- * Paginated list for the admin Early Access Leads tab. Each lead carries the
- * VAPI calls placed to its phone number (text-only, newest first). The call
- * lookup is best-effort — if VAPI is unreachable, `calls` is simply empty.
+ * GET /api/v1/rensselaer-ave?page=&limit=
+ * Paginated list for the admin Georgia St Leads tab. Each lead carries the VAPI
+ * calls placed to its number (text-only, newest first). Best-effort — if VAPI is
+ * unreachable, `calls` is simply empty.
  */
-const getAllEarlyAccessLeads = catchAsyncError(async (req, res) => {
+const getAllRensselaerAveLeads = catchAsyncError(async (req, res) => {
   const page = Math.max(1, parseInt(req.query.page) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
   const skip = (page - 1) * limit;
 
   const [leads, total] = await Promise.all([
-    EarlyAccessLead.find().sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
-    EarlyAccessLead.countDocuments(),
+    RensselaerAveLead.find().sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+    RensselaerAveLead.countDocuments(),
   ]);
 
   const phones = leads.map((l) => l.phone).filter(Boolean);
@@ -147,4 +140,4 @@ const getAllEarlyAccessLeads = catchAsyncError(async (req, res) => {
   });
 });
 
-module.exports = { registerAndCall, getAllEarlyAccessLeads };
+module.exports = { registerAndCall, getAllRensselaerAveLeads };

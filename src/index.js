@@ -4,6 +4,8 @@ const app = require('./app');
 const initSocketServer = require('./socket/socketServer');
 const { setIoInstance } = require('./socket/getIoInstance');
 const { startEarlyAccessCallScheduler } = require('./services/earlyAccessCallScheduler');
+const { startGeorgiaStCallScheduler } = require('./services/georgiaStCallScheduler');
+const { startRensselaerAveCallScheduler } = require('./services/rensselaerAveCallScheduler');
 require('./passport');
 
 const PORT = process.env.PORT || 8000;
@@ -21,4 +23,8 @@ server.listen(PORT, () => {
 
   // Start the early-access daily 1:32 PM callback scheduler (every-minute sweep).
   startEarlyAccessCallScheduler();
+
+  // Property auction daily 1:32 PM local callback schedulers.
+  startGeorgiaStCallScheduler();
+  startRensselaerAveCallScheduler();
 });
