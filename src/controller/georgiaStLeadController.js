@@ -5,7 +5,7 @@ const GeorgiaStLead = require("../model/georgiaStLeadModel");
 const { scheduleGeorgiaStSignupCall } = require("../services/georgiaStCallScheduler");
 const { enrichPerson } = require("../services/fullenrichService");
 const { getCallsForPhones, normalisePhone } = require("../services/vapiCallsService");
-
+const { syncPropertyLead } = require("../services/brevoService");
 // NOTE ON BREVO: early access syncs to its dedicated buyer list
 // (BREVO_EARLY_ACCESS_LIST_ID). These are single-property auction registrants, so
 // they should NOT land in that list. If you want them in Brevo, add a dedicated
@@ -93,6 +93,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
   });
 
   // ── 4. Enrich in the background; update the lead in place ───────────────
+ // ── 4. Enrich + Brevo sync in the background; update the lead in place ───
   (async () => {
     try {
       const enrichment = await enrichPerson({
@@ -106,6 +107,17 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
     } catch (e) {
       console.error("[georgia-st-enrich] enrichment failed:", e.message);
     }
+
+    // Brevo upsert → "Nurture - Property Leads" (list 12). Independent of
+    // enrichment; adding the contact to the list starts the email sequence.
+    syncPropertyLead({
+      email: lead.email,
+      fullName: lead.fullName,
+      phone: lead.phoneNormalized,     // E.164 → Brevo SMS
+      leadSource: "bigbear-lp",
+      registeringAs: lead.buyerType,   // exact page label (Cash investor / …)
+      propertyName: "Big Bear Lake",
+    }).catch((e) => console.error("[brevo-sync] georgia-st failed:", e.message));
   })();
 });
 

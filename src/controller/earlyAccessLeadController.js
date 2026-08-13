@@ -6,7 +6,15 @@ const { scheduleEarlyAccessSignupCall } = require("../services/earlyAccessCallSc
 const { enrichPerson } = require("../services/fullenrichService");
 const { syncEarlyAccessLead } = require("../services/brevoService");
 const { getCallsForPhones, normalisePhone } = require("../services/vapiCallsService");
-
+// Maps the early-access page's internal buyer code → the exact page label the
+// Brevo email sequence segments on (REGISTERING_AS). Mirrors BUYER_TYPES in
+// EarlyAccessPage.jsx. Unknown/legacy values pass through unchanged.
+const EARLY_ACCESS_REGISTERING_AS = {
+  Flipper: "I flip / rehab and resell",
+  Investor: "I buy and hold for rental income",
+  Diversifier: "I'm adding real estate to my portfolio",
+  Operator: "I wholesale, fund, or operate at scale",
+};
 /**
  * POST /api/v1/early-access/register   (public)
  *
@@ -103,12 +111,15 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       if (enrichment) {
         await EarlyAccessLead.updateOne({ _id: lead._id }, { $set: { enrichment } });
       }
-      syncEarlyAccessLead({
+       syncEarlyAccessLead({
         fullName: lead.fullName,
         email: lead.email,
-        phone: lead.phone,
+        phone: lead.phoneNormalized,   // E.164 → Brevo SMS (raw phone won't attach)
         markets: lead.markets,
         dealSize: lead.dealSize,
+        leadSource: "early-access-lp",
+        registeringAs: EARLY_ACCESS_REGISTERING_AS[lead.buyerType] || lead.buyerType,
+        propertyName: "",              // blank for early access (per doc)
       }).catch((e) => console.error("[brevo-sync] failed:", e.message));
     } catch (e) {
       console.error("[early-access-save] update failed:", e.message);

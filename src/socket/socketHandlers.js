@@ -697,8 +697,16 @@ const syncAuctionEndTime = (auctionId, auctionEndDate) => {
     scheduleLastHourReminder(auctionId, auctionData.endTime);
   }
 };
+const syncAuctionStartBid = (auctionId, { startBid, currentBid } = {}) => {
+  const auctionData = activeAuctions.get(auctionId);
+  if (!auctionData) return; // not live in memory — next join reads fresh from DB
+  if (typeof startBid === 'number') auctionData.startBid = startBid;
+  if (typeof currentBid === 'number') auctionData.currentBid = currentBid;
+  activeAuctions.set(auctionId, auctionData);
+};
 module.exports = {
   initializeHandlers,
   registerSocketHandlers,
-  syncAuctionEndTime
+  syncAuctionEndTime,
+  syncAuctionStartBid
 };

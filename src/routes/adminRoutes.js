@@ -7,7 +7,8 @@ const {
   getAllUsers,
   getAuctionBids,
   updateAuctionDates,
-  updateAuctionStatus
+  updateAuctionStatus,
+  updateAuctionStartBid
 } = require("../controller/adminController");
 const {
   getAllRegistrations,
@@ -79,6 +80,11 @@ router.put('/auction/:auctionId/status',
   isAuthenticated,
   authorizeRoles("admin"),
   updateAuctionStatus);
-
+router.put(
+  "/auction/:auctionId/start-bid",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  updateAuctionStartBid
+);
 
 module.exports = router;

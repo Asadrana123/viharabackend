@@ -5,7 +5,7 @@ const RensselaerAveLead = require("../model/rensselaerAveLeadModel");
 const { scheduleRensselaerAveSignupCall } = require("../services/rensselaerAveCallScheduler");
 const { enrichPerson } = require("../services/fullenrichService");
 const { getCallsForPhones, normalisePhone } = require("../services/vapiCallsService");
-
+const { syncPropertyLead } = require("../services/brevoService");
 // NOTE ON BREVO: early access syncs to its dedicated buyer list
 // (BREVO_EARLY_ACCESS_LIST_ID). These are single-property auction registrants, so
 // they should NOT land in that list. If you want them in Brevo, add a dedicated
@@ -93,6 +93,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
   });
 
   // ── 4. Enrich in the background; update the lead in place ───────────────
+  // ── 4. Enrich + Brevo sync in the background; update the lead in place ───
   (async () => {
     try {
       const enrichment = await enrichPerson({
@@ -106,6 +107,16 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
     } catch (e) {
       console.error("[rensselaer-ave-enrich] enrichment failed:", e.message);
     }
+
+    // Brevo upsert → "Nurture - Property Leads" (list 12).
+    syncPropertyLead({
+      email: lead.email,
+      fullName: lead.fullName,
+      phone: lead.phoneNormalized,
+      leadSource: "ogdensburg-lp",
+      registeringAs: lead.buyerType,
+      propertyName: "Ogdensburg",
+    }).catch((e) => console.error("[brevo-sync] rensselaer-ave failed:", e.message));
   })();
 });
 

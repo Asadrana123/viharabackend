@@ -1,6 +1,7 @@
 const productModel = require("../model/productModel");
 const catchAsyncError = require("../middleware/catchAsyncError");
 const Errorhandler = require("../utils/errorhandler");
+const { resolvePropertyTimezone, utcToWallClock } = require("../utils/resolveTimezone");
 
 // Admin — bulk-create from uploaded JSON. Each file may be one object or an array;
 // the frontend flattens them into a single array before sending.
@@ -79,15 +80,29 @@ exports.getProductBySlug = catchAsyncError(async (req, res, next) => {
 });
 
 // Admin — every property, unfiltered, for the Manage Listings tab.
+// Each property is returned with its resolved timezone plus the auction
+// start/end already expressed as wall-clock in that zone, so the admin edits
+// local time directly. These are computed on the way out — nothing is stored.
 exports.getAllProductsAdmin = catchAsyncError(async (req, res) => {
     const products = await productModel
         .find({})
-        .select('productName street city state slug image showOnAuctions isLandingPage auctionEventLabel isTestProperty status availableAreas startBid')
-        .sort({ createdAt: -1 });
-    return res.json({ success: true, count: products.length, products });
+        .select('productName street city state zipCode slug image showOnAuctions isLandingPage auctionEventLabel isTestProperty status availableAreas startBid auctionStartDate auctionEndDate')
+        .sort({ createdAt: -1 })
+        .lean();
+
+    const withTz = products.map((p) => {
+        const timezone = resolvePropertyTimezone(p);
+        return {
+            ...p,
+            timezone,
+            auctionStartLocal: utcToWallClock(p.auctionStartDate, timezone),
+            auctionEndLocal: utcToWallClock(p.auctionEndDate, timezone),
+        };
+    });
+
+    return res.json({ success: true, count: withTz.length, products: withTz });
 });
 
-// Admin — update only the listing-control fields for one property.
 // Admin — update only the listing-control fields for one property.
 exports.updateListingSettings = catchAsyncError(async (req, res, next) => {
     const { showOnAuctions, isLandingPage, auctionEventLabel, availableAreas } = req.body;

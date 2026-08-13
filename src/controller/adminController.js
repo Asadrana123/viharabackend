@@ -7,8 +7,11 @@ const ManualBid = require("../model/manualBiddingModel");
 const AutoBidding = require("../model/autoBiddingModel");
 const Product = require("../model/productModel");
 const mongoose = require('mongoose');
-const { syncAuctionEndTime } = require('../socket/socketHandlers');
+const BidsManager = require('../utils/bidsManager');
+const { resolvePropertyTimezone, wallClockToUtc, utcToWallClock } = require('../utils/resolveTimezone');
+const { syncAuctionEndTime, syncAuctionStartBid } = require('../socket/socketHandlers');
 const { getIoInstance } = require('../socket/getIoInstance');
+
 // Create an admin account
 exports.CreateAdmin = catchAsyncError(
   async (req, res) => {
@@ -152,7 +155,11 @@ exports.getAuctionBids = catchAsyncError(
 
 
 
-// Update auction start and end dates (admin only)
+// Update auction start and end dates (admin only).
+// Incoming values are wall-clock strings (e.g. "2026-09-11T11:00"). The zone is
+// derived from the property's own location, so the admin edits local time and
+// the backend stores the correct UTC instant. Values already carrying an
+// offset/Z are preserved as-is (keeps the Manage Auction tab working).
 exports.updateAuctionDates = catchAsyncError(
   async (req, res, next) => {
     const { auctionId } = req.params;
@@ -170,16 +177,18 @@ exports.updateAuctionDates = catchAsyncError(
       return next(new Errorhandler("Auction not found", 404));
     }
 
+    const timezone = resolvePropertyTimezone(auction);
+
     const updates = {};
     if (auctionStartDate) {
-      const parsedStart = new Date(auctionStartDate);
-      if (isNaN(parsedStart.getTime())) return next(new Errorhandler("Invalid auctionStartDate", 400));
-      updates.auctionStartDate = parsedStart;
+      const utc = wallClockToUtc(auctionStartDate, timezone);
+      if (!utc) return next(new Errorhandler("Invalid auctionStartDate", 400));
+      updates.auctionStartDate = utc;
     }
     if (auctionEndDate) {
-      const parsedEnd = new Date(auctionEndDate);
-      if (isNaN(parsedEnd.getTime())) return next(new Errorhandler("Invalid auctionEndDate", 400));
-      updates.auctionEndDate = parsedEnd;
+      const utc = wallClockToUtc(auctionEndDate, timezone);
+      if (!utc) return next(new Errorhandler("Invalid auctionEndDate", 400));
+      updates.auctionEndDate = utc;
     }
 
     const finalStart = updates.auctionStartDate || auction.auctionStartDate;
@@ -212,10 +221,13 @@ exports.updateAuctionDates = catchAsyncError(
     res.status(200).json({
       success: true,
       message: "Auction dates updated successfully",
+      timezone,
       auction: {
         _id: updatedAuction._id,
         auctionStartDate: updatedAuction.auctionStartDate,
-        auctionEndDate: updatedAuction.auctionEndDate
+        auctionEndDate: updatedAuction.auctionEndDate,
+        auctionStartLocal: utcToWallClock(updatedAuction.auctionStartDate, timezone),
+        auctionEndLocal: utcToWallClock(updatedAuction.auctionEndDate, timezone)
       }
     });
   }
@@ -255,6 +267,70 @@ exports.updateAuctionStatus = catchAsyncError(
       auction: {
         _id: updatedAuction._id,
         status: updatedAuction.status
+      }
+    });
+  }
+);
+
+
+// Update the starting bid (admin only).
+// No bids yet -> the starting bid IS the floor, so currentBid moves with it and
+//                the live room is refreshed (start-bid-updated + min-bid-update).
+// Bids exist  -> only startBid is relabelled; the live currentBid is untouched.
+exports.updateAuctionStartBid = catchAsyncError(
+  async (req, res, next) => {
+    const { auctionId } = req.params;
+    const startBid = Number(req.body.startBid);
+
+    if (!Number.isFinite(startBid) || startBid <= 0) {
+      return next(new Errorhandler("startBid must be a positive number", 400));
+    }
+    if (!mongoose.Types.ObjectId.isValid(auctionId)) {
+      return next(new Errorhandler("Invalid auction ID", 400));
+    }
+
+    const auction = await Product.findById(auctionId).select('currentBid currentBidder');
+    if (!auction) {
+      return next(new Errorhandler("Auction not found", 404));
+    }
+
+    const hasBids = await ManualBid.exists({ auctionId });
+
+    const updates = { startBid };
+    if (!hasBids) updates.currentBid = startBid;
+
+    const updatedAuction = await Product.findByIdAndUpdate(
+      auctionId,
+      updates,
+      { new: true, runValidators: true }
+    );
+
+    // Keep the in-memory auction (if a client is live) consistent
+    syncAuctionStartBid(auctionId, {
+      startBid,
+      currentBid: hasBids ? undefined : startBid
+    });
+
+    const io = getIoInstance();
+    if (io) {
+      io.to(auctionId).emit('start-bid-updated', {
+        startBid: updatedAuction.startBid,
+        currentBid: updatedAuction.currentBid,
+        hasBids: !!hasBids
+      });
+      const limits = await BidsManager.calculateMinimumBids(auctionId, updatedAuction.currentBid);
+      io.to(auctionId).emit('min-bid-update', limits);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: hasBids
+        ? "Starting bid updated (live current bid left unchanged — bids already exist)"
+        : "Starting bid updated",
+      auction: {
+        _id: updatedAuction._id,
+        startBid: updatedAuction.startBid,
+        currentBid: updatedAuction.currentBid
       }
     });
   }
