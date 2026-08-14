@@ -180,7 +180,7 @@ async function sweepDueCalls() {
 
       // Hand the burst to the shared queue (scheduled lane — paced behind any
       // signup bursts, no initial delay since it's already 1:32 PM their time).
-      enqueueBurst(callPayload(claimed), BURST_OPTS, PRIORITY.SCHEDULED)
+      enqueueBurst({ ...callPayload(claimed), isFollowUp: true }, BURST_OPTS, PRIORITY.SCHEDULED)
         .then(({ connected }) => applyOutcome(claimed, connected))
         .catch((e) => console.error("[gsa-daily] burst failed:", e.message));
     }

@@ -1,21 +1,9 @@
 // services/leadCallService.js
-//
-// Dispatches a single outbound call to a registered lead.
-//
-// Prompt selection:
-//   1. If the lead carries an explicit `promptConfig` (e.g. the 449 Georgia St
-//      auction scheduler pins config/georgiaStVoicePrompt.js on every dial),
-//      use it verbatim.
-//   2. Otherwise fall back to the ONE universal prompt, read DB-first
-//      (admin-editable universalVoicePromptModel) with config/universalVoicePrompt.js
-//      as the final fallback.
-//
-// Early-access and persona flows pass no promptConfig, so their behaviour is
-// unchanged.
 
 const { parsePhones, dispatchCall } = require("./vapiService");
 const UNIVERSAL_PROMPT_FILE = require("../config/universalVoicePrompt");
 const universalVoicePromptModel = require("../model/universalVoicePromptModel");
+const { buildFollowUp } = require("../config/voicePromptFollowUp");
 
 /** DB-first prompt load, with the hardcoded file as fallback. */
 const loadUniversalPrompt = async () => {
@@ -48,10 +36,17 @@ const dispatchRegistrationCall = async (lead = {}) => {
   };
 
   // Per-lead prompt override wins (e.g. 449 Georgia St auction); else universal.
-  const promptConfig =
+  let promptConfig =
     lead.promptConfig && lead.promptConfig.systemPrompt
       ? lead.promptConfig
       : await loadUniversalPrompt();
+
+  // Daily-callback sweeps pass isFollowUp:true so the call doesn't reuse the
+  // signup script. Transform whatever prompt we resolved into its follow-up
+  // variant — one central place, every page.
+  if (lead.isFollowUp) {
+    promptConfig = buildFollowUp(promptConfig);
+  }
 
   return dispatchCall(phones[0], contact, {
     researchSummary: "",
