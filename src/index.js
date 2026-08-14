@@ -6,6 +6,7 @@ const { setIoInstance } = require('./socket/getIoInstance');
 const { startEarlyAccessCallScheduler } = require('./services/earlyAccessCallScheduler');
 const { startGeorgiaStCallScheduler } = require('./services/georgiaStCallScheduler');
 const { startRensselaerAveCallScheduler } = require('./services/rensselaerAveCallScheduler');
+const { startPartnerCallScheduler } = require('./services/partnerCallScheduler');
 require('./passport');
 
 const PORT = process.env.PORT || 8000;
@@ -27,4 +28,7 @@ server.listen(PORT, () => {
   // Property auction daily 1:32 PM local callback schedulers.
   startGeorgiaStCallScheduler();
   startRensselaerAveCallScheduler();
+
+  // Partner Program daily 1:32 PM local callback scheduler.
+  startPartnerCallScheduler();
 });

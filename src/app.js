@@ -40,6 +40,7 @@ const personaLeadRoutes = require("./routes/personaLeadRoutes");
 const earlyAccessLeadRoutes = require("./routes/earlyAccessLeadRoutes");
 const georgiaStLeadRoutes = require("./routes/georgiaStLeadRoutes");
 const rensselaerAveLeadRoutes = require("./routes/rensselaerAveLeadRoutes");
+const partnerLeadRoutes = require("./routes/partnerLeadRoutes");
 const rb2bRoutes = require("./routes/rb2bRoutes");
 // Middleware
 app.use(cookieParser());
@@ -95,6 +96,7 @@ app.use("/api/v1/persona-lead", personaLeadRoutes);
 app.use("/api/v1/early-access", earlyAccessLeadRoutes);
 app.use("/api/v1/georgia-st", georgiaStLeadRoutes);
 app.use("/api/v1/rensselaer-ave", rensselaerAveLeadRoutes);
+app.use("/api/v1/partner", partnerLeadRoutes);
 app.use("/api/v1/rb2b", rb2bRoutes);
 // Error Middleware
 app.use(errorMiddleware);

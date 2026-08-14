@@ -1,8 +1,8 @@
-// services/georgiaStCallScheduler.js
+// services/partnerCallScheduler.js
 //
-// Auction-registration call flow for 449 Georgia St — a faithful clone of
-// earlyAccessCallScheduler.js, pointed at georgiaStLeadModel and using this
-// property's prompt (config/georgiaStVoicePrompt.js). Same behaviour:
+// Partner Program activation-call flow for /partners — a faithful clone of
+// georgiaStCallScheduler.js, pointed at partnerLeadModel and this program's prompt
+// (config/partnerProgramVoicePrompt.js). Same behaviour:
 //
 //   Signup (with consent):
 //     → 2-in-60s burst (60s initial wait to honour the "we'll call you" promise)
@@ -14,35 +14,37 @@
 //         • picked up  → "connected", STOP forever
 //         • no pickup  → reschedule for tomorrow 1:32 PM local
 //
-// Pickup is decided by runCallBurst's return value (same as early access) — no
-// webhook is required. State lives on the lead (nextCallAt + callStatus) so it
-// survives restarts. Same-number guard: at most ONE call per normalized phone
-// per daily sweep.
+// Pickup is decided by the burst's return value (same as the property pages) — no
+// webhook required. State lives on the lead (nextCallAt + callStatus) so it
+// survives restarts. Same-number guard: at most ONE call per normalized phone per
+// daily sweep (partners dedup on EMAIL, so two applicants can share a phone — this
+// guard stops us dialing that shared number twice in one sweep).
 //
-// CONCURRENCY: bursts are not dialed directly — they are handed to the shared
-// callDispatchQueue, which caps how many run at once (account-wide, across all
-// schedulers) and staggers their starts so a 1:32 PM batch cannot blow past
-// VAPI's concurrency limit. Signup bursts use the high-priority lane.
+// CONCURRENCY: bursts are handed to the shared callDispatchQueue, which caps how
+// many run at once (account-wide, across all schedulers) and staggers their starts
+// so a 1:32 PM batch cannot blow past VAPI's concurrency limit. Signup bursts use
+// the high-priority lane.
 //
-// PROMPT: every call for this page must use the Georgia St prompt. The shared
-// dispatcher (registrationCallService.runCallBurst) currently selects the prompt
-// internally, so we pass it through the payload as `promptConfig`. See the note
-// in INTEGRATION.md — runCallBurst must use payload.promptConfig when present.
+// PROMPT: every call for this page uses the Partner Program prompt, pinned onto the
+// payload as `promptConfig` (runCallBurst uses payload.promptConfig when present).
 
 const cron = require("node-cron");
 const { DateTime } = require("luxon");
-const GeorgiaStLead = require("../model/georgiaStLeadModel");
-const georgiaStVoicePrompt = require("../config/georgiaStVoicePrompt");
+const PartnerLead = require("../model/partnerLeadModel");
+const partnerProgramVoicePrompt = require("../config/partnerProgramVoicePrompt");
 const { DID_NOT_CONNECT_REASONS, WAIT_MS } = require("./registrationCallService");
 const { enqueueBurst, PRIORITY } = require("./callDispatchQueue");
 
 const CALL_HOUR = 13;   // 1 PM
 const CALL_MINUTE = 32; // :32  → 1:32 PM local
-const DEFAULT_TZ = "America/Los_Angeles"; // property is in CA; used only when a lead has no/invalid tz
-const SWEEP_BATCH = 200;                  // max leads evaluated per minute
+// Partners are US-wide, so there is no single property zone to anchor to. This is
+// only the fallback when a lead's own `timezone` is blank — the page almost always
+// sends a real IANA zone. Change if you'd prefer a different default.
+const DEFAULT_TZ = "America/New_York";
+const SWEEP_BATCH = 200; // max leads evaluated per minute
 
-// Burst options: broad no-pickup set + treat errors as no-pickup, so the loop
-// only stops on a real human pickup. Identical to early access.
+// Burst options: broad no-pickup set + treat errors as no-pickup, so the loop only
+// stops on a real human pickup. Identical to the property-page schedulers.
 const BURST_OPTS = {
   noPickupReasons: DID_NOT_CONNECT_REASONS,
   treatErrorsAsNoPickup: true,
@@ -63,18 +65,25 @@ function nextDailyCallAt(timezone) {
 }
 
 /**
+ * Whole name Maya speaks. Partners are stored as first + last, but the prompt
+ * variables ({{prospect_name}} / {{prospect_full_name}}) expect one full name.
+ */
+function fullNameOf(lead) {
+  return [lead.firstName, lead.lastName].filter(Boolean).join(" ").trim();
+}
+
+/**
  * Payload the dispatcher expects (canonical phone + prompt vars).
- * `promptConfig` pins THIS property's prompt for every dial; `source` tags it.
+ * `promptConfig` pins THIS program's prompt for every dial; `source` tags it.
  */
 function callPayload(lead) {
   return {
     leadId: lead._id,
-    fullName: lead.fullName,
+    fullName: fullNameOf(lead),
     email: lead.email,
     phone: lead.phoneNormalized || lead.phone, // dial the canonical E.164 form
-    buyerType: lead.buyerType,
-    promptConfig: georgiaStVoicePrompt,        // { systemPrompt, firstMessage, voicemailMessage, endCallMessage }
-    source: "auction-449-georgia-st",
+    promptConfig: partnerProgramVoicePrompt,   // { systemPrompt, firstMessage, voicemailMessage, endCallMessage }
+    source: "partner-program",
   };
 }
 
@@ -85,18 +94,18 @@ function callPayload(lead) {
  */
 async function applyOutcome(lead, connected) {
   if (connected) {
-    await GeorgiaStLead.updateOne(
+    await PartnerLead.updateOne(
       { _id: lead._id },
       { $set: { callStatus: "connected", nextCallAt: null } }
     );
     if (lead.phoneNormalized) {
-      await GeorgiaStLead.updateMany(
+      await PartnerLead.updateMany(
         { phoneNormalized: lead.phoneNormalized, callStatus: "no-answer", _id: { $ne: lead._id } },
         { $set: { callStatus: "connected", nextCallAt: null } }
       );
     }
   } else {
-    await GeorgiaStLead.updateOne(
+    await PartnerLead.updateOne(
       { _id: lead._id },
       { $set: { callStatus: "no-answer", nextCallAt: nextDailyCallAt(lead.timezone) } }
     );
@@ -104,16 +113,16 @@ async function applyOutcome(lead, connected) {
 }
 
 /**
- * SIGNUP call — fired fire-and-forget from the controller after a lead registers
+ * SIGNUP call — fired fire-and-forget from the controller after a partner applies
  * with consent. Runs the burst (60s initial wait), then stops or schedules the
  * first daily callback.
  *
- * @param {object} lead  { leadId, fullName, email, phone, phoneNormalized, timezone, buyerType }
+ * @param {object} lead { leadId, firstName, lastName, email, phone, phoneNormalized, timezone }
  */
-async function scheduleGeorgiaStSignupCall(lead = {}) {
+async function schedulePartnerSignupCall(lead = {}) {
   if (!lead || !lead.leadId) return;
 
-  await GeorgiaStLead.updateOne(
+  await PartnerLead.updateOne(
     { _id: lead.leadId },
     { $set: { lastCallAt: new Date() }, $inc: { callAttempts: 1 } }
   );
@@ -139,7 +148,7 @@ async function sweepDueCalls() {
   sweeping = true;
   try {
     const now = new Date();
-    const due = await GeorgiaStLead.find({
+    const due = await PartnerLead.find({
       callStatus: "no-answer",
       nextCallAt: { $ne: null, $lte: now },
     })
@@ -154,10 +163,10 @@ async function sweepDueCalls() {
     for (const lead of due) {
       const num = lead.phoneNormalized || "";
 
-      // Same-number dedup: only the first lead on a number fires this sweep;
-      // push the rest to tomorrow so they don't pile up today.
+      // Same-number dedup: only the first lead on a number fires this sweep; push
+      // the rest to tomorrow so they don't pile up today.
       if (num && dialedNumbers.has(num)) {
-        await GeorgiaStLead.updateOne(
+        await PartnerLead.updateOne(
           { _id: lead._id, callStatus: "no-answer" },
           { $set: { nextCallAt: nextDailyCallAt(lead.timezone) } }
         );
@@ -167,7 +176,7 @@ async function sweepDueCalls() {
 
       // Atomic claim: move nextCallAt to tomorrow + stamp lastCallAt so an
       // overlapping tick can't re-dial the lead today.
-      const claimed = await GeorgiaStLead.findOneAndUpdate(
+      const claimed = await PartnerLead.findOneAndUpdate(
         { _id: lead._id, callStatus: "no-answer", nextCallAt: { $lte: now } },
         {
           $set: { nextCallAt: nextDailyCallAt(lead.timezone), lastCallAt: now },
@@ -182,10 +191,10 @@ async function sweepDueCalls() {
       // signup bursts, no initial delay since it's already 1:32 PM their time).
       enqueueBurst(callPayload(claimed), BURST_OPTS, PRIORITY.SCHEDULED)
         .then(({ connected }) => applyOutcome(claimed, connected))
-        .catch((e) => console.error("[gsa-daily] burst failed:", e.message));
+        .catch((e) => console.error("[partner-daily] burst failed:", e.message));
     }
   } catch (e) {
-    console.error("[gsa-daily] sweep error:", e.message);
+    console.error("[partner-daily] sweep error:", e.message);
   } finally {
     sweeping = false;
   }
@@ -194,15 +203,15 @@ async function sweepDueCalls() {
 let task = null;
 
 /** Start the every-minute daily-callback sweep. Call once, after the server boots. */
-function startGeorgiaStCallScheduler() {
+function startPartnerCallScheduler() {
   if (task) return task;
   task = cron.schedule("* * * * *", sweepDueCalls); // every minute
-  console.log("[gsa-daily] scheduler started — daily 1:32 PM local callbacks (per-minute sweep).");
+  console.log("[partner-daily] scheduler started — daily 1:32 PM local callbacks (per-minute sweep).");
   return task;
 }
 
 module.exports = {
-  scheduleGeorgiaStSignupCall,
-  startGeorgiaStCallScheduler,
+  schedulePartnerSignupCall,
+  startPartnerCallScheduler,
   nextDailyCallAt,
 };

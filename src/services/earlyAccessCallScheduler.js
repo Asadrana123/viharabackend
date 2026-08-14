@@ -18,11 +18,18 @@
 //
 // Same-number guard: at most ONE call per normalized phone per daily sweep, so
 // two people who registered with the same number aren't both dialed.
+//
+// CONCURRENCY: bursts are not dialed directly — they are handed to the shared
+// callDispatchQueue, which caps how many run at once (account-wide, across all
+// schedulers) and staggers their starts so a 1:32 PM batch cannot blow past
+// VAPI's concurrency limit. Signup bursts use the high-priority lane so a fresh
+// lead is never stuck behind a batch of routine retries.
 
 const cron = require("node-cron");
 const { DateTime } = require("luxon");
 const EarlyAccessLead = require("../model/earlyAccessLeadModel");
-const { runCallBurst, DID_NOT_CONNECT_REASONS, WAIT_MS } = require("./registrationCallService");
+const { DID_NOT_CONNECT_REASONS, WAIT_MS } = require("./registrationCallService");
+const { enqueueBurst, PRIORITY } = require("./callDispatchQueue");
 
 const CALL_HOUR = 13;   // 1 PM
 const CALL_MINUTE = 32; // :32  → 1:32 PM local
@@ -105,9 +112,10 @@ async function scheduleEarlyAccessSignupCall(lead = {}) {
     { $set: { lastCallAt: new Date() }, $inc: { callAttempts: 1 } }
   );
 
-  const { connected } = await runCallBurst(
+  const { connected } = await enqueueBurst(
     callPayload({ _id: lead.leadId, ...lead }),
-    { initialDelayMs: WAIT_MS, ...BURST_OPTS }
+    { initialDelayMs: WAIT_MS, ...BURST_OPTS },
+    PRIORITY.SIGNUP
   );
 
   await applyOutcome(
@@ -164,8 +172,9 @@ async function sweepDueCalls() {
 
       if (!claimed) continue; // another worker claimed it first
 
-      // Fire the burst (no initial delay — it's already 1:32 PM their time).
-      runCallBurst(callPayload(claimed), BURST_OPTS)
+      // Hand the burst to the shared queue (scheduled lane — paced behind any
+      // signup bursts, no initial delay since it's already 1:32 PM their time).
+      enqueueBurst(callPayload(claimed), BURST_OPTS, PRIORITY.SCHEDULED)
         .then(({ connected }) => applyOutcome(claimed, connected))
         .catch((e) => console.error("[ea-daily] burst failed:", e.message));
     }
