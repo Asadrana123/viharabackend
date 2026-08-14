@@ -4,6 +4,11 @@ const BREVO_API_KEY = process.env.BREVO_API_KEY;
 const BREVO_PERSONA_LIST_ID = Number(process.env.BREVO_PERSONA_LIST_ID);
 const BREVO_EARLY_ACCESS_LIST_ID = Number(process.env.BREVO_EARLY_ACCESS_LIST_ID);
 const BREVO_PROPERTY_LIST_ID = Number(process.env.BREVO_PROPERTY_LIST_ID);
+// "Nurture - Partners" list = 15. Digit-strip parse guards the "#15" → NaN bug.
+const BREVO_PARTNER_LIST_ID = parseInt(
+  String(process.env.BREVO_PARTNER_LIST_ID || "").replace(/[^0-9]/g, ""),
+  10
+);
 
 const BREVO_BASE = "https://api.brevo.com/v3";
 
@@ -197,4 +202,84 @@ const syncPropertyLead = async (lead) => {
   }
 };
 
-module.exports = { syncPersonaLead, syncEarlyAccessLead, syncPropertyLead };
+// Partner Program applicants → "Nurture - Partners" (BREVO_PARTNER_LIST_ID = 15).
+// Attributes (verified live against the account): FIRSTNAME, LASTNAME, SMS,
+// MARKETS (text ← primaryMarket), PARTNER_TYPE (CATEGORY ← persona mapped to id).
+//
+// PARTNER_TYPE is a CATEGORY attribute, so it will NOT accept a raw label string —
+// it must be the enumeration id. Live values:
+//   1 = Realtor / Agent   2 = Flipper / Investor   3 = Wholesaler   4 = Fund / Operator
+// The page sends the label ("Realtor / agent" etc.), so we normalize + map it to
+// the id. An unrecognized persona is omitted (never sent as an invalid value that
+// would 400 the whole upsert).
+const PARTNER_TYPE_IDS = {
+  "realtor / agent": 1,
+  "flipper / investor": 2,
+  "wholesaler": 3,
+  "fund / operator": 4,
+};
+
+const normalizePartnerType = (s) =>
+  String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
+
+const buildPartnerLeadAttributes = (lead) => {
+  const attributes = {
+    FIRSTNAME: lead.firstName || "",
+    LASTNAME: lead.lastName || "",
+    MARKETS: lead.primaryMarket || "",
+  };
+
+  // PARTNER_TYPE is a category — send the id, or omit if the label is unknown.
+  const partnerTypeId = PARTNER_TYPE_IDS[normalizePartnerType(lead.persona)];
+  if (partnerTypeId) attributes.PARTNER_TYPE = partnerTypeId;
+
+  // Same E.164-only SMS guard as the other builders (controller passes E.164).
+  const digits = String(lead.phone || "").replace(/\D/g, "");
+  if (lead.phone?.startsWith("+") && digits.length >= 11) {
+    attributes.SMS = lead.phone;
+  }
+
+  return attributes;
+};
+
+/**
+ * Upsert a Partner Program applicant into the "Nurture - Partners" list.
+ * Idempotent via updateEnabled:true. Adding to the list is what starts the
+ * partner email sequence. Non-throwing — safe to fire-and-forget.
+ *
+ * @param {object} lead { email, firstName, lastName, phone, primaryMarket, persona }
+ */
+const syncPartnerLead = async (lead) => {
+  if (!BREVO_API_KEY || !BREVO_PARTNER_LIST_ID) {
+    console.warn("⚠️  Brevo partner list not configured — skipping contact sync.");
+    return { success: false, skipped: true };
+  }
+  if (!lead.email) return { success: false, skipped: true };
+
+  try {
+    await axios.post(
+      `${BREVO_BASE}/contacts`,
+      {
+        email: lead.email,
+        attributes: buildPartnerLeadAttributes(lead),
+        listIds: [BREVO_PARTNER_LIST_ID],
+        updateEnabled: true,
+      },
+      {
+        headers: {
+          "api-key": BREVO_API_KEY,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    console.log(`✅ Brevo partner synced: ${lead.email}`);
+    return { success: true };
+  } catch (err) {
+    const reason = err.response?.data?.message || err.message;
+    console.error(`❌ Brevo partner sync failed: ${lead.email}:`, reason);
+    return { success: false, error: String(reason) };
+  }
+};
+
+module.exports = { syncPersonaLead, syncEarlyAccessLead, syncPropertyLead, syncPartnerLead };
