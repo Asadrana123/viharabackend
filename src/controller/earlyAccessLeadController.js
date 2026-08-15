@@ -6,6 +6,7 @@ const { scheduleEarlyAccessSignupCall } = require("../services/earlyAccessCallSc
 const { enrichPerson } = require("../services/fullenrichService");
 const { syncEarlyAccessLead } = require("../services/brevoService");
 const { getCallsForPhones, normalisePhone } = require("../services/vapiCallsService");
+const { getEmailEventsForEmails } = require("../services/emailEventsService");
 // Maps the early-access page's internal buyer code → the exact page label the
 // Brevo email sequence segments on (REGISTERING_AS). Mirrors BUYER_TYPES in
 // EarlyAccessPage.jsx. Unknown/legacy values pass through unchanged.
@@ -144,11 +145,17 @@ const getAllEarlyAccessLeads = catchAsyncError(async (req, res) => {
   ]);
 
   const phones = leads.map((l) => l.phone).filter(Boolean);
-  const callsByPhone = await getCallsForPhones(phones);
+  const emailAddresses = leads.map((l) => l.email).filter(Boolean);
+
+  const [callsByPhone, eventsByEmail] = await Promise.all([
+    getCallsForPhones(phones),
+    getEmailEventsForEmails(emailAddresses),
+  ]);
 
   const leadsWithCalls = leads.map((lead) => ({
     ...lead,
     calls: callsByPhone[normalisePhone(lead.phone)] || [],
+    emails: eventsByEmail[String(lead.email || "").toLowerCase()] || [],
   }));
 
   res.status(200).json({

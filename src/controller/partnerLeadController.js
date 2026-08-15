@@ -5,6 +5,7 @@ const PartnerLead = require("../model/partnerLeadModel");
 const { schedulePartnerSignupCall } = require("../services/partnerCallScheduler");
 const { enrichPerson } = require("../services/fullenrichService");
 const { getCallsForPhones, normalisePhone } = require("../services/vapiCallsService");
+const { getEmailEventsForEmails } = require("../services/emailEventsService");
 const { syncPartnerLead } = require("../services/brevoService");
 
 /**
@@ -139,11 +140,17 @@ const getAllPartnerLeads = catchAsyncError(async (req, res) => {
   ]);
 
   const phones = leads.map((l) => l.phone).filter(Boolean);
-  const callsByPhone = await getCallsForPhones(phones);
+  const emailAddresses = leads.map((l) => l.email).filter(Boolean);
+
+  const [callsByPhone, eventsByEmail] = await Promise.all([
+    getCallsForPhones(phones),
+    getEmailEventsForEmails(emailAddresses),
+  ]);
 
   const leadsWithCalls = leads.map((lead) => ({
     ...lead,
     calls: callsByPhone[normalisePhone(lead.phone)] || [],
+    emails: eventsByEmail[String(lead.email || "").toLowerCase()] || [],
   }));
 
   res.status(200).json({

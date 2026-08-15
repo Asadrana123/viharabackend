@@ -42,6 +42,7 @@ const georgiaStLeadRoutes = require("./routes/georgiaStLeadRoutes");
 const rensselaerAveLeadRoutes = require("./routes/rensselaerAveLeadRoutes");
 const partnerLeadRoutes = require("./routes/partnerLeadRoutes");
 const rb2bRoutes = require("./routes/rb2bRoutes");
+const brevoWebhookRoutes = require("./routes/brevoWebhookRoutes");
 // Middleware
 app.use(cookieParser());
 app.use(cors(expressCorsOptions));
@@ -98,6 +99,7 @@ app.use("/api/v1/georgia-st", georgiaStLeadRoutes);
 app.use("/api/v1/rensselaer-ave", rensselaerAveLeadRoutes);
 app.use("/api/v1/partner", partnerLeadRoutes);
 app.use("/api/v1/rb2b", rb2bRoutes);
+app.use("/api/webhooks/brevo", brevoWebhookRoutes);
 // Error Middleware
 app.use(errorMiddleware);
 

@@ -5,6 +5,7 @@ const RensselaerAveLead = require("../model/rensselaerAveLeadModel");
 const { scheduleRensselaerAveSignupCall } = require("../services/rensselaerAveCallScheduler");
 const { enrichPerson } = require("../services/fullenrichService");
 const { getCallsForPhones, normalisePhone } = require("../services/vapiCallsService");
+const { getEmailEventsForEmails } = require("../services/emailEventsService");
 const { syncPropertyLead } = require("../services/brevoService");
 // NOTE ON BREVO: early access syncs to its dedicated buyer list
 // (BREVO_EARLY_ACCESS_LIST_ID). These are single-property auction registrants, so
@@ -137,11 +138,17 @@ const getAllRensselaerAveLeads = catchAsyncError(async (req, res) => {
   ]);
 
   const phones = leads.map((l) => l.phone).filter(Boolean);
-  const callsByPhone = await getCallsForPhones(phones);
+  const emailAddresses = leads.map((l) => l.email).filter(Boolean);
+
+  const [callsByPhone, eventsByEmail] = await Promise.all([
+    getCallsForPhones(phones),
+    getEmailEventsForEmails(emailAddresses),
+  ]);
 
   const leadsWithCalls = leads.map((lead) => ({
     ...lead,
     calls: callsByPhone[normalisePhone(lead.phone)] || [],
+    emails: eventsByEmail[String(lead.email || "").toLowerCase()] || [],
   }));
 
   res.status(200).json({
