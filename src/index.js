@@ -7,6 +7,7 @@ const { startEarlyAccessCallScheduler } = require('./services/earlyAccessCallSch
 const { startGeorgiaStCallScheduler } = require('./services/georgiaStCallScheduler');
 const { startRensselaerAveCallScheduler } = require('./services/rensselaerAveCallScheduler');
 const { startPartnerCallScheduler } = require('./services/partnerCallScheduler');
+const { startVoiceCallbackScheduler } = require('./services/voiceCallbackScheduler'); // ← ADD
 require('./passport');
 
 const PORT = process.env.PORT || 8000;
@@ -31,4 +32,8 @@ server.listen(PORT, () => {
 
   // Partner Program daily 1:32 PM local callback scheduler.
   startPartnerCallScheduler();
+
+  // Human-requested callbacks ("call me back in 10 minutes"). Dials at the exact
+  // time asked, then falls into the daily 1:32 PM retry loop on no-answer.
+  startVoiceCallbackScheduler();
 });

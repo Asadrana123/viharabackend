@@ -29,6 +29,7 @@ const coreLogicRoutes = require("./routes/coreLogicRoutes");
 const errorMiddleware = require("./middleware/error");
 const landingPageLeadRoutes = require("./routes/landingPageLeadRoutes");
 const vapiRoutes = require("./routes/vapiRoutes");
+const voiceCallbackRoutes = require("./routes/voiceCallbackRoutes"); // ← ADD
 const sellerRoutes = require("./routes/sellerRoutes");
 const contentRoutes = require("./routes/contentRoutes"); // ← ADD
 const careerRoutes=require('./routes/careerRoutes');
@@ -88,6 +89,7 @@ app.use('/api/v1/investment-calculator', investmentCalculatorRoutes);
 app.use("/api/v1/corelogic", coreLogicRoutes);
 app.use("/api/landing/", landingPageLeadRoutes);
 app.use("/api/vapi", vapiRoutes);
+app.use("/api/vapi", voiceCallbackRoutes); // ← ADD (webhook + admin callbacks)
 app.use("/api/v1/seller", sellerRoutes);
 app.use("/api/facebook", facebookRoutes);
 app.use("/api/content", contentRoutes); // ← ADD
