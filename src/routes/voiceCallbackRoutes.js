@@ -14,7 +14,7 @@
 const express = require("express");
 const router = express.Router();
 
-const { isAuthenticatedUser, authorizeRoles } = require("../middleware/auth");
+const { isAuthenticated, authorizeRoles } = require("../middleware/auth");
 const {
   handleVapiWebhook,
   listCallbacks,
@@ -27,13 +27,13 @@ router.post("/webhook", handleVapiWebhook);
 // Admin only.
 router.get(
   "/callbacks",
-  isAuthenticatedUser,
+  isAuthenticated,
   authorizeRoles("admin"),
   listCallbacks
 );
 router.patch(
   "/callback/:id/cancel",
-  isAuthenticatedUser,
+  isAuthenticated,
   authorizeRoles("admin"),
   cancelCallback
 );
