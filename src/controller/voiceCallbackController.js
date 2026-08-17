@@ -1,4 +1,4 @@
-// controller/voiceCallbackController.js  (DEBUG BUILD)
+// controller/voiceCallbackController.js
 
 const catchAsyncError = require("../middleware/catchAsyncError");
 const ErrorHandler = require("../utils/errorhandler");
@@ -8,6 +8,30 @@ const { createCallbackRequest } = require("../services/voiceCallbackService");
 const VAPI_WEBHOOK_SECRET = process.env.VAPI_WEBHOOK_SECRET;
 
 console.log("[cb-debug] voiceCallbackController loaded. secret set?", !!VAPI_WEBHOOK_SECRET);
+
+// ── Webhook authorization ─────────────────────────────────────────────────────
+// VAPI can carry the shared secret in different places depending on how the
+// assistant/tool server is configured, and the custom HTTP header does not
+// always get forwarded. So we accept the secret from ANY of these channels:
+//   • header  x-vapi-secret       (per-tool server.secret / assistant header)
+//   • header  x-vapi-signature    (some setups send it under this name)
+//   • query   ?secret=...         (most reliable — a query string is always sent)
+// A genuine mismatch (or nothing at all when a secret IS configured) still 401s.
+
+function extractProvidedSecret(req) {
+  return (
+    req.headers["x-vapi-secret"] ||
+    req.headers["x-vapi-signature"] ||
+    (req.query && req.query.secret) ||
+    ""
+  );
+}
+
+function isAuthorized(req) {
+  if (!VAPI_WEBHOOK_SECRET) return true; // no secret configured → open
+  const provided = String(extractProvidedSecret(req) || "").trim();
+  return Boolean(provided) && provided === VAPI_WEBHOOK_SECRET;
+}
 
 function parseArgs(raw) {
   if (!raw) return {};
@@ -34,18 +58,21 @@ function extractCallbackToolCalls(message = {}) {
 const handleVapiWebhook = catchAsyncError(async (req, res, next) => {
   // ── DEBUG: prove VAPI reached this handler ──────────────────────────────────
   console.log("[cb-debug] === WEBHOOK HIT ===");
-  console.log("[cb-debug] headers x-vapi-secret present?", !!req.headers["x-vapi-secret"]);
+  console.log(
+    "[cb-debug] auth →",
+    "hdr x-vapi-secret?", !!req.headers["x-vapi-secret"],
+    "| hdr x-vapi-signature?", !!req.headers["x-vapi-signature"],
+    "| query secret?", !!(req.query && req.query.secret),
+    "| header keys:", Object.keys(req.headers).join(",")
+  );
   console.log("[cb-debug] message.type =", req.body?.message?.type);
   try {
     console.log("[cb-debug] full message =", JSON.stringify(req.body?.message)?.slice(0, 2000));
   } catch (_e) {}
 
-  if (VAPI_WEBHOOK_SECRET) {
-    const provided = req.headers["x-vapi-secret"];
-    if (provided !== VAPI_WEBHOOK_SECRET) {
-      console.log("[cb-debug] SECRET MISMATCH → 401. provided?", !!provided);
-      return next(new ErrorHandler("Invalid webhook secret", 401));
-    }
+  if (!isAuthorized(req)) {
+    console.log("[cb-debug] AUTH FAILED → 401 (no matching secret in header or query)");
+    return next(new ErrorHandler("Invalid webhook secret", 401));
   }
 
   const message = req.body?.message || {};
