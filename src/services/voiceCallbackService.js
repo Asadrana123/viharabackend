@@ -136,13 +136,48 @@ async function createCallbackRequest(args = {}) {
   return { callback, spokenReply: spokenConfirmation(callback) };
 }
 
-/** The line Maya speaks back after booking a callback. */
+/**
+ * Human phrasing of a delay in minutes:
+ *   < 60 min  → "5 minutes"
+ *   < 24 hr   → "2 hours" (with a half where it reads naturally)
+ *   otherwise → "2 days"
+ */
+function humanizeDelay(mins) {
+  const m = Math.round(Number(mins) || 0);
+  if (m < 60) return `${m} ${m === 1 ? "minute" : "minutes"}`;
+  if (m < 24 * 60) {
+    const h = Math.round(m / 60);
+    return `${h} ${h === 1 ? "hour" : "hours"}`;
+  }
+  const d = Math.round(m / (24 * 60));
+  return `${d} ${d === 1 ? "day" : "days"}`;
+}
+
+/**
+ * The line Maya speaks back after booking a callback. Handles both paths:
+ *   • a relative delay  → "in about 2 days" / "in about 30 minutes"
+ *   • a named clock time → "tomorrow at 5:00 PM" / "on Monday at 10:00 AM"
+ */
 function spokenConfirmation(callback) {
   if (callback.requestedDelayMinutes) {
-    const m = callback.requestedDelayMinutes;
-    return `Got it — I'll call you back in about ${m} ${m === 1 ? "minute" : "minutes"}.`;
+    return `Got it — I'll call you back in about ${humanizeDelay(callback.requestedDelayMinutes)}.`;
   }
-  return "Got it — I've scheduled your callback. We'll call you at that time.";
+
+  if (callback.callAt) {
+    const zone = callback.timezone || DEFAULT_TZ;
+    const dt = DateTime.fromJSDate(callback.callAt).setZone(zone);
+    if (dt.isValid) {
+      const now = DateTime.now().setZone(zone);
+      const timeStr = dt.toFormat("h:mm a");
+      let whenStr;
+      if (dt.hasSame(now, "day")) whenStr = `at ${timeStr}`;
+      else if (dt.hasSame(now.plus({ days: 1 }), "day")) whenStr = `tomorrow at ${timeStr}`;
+      else whenStr = `on ${dt.toFormat("cccc")} at ${timeStr}`; // e.g. "on Monday at 5:00 PM"
+      return `Got it — I'll call you back ${whenStr}.`;
+    }
+  }
+
+  return "Got it — I've scheduled your callback and I'll call you then.";
 }
 
 /**
