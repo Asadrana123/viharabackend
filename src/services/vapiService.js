@@ -1,5 +1,6 @@
 const axios = require("axios");
 const { buildVariableValues } = require("./vapiPromptService");
+const { buildPriorContext } = require("./callMemoryService");
 
 const VAPI_API_KEY = process.env.VAPI_API_KEY;
 const VAPI_ASSISTANT_ID = process.env.VAPI_ASSISTANT_ID;
@@ -21,6 +22,22 @@ const CALLBACK_INSTRUCTION = `
 
 ## Handling callback requests (IMPORTANT)
 You have a tool called scheduleCallback. If the caller asks you to call them back later — for example "call me in 5 minutes", "try me in half an hour", "call me tomorrow", or "call me at 5pm" — you MUST call the scheduleCallback function. Set delayMinutes to the number of minutes from now (convert their words into a number: "five minutes" = 5, "half an hour" = 30, "an hour" = 60). Call the tool BEFORE you say goodbye or end the call. After the tool succeeds, briefly confirm the time out loud (for example, "Got it, I'll call you back in five minutes"). Never promise a callback without calling scheduleCallback.`;
+
+// Appended to the system prompt when we have prior-call memory for this number.
+// Same idempotent-append pattern as CALLBACK_INSTRUCTION: one central place,
+// every page benefits, no per-prompt edits. Empty context → empty string → the
+// prompt is untouched (first-ever calls behave exactly as before).
+const buildPriorContextBlock = (priorContext) => {
+  const ctx = String(priorContext || "").trim();
+  if (!ctx) return "";
+  return `
+
+## What you already know about this caller (from previous calls)
+You have spoken with this person before. Do NOT re-introduce yourself or run the opening as if this is a first call. Reference what was already discussed naturally, the way a salesperson who remembers them would. Most recent first:
+${ctx}
+
+Use this only where it helps the conversation — never read it aloud or list it back. If anything here conflicts with what they tell you now, trust what they say now.`;
+};
 
 const VOICEMAIL_DETECTION = {
   provider: "vapi",
@@ -87,34 +104,39 @@ const buildCallbackTool = () => {
   };
 };
 
-const buildAssistantOverrides = (contact, researchSummary, property, promptConfig) => {
+const buildAssistantOverrides = (contact, researchSummary, property, promptConfig, priorContext = "") => {
   const overrides = {
     variableValues: buildVariableValues(contact, researchSummary, property),
     voicemailDetection: VOICEMAIL_DETECTION,
   };
 
   const callbackTool = buildCallbackTool();
+  const priorBlock = buildPriorContextBlock(priorContext);
 
   if (!promptConfig) {
-    if (callbackTool) {
+    // No authored prompt. Build a model override only if there's something for
+    // the system message to carry (callback instructions and/or memory).
+    if (callbackTool || priorBlock) {
       overrides.model = {
         provider: VAPI_MODEL_PROVIDER,
         model: VAPI_MODEL,
-        messages: [{ role: "system", content: CALLBACK_INSTRUCTION.trim() }],
-        tools: [callbackTool],
+        messages: [{ role: "system", content: (CALLBACK_INSTRUCTION.trim() + priorBlock).trim() }],
+        ...(callbackTool ? { tools: [callbackTool] } : {}),
       };
     }
-    console.log("[cb-debug] overrides built (no promptConfig). tools?", !!(overrides.model && overrides.model.tools));
+    console.log("[cb-debug] overrides built (no promptConfig). tools?", !!(overrides.model && overrides.model.tools),
+      "| priorContext?", !!priorBlock);
     return overrides;
   }
 
   if (promptConfig.systemPrompt) {
-    // Idempotent: only append if the prompt doesn't already teach the tool.
+    // Idempotent: only append the callback instruction if not already taught.
     const alreadyHasTool = /scheduleCallback/i.test(promptConfig.systemPrompt);
-    const systemContent =
+    const withCallback =
       callbackTool && !alreadyHasTool
         ? promptConfig.systemPrompt + CALLBACK_INSTRUCTION
         : promptConfig.systemPrompt;
+    const systemContent = withCallback + priorBlock;
 
     overrides.model = {
       provider: VAPI_MODEL_PROVIDER,
@@ -122,12 +144,12 @@ const buildAssistantOverrides = (contact, researchSummary, property, promptConfi
       messages: [{ role: "system", content: systemContent }],
       ...(callbackTool ? { tools: [callbackTool] } : {}),
     };
-  } else if (callbackTool) {
+  } else if (callbackTool || priorBlock) {
     overrides.model = {
       provider: VAPI_MODEL_PROVIDER,
       model: VAPI_MODEL,
-      messages: [{ role: "system", content: CALLBACK_INSTRUCTION.trim() }],
-      tools: [callbackTool],
+      messages: [{ role: "system", content: (CALLBACK_INSTRUCTION.trim() + priorBlock).trim() }],
+      ...(callbackTool ? { tools: [callbackTool] } : {}),
     };
   }
 
@@ -136,7 +158,7 @@ const buildAssistantOverrides = (contact, researchSummary, property, promptConfi
   if (promptConfig.endCallMessage) overrides.endCallMessage = promptConfig.endCallMessage;
 
   console.log("[cb-debug] overrides built (with promptConfig). tools?", !!(overrides.model && overrides.model.tools),
-    "| callbackInstructionAppended?", !!callbackTool);
+    "| callbackInstructionAppended?", !!callbackTool, "| priorContext?", !!priorBlock);
   return overrides;
 };
 
@@ -150,7 +172,17 @@ const dispatchCall = async (
       source: "vihara-voice",
       propertyId: property && property.id ? property.id : null,
     };
-    const assistantOverrides = buildAssistantOverrides(person, researchSummary, property, promptConfig);
+
+    // Pull prior-call memory for this number. Non-fatal — a lookup failure must
+    // never block the call; we just dial without memory.
+    let priorContext = "";
+    try {
+      priorContext = await buildPriorContext(phoneNumber);
+    } catch (err) {
+      console.error("[cb-debug] buildPriorContext failed (non-fatal):", err.message);
+    }
+
+    const assistantOverrides = buildAssistantOverrides(person, researchSummary, property, promptConfig, priorContext);
 
     console.log("[cb-debug] dispatchCall payload", JSON.stringify({
       to: phoneNumber,
@@ -158,6 +190,7 @@ const dispatchCall = async (
       toolsAttached: !!(assistantOverrides.model && assistantOverrides.model.tools),
       toolNames: (assistantOverrides.model?.tools || []).map((t) => t.function?.name),
       toolServerUrl: assistantOverrides.model?.tools?.[0]?.server?.url || null,
+      priorContextChars: priorContext.length,
     }));
 
     const response = await axios.post(

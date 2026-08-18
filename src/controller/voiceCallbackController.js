@@ -4,6 +4,7 @@ const catchAsyncError = require("../middleware/catchAsyncError");
 const ErrorHandler = require("../utils/errorhandler");
 const CallbackRequest = require("../model/callbackRequestModel");
 const { createCallbackRequest } = require("../services/voiceCallbackService");
+const { saveEndOfCallReport } = require("../services/callLogService");
 
 const VAPI_WEBHOOK_SECRET = process.env.VAPI_WEBHOOK_SECRET;
 
@@ -67,7 +68,7 @@ const handleVapiWebhook = catchAsyncError(async (req, res, next) => {
   );
   console.log("[cb-debug] message.type =", req.body?.message?.type);
   try {
-    // console.log("[cb-debug] full message =", JSON.stringify(req.body?.message)?.slice(0, 2000));
+    console.log("[cb-debug] full message =", JSON.stringify(req.body?.message)?.slice(0, 2000));
   } catch (_e) {}
 
   if (!isAuthorized(req)) {
@@ -77,6 +78,23 @@ const handleVapiWebhook = catchAsyncError(async (req, res, next) => {
 
   const message = req.body?.message || {};
   const type = message.type;
+
+  // ── End-of-call report → save to the memory store ───────────────────────────
+  // Fired once when a call finishes. Persist it and ack. Never throw back to
+  // VAPI — a failed save must not turn into a webhook error/retry storm.
+  if (type === "end-of-call-report") {
+    try {
+      const saved = await saveEndOfCallReport(message);
+      console.log(
+        "[cb-debug] SAVED call log", String(saved?._id),
+        "| phone", saved?.phone,
+        "| endedReason", saved?.endedReason
+      );
+    } catch (err) {
+      console.error("[cb-debug] saveEndOfCallReport FAILED:", err.message, err.stack);
+    }
+    return res.status(200).json({ received: true });
+  }
 
   if (type !== "tool-calls" && type !== "function-call") {
     console.log("[cb-debug] non-actionable type, acking:", type);
