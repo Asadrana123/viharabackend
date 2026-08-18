@@ -67,7 +67,7 @@ const handleVapiWebhook = catchAsyncError(async (req, res, next) => {
   );
   console.log("[cb-debug] message.type =", req.body?.message?.type);
   try {
-    console.log("[cb-debug] full message =", JSON.stringify(req.body?.message)?.slice(0, 2000));
+    // console.log("[cb-debug] full message =", JSON.stringify(req.body?.message)?.slice(0, 2000));
   } catch (_e) {}
 
   if (!isAuthorized(req)) {

@@ -48,7 +48,7 @@ const leadNoteRoutes = require("./routes/leadNoteRoutes");
 // Middleware
 app.use(cookieParser());
 app.use(cors(expressCorsOptions));
-app.use(bodyParser.json({ verify: (req, res, buf) => { req.rawBody = buf; } }));
+app.use(bodyParser.json({ limit: "5mb", verify: (req, res, buf) => { req.rawBody = buf; } }));
 // MongoDB Connection with Connection Pooling
 mongoose.connect(process.env.DB_URI, {
   maxPoolSize: 50,
