@@ -2,9 +2,8 @@
 
 const allowedOrigins = [
   "https://www.vihara.ai",
-  "https://vihara-new-website-git-testing-nodifys-projects.vercel.app",
-  'https://vihara-new-website-git-mynewbranch-nodifys-projects.vercel.app',
-  'https://vihara-new-website-rlggvtqn8-nodifys-projects.vercel.app',
+"https://vihara-new-website-ahudtv10w-nodifys-projects.vercel.app",
+"https://vihara-new-website-git-feature-task-nodifys-projects.vercel.app",
   "http://localhost:3000",
   "https://vihara-new-website-nodifys-projects.vercel.app"
 ];
