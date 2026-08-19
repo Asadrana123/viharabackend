@@ -45,6 +45,7 @@ const partnerLeadRoutes = require("./routes/partnerLeadRoutes");
 const rb2bRoutes = require("./routes/rb2bRoutes");
 const brevoWebhookRoutes = require("./routes/brevoWebhookRoutes");
 const leadNoteRoutes = require("./routes/leadNoteRoutes");
+const interestedLeadRoutes = require("./routes/interestedLeadRoutes");
 // Middleware
 app.use(cookieParser());
 app.use(cors(expressCorsOptions));
@@ -104,6 +105,7 @@ app.use("/api/v1/partner", partnerLeadRoutes);
 app.use("/api/v1/rb2b", rb2bRoutes);
 app.use("/api/webhooks/brevo", brevoWebhookRoutes);
 app.use("/api/v1/lead-notes", leadNoteRoutes);
+app.use("/api/v1/interested-leads", interestedLeadRoutes);
 // Error Middleware
 app.use(errorMiddleware);
 
