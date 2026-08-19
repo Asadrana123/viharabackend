@@ -3,6 +3,7 @@
 const allowedOrigins = [
   "https://www.vihara.ai",
   "https://vihara-new-website-git-testing-nodifys-projects.vercel.app",
+  'https://vihara-new-website-git-mynewbranch-nodifys-projects.vercel.app/',
   'https://vihara-new-website-rlggvtqn8-nodifys-projects.vercel.app/',
   "http://localhost:3000",
   "https://vihara-new-website-nodifys-projects.vercel.app"
