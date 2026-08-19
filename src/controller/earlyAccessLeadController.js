@@ -8,6 +8,7 @@ const { syncEarlyAccessLead } = require("../services/brevoService");
 const { getCallsForPhones, normalisePhone } = require("../services/vapiCallsService");
 const { getEmailEventsForEmails } = require("../services/emailEventsService");
 const { getNotesForLeads } = require("../services/leadNotesService");
+const { getMessagesForPhones } = require("../services/sendblueService");
 
 // Discriminator stamped on each note so notes never bleed across lead types.
 const LEAD_NOTE_TYPE = "earlyAccess";
@@ -152,10 +153,11 @@ const getAllEarlyAccessLeads = catchAsyncError(async (req, res) => {
   const emailAddresses = leads.map((l) => l.email).filter(Boolean);
   const leadIds = leads.map((l) => l._id);
 
-  const [callsByPhone, eventsByEmail, notesByLead] = await Promise.all([
+  const [callsByPhone, eventsByEmail, notesByLead, messagesByPhone] = await Promise.all([
     getCallsForPhones(phones),
     getEmailEventsForEmails(emailAddresses),
     getNotesForLeads(LEAD_NOTE_TYPE, leadIds),
+    getMessagesForPhones(phones),
   ]);
 
   const leadsWithCalls = leads.map((lead) => ({
@@ -163,6 +165,7 @@ const getAllEarlyAccessLeads = catchAsyncError(async (req, res) => {
     calls: callsByPhone[normalisePhone(lead.phone)] || [],
     emails: eventsByEmail[String(lead.email || "").toLowerCase()] || [],
     notes: notesByLead[String(lead._id)] || [],
+    messages: messagesByPhone[normalisePhone(lead.phone)] || [],
   }));
 
   res.status(200).json({

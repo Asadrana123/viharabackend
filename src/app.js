@@ -44,6 +44,7 @@ const rensselaerAveLeadRoutes = require("./routes/rensselaerAveLeadRoutes");
 const partnerLeadRoutes = require("./routes/partnerLeadRoutes");
 const rb2bRoutes = require("./routes/rb2bRoutes");
 const brevoWebhookRoutes = require("./routes/brevoWebhookRoutes");
+const sendblueWebhookRoutes = require("./routes/sendblueWebhookRoutes");
 const leadNoteRoutes = require("./routes/leadNoteRoutes");
 const interestedLeadRoutes = require("./routes/interestedLeadRoutes");
 // Middleware
@@ -104,6 +105,7 @@ app.use("/api/v1/rensselaer-ave", rensselaerAveLeadRoutes);
 app.use("/api/v1/partner", partnerLeadRoutes);
 app.use("/api/v1/rb2b", rb2bRoutes);
 app.use("/api/webhooks/brevo", brevoWebhookRoutes);
+app.use("/api/webhooks/sendblue", sendblueWebhookRoutes);
 app.use("/api/v1/lead-notes", leadNoteRoutes);
 app.use("/api/v1/interested-leads", interestedLeadRoutes);
 // Error Middleware
