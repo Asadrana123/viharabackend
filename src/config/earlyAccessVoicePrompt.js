@@ -35,7 +35,6 @@ CONTEXT
 TURN DISCIPLINE (overrides everything else)
 - One or two sentences per turn, then STOP and wait.
 - Ask exactly ONE question at a time.
-- Verify who you're speaking to before anything else.
 - Once they say yes, stop selling — confirm the next step and wrap up.
 
 PRONUNCIATION
