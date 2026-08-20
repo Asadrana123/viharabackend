@@ -5,12 +5,12 @@
 //   Signup (with consent):
 //     → 2-in-60s burst (same as persona "as we call now")
 //         • picked up  → callStatus="connected", loop STOPS
-//         • no pickup  → callStatus="no-answer", nextCallAt = next 1:32 PM local
+//         • no pickup  → callStatus="no-answer", nextCallAt = next daily slot
 //
-//   Every day at 1:32 PM in the lead's timezone (via a 1-minute cron sweep):
+//   3x/day at 11:00 AM, 2:30 PM, 6:00 PM in the lead's timezone (1-minute sweep):
 //     → 2-in-60s burst again
 //         • picked up  → "connected", STOP forever
-//         • no pickup  → reschedule for tomorrow 1:32 PM local
+//         • no pickup  → reschedule for the next slot (or 11:00 AM tomorrow)
 //
 // "Never stop until pickup" — the loop only ends on a genuine pickup. State is
 // stored on the lead (nextCallAt + callStatus), so it survives Render restarts;
@@ -21,7 +21,7 @@
 //
 // CONCURRENCY: bursts are not dialed directly — they are handed to the shared
 // callDispatchQueue, which caps how many run at once (account-wide, across all
-// schedulers) and staggers their starts so a 1:32 PM batch cannot blow past
+// schedulers) and staggers their starts so a 6:00 PM batch cannot blow past
 // VAPI's concurrency limit. Signup bursts use the high-priority lane so a fresh
 // lead is never stuck behind a batch of routine retries.
 
@@ -31,8 +31,14 @@ const EarlyAccessLead = require("../model/earlyAccessLeadModel");
 const { DID_NOT_CONNECT_REASONS, WAIT_MS } = require("./registrationCallService");
 const { enqueueBurst, PRIORITY } = require("./callDispatchQueue");
 
-const CALL_HOUR = 13;   // 1 PM
-const CALL_MINUTE = 32; // :32  → 1:32 PM local
+// Three daily follow-up slots in the lead's local timezone (24h clock).
+// A no-answer rolls the lead to the NEXT slot; after the last slot of the day it
+// rolls to the first slot tomorrow. Keep this list sorted ascending.
+const CALL_SLOTS = [
+  { hour: 11, minute: 0 },  // 11:00 AM
+  { hour: 14, minute: 30 }, // 2:30 PM
+  { hour: 18, minute: 0 },  // 6:00 PM
+];
 const DEFAULT_TZ = "America/New_York"; // fallback when a lead has no/invalid tz
 const SWEEP_BATCH = 200;               // max leads evaluated per minute
 
@@ -44,17 +50,26 @@ const BURST_OPTS = {
 };
 
 /**
- * Next 1:32 PM in the lead's timezone, as a UTC Date.
- * Today if it's still before 1:32 PM there, otherwise tomorrow. DST-correct.
+ * Next daily call slot in the lead's timezone, as a UTC Date.
+ * Returns the earliest of today's slots still ahead of "now"; if all of today's
+ * slots have already passed, returns the first slot tomorrow. DST-correct.
  */
 function nextDailyCallAt(timezone) {
   const zone = timezone || DEFAULT_TZ;
   let now = DateTime.now().setZone(zone);
   if (!now.isValid) now = DateTime.now().setZone(DEFAULT_TZ);
 
-  let target = now.set({ hour: CALL_HOUR, minute: CALL_MINUTE, second: 0, millisecond: 0 });
-  if (target <= now) target = target.plus({ days: 1 });
-  return target.toUTC().toJSDate();
+  for (const slot of CALL_SLOTS) {
+    const target = now.set({ hour: slot.hour, minute: slot.minute, second: 0, millisecond: 0 });
+    if (target > now) return target.toUTC().toJSDate();
+  }
+
+  // Every slot today has passed → first slot tomorrow.
+  const first = CALL_SLOTS[0];
+  const tomorrow = now
+    .plus({ days: 1 })
+    .set({ hour: first.hour, minute: first.minute, second: 0, millisecond: 0 });
+  return tomorrow.toUTC().toJSDate();
 }
 
 /** Payload the dispatcher expects (canonical phone + prompt vars). */
@@ -73,7 +88,7 @@ function callPayload(lead) {
 /**
  * Persist a burst outcome.
  *   connected → stop this lead (and any sibling leads on the same number).
- *   no pickup → schedule the next 1:32 PM local callback.
+ *   no pickup → schedule the next daily slot.
  */
 async function applyOutcome(lead, connected) {
   if (connected) {
@@ -149,7 +164,7 @@ async function sweepDueCalls() {
       const num = lead.phoneNormalized || "";
 
       // Same-number dedup: only the first lead on a number fires this sweep;
-      // push the rest to tomorrow so they don't pile up today.
+      // push the rest to the next slot so they don't pile up today.
       if (num && dialedNumbers.has(num)) {
         await EarlyAccessLead.updateOne(
           { _id: lead._id, callStatus: "no-answer" },
@@ -159,7 +174,7 @@ async function sweepDueCalls() {
       }
       if (num) dialedNumbers.add(num);
 
-      // Atomic claim: move nextCallAt to tomorrow + stamp lastCallAt so an
+      // Atomic claim: move nextCallAt to the next slot + stamp lastCallAt so an
       // overlapping tick (or a long-running burst) can't re-dial the lead today.
       const claimed = await EarlyAccessLead.findOneAndUpdate(
         { _id: lead._id, callStatus: "no-answer", nextCallAt: { $lte: now } },
@@ -173,7 +188,7 @@ async function sweepDueCalls() {
       if (!claimed) continue; // another worker claimed it first
 
       // Hand the burst to the shared queue (scheduled lane — paced behind any
-      // signup bursts, no initial delay since it's already 1:32 PM their time).
+      // signup bursts, no initial delay since it's already a call slot in their time).
       enqueueBurst({ ...callPayload(claimed), isFollowUp: true }, BURST_OPTS, PRIORITY.SCHEDULED)
         .then(({ connected }) => applyOutcome(claimed, connected))
         .catch((e) => console.error("[ea-daily] burst failed:", e.message));
@@ -191,7 +206,7 @@ let task = null;
 function startEarlyAccessCallScheduler() {
   if (task) return task;
   task = cron.schedule("* * * * *", sweepDueCalls); // every minute
-  console.log("[ea-daily] scheduler started — daily 1:32 PM local callbacks (per-minute sweep).");
+  console.log("[ea-daily] scheduler started — daily 11:00 AM / 2:30 PM / 6:00 PM local callbacks (per-minute sweep).");
   return task;
 }
 
