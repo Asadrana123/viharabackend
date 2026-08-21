@@ -71,6 +71,11 @@ const partnerLeadSchema = new mongoose.Schema(
     nextCallAt:   { type: Date, default: null },
     callAttempts: { type: Number, default: 0 },
     lastCallAt:   { type: Date, default: null },
+
+    // Admin kill-switch for the daily retry sweep. When true, partnerCallScheduler
+    // skips this lead entirely. It does NOT touch nextCallAt / callStatus, so
+    // flipping it back to false makes the lead eligible for the daily callback again.
+    callingStopped: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

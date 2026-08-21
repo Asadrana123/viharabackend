@@ -48,6 +48,12 @@ const earlyAccessLeadSchema = new mongoose.Schema(
     lastCallAt: { type: Date, default: null },   // when the last burst was dispatched
     nextCallAt: { type: Date, default: null },   // when the next daily burst should fire (UTC)
 
+    // Admin kill-switch for the daily retry sweep. When true, the scheduler skips
+    // this lead entirely (see earlyAccessCallScheduler.js sweep query). It does NOT
+    // touch nextCallAt / callStatus, so flipping it back to false makes the lead
+    // eligible for the daily callback again — fully reversible.
+    callingStopped: { type: Boolean, default: false },
+
     consent: { type: Boolean, default: false },
     consentText: { type: String, default: "" },
     consentTimestamp: { type: Date, default: null },

@@ -47,6 +47,7 @@ const brevoWebhookRoutes = require("./routes/brevoWebhookRoutes");
 const sendblueWebhookRoutes = require("./routes/sendblueWebhookRoutes");
 const leadNoteRoutes = require("./routes/leadNoteRoutes");
 const interestedLeadRoutes = require("./routes/interestedLeadRoutes");
+const stopCallingRoutes = require("./routes/stopCallingRoutes");
 // Middleware
 app.use(cookieParser());
 app.use(cors(expressCorsOptions));
@@ -108,6 +109,7 @@ app.use("/api/webhooks/brevo", brevoWebhookRoutes);
 app.use("/api/webhooks/sendblue", sendblueWebhookRoutes);
 app.use("/api/v1/lead-notes", leadNoteRoutes);
 app.use("/api/v1/interested-leads", interestedLeadRoutes);
+app.use("/api/v1/lead-calling", stopCallingRoutes);
 // Error Middleware
 app.use(errorMiddleware);
 

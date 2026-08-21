@@ -157,6 +157,7 @@ async function sweepDueCalls() {
     const due = await RensselaerAveLead.find({
       callStatus: "no-answer",
       nextCallAt: { $ne: null, $lte: now },
+      callingStopped: { $ne: true }, // admin "stop calling" kill-switch — skip these leads
     })
       .sort({ nextCallAt: 1 })
       .limit(SWEEP_BATCH)
