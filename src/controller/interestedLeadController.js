@@ -13,6 +13,10 @@ const { getNotesForLeads } = require("../services/leadNotesService");
 // pickups.
 const PICKUP_OUTCOMES = new Set(["positive", "negative", "callback"]);
 
+// Whole-word "test" (case-insensitive). Test-named leads live only in the Test
+// Leads tab, so they are dropped from this consolidated view even if warm.
+const TEST_NAME_REGEX = /\btest\b/i;
+
 // Every source collection, tagged with the note discriminator it uses and the
 // label shown in the aggregated table so an advisor knows which funnel a lead
 // came from. leadType MUST match the values in leadNoteModel.LEAD_TYPES so note
@@ -80,6 +84,8 @@ const getInterestedLeads = catchAsyncError(async (req, res) => {
 
   // ── 2. Flatten + keep only interested leads (picked up OR has a note) ─────
   const interested = perSource.flat().filter((lead) => {
+    // Test-named leads belong only in the Test Leads tab.
+    if (TEST_NAME_REGEX.test(lead.fullName || "")) return false;
     const pickedUp = lead.calls.some((c) => PICKUP_OUTCOMES.has(c.outcome));
     const hasNotes = lead.notes.length > 0;
     return pickedUp || hasNotes;

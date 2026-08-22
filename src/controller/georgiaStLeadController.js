@@ -11,6 +11,9 @@ const { getMessagesForPhones } = require("../services/sendblueService");
 
 // Discriminator stamped on each note so notes never bleed across lead types.
 const LEAD_NOTE_TYPE = "georgiaSt";
+// Whole-word "test" (case-insensitive). Leads whose name matches are hidden from
+// this tab and surface only in the dedicated Test Leads tab.
+const TEST_NAME_REGEX = /\btest\b/i;
 const { syncPropertyLead } = require("../services/brevoService");
 // NOTE ON BREVO: early access syncs to its dedicated buyer list
 // (BREVO_EARLY_ACCESS_LIST_ID). These are single-property auction registrants, so
@@ -138,9 +141,10 @@ const getAllGeorgiaStLeads = catchAsyncError(async (req, res) => {
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
   const skip = (page - 1) * limit;
 
+  const query = { fullName: { $not: TEST_NAME_REGEX } };
   const [leads, total] = await Promise.all([
-    GeorgiaStLead.find().sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
-    GeorgiaStLead.countDocuments(),
+    GeorgiaStLead.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+    GeorgiaStLead.countDocuments(query),
   ]);
 
   const phones = leads.map((l) => l.phone).filter(Boolean);

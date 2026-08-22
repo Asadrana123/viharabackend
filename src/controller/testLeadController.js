@@ -1,4 +1,4 @@
-// controller/interestedLeadController.js
+// controller/testLeadController.js
 const catchAsyncError = require("../middleware/catchAsyncError");
 const EarlyAccessLead = require("../model/earlyAccessLeadModel");
 const GeorgiaStLead = require("../model/georgiaStLeadModel");
@@ -9,15 +9,14 @@ const { getEmailEventsForEmails } = require("../services/emailEventsService");
 const { getNotesForLeads } = require("../services/leadNotesService");
 const { getMessagesForPhones } = require("../services/sendblueService");
 
-// A "pickup" = a human actually answered. Same set the per-tab UI uses for its
-// "Pickup" filter (positive / negative / callback). Voicemail + missed are NOT
-// pickups.
-const PICKUP_OUTCOMES = new Set(["positive", "negative", "callback"]);
+// Whole-word "test" (case-insensitive): matches "test", "Test User", "John Test",
+// but NOT "Testerson" or "contest". Kept identical to the exclusion regex used by
+// every other lead list so a lead is in exactly one place.
+const TEST_NAME_REGEX = /\btest\b/i;
 
-// Every source collection, tagged with the note discriminator it uses and the
-// label shown in the aggregated table so an advisor knows which funnel a lead
-// came from. leadType MUST match the values in leadNoteModel.LEAD_TYPES so note
-// edit/delete resolves against the right collection.
+// Same source collections + labels the Interested Leads tab uses. leadType MUST
+// match the values in leadNoteModel.LEAD_TYPES so note edit/delete resolves
+// against the right collection.
 const SOURCES = [
   { model: EarlyAccessLead,    leadType: "earlyAccess",   label: "Early Access" },
   { model: GeorgiaStLead,      leadType: "georgiaSt",     label: "449 Georgia St" },
@@ -26,26 +25,25 @@ const SOURCES = [
 ];
 
 /**
- * GET /api/v1/interested-leads?page=&limit=
+ * GET /api/v1/test-leads?page=&limit=
  *
- * One consolidated view of "warm" leads across ALL four lead collections. A lead
- * shows up here only if it either:
- *   • PICKED UP a Maya call (a human answered), or
- *   • has at least one manual advisor note.
+ * One consolidated view of every lead whose name contains the whole word "test",
+ * across ALL four lead collections. These leads are excluded from every other
+ * lead tab, so this is the single place they surface.
  *
- * Each row carries its calls, notes and email events (same shape as the
- * individual lead tabs) plus `leadType` / `leadTypeLabel` so the UI knows which
- * funnel it came from and can edit notes against the right collection.
+ * Each row carries its calls, notes, email events and text messages (same shape
+ * as the individual lead tabs) plus `leadType` / `leadTypeLabel` so the UI knows
+ * which funnel it came from and can edit notes against the right collection.
  *
- * NOTE ON SCALE: like the existing per-tab endpoints this pulls every lead and
+ * NOTE ON SCALE: like the Interested Leads endpoint this pulls every lead and
  * filters in memory — fine at current volume. Move to a query-level filter when
  * the collections grow.
  */
-const getInterestedLeads = catchAsyncError(async (req, res) => {
+const getTestLeads = catchAsyncError(async (req, res) => {
   const page = Math.max(1, parseInt(req.query.page) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
 
-  // ── 1. Resolve each collection independently (calls + emails + notes) ─────
+  // ── 1. Resolve each collection independently (calls + emails + notes + msgs) ─
   const perSource = await Promise.all(
     SOURCES.map(async ({ model, leadType, label }) => {
       const leads = await model.find().sort({ createdAt: -1 }).lean();
@@ -81,12 +79,10 @@ const getInterestedLeads = catchAsyncError(async (req, res) => {
     })
   );
 
-  // ── 2. Flatten + keep only interested leads (picked up OR has a note) ─────
-  const interested = perSource.flat().filter((lead) => {
-    const pickedUp = lead.calls.some((c) => PICKUP_OUTCOMES.has(c.outcome));
-    const hasNotes = lead.notes.length > 0;
-    return pickedUp || hasNotes;
-  });
+  // ── 2. Flatten + keep only test-named leads ──────────────────────────────
+  const testLeads = perSource
+    .flat()
+    .filter((lead) => TEST_NAME_REGEX.test(lead.fullName || ""));
 
   // ── 3. Newest activity first — latest call, else when the lead came in ────
   const activityAt = (lead) => {
@@ -95,12 +91,12 @@ const getInterestedLeads = catchAsyncError(async (req, res) => {
     const createdTs = lead.createdAt ? new Date(lead.createdAt).getTime() : 0;
     return Math.max(callTs, createdTs);
   };
-  interested.sort((a, b) => activityAt(b) - activityAt(a));
+  testLeads.sort((a, b) => activityAt(b) - activityAt(a));
 
   // ── 4. Paginate the combined, filtered list ───────────────────────────────
-  const total = interested.length;
+  const total = testLeads.length;
   const start = (page - 1) * limit;
-  const pageLeads = interested.slice(start, start + limit);
+  const pageLeads = testLeads.slice(start, start + limit);
 
   res.status(200).json({
     success: true,
@@ -109,4 +105,4 @@ const getInterestedLeads = catchAsyncError(async (req, res) => {
   });
 });
 
-module.exports = { getInterestedLeads };
+module.exports = { getTestLeads };
