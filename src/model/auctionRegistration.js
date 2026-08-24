@@ -17,7 +17,7 @@ const registrationSchema = new mongoose.Schema({
   },
   lastName: {
     type: String,
-    required: true
+    default: ""
   },
   email: {
     type: String,
@@ -30,6 +30,11 @@ const registrationSchema = new mongoose.Schema({
   address: {
     type: String,
     default: null
+  },
+  buyerType: {
+    type: String,
+    enum: ["Cash investor", "Owner-occupant", "Fix and flip", "Buy and hold"],
+    required: true
   },
   // buyerInfo: {
   //   firstName: {
@@ -64,11 +69,6 @@ const registrationSchema = new mongoose.Schema({
   //     type: String,
   //     required: true
   //   }
-  // },
-  // buyerType: {
-  //   type: String,
-  //   enum: ["individual", "company"],
-  //   required: true
   // },
   // companyInfo: {
   //   company: String,

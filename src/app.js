@@ -49,6 +49,7 @@ const leadNoteRoutes = require("./routes/leadNoteRoutes");
 const interestedLeadRoutes = require("./routes/interestedLeadRoutes");
 const testLeadRoutes = require("./routes/testLeadRoutes");
 const stopCallingRoutes = require("./routes/stopCallingRoutes");
+const propertyImportRoutes = require("./routes/propertyImportRoutes");
 // Middleware
 app.use(cookieParser());
 app.use(cors(expressCorsOptions));
@@ -112,6 +113,7 @@ app.use("/api/v1/lead-notes", leadNoteRoutes);
 app.use("/api/v1/interested-leads", interestedLeadRoutes);
 app.use("/api/v1/test-leads", testLeadRoutes);
 app.use("/api/v1/lead-calling", stopCallingRoutes);
+app.use("/api/v1/property-import", propertyImportRoutes);
 // Error Middleware
 app.use(errorMiddleware);
 

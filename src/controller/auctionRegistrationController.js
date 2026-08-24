@@ -31,7 +31,7 @@ exports.submitAuctionRegistration = catchAsyncError(
     if (!user) {
       return next(new Errorhandler("User not found", 404));
     }
-
+    
     // Check if auction/product exists
     const auction = await Product.findById(auctionId);
     if (!auction) {
@@ -101,6 +101,7 @@ exports.submitAuctionRegistration = catchAsyncError(
         auction.city,
         auction.state
       );
+      console.log('hi');
       sendEmail(user.email, user.name, "Auction Registration Received", emailContent);
     } catch (error) {
       console.error("Error sending registration pending email:", error);
