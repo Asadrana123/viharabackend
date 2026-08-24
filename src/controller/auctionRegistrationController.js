@@ -7,6 +7,7 @@ const sendEmail = require("../utils/sendEmail");
 const createRegistrationPendingEmail=require('../htmlPages/registrationPendingEmail');
 const createRegistrationApprovedEmail=require('../htmlPages/registrationApprovedEmail');
 const getAdminRegistrationNotificationEmail = require('../htmlPages/adminRegistrationNotificationEmail');
+
 // Submit a registration request for an auction
 exports.submitAuctionRegistration = catchAsyncError(
   async (req, res, next) => {
@@ -17,21 +18,20 @@ exports.submitAuctionRegistration = catchAsyncError(
       lastName,
       email,
       mobilePhone,
-      address,
-      buyerInfo,
-      buyerType,
-      companyInfo,
-      legalAgreements,
-      bidAmount,
-      buyersPremium
+      buyerType
     } = req.body;
+
+    // Validate the required fields
+    if (!firstName || !lastName || !email || !mobilePhone || !buyerType) {
+      return next(new Errorhandler("First name, last name, email, phone and buyer type are required", 400));
+    }
 
     // Check if user exists
     const user = await User.findById(userId);
     if (!user) {
       return next(new Errorhandler("User not found", 404));
     }
-    
+
     // Check if auction/product exists
     const auction = await Product.findById(auctionId);
     if (!auction) {
@@ -60,10 +60,7 @@ exports.submitAuctionRegistration = catchAsyncError(
       existingRegistration.lastName = lastName;
       existingRegistration.email = email;
       existingRegistration.mobilePhone = mobilePhone;
-      existingRegistration.address = address || null;
       existingRegistration.buyerType = buyerType;
-      existingRegistration.companyInfo = companyInfo;
-      existingRegistration.legalAgreements = legalAgreements;
       existingRegistration.status = "approved";
       existingRegistration.updatedAt = Date.now();
 
@@ -81,16 +78,11 @@ exports.submitAuctionRegistration = catchAsyncError(
     const registration = await AuctionRegistration.create({
       userId,
       auctionId,
-      firstName: firstName,
-      lastName: lastName,
-      email: email,
-      mobilePhone: mobilePhone,
-      address: address || null,
-      buyerType,
-      companyInfo,
-      legalAgreements,
-      bidAmount,
-      buyersPremium
+      firstName,
+      lastName,
+      email,
+      mobilePhone,
+      buyerType
     });
 
     // Send pending approval email to user
