@@ -16,19 +16,19 @@ const productSchema = new mongoose.Schema({
     },
     auctionStartDate: {
         type: Date,
-        required: true,
+        required: false,
     },
     auctionStartTime: {
         type: String,
-        required: true,
+        required: false,
     },
     auctionEndDate: {
         type: Date,
-        required: true,
+        required: false,
     },
     auctionEndTime: {
         type: String,
-        required: true,
+        required: false,
     },
     reservePrice: {
         type: Number,
@@ -515,4 +515,4 @@ productSchema.pre('save', async function (next) {
     next();
 });
 
-module.exports = mongoose.model("productModel", productSchema);
+module.exports = mongoose.model("productModel", productSchema);
