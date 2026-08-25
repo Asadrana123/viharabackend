@@ -1,19 +1,3 @@
-// zillowScraper.js  (v3 — full-page DOM scraper)
-//
-// Runs in YOUR browser on a Zillow listing. Unlike v2 (which read __NEXT_DATA__
-// and missed lazy-loaded sections), this reads the RENDERED page, so it also
-// captures schools, price history, tax history, Zestimate, rent and Walk/Bike
-// scores. It auto-scrolls to force the lazy sections to load, then drops the
-// result JSON in a text box (top-left) — Ctrl+C it and paste into the importer.
-//
-// USE: open the listing → F12 → Console → (type `allow pasting` if asked) →
-// paste this whole file → Enter → wait for the auto-scroll → Ctrl+C the box.
-//
-// Fragile by nature (Zillow markup changes). It keys on stable TEXT labels, not
-// obfuscated classes, and every section is wrapped in try/catch so one broken
-// part never sinks the rest. Photos + facts are the most reliable; schools /
-// price / tax depend on those sections having rendered.
-
 (function () {
   "use strict";
 

@@ -20,7 +20,25 @@ const crawford   = require('./matteson_crawford');
 const ogdensburg = require('./ogdensburg_rensselaer');
 const bigbear    = require('./bigbear_georgia');
 
-const PROPERTIES = [oakland, kingwood, cottage, elizabeth, colfax, chicago72nd, robin, crawford, ogdensburg, bigbear];
+// ── Central & Northern California foreclosure batch (Aug 2026) ────────────────
+const atwater        = require('./atwater_tamarack');
+const sonoraSallander = require('./sonora_sallander');
+const oakdale        = require('./oakdale_2nd');
+const turlockPedras  = require('./turlock_pedras');
+const southsf        = require('./southsf_rockwood');
+const turlockViolet  = require('./turlock_violet');
+const turlockNikki   = require('./turlock_nikkiann');
+const twainharte     = require('./twainharte_towhee');
+const sonoraHillview = require('./sonora_hillview');
+const stevinson      = require('./stevinson_hwy140');
+const patterson      = require('./patterson_mendocino');
+const brentwood      = require('./brentwood_lillian');
+
+const PROPERTIES = [
+  oakland, kingwood, cottage, elizabeth, colfax, chicago72nd, robin, crawford, ogdensburg, bigbear,
+  atwater, sonoraSallander, oakdale, turlockPedras, southsf, turlockViolet, turlockNikki,
+  twainharte, sonoraHillview, stevinson, patterson, brentwood
+];
 
 const PROPERTY_COSTS = PROPERTIES.reduce((map, p) => {
   map[p.id] = p.config;
@@ -66,5 +84,19 @@ module.exports = {
   ROBIN_PROPERTY_ID: robin.id,
   CRAWFORD_PROPERTY_ID: crawford.id,
   RENSSELAER_PROPERTY_ID: ogdensburg.id,
-  GEORGIA_PROPERTY_ID: bigbear.id
+  GEORGIA_PROPERTY_ID: bigbear.id,
+
+  // Central & Northern California foreclosure batch (Aug 2026)
+  ATWATER_PROPERTY_ID: atwater.id,
+  SONORA_SALLANDER_PROPERTY_ID: sonoraSallander.id,
+  OAKDALE_PROPERTY_ID: oakdale.id,
+  TURLOCK_PEDRAS_PROPERTY_ID: turlockPedras.id,
+  SOUTHSF_PROPERTY_ID: southsf.id,
+  TURLOCK_VIOLET_PROPERTY_ID: turlockViolet.id,
+  TURLOCK_NIKKIANN_PROPERTY_ID: turlockNikki.id,
+  TWAINHARTE_PROPERTY_ID: twainharte.id,
+  SONORA_HILLVIEW_PROPERTY_ID: sonoraHillview.id,
+  STEVINSON_PROPERTY_ID: stevinson.id,
+  PATTERSON_PROPERTY_ID: patterson.id,
+  BRENTWOOD_PROPERTY_ID: brentwood.id
 };
