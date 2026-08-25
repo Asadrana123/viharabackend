@@ -126,7 +126,7 @@ function parseComparables(text) {
         const m = t.match(rowRe);
         if (!m) continue;
         out.push({
-            address: m[1].trim(),
+            address: m[1].trim().replace(/,\s*([A-Za-z]{2})\s+(\d{5})/, (s, st, zip) => `, ${st.toUpperCase()} ${zip}`),
             saleDate: toDate(m[2]),
             salePrice: toNumber(m[3]),
             sqft: toNumber(m[4]),
@@ -297,7 +297,16 @@ async function parsePropStreamPdf(buffer) {
             },
             comparables,
             priceHistory: [],
-            taxHistory: [],
+            taxHistory:
+                (f.taxYear || f.propertyTax || f.totalTaxableValue)
+                    ? [{
+                        year: f.taxYear,
+                        propertyTax: f.propertyTax,
+                        taxChange: "",
+                        taxAssessment: f.totalTaxableValue,
+                        assessmentChange: "",
+                    }]
+                    : [],
         },
 
         marketInsights: {

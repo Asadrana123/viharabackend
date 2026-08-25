@@ -40,9 +40,23 @@ exports.parseFromPropStream = catchAsyncError(async (req, res, next) => {
         ? req.body.folderRoot.trim()
         : undefined;
 
+    // Optional Zillow structured data (schools, priceHistory, resoFacts) from
+    // the browser extractor — arrives as a JSON string in the multipart form.
+    let zillowData = null;
+    if (req.body.zillowData) {
+        try {
+            zillowData = typeof req.body.zillowData === "string"
+                ? JSON.parse(req.body.zillowData)
+                : req.body.zillowData;
+        } catch {
+            return next(new Errorhandler("zillowData must be valid JSON", 400));
+        }
+    }
+
     const { draft, warnings, imageResults } = await buildPropertyDraft({
         pdfBuffer: req.file.buffer,
         imageUrls,
+        zillowData,
         folderRoot,
     });
 

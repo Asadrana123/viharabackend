@@ -13,6 +13,7 @@
 const { parsePropStreamPdf } = require("./propStreamParserService");
 const cloudinaryService = require("./cloudinaryService");
 const { generatePropertyDescription } = require("./propertyDescriptionService");
+const { mapZillowData } = require("./zillowMapper");
 
 // Auction business terms. Only the two DATES are left for the admin to fill;
 // everything else is seeded from the PDF or defaulted so /bulk never rejects.
@@ -62,7 +63,7 @@ function folderKeyFor(parsed) {
  * @param {string}   [input.folderRoot]   Cloudinary root folder (default vihara/properties).
  * @returns {Promise<{ draft:object, warnings:string[], imageResults:object }>}
  */
-async function buildPropertyDraft({ pdfBuffer, imageUrls = [], folderRoot = "vihara/properties" }) {
+async function buildPropertyDraft({ pdfBuffer, imageUrls = [], zillowData = null, folderRoot = "vihara/properties" }) {
     if (!pdfBuffer || !Buffer.isBuffer(pdfBuffer)) {
         throw new Error("A PropStream PDF file is required");
     }
@@ -143,10 +144,90 @@ async function buildPropertyDraft({ pdfBuffer, imageUrls = [], folderRoot = "vih
         investmentData: parsed.investmentData,
         marketInsights: parsed.marketInsights,
 
-        // display defaults — admin flips these in Manage Listings later
+        // display + status defaults — admin flips these in Manage Listings later
         showOnAuctions: false,
         isLandingPage: false,
+        status: "pending",
+        availableAreas: ["Exterior", "Kitchen", "Bathroom", "Living Room", "Bedroom"],
     };
+
+    // 4) Merge Zillow data (schools, priceHistory, richer details) -----------
+    // Zillow only FILLS GAPS — it never overwrites data the PDF already provided.
+    if (zillowData) {
+        try {
+            const z = mapZillowData(zillowData);
+
+            // schools — PDF never has these
+            if (z.schools && (z.schools.public.length || z.schools.private.length)) {
+                draft.schools = z.schools;
+            }
+
+            // priceHistory — only if the PDF had none
+            if (z.priceHistory.length && draft.investmentData.priceHistory.length === 0) {
+                draft.investmentData.priceHistory = z.priceHistory;
+            }
+
+            // taxHistory — Zillow's is usually multi-year; prefer it when richer
+            if (z.taxHistory.length > draft.investmentData.taxHistory.length) {
+                draft.investmentData.taxHistory = z.taxHistory;
+            }
+
+            // propertyDetails — fill only the arrays the PDF left empty
+            if (z.propertyDetails) {
+                const d = draft.propertyDetails;
+                const zi = z.propertyDetails.interior;
+                const ze = z.propertyDetails.exterior;
+                const fill = (target, key, src) => {
+                    if ((!target[key] || target[key].length === 0) && src && src.length) target[key] = src;
+                };
+                fill(d.interiorDetails, "heating", zi.heating);
+                fill(d.interiorDetails, "cooling", zi.cooling);
+                fill(d.interiorDetails, "rooms", zi.rooms);
+                fill(d.interiorDetails, "interiorFeatures", zi.interiorFeatures);
+                fill(d.exteriorDetails, "parking", ze.parking);
+                fill(d.exteriorDetails, "lotFeatures", ze.lotFeatures);
+                fill(d.exteriorDetails, "exteriorFeatures", ze.exteriorFeatures);
+                fill(d.exteriorDetails, "constructionFeatures", ze.constructionFeatures);
+            }
+
+            // valuation range — PDF has no range, so Zillow's fills the gap
+            if (z.valuationRange) {
+                const val = draft.investmentData.valuation;
+                if (val.highRange == null) val.highRange = z.valuationRange.high;
+                if (val.lowRange == null) val.lowRange = z.valuationRange.low;
+            }
+
+            // rental — PDF rent wins; Zillow's rent Zestimate only fills a blank
+            if (z.rentZestimate != null) {
+                const r = draft.investmentData.rental;
+                if (r.estimatedMonthlyRent == null) {
+                    r.estimatedMonthlyRent = z.rentZestimate;
+                    r.estimatedAnnualRent = z.rentZestimate * 12;
+                    r.rentalValue = z.rentZestimate;
+                }
+            }
+
+            // walk/bike/transit scores — PDF never has these
+            if (z.walkScores && (!draft.walkScores || Object.keys(draft.walkScores).length === 0)) {
+                draft.walkScores = z.walkScores;
+            }
+
+            // assetType — Zillow "RealEstateOwned" only fills a blank; a value the
+            // PDF/parser already set (e.g. Foreclosure Homes) is kept (PDF wins).
+            if (z.assetType && (!draft.assetType || draft.assetType === "")) {
+                draft.assetType = z.assetType;
+            }
+
+            const added = [];
+            if (draft.schools?.public?.length || draft.schools?.private?.length) added.push("schools");
+            if (draft.investmentData.priceHistory.length) added.push("price history");
+            if (draft.walkScores) added.push("walk scores");
+            if (draft.investmentData.valuation.highRange != null) added.push("value range");
+            if (added.length) warnings.push(`Zillow enrichment added: ${added.join(", ")}.`);
+        } catch (err) {
+            warnings.push(`Zillow data could not be merged (${err.message}). PDF data is unaffected.`);
+        }
+    }
 
     return { draft, warnings, imageResults };
 }
