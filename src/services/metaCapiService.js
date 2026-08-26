@@ -3,6 +3,16 @@ const crypto = require("crypto");
 
 const GRAPH_API_VERSION = "v20.0";
 
+// Server-side backstop against malformed event names reaching Meta:
+//  - blank / missing            → prevents "__missing_event"
+//  - over-length or dynamic     → prevents "--sanitized-too-long--"
+//  - non-ASCII / garbled prefix → prevents mojibake event-name variants
+// Real names (Meta standards + custom names like "georgia_st_register_submit"
+// and "Visualize Renovation") all pass. Letters, digits, spaces, underscores
+// and hyphens only, max 40 chars.
+const isValidEventName = (name) =>
+  typeof name === "string" && /^[A-Za-z0-9 _-]{1,40}$/.test(name.trim());
+
 // Normalize + SHA-256 hash email. Meta requires all PII hashed.
 const hashEmail = (email) => {
   if (!email) return undefined;
@@ -30,6 +40,12 @@ const hashPhone = (phone) => {
  * @returns {Promise<{ success: boolean, response?: any, error?: string }>}
  */
 const sendEvent = async ({ eventName, eventId, eventSourceUrl, userData = {}, customData = {} }) => {
+  // Reject malformed names before they ever hit Meta (Issues 2 & 3).
+  if (!isValidEventName(eventName)) {
+    console.error("[MetaCAPI] Skipped — invalid event_name:", eventName);
+    return { success: false, error: "Invalid event_name" };
+  }
+
   const pixelId = process.env.META_PIXEL_ID;
   const accessToken = process.env.META_ACCESS_TOKEN;
   const testEventCode = process.env.META_TEST_EVENT_CODE;
