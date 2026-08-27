@@ -4,11 +4,14 @@ const Product = require("../model/productModel");
 const ManualBid = require("../model/manualBiddingModel");
 const BidsManager = require("../utils/bidsManager");
 
-// Get all auctions where the logged-in user is the seller
+// Get all auctions the requester can view.
+// - Seller: only the properties assigned to them.
+// - Admin: every property (admins may inspect any seller dashboard).
 exports.getSellerAuctions = catchAsyncError(async (req, res, next) => {
-  const sellerId = req.user._id;
+  const isAdmin = req.user.role === "admin";
+  const filter = isAdmin ? {} : { sellerId: req.user._id };
 
-  const auctions = await Product.find({ sellerId })
+  const auctions = await Product.find(filter)
     .select("productName city state street status currentBid auctionEndDate")
     .sort({ createdAt: -1 });
 
@@ -18,18 +21,26 @@ exports.getSellerAuctions = catchAsyncError(async (req, res, next) => {
   });
 });
 
-// Get bids for a specific auction — only if the logged-in user is the seller
+// Get bids for a specific auction.
+// - Seller: only if the auction is assigned to them (otherwise 403).
+// - Admin: any auction (404 if it doesn't exist).
 exports.getSellerAuctionBids = catchAsyncError(async (req, res, next) => {
   const { auctionId } = req.params;
   const { page = 1, limit = 50 } = req.query;
-  const sellerId = req.user._id;
+  const isAdmin = req.user.role === "admin";
 
-  // Verify this auction belongs to the seller
-  const auction = await Product.findOne({ _id: auctionId, sellerId })
+  // Admins may view any auction; sellers are restricted to their own.
+  const query = isAdmin
+    ? { _id: auctionId }
+    : { _id: auctionId, sellerId: req.user._id };
+
+  const auction = await Product.findOne(query)
     .select("productName city state street currentBid");
 
   if (!auction) {
-    return next(new ErrorHandler("Auction not found or you do not have access", 403));
+    return isAdmin
+      ? next(new ErrorHandler("Auction not found", 404))
+      : next(new ErrorHandler("Auction not found or you do not have access", 403));
   }
 
   const skip = (parseInt(page) - 1) * parseInt(limit);
