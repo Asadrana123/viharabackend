@@ -7,7 +7,7 @@ const Product = require("../model/productModel");
 const AuctionRegistration = require("../model/auctionRegistration");
 const BidsManager = require("../utils/bidsManager");
 const mongoose = require('mongoose');
-const { getIoInstance } = require("../socket/getIoInstance");
+const { broadcastAutoBidResult } = require("../socket/socketHandlers");
 
 // Get auto-bidding settings for current user
 exports.getAutoBiddingSettings = catchAsyncError(
@@ -75,17 +75,6 @@ exports.saveAutoBiddingSettings = catchAsyncError(
     }
 
     const currentBid = auction.currentBid || auction.startBid;
-    const existingAutoBids = await AutoBidding.findOne({
-      auctionId,
-      enabled: true
-    }).sort({ maxAmount: -1 });
-
-    if (existingAutoBids && maxAmount <= existingAutoBids.maxAmount) {
-      return res.status(200).json({
-        success: false,
-        message: `Auto-bid must be higher than existing highest auto-bid ($${existingAutoBids.maxAmount})`,
-      });
-    }
 
     if (maxAmount <= currentBid) {
       return next(new ErrorHandler("Maximum amount must be higher than current bid", 400));
@@ -124,50 +113,31 @@ exports.saveAutoBiddingSettings = catchAsyncError(
 
     await settings.save();
 
-    // If enabled is true, immediately place an auto bid if needed
+    // When enabled, immediately settle the auction so the highest auto-bidder is
+    // pushed up to beat every competing auto-bid (including lower ones). This is
+    // what makes auto-bids fight each other instead of resting at the lowest price.
     if (enabled) {
       const session = await mongoose.startSession();
       session.startTransaction();
       let transactionCommitted = false;
-      // try {
-      //   const isHighestBidder = auction.currentBidder &&
-      //     auction.currentBidder.toString() === userId.toString();
+      let autoBidResult = null;
 
-      //   if (!isHighestBidder) {
-      //     const initialBidAmount = currentBid + (increment || 1000);
-
-      //     if (initialBidAmount <= maxAmount) {
-      //       const bidCreated = await BidsManager.createManualBid(
-      //         auctionId,
-      //         userId,
-      //         initialBidAmount,
-      //         session
-      //       );
-      //     }
-      //   }
-
-      //   await session.commitTransaction();
-      //   transactionCommitted = true;
-      // } catch (error) {
-      //   if (!transactionCommitted) {
-      //     await session.abortTransaction();
-      //   }
-      //   console.error('Error placing initial auto bid:', error);
-      // } finally {
-      //   session.endSession();
-      // }
-
-      // ✅ NEW: Broadcast min-bid-update if 2+ auto-bids enabled
-      const enabledAutoBidCount = await AutoBidding.countDocuments({
-        auctionId,
-        enabled: true
-      });
-
-      if (enabledAutoBidCount >= 2) {
-        const io = getIoInstance();
-        const bidLimits = await BidsManager.calculateMinimumBids(auctionId, currentBid);
-        io.to(auctionId).emit('min-bid-update', bidLimits);
+      try {
+        autoBidResult = await BidsManager.settleAutoBids(auctionId, session);
+        await session.commitTransaction();
+        transactionCommitted = true;
+      } catch (error) {
+        if (!transactionCommitted) {
+          await session.abortTransaction();
+        }
+        console.error('Error settling auto-bids on enable:', error);
+        autoBidResult = null;
+      } finally {
+        session.endSession();
       }
+
+      // Reflect the settled bid (if any) to everyone in the room and refresh limits
+      await broadcastAutoBidResult(auctionId, autoBidResult, currentBid);
     }
 
     return res.status(200).json({

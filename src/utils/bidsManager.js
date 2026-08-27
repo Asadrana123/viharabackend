@@ -136,7 +136,7 @@ class BidsManager {
       userId: { $ne: currentBidderId },
       enabled: true,
       maxAmount: { $gt: currentBid } // Only consider auto bids that can still go higher
-    }).sort({ maxAmount: -1 }); // Sort by max amount desc
+    }).sort({ maxAmount: -1, createdAt: 1 }); // Highest ceiling first; earliest wins ties
 
     if (autoBidSettings.length === 0) {
       return null; // No auto bids to process
@@ -202,6 +202,63 @@ class BidsManager {
     return null; // No auto bids were processed
   }
 
+  // Settle the auction to the correct proxy-bidding state given ALL enabled
+  // auto-bids. Used when a new auto-bid is enabled so the highest auto-bidder is
+  // immediately pushed up to beat every competing auto-bid — including lower ones.
+  // This is what makes auto-bids fight each other instead of resting at the
+  // lowest price. Returns the placed winning auto-bid, or null if nothing changed.
+  static async settleAutoBids(auctionId, session = null) {
+    const auction = await withTimeout(Product.findById(auctionId, null, { session }), 5000);
+    if (!auction) return null;
+
+    const startBid = auction.startBid || 0;
+    const currentBid = auction.currentBid || startBid;
+    const currentBidderId = auction.currentBidder ? auction.currentBidder.toString() : null;
+
+    // All enabled auto-bids, highest ceiling first; earliest wins ties
+    const autoBids = await withTimeout(
+      AutoBidding.find({ auctionId, enabled: true }).sort({ maxAmount: -1, createdAt: 1 }),
+      5000
+    );
+
+    if (autoBids.length === 0) return null;
+
+    const winner = autoBids[0];
+    const runnerUp = autoBids[1] || null;
+    const winnerLeads = currentBidderId === winner.userId.toString();
+
+    // The highest amount any competitor is willing to reach
+    let competitorLevel = runnerUp ? runnerUp.maxAmount : 0;
+    if (currentBidderId && !winnerLeads) {
+      // A standing bid from someone other than the winner is also competition
+      competitorLevel = Math.max(competitorLevel, currentBid);
+    }
+
+    let targetAmount;
+    if (competitorLevel > 0) {
+      // Beat the strongest competitor by one increment, capped at the ceiling
+      targetAmount = Math.min(winner.maxAmount, competitorLevel + winner.increment);
+    } else if (!winnerLeads) {
+      // No auto competitor and the winner isn't leading — take the lead
+      targetAmount = Math.min(winner.maxAmount, currentBid + winner.increment);
+    } else {
+      // Winner already leads and there is nobody left to beat
+      return null;
+    }
+
+    // Only place a bid when it actually advances the current price
+    if (targetAmount <= currentBid) return null;
+
+    const newBid = await this.createManualBid(auctionId, winner.userId, targetAmount, session);
+
+    return {
+      bid: newBid,
+      userId: winner.userId,
+      amount: targetAmount,
+      isAutoBid: true
+    };
+  }
+
   // Calculate minimum bid amounts
   static async calculateMinimumBids(auctionId, currentBid) {
     // Get all active auto bids for this auction
@@ -219,13 +276,14 @@ class BidsManager {
       ManualBid.exists({ auctionId }),
       5000
     );
-    let minManualBid = hasBids ? currentBid + increment : auction?.startBid;
-    let minAutoBidAmount = 0;
+    const baseMinimum = hasBids ? currentBid + increment : auction?.startBid;
+    let minManualBid = baseMinimum;
+    // An auto-bid ceiling only needs to beat the current price so that lower
+    // auto-bids can still enter and fight the higher ones.
+    let minAutoBidAmount = baseMinimum;
+
     // If there are auto-bids, calculate minimum manual bid
     if (autoBidSettings.length > 0) {
-      // Highest auto-bid
-      const highestAutoBid = autoBidSettings[0];
-
       if (autoBidSettings.length > 1) {
         // Second highest auto-bid + increment
         const secondHighest = autoBidSettings[1];
@@ -234,9 +292,6 @@ class BidsManager {
         // Only one auto-bid, just use current + increment
         minManualBid = Math.max(minManualBid, currentBid + increment);
       }
-
-      // Set minimum for new auto-bids (must be higher than existing highest)
-      minAutoBidAmount = highestAutoBid.maxAmount + 1;
     }
 
     return {

@@ -704,9 +704,59 @@ const syncAuctionStartBid = (auctionId, { startBid, currentBid } = {}) => {
   if (typeof currentBid === 'number') auctionData.currentBid = currentBid;
   activeAuctions.set(auctionId, auctionData);
 };
+
+// Apply a settled auto-bid result to in-memory state and broadcast it to the room.
+// Called from HTTP controllers (e.g. enabling auto-bidding) so the live auction
+// stays in sync with the database. Safe to call when the auction isn't in memory
+// or when there is no result — it will still refresh the minimum-bid limits.
+const broadcastAutoBidResult = async (auctionId, autoBidResult, fallbackCurrentBid) => {
+  if (!io) return; // sockets not initialized yet — DB is already the source of truth
+
+  const auctionData = activeAuctions.get(auctionId);
+
+  if (autoBidResult) {
+    let bidderName = 'Unknown';
+    try {
+      const bidderUser = await User.findById(autoBidResult.userId).select('name');
+      bidderName = bidderUser?.name || 'Unknown';
+    } catch (err) {
+      console.error('broadcastAutoBidResult: failed to load bidder name', err);
+    }
+
+    const update = {
+      currentBid: autoBidResult.amount,
+      currentBidder: { id: autoBidResult.userId, name: bidderName },
+      timestamp: new Date().toISOString(),
+      isAutoBid: true
+    };
+
+    if (auctionData) {
+      auctionData.currentBid = autoBidResult.amount;
+      auctionData.currentBidder = update.currentBidder;
+      auctionData.recentBids = [update, ...(auctionData.recentBids || [])].slice(0, 50);
+      activeAuctions.set(auctionId, auctionData);
+    }
+
+    io.to(auctionId).emit('bid-update', update);
+  }
+
+  const refBid =
+    (autoBidResult && autoBidResult.amount) ||
+    (auctionData && auctionData.currentBid) ||
+    fallbackCurrentBid;
+
+  try {
+    const bidLimits = await BidsManager.calculateMinimumBids(auctionId, refBid);
+    io.to(auctionId).emit('min-bid-update', bidLimits);
+  } catch (err) {
+    console.error('broadcastAutoBidResult: failed to compute min bids', err);
+  }
+};
+
 module.exports = {
   initializeHandlers,
   registerSocketHandlers,
   syncAuctionEndTime,
-  syncAuctionStartBid
+  syncAuctionStartBid,
+  broadcastAutoBidResult
 };
