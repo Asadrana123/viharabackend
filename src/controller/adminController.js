@@ -335,3 +335,117 @@ exports.updateAuctionStartBid = catchAsyncError(
     });
   }
 );
+
+
+// ============================================================================
+// SELLER ASSIGNMENT (admin only)
+// One seller per property. The assigned seller is the only non-admin user who
+// can open that property's bids page — every other property returns 403 from
+// the seller controller, which the UI surfaces as "you don't have access".
+// ============================================================================
+
+// List every property with its currently assigned seller (name + email) so the
+// admin can see, at a glance, who owns which property.
+exports.getAuctionsWithSellers = catchAsyncError(
+  async (req, res) => {
+    const auctions = await Product.find()
+      .select('productName street city state status sellerId createdAt')
+      .populate('sellerId', 'name email')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      auctions
+    });
+  }
+);
+
+// Assign a seller to a property by email.
+// - The email must belong to an existing registered user (we never auto-create).
+// - A plain 'user' is promoted to 'seller'; an existing admin keeps 'admin'.
+// - Uses findByIdAndUpdate so neither pre-save hook (password re-hash / slug
+//   regeneration) is triggered.
+exports.assignSeller = catchAsyncError(
+  async (req, res, next) => {
+    const { auctionId } = req.params;
+    const { email } = req.body;
+
+    if (!email || !String(email).trim()) {
+      return next(new Errorhandler("Seller email is required", 400));
+    }
+    if (!mongoose.Types.ObjectId.isValid(auctionId)) {
+      return next(new Errorhandler("Invalid auction ID", 400));
+    }
+
+    const auction = await Product.findById(auctionId).select('_id productName sellerId');
+    if (!auction) {
+      return next(new Errorhandler("Auction not found", 404));
+    }
+
+    const trimmed = String(email).trim();
+    const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const user = await userModel.findOne({
+      email: { $regex: `^${escaped}$`, $options: "i" }
+    }).select('_id name email role active');
+
+    if (!user) {
+      return next(new Errorhandler("No registered user found with that email", 404));
+    }
+    if (user.active === 0) {
+      return next(new Errorhandler("That user account is deactivated", 400));
+    }
+
+    // Promote a normal user to seller. Never downgrade an admin.
+    if (user.role === 'user') {
+      await userModel.findByIdAndUpdate(
+        user._id,
+        { role: 'seller' },
+        { runValidators: true }
+      );
+    }
+
+    await Product.findByIdAndUpdate(auctionId, { sellerId: user._id });
+
+    res.status(200).json({
+      success: true,
+      message: `Seller assigned to ${auction.productName}`,
+      auction: {
+        _id: auction._id,
+        sellerId: user._id,
+        sellerName: user.name,
+        sellerEmail: user.email
+      }
+    });
+  }
+);
+
+// Remove the seller from a property. The user's 'seller' role is intentionally
+// left in place — they may still be the seller on other properties.
+exports.unassignSeller = catchAsyncError(
+  async (req, res, next) => {
+    const { auctionId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(auctionId)) {
+      return next(new Errorhandler("Invalid auction ID", 400));
+    }
+
+    const auction = await Product.findById(auctionId).select('_id productName sellerId');
+    if (!auction) {
+      return next(new Errorhandler("Auction not found", 404));
+    }
+
+    await Product.findByIdAndUpdate(auctionId, { sellerId: null });
+
+    res.status(200).json({
+      success: true,
+      message: `Seller unassigned from ${auction.productName}`,
+      auction: {
+        _id: auction._id,
+        sellerId: null,
+        sellerName: null,
+        sellerEmail: null
+      }
+    });
+  }
+);

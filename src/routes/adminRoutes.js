@@ -8,7 +8,10 @@ const {
   getAuctionBids,
   updateAuctionDates,
   updateAuctionStatus,
-  updateAuctionStartBid
+  updateAuctionStartBid,
+  getAuctionsWithSellers,
+  assignSeller,
+  unassignSeller
 } = require("../controller/adminController");
 const {
   getAllRegistrations,
@@ -85,6 +88,28 @@ router.put(
   isAuthenticated,
   authorizeRoles("admin"),
   updateAuctionStartBid
+);
+
+// Seller assignment routes
+router.get(
+  "/auctions-with-sellers",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  getAuctionsWithSellers
+);
+
+router.put(
+  "/auction/:auctionId/seller",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  assignSeller
+);
+
+router.delete(
+  "/auction/:auctionId/seller",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  unassignSeller
 );
 
 module.exports = router;
