@@ -8,6 +8,7 @@ const { startGeorgiaStCallScheduler } = require('./services/georgiaStCallSchedul
 const { startRensselaerAveCallScheduler } = require('./services/rensselaerAveCallScheduler');
 const { startPartnerCallScheduler } = require('./services/partnerCallScheduler');
 const { startVoiceCallbackScheduler } = require('./services/voiceCallbackScheduler'); // ← ADD
+const { startPropertyCallScheduler } = require('./services/propertyCallScheduler'); // unified /auction/:slug scheduler
 require('./passport');
 
 const PORT = process.env.PORT || 8000;
@@ -36,4 +37,8 @@ server.listen(PORT, () => {
   // Human-requested callbacks ("call me back in 10 minutes"). Dials at the exact
   // time asked, then falls into the daily 1:32 PM retry loop on no-answer.
   startVoiceCallbackScheduler();
+
+  // Unified scheduler for every /auction/:slug landing page. New properties need
+  // no new scheduler — this one sweeps the shared propertyLeadModel collection.
+  startPropertyCallScheduler();
 });
