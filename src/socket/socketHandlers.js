@@ -196,10 +196,12 @@ function registerSocketHandlers(socket) {
           }
         }
       }
-      // Seller bypass — skip registration check if this auction belongs to them
+      // Seller bypass — skip registration check if this seller is assigned to
+      // the property. A property can have multiple sellers (sellerIds array);
+      // Mongoose matches array membership against a single id.
       const isSeller = !isAdmin && await Product.exists({
         _id: auctionId,
-        sellerId: socket.userId
+        sellerIds: socket.userId
       });
 
       if (!isAdmin && !isSeller) {
