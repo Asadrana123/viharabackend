@@ -9,7 +9,7 @@ const BidsManager = require("../utils/bidsManager");
 // - Admin: every property (admins may inspect any seller dashboard).
 exports.getSellerAuctions = catchAsyncError(async (req, res, next) => {
   const isAdmin = req.user.role === "admin";
-  const filter = isAdmin ? {} : { sellerId: req.user._id };
+  const filter = isAdmin ? {} : { sellerIds: req.user._id };
 
   const auctions = await Product.find(filter)
     .select("productName city state street status currentBid auctionEndDate")
@@ -32,7 +32,7 @@ exports.getSellerAuctionBids = catchAsyncError(async (req, res, next) => {
   // Admins may view any auction; sellers are restricted to their own.
   const query = isAdmin
     ? { _id: auctionId }
-    : { _id: auctionId, sellerId: req.user._id };
+    : { _id: auctionId, sellerIds: req.user._id };
 
   const auction = await Product.findOne(query)
     .select("productName city state street currentBid");

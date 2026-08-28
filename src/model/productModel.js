@@ -175,11 +175,16 @@ const productSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
-    sellerId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "userModel",
-        default: null
-    },
+    // A property can be assigned to MULTIPLE sellers. Each id refers to a
+    // userModel document that has been promoted to (or already is) a 'seller'.
+    // A non-admin user may open a property's bids page only if their id is in
+    // this array (enforced by the sellerController access filter).
+    sellerIds: [
+        {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "userModel"
+        }
+    ],
 
     // ============================================
     // COORDINATES (For Map Display - CoreLogic Integration)

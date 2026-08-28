@@ -339,9 +339,10 @@ exports.updateAuctionStartBid = catchAsyncError(
 
 // ============================================================================
 // SELLER ASSIGNMENT (admin only)
-// One seller per property. The assigned seller is the only non-admin user who
-// can open that property's bids page — every other property returns 403 from
-// the seller controller, which the UI surfaces as "you don't have access".
+// A property can be assigned to MULTIPLE sellers. A non-admin user can open a
+// property's bids page only if their id is in that property's sellerIds array —
+// every other property returns 403 from the seller controller, which the UI
+// surfaces as "you don't have access".
 // ============================================================================
 
 // List every property with its currently assigned seller (name + email) so the
@@ -349,8 +350,8 @@ exports.updateAuctionStartBid = catchAsyncError(
 exports.getAuctionsWithSellers = catchAsyncError(
   async (req, res) => {
     const auctions = await Product.find()
-      .select('productName street city state status sellerId createdAt')
-      .populate('sellerId', 'name email')
+      .select('productName street city state status sellerIds createdAt')
+      .populate('sellerIds', 'name email')
       .sort({ createdAt: -1 })
       .lean();
 
@@ -361,10 +362,12 @@ exports.getAuctionsWithSellers = catchAsyncError(
   }
 );
 
-// Assign a seller to a property by email.
+// Assign a seller to a property by email (ADD — a property may have many sellers).
 // - The email must belong to an existing registered user (we never auto-create).
 // - A plain 'user' is promoted to 'seller'; an existing admin keeps 'admin'.
-// - Uses findByIdAndUpdate so neither pre-save hook (password re-hash / slug
+// - $addToSet keeps the operation idempotent: assigning the same seller twice is
+//   a no-op rather than a duplicate.
+// - Uses findByIdAndUpdate so no pre-save hook (password re-hash / slug
 //   regeneration) is triggered.
 exports.assignSeller = catchAsyncError(
   async (req, res, next) => {
@@ -378,7 +381,7 @@ exports.assignSeller = catchAsyncError(
       return next(new Errorhandler("Invalid auction ID", 400));
     }
 
-    const auction = await Product.findById(auctionId).select('_id productName sellerId');
+    const auction = await Product.findById(auctionId).select('_id productName sellerIds');
     if (!auction) {
       return next(new Errorhandler("Auction not found", 404));
     }
@@ -396,6 +399,9 @@ exports.assignSeller = catchAsyncError(
       return next(new Errorhandler("That user account is deactivated", 400));
     }
 
+    const alreadyAssigned = (auction.sellerIds || [])
+      .some((id) => id.toString() === user._id.toString());
+
     // Promote a normal user to seller. Never downgrade an admin.
     if (user.role === 'user') {
       await userModel.findByIdAndUpdate(
@@ -405,46 +411,72 @@ exports.assignSeller = catchAsyncError(
       );
     }
 
-    await Product.findByIdAndUpdate(auctionId, { sellerId: user._id });
+    // $addToSet: add without creating duplicates.
+    await Product.findByIdAndUpdate(
+      auctionId,
+      { $addToSet: { sellerIds: user._id } }
+    );
+
+    // Return the full, freshly populated seller list so the UI can re-render.
+    const updated = await Product.findById(auctionId)
+      .select('_id sellerIds')
+      .populate('sellerIds', 'name email')
+      .lean();
 
     res.status(200).json({
       success: true,
-      message: `Seller assigned to ${auction.productName}`,
+      message: alreadyAssigned
+        ? `${user.email} is already a seller on ${auction.productName}`
+        : `Seller assigned to ${auction.productName}`,
       auction: {
-        _id: auction._id,
-        sellerId: user._id,
-        sellerName: user.name,
-        sellerEmail: user.email
+        _id: updated._id,
+        sellerIds: updated.sellerIds || []
       }
     });
   }
 );
 
-// Remove the seller from a property. The user's 'seller' role is intentionally
-// left in place — they may still be the seller on other properties.
+// Remove ONE seller from a property (the target id travels in the request body,
+// so the existing DELETE route needs no change). If no sellerId is supplied, all
+// sellers are cleared. The user's 'seller' role is intentionally left in place —
+// they may still be the seller on other properties.
 exports.unassignSeller = catchAsyncError(
   async (req, res, next) => {
     const { auctionId } = req.params;
+    const { sellerId } = req.body || {};
 
     if (!mongoose.Types.ObjectId.isValid(auctionId)) {
       return next(new Errorhandler("Invalid auction ID", 400));
     }
+    if (sellerId && !mongoose.Types.ObjectId.isValid(sellerId)) {
+      return next(new Errorhandler("Invalid seller ID", 400));
+    }
 
-    const auction = await Product.findById(auctionId).select('_id productName sellerId');
+    const auction = await Product.findById(auctionId).select('_id productName sellerIds');
     if (!auction) {
       return next(new Errorhandler("Auction not found", 404));
     }
 
-    await Product.findByIdAndUpdate(auctionId, { sellerId: null });
+    // With a sellerId -> pull just that one. Without -> clear the whole list.
+    const update = sellerId
+      ? { $pull: { sellerIds: sellerId } }
+      : { $set: { sellerIds: [] } };
+
+    await Product.findByIdAndUpdate(auctionId, update);
+
+    const updated = await Product.findById(auctionId)
+      .select('_id sellerIds')
+      .populate('sellerIds', 'name email')
+      .lean();
 
     res.status(200).json({
       success: true,
-      message: `Seller unassigned from ${auction.productName}`,
+      message: sellerId
+        ? `Seller removed from ${auction.productName}`
+        : `All sellers removed from ${auction.productName}`,
       auction: {
-        _id: auction._id,
-        sellerId: null,
-        sellerName: null,
-        sellerEmail: null
+        _id: updated._id,
+        sellerIds: updated.sellerIds || []
       }
     });
   }
