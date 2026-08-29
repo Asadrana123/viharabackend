@@ -30,6 +30,7 @@ const { DateTime } = require("luxon");
 const EarlyAccessLead = require("../model/earlyAccessLeadModel");
 const { DID_NOT_CONNECT_REASONS, WAIT_MS } = require("./registrationCallService");
 const { enqueueBurst, PRIORITY } = require("./callDispatchQueue");
+const earlyAccessVoicePrompt = require("../config/earlyAccessVoicePrompt");
 
 // Three daily follow-up slots in the lead's local timezone (24h clock).
 // A no-answer rolls the lead to the NEXT slot; after the last slot of the day it
@@ -72,7 +73,10 @@ function nextDailyCallAt(timezone) {
   return tomorrow.toUTC().toJSDate();
 }
 
-/** Payload the dispatcher expects (canonical phone + prompt vars). */
+/**
+ * Payload the dispatcher expects (canonical phone + prompt vars).
+ * `promptConfig` pins the early-access prompt for every dial; `source` tags it.
+ */
 function callPayload(lead) {
   return {
     leadId: lead._id,
@@ -82,6 +86,8 @@ function callPayload(lead) {
     market: lead.markets,
     buyerType: lead.buyerType,
     dealSize: lead.dealSize,
+    promptConfig: earlyAccessVoicePrompt,      // { systemPrompt, firstMessage, voicemailMessage, endCallMessage }
+    source: "early-access",
   };
 }
 

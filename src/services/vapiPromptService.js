@@ -50,6 +50,24 @@ const PROMPT_VARIABLES = [
     example: "TX",
   },
   {
+    key: "prospect_markets",
+    label: "Prospect markets (early access, from form)",
+    scope: "contact",
+    example: "Dallas, TX and Kingwood, TX",
+  },
+  {
+    key: "prospect_buyer_type",
+    label: "Prospect buyer type (early access, from form)",
+    scope: "contact",
+    example: "buy-and-hold investor",
+  },
+  {
+    key: "prospect_deal_size",
+    label: "Prospect deal size (early access, from form)",
+    scope: "contact",
+    example: "two hundred fifty thousand to five hundred thousand dollars",
+  },
+  {
     key: "property_name",
     label: "Property name",
     scope: "property",
@@ -107,6 +125,9 @@ const buildVariableValues = (contact = {}, researchSummary = "", property = {}) 
   prospect_address: contact.address || "",
   prospect_city: contact.city || "",
   prospect_state: contact.state || "",
+  prospect_markets: contact.market || "",
+  prospect_buyer_type: contact.buyerType || "",
+  prospect_deal_size: contact.dealSize || "",
 
   property_name: property.name || "",
   property_address: property.address || "",

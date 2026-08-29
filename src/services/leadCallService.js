@@ -33,6 +33,9 @@ const dispatchRegistrationCall = async (lead = {}) => {
     city: (lead.city || "").trim(),
     state: (lead.state || "").trim(),
     email: (lead.email || "").trim() || null,
+    market: (lead.market || "").toString().trim(),
+    buyerType: (lead.buyerType || "").toString().trim(),
+    dealSize: (lead.dealSize || "").toString().trim(),
   };
 
   // Per-lead prompt override wins (e.g. 449 Georgia St auction); else universal.
