@@ -4,6 +4,8 @@ const BREVO_API_KEY = process.env.BREVO_API_KEY;
 const BREVO_PERSONA_LIST_ID = Number(process.env.BREVO_PERSONA_LIST_ID);
 const BREVO_EARLY_ACCESS_LIST_ID = Number(process.env.BREVO_EARLY_ACCESS_LIST_ID);
 const BREVO_PROPERTY_LIST_ID = Number(process.env.BREVO_PROPERTY_LIST_ID);
+// Dedicated "Nurture - Northern California" list. Admin sets the id in .env.
+const BREVO_NORCAL_LIST_ID = Number(process.env.BREVO_NORCAL_LIST_ID);
 // "Nurture - Partners" list = 15. Digit-strip parse guards the "#15" → NaN bug.
 const BREVO_PARTNER_LIST_ID = parseInt(
   String(process.env.BREVO_PARTNER_LIST_ID || "").replace(/[^0-9]/g, ""),
@@ -171,7 +173,15 @@ const buildPropertyLeadAttributes = (lead) => {
  * property email sequence. Non-throwing — safe to fire-and-forget.
  */
 const syncPropertyLead = async (lead) => {
-  if (!BREVO_API_KEY || !BREVO_PROPERTY_LIST_ID) {
+  // Per-property override: use the property's own Brevo list id when set (a
+  // positive integer, assigned in Manage Listings → productModel.brevoListId and
+  // passed through by the lead controller), otherwise the shared Property Leads
+  // list. Empty/invalid override → shared default, so existing pages are unaffected.
+  const overrideId = Number(lead.listId);
+  const targetListId =
+    Number.isInteger(overrideId) && overrideId > 0 ? overrideId : BREVO_PROPERTY_LIST_ID;
+
+  if (!BREVO_API_KEY || !targetListId) {
     console.warn("⚠️  Brevo property list not configured — skipping contact sync.");
     return { success: false, skipped: true };
   }
@@ -182,7 +192,7 @@ const syncPropertyLead = async (lead) => {
       {
         email: lead.email,
         attributes: buildPropertyLeadAttributes(lead),
-        listIds: [BREVO_PROPERTY_LIST_ID],
+        listIds: [targetListId],
         updateEnabled: true,
       },
       {
@@ -193,7 +203,7 @@ const syncPropertyLead = async (lead) => {
       }
     );
 
-    console.log(`✅ Brevo property synced: ${lead.email}`);
+    console.log(`✅ Brevo property synced: ${lead.email} → list ${targetListId}`);
     return { success: true };
   } catch (err) {
     const reason = err.response?.data?.message || err.message;
@@ -282,4 +292,69 @@ const syncPartnerLead = async (lead) => {
   }
 };
 
-module.exports = { syncPersonaLead, syncEarlyAccessLead, syncPropertyLead, syncPartnerLead };
+// Northern California early-access leads (/northern-california-early-access) →
+// dedicated "Nurture - Northern California" list (BREVO_NORCAL_LIST_ID, set in
+// .env). Attributes mirror the early-access shape: FIRSTNAME, MARKETS (always
+// "Northern California"), LEAD_SOURCE, REGISTERING_AS (the buyer pill), SMS.
+// PROPERTY_NAME is kept for list-shape parity ("" for this funnel). All are text
+// attributes pre-created in Brevo except FIRSTNAME / SMS (Brevo defaults).
+const buildNorCalAttributes = (lead) => {
+  const attributes = {
+    FIRSTNAME: lead.fullName || "",
+    MARKETS: lead.market || "Northern California",
+    LEAD_SOURCE: lead.leadSource || "norcal-lp",
+    REGISTERING_AS: lead.registeringAs || "",
+    PROPERTY_NAME: lead.propertyName || "",
+  };
+
+  // Brevo's SMS attribute must be E.164 (controller passes phoneNormalized);
+  // only attach when it clearly is, or the whole upsert is rejected.
+  const digits = String(lead.phone || "").replace(/\D/g, "");
+  if (lead.phone?.startsWith("+") && digits.length >= 11) {
+    attributes.SMS = lead.phone;
+  }
+
+  return attributes;
+};
+
+/**
+ * Upsert a Northern California early-access lead into its dedicated Brevo list.
+ * Idempotent via updateEnabled:true. Adding to the list triggers that list's
+ * automation. Non-throwing — safe to fire-and-forget.
+ *
+ * @param {object} lead { email, fullName, phone, market, registeringAs, leadSource }
+ */
+const syncNorCalLead = async (lead) => {
+  if (!BREVO_API_KEY || !BREVO_NORCAL_LIST_ID) {
+    console.warn("⚠️  Brevo NorCal list not configured — skipping contact sync.");
+    return { success: false, skipped: true };
+  }
+  if (!lead.email) return { success: false, skipped: true };
+
+  try {
+    await axios.post(
+      `${BREVO_BASE}/contacts`,
+      {
+        email: lead.email,
+        attributes: buildNorCalAttributes(lead),
+        listIds: [BREVO_NORCAL_LIST_ID],
+        updateEnabled: true,
+      },
+      {
+        headers: {
+          "api-key": BREVO_API_KEY,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    console.log(`✅ Brevo NorCal synced: ${lead.email}`);
+    return { success: true };
+  } catch (err) {
+    const reason = err.response?.data?.message || err.message;
+    console.error(`❌ Brevo NorCal sync failed: ${lead.email}:`, reason);
+    return { success: false, error: String(reason) };
+  }
+};
+
+module.exports = { syncPersonaLead, syncEarlyAccessLead, syncPropertyLead, syncPartnerLead, syncNorCalLead };

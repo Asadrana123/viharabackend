@@ -7,6 +7,7 @@ const { startEarlyAccessCallScheduler } = require('./services/earlyAccessCallSch
 const { startGeorgiaStCallScheduler } = require('./services/georgiaStCallScheduler');
 const { startRensselaerAveCallScheduler } = require('./services/rensselaerAveCallScheduler');
 const { startPartnerCallScheduler } = require('./services/partnerCallScheduler');
+const { startNorCalCallScheduler } = require('./services/norCalCallScheduler');
 const { startVoiceCallbackScheduler } = require('./services/voiceCallbackScheduler'); // ← ADD
 const { startPropertyCallScheduler } = require('./services/propertyCallScheduler'); // unified /auction/:slug scheduler
 require('./passport');
@@ -33,6 +34,10 @@ server.listen(PORT, () => {
 
   // Partner Program daily 1:32 PM local callback scheduler.
   startPartnerCallScheduler();
+
+  // Northern California early-access daily local callback scheduler
+  // (11:00 AM / 2:30 PM / 6:00 PM in the lead's timezone).
+  startNorCalCallScheduler();
 
   // Human-requested callbacks ("call me back in 10 minutes"). Dials at the exact
   // time asked, then falls into the daily 1:32 PM retry loop on no-answer.

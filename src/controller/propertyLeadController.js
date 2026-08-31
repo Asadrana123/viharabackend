@@ -32,7 +32,7 @@ async function resolveLandingProperty(slug, next) {
   }
   const product = await productModel
     .findOne({ slug: slug.trim().toLowerCase() })
-    .select("_id slug productName street city state isLandingPage")
+    .select("_id slug productName street city state isLandingPage brevoListId")
     .lean();
   if (!product) {
     next(new ErrorHandler("Property not found", 404));
@@ -153,6 +153,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       leadSource: `${slug}-lp`,
       registeringAs: lead.buyerType,
       propertyName: property.city || property.productName || slug,
+      listId: property.brevoListId, // per-page Brevo list (null → shared default)
     }).catch((e) => console.error(`[brevo-sync:${slug}] failed:`, e.message));
   })();
 });

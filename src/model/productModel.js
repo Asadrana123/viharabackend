@@ -476,6 +476,14 @@ const productSchema = new mongoose.Schema({
         type: String,
         default: ""     // empty = no banner
     },
+    // Per-landing-page Brevo list override, set by admin in Manage Listings.
+    // When this is a positive Brevo list id, leads registering on this property's
+    // /auction/:slug page sync to THIS list instead of the shared
+    // BREVO_PROPERTY_LIST_ID. null = use the shared default list.
+    brevoListId: {
+        type: Number,
+        default: null
+    },
     // ============================================
     // TIMESTAMPS
     // ============================================

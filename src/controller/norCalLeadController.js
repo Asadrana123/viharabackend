@@ -2,13 +2,22 @@
 const catchAsyncError = require("../middleware/catchAsyncError");
 const ErrorHandler = require("../utils/errorhandler");
 const NorCalLead = require("../model/norCalLeadModel");
+const { scheduleNorCalSignupCall } = require("../services/norCalCallScheduler");
+const { enrichPerson } = require("../services/fullenrichService");
+const { normalisePhone } = require("../services/vapiCallsService");
+const { syncNorCalLead } = require("../services/brevoService");
 
 /**
  * POST /api/v1/nor-cal/register   (public)
  *
- * Store-only. Validates the payload and persists the lead. No call, no Brevo,
- * no enrichment. The unique email index is the dedup gate — a duplicate email
- * is rejected with 409 before anything else happens.
+ * Flow (order matters):
+ *   1. Validate the payload + normalize the phone to canonical E.164.
+ *   2. Create the lead — the unique email index is the dedup gate (409 on dup)
+ *      before any call is scheduled.
+ *   3. Schedule Maya's signup call (fire-and-forget, only with consent) — the
+ *      2-in-60s burst + daily callback loop.
+ *   4. Respond.
+ *   5. Enrich (FullEnrich) + Brevo-sync in the background; update the lead in place.
  */
 const registerNorCalLead = catchAsyncError(async (req, res, next) => {
   const {
@@ -31,24 +40,28 @@ const registerNorCalLead = catchAsyncError(async (req, res, next) => {
   if (!phone || !phone.trim())
     return next(new ErrorHandler("phone is required", 400));
 
+  const phoneNormalized = normalisePhone(phone); // canonical E.164 for calling + reporting
+  if (!phoneNormalized)
+    return next(new ErrorHandler("Enter a valid phone number", 400));
+
+  const normalizedMarket =
+    market && market.trim() ? market.trim() : "Northern California";
+
+  // ── 1. Create the lead up front — unique email index is the dedup gate ──
+  let lead;
   try {
-    const lead = await NorCalLead.create({
+    lead = await NorCalLead.create({
       fullName: fullName.trim(),
       email: email.trim().toLowerCase(),
-      phone: phone.trim(),
+      phone: phone.trim(),          // raw, as entered (for display)
+      phoneNormalized,              // canonical E.164 for calling
       buyerType: buyerType || "",
-      market: market && market.trim() ? market.trim() : "Northern California",
+      market: normalizedMarket,
       timezone: timezone || "",
       consent: consent === true,
       consentText: consentText || "",
       consentTimestamp: consentTimestamp ? new Date(consentTimestamp) : null,
       eventId: eventId || "",
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: "Registered.",
-      leadId: lead._id,
     });
   } catch (err) {
     if (err && err.code === 11000) {
@@ -56,6 +69,61 @@ const registerNorCalLead = catchAsyncError(async (req, res, next) => {
     }
     throw err; // unexpected — let catchAsyncError surface it
   }
+
+  // ── 2. Schedule the signup call (fire-and-forget, only with consent) ──
+  let call = { attempted: false };
+  if (consent === true) {
+    scheduleNorCalSignupCall({
+      leadId: lead._id,
+      fullName: lead.fullName,
+      email: lead.email,
+      phone: lead.phone,
+      phoneNormalized: lead.phoneNormalized,
+      timezone: lead.timezone,
+      market: lead.market,
+      buyerType: lead.buyerType,
+    }).catch((e) => console.error("[nor-cal-call] scheduling failed:", e.message));
+    call = { attempted: true };
+  } else {
+    console.log(`[nor-cal] no-consent registration: ${lead.phoneNormalized}`);
+  }
+
+  // ── 3. Respond ──
+  res.status(200).json({
+    success: true,
+    message: consent
+      ? "Registered — Maya will call you shortly."
+      : "Registered. (No calls — consent not given.)",
+    leadId: lead._id,
+    call,
+  });
+
+  // ── 4. Enrich + Brevo sync in the background; update the lead in place ──
+  (async () => {
+    try {
+      const enrichment = await enrichPerson({
+        fullName: lead.fullName,
+        email: lead.email || undefined,
+        phone: lead.phoneNormalized,
+      });
+      if (enrichment) {
+        await NorCalLead.updateOne({ _id: lead._id }, { $set: { enrichment } });
+      }
+    } catch (e) {
+      console.error("[nor-cal-enrich] enrichment failed:", e.message);
+    }
+
+    // Brevo upsert → dedicated NorCal list (BREVO_NORCAL_LIST_ID). Independent of
+    // enrichment; adding the contact to the list starts its email sequence.
+    syncNorCalLead({
+      email: lead.email,
+      fullName: lead.fullName,
+      phone: lead.phoneNormalized,   // E.164 → Brevo SMS
+      market: lead.market,
+      registeringAs: lead.buyerType, // exact page label
+      leadSource: "norcal-lp",
+    }).catch((e) => console.error("[brevo-sync] nor-cal failed:", e.message));
+  })();
 });
 
 module.exports = { registerNorCalLead };

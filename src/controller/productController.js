@@ -86,7 +86,7 @@ exports.getProductBySlug = catchAsyncError(async (req, res, next) => {
 exports.getAllProductsAdmin = catchAsyncError(async (req, res) => {
     const products = await productModel
         .find({})
-        .select('productName street city state zipCode slug image showOnAuctions isLandingPage auctionEventLabel isTestProperty status availableAreas startBid auctionStartDate auctionEndDate')
+        .select('productName street city state zipCode slug image showOnAuctions isLandingPage auctionEventLabel brevoListId isTestProperty status availableAreas startBid auctionStartDate auctionEndDate')
         .sort({ createdAt: -1 })
         .lean();
 
@@ -105,7 +105,7 @@ exports.getAllProductsAdmin = catchAsyncError(async (req, res) => {
 
 // Admin — update only the listing-control fields for one property.
 exports.updateListingSettings = catchAsyncError(async (req, res, next) => {
-    const { showOnAuctions, isLandingPage, auctionEventLabel, availableAreas } = req.body;
+    const { showOnAuctions, isLandingPage, auctionEventLabel, availableAreas, brevoListId } = req.body;
 
     const product = await productModel.findById(req.params.id);
     if (!product) {
@@ -115,6 +115,20 @@ exports.updateListingSettings = catchAsyncError(async (req, res, next) => {
     if (typeof showOnAuctions === 'boolean') product.showOnAuctions = showOnAuctions;
     if (typeof isLandingPage === 'boolean') product.isLandingPage = isLandingPage;
     if (typeof auctionEventLabel === 'string') product.auctionEventLabel = auctionEventLabel;
+
+    // Per-landing-page Brevo list override. Accept a positive integer, or
+    // null/"" to clear it (leads then fall back to the shared Property Leads list).
+    if (brevoListId !== undefined) {
+        if (brevoListId === null || brevoListId === "") {
+            product.brevoListId = null;
+        } else {
+            const n = Number(brevoListId);
+            if (!Number.isInteger(n) || n <= 0) {
+                return next(new Errorhandler("Invalid brevoListId value", 400));
+            }
+            product.brevoListId = n;
+        }
+    }
 
     // Validate manually — save() below runs with validateBeforeSave: false,
     // so the schema enum won't guard this field.
@@ -141,7 +155,8 @@ exports.updateListingSettings = catchAsyncError(async (req, res, next) => {
             showOnAuctions: product.showOnAuctions,
             isLandingPage: product.isLandingPage,
             auctionEventLabel: product.auctionEventLabel,
-            availableAreas: product.availableAreas
+            availableAreas: product.availableAreas,
+            brevoListId: product.brevoListId
         }
     });
 });
