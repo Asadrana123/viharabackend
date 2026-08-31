@@ -4,7 +4,7 @@ const mongoose = require("mongoose");
 // The lead collections notes can attach to. Stored on every note so notes never
 // bleed across lead types even though lead _ids come from separate collections.
 // "property" is the unified /auction/:slug lead collection (propertyLeadModel).
-const LEAD_TYPES = ["earlyAccess", "georgiaSt", "rensselaerAve", "partner", "property"];
+const LEAD_TYPES = ["earlyAccess", "georgiaSt", "rensselaerAve", "partner", "property", "norcal"];
 
 /**
  * A single advisor note on a lead. Many advisors can add many notes to the same

@@ -4,8 +4,18 @@ const ErrorHandler = require("../utils/errorhandler");
 const NorCalLead = require("../model/norCalLeadModel");
 const { scheduleNorCalSignupCall } = require("../services/norCalCallScheduler");
 const { enrichPerson } = require("../services/fullenrichService");
-const { normalisePhone } = require("../services/vapiCallsService");
+const { getCallsForPhones, normalisePhone } = require("../services/vapiCallsService");
+const { getEmailEventsForEmails } = require("../services/emailEventsService");
+const { getNotesForLeads } = require("../services/leadNotesService");
+const { getMessagesForPhones } = require("../services/sendblueService");
 const { syncNorCalLead } = require("../services/brevoService");
+
+// Note discriminator for NorCal leads (matches leadNoteModel.LEAD_TYPES + the
+// stop-calling controller's model map).
+const LEAD_NOTE_TYPE = "norcal";
+
+// Whole-word "test" (case-insensitive) → hidden from this tab (Test Leads only).
+const TEST_NAME_REGEX = /\btest\b/i;
 
 /**
  * POST /api/v1/nor-cal/register   (public)
@@ -126,4 +136,50 @@ const registerNorCalLead = catchAsyncError(async (req, res, next) => {
   })();
 });
 
-module.exports = { registerNorCalLead };
+/**
+ * GET /api/v1/nor-cal?page=&limit=   (admin)
+ *
+ * Paginated Northern California early-access leads for the NorCal Leads tab.
+ * Each lead is enriched (best-effort) with its VAPI calls / email events /
+ * advisor notes / iMessages, exactly like the property + market lead tabs, so
+ * the admin component renders the same way. Whole-word "test" names are hidden
+ * (they live in Test Leads).
+ */
+const getAllNorCalLeads = catchAsyncError(async (req, res) => {
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+  const skip = (page - 1) * limit;
+
+  const query = { fullName: { $not: TEST_NAME_REGEX } };
+  const [leads, total] = await Promise.all([
+    NorCalLead.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+    NorCalLead.countDocuments(query),
+  ]);
+
+  const phones = leads.map((l) => l.phone).filter(Boolean);
+  const emailAddresses = leads.map((l) => l.email).filter(Boolean);
+  const leadIds = leads.map((l) => l._id);
+
+  const [callsByPhone, eventsByEmail, notesByLead, messagesByPhone] = await Promise.all([
+    getCallsForPhones(phones),
+    getEmailEventsForEmails(emailAddresses),
+    getNotesForLeads(LEAD_NOTE_TYPE, leadIds),
+    getMessagesForPhones(phones),
+  ]);
+
+  const leadsWithCalls = leads.map((lead) => ({
+    ...lead,
+    calls: callsByPhone[normalisePhone(lead.phone)] || [],
+    emails: eventsByEmail[String(lead.email || "").toLowerCase()] || [],
+    notes: notesByLead[String(lead._id)] || [],
+    messages: messagesByPhone[normalisePhone(lead.phone)] || [],
+  }));
+
+  res.status(200).json({
+    success: true,
+    leads: leadsWithCalls,
+    pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+  });
+});
+
+module.exports = { registerNorCalLead, getAllNorCalLeads };
