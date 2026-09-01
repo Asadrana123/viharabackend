@@ -55,7 +55,11 @@ const dispatchRegistrationCall = async (lead = {}) => {
     researchSummary: "",
     property: {},
     promptConfig,
+    // Carry the funnel tag ("nor-cal" / "early-access" / "partner-program" / …)
+    // into VAPI metadata so a callback booked mid-call can re-use the same
+    // funnel prompt. Empty for property/universal calls — unchanged behaviour.
+    source: (lead.source || "").toString().trim(),
   });
 };
 
-module.exports = { dispatchRegistrationCall };
+module.exports = { dispatchRegistrationCall };

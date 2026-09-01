@@ -256,11 +256,15 @@ const buildAssistantOverrides = (contact, researchSummary, property, promptConfi
 const dispatchCall = async (
   phoneNumber,
   person,
-  { researchSummary = "", property = PROPERTY, promptConfig = null } = {}
+  { researchSummary = "", property = PROPERTY, promptConfig = null, source = "" } = {}
 ) => {
   try {
     const metadata = {
-      source: "vihara-voice",
+      // Funnel tag from the caller (e.g. "nor-cal", "early-access",
+      // "partner-program"). Falls back to the generic tag when not provided
+      // (admin single-call / campaign paths). This flows to the VAPI webhook so a
+      // scheduleCallback booked mid-call knows which funnel prompt to re-use.
+      source: source || "vihara-voice",
       propertyId: property && property.id ? property.id : null,
     };
 
@@ -317,4 +321,4 @@ const getCall = async (callId) => {
   return data;
 };
 
-module.exports = { parsePhones, dispatchCall, PROPERTY, getCall };
+module.exports = { parsePhones, dispatchCall, PROPERTY, getCall };

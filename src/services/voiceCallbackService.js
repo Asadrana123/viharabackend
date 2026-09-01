@@ -16,6 +16,37 @@ const { DateTime } = require("luxon");
 const CallbackRequest = require("../model/callbackRequestModel");
 const { resolvePromptConfig } = require("./vapiPromptService");
 
+// Static funnel prompts for the brand-building pages. These funnels have NO
+// propertyId, so their callbacks can't be resolved through resolvePromptConfig
+// (which is property-only). We map the funnel's `source` tag — stamped on the
+// original call's VAPI metadata and forwarded by the webhook — to its own prompt
+// so a callback speaks the SAME pitch the signup call used, instead of falling
+// back to the VAPI dashboard default assistant.
+const norCalVoicePrompt = require("../config/norCalVoicePrompt");
+const earlyAccessVoicePrompt = require("../config/earlyAccessVoicePrompt");
+const partnerProgramVoicePrompt = require("../config/partnerProgramVoicePrompt");
+
+// Property auction pages don't have an authored prompt either — their prompt is
+// BUILT from the DB per property (same as propertyCallScheduler). Their callback
+// `source` is "auction-<slug>", so we strip the prefix, look the property up by
+// slug, and rebuild its prompt on the fly. One code path, every property (incl.
+// ones uploaded later) — nothing per-slug to maintain.
+const productModel = require("../model/productModel");
+const { buildPropertyVoicePrompt } = require("./propertyVoicePromptBuilder");
+
+// Prefix the property scheduler stamps on its callback source: `auction-<slug>`.
+const AUCTION_SOURCE_PREFIX = "auction-";
+
+// Keys MUST match the `source` each scheduler stamps on its callPayload:
+//   norCalCallScheduler   → "nor-cal"
+//   earlyAccessCallScheduler → "early-access"
+//   partnerCallScheduler  → "partner-program"
+const SOURCE_PROMPTS = {
+  "nor-cal": norCalVoicePrompt,
+  "early-access": earlyAccessVoicePrompt,
+  "partner-program": partnerProgramVoicePrompt,
+};
+
 const CALL_HOUR = 13; // 1 PM
 const CALL_MINUTE = 32; // :32  → 1:32 PM local, matching the other schedulers
 const DEFAULT_TZ = "America/New_York";
@@ -98,6 +129,64 @@ async function resolvePromptSnapshot(propertyId) {
 }
 
 /**
+ * Brand-funnel fallback: resolve a static prompt from the funnel `source` tag
+ * (nor-cal / early-access / partner-program). Used only when there is no
+ * propertyId — so property callbacks keep resolving through resolvePromptSnapshot
+ * and are unaffected. Returns a plain promptConfig, or null when the source has
+ * no mapped prompt (then dispatchCall uses the dashboard default, as before).
+ */
+function resolveStaticPromptBySource(source) {
+  const p = SOURCE_PROMPTS[String(source || "").trim()];
+  if (!p || !p.systemPrompt) return null;
+  return {
+    systemPrompt: p.systemPrompt,
+    firstMessage: p.firstMessage || "",
+    voicemailMessage: p.voicemailMessage || "",
+    endCallMessage: p.endCallMessage || "",
+  };
+}
+
+/**
+ * Property auction fallback: when the callback `source` is "auction-<slug>",
+ * rebuild that property's prompt from the DB — the same way propertyCallScheduler
+ * does for the live call — so the callback speaks that property's own script
+ * instead of the dashboard default. Generic: works for any slug, incl. properties
+ * uploaded later. Returns null on any miss so the caller falls through cleanly.
+ */
+async function resolvePromptByAuctionSlug(source) {
+  const tag = String(source || "").trim();
+  if (!tag.startsWith(AUCTION_SOURCE_PREFIX)) return null;
+  const slug = tag.slice(AUCTION_SOURCE_PREFIX.length).trim();
+  if (!slug) return null;
+
+  try {
+    const product = await productModel.findOne({ slug }).lean();
+    if (!product) return null;
+
+    // Same "other live deals" context the scheduler passes, so the callback
+    // prompt matches the signup-call prompt.
+    const others = await productModel
+      .find({ isLandingPage: true, slug: { $ne: slug }, status: "active" })
+      .select(
+        "productName street city county state zipCode beds baths squareFootage lotSize yearBuilt monthlyHOADues occupancyStatus propertyType startBid investmentData auctionStartDate auctionEndDate"
+      )
+      .limit(3)
+      .lean();
+
+    const built = buildPropertyVoicePrompt(product, others);
+    if (!built || !built.systemPrompt) return null;
+    return {
+      systemPrompt: built.systemPrompt,
+      firstMessage: built.firstMessage || "",
+      voicemailMessage: built.voicemailMessage || "",
+      endCallMessage: built.endCallMessage || "",
+    };
+  } catch (_e) {
+    return null;
+  }
+}
+
+/**
  * Create and persist a callback request. Called from the webhook once Maya
  * fires the scheduleCallback tool.
  *
@@ -116,7 +205,15 @@ async function createCallbackRequest(args = {}) {
   }
 
   const { callAt, delayMinutes } = resolveCallbackTime(args);
-  const promptConfig = await resolvePromptSnapshot(args.propertyId);
+  // Resolution order:
+  //   1. propertyId          — property funnels with an authored prompt
+  //   2. auction-<slug> src   — property auction pages (prompt built from DB)
+  //   3. brand source map     — nor-cal / early-access / partner-program
+  // First hit wins; null everywhere → dispatchCall uses the dashboard default.
+  const promptConfig =
+    (await resolvePromptSnapshot(args.propertyId)) ||
+    (await resolvePromptByAuctionSlug(args.source)) ||
+    resolveStaticPromptBySource(args.source);
 
   const callback = await CallbackRequest.create({
     phone,
