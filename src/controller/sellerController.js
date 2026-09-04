@@ -3,6 +3,7 @@ const ErrorHandler = require("../utils/errorhandler");
 const Product = require("../model/productModel");
 const ManualBid = require("../model/manualBiddingModel");
 const AuctionRegistration = require("../model/auctionRegistration");
+const User = require("../model/userModel");
 const BidsManager = require("../utils/bidsManager");
 const { resolvePropertyTimezone } = require("../utils/resolveTimezone");
 const mongoose = require("mongoose");
@@ -48,12 +49,16 @@ exports.getSellerAuctionBids = catchAsyncError(async (req, res, next) => {
 
   const skip = (parseInt(page) - 1) * parseInt(limit);
 
-  const bids = await ManualBid.find({ auctionId })
+  // Exclude bids placed by admin accounts — sellers only see real user bids.
+  const adminIds = await User.find({ role: "admin" }).distinct("_id");
+  const bidFilter = { auctionId, userId: { $nin: adminIds } };
+
+  const bids = await ManualBid.find(bidFilter)
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(parseInt(limit));
 
-  const totalBids = await ManualBid.countDocuments({ auctionId });
+  const totalBids = await ManualBid.countDocuments(bidFilter);
 
   const formattedBids = await BidsManager.formatBidsWithUserInfo(bids);
 
@@ -107,18 +112,27 @@ exports.getSellerAuctionDetails = catchAsyncError(async (req, res, next) => {
   }
 
   // One grouped query for the registration status breakdown.
+  // Rejected registrations are excluded — they don't count toward the totals.
   const grouped = await AuctionRegistration.aggregate([
-    { $match: { auctionId: new mongoose.Types.ObjectId(auctionId) } },
+    { $match: { auctionId: new mongoose.Types.ObjectId(auctionId), status: { $ne: "rejected" } } },
     { $group: { _id: "$status", count: { $sum: 1 } } }
   ]);
 
-  const registrations = { total: 0, approved: 0, pending: 0, rejected: 0 };
+  const registrations = { total: 0, approved: 0, pending: 0 };
   grouped.forEach((g) => {
     if (g._id && registrations[g._id] !== undefined) {
       registrations[g._id] = g.count;
     }
     registrations.total += g.count;
   });
+
+  // Highest bid shown to the seller is the top bid by a real user (admins excluded).
+  const adminIds = await User.find({ role: "admin" }).distinct("_id");
+  const topUserBid = await ManualBid.findOne({ auctionId, userId: { $nin: adminIds } })
+    .sort({ amount: -1 })
+    .select("amount")
+    .lean();
+  const highestBid = topUserBid ? topUserBid.amount : null;
 
   return res.status(200).json({
     success: true,
@@ -152,7 +166,7 @@ exports.getSellerAuctionDetails = catchAsyncError(async (req, res, next) => {
       auctionEndDate: auction.auctionEndDate,
       reservePrice: auction.reservePrice,
       startBid: auction.startBid,
-      currentBid: auction.currentBid,
+      highestBid,
       minIncrement: auction.minIncrement,
       emd: auction.emd,
       viharaValue: auction.investmentData?.valuation?.ViharaValue ?? null
@@ -187,14 +201,17 @@ exports.getSellerAuctionRegistrations = catchAsyncError(async (req, res, next) =
 
   const skip = (parseInt(page) - 1) * parseInt(limit);
 
-  const registrations = await AuctionRegistration.find({ auctionId })
+  // Rejected registrations are hidden from the seller.
+  const regFilter = { auctionId, status: { $ne: "rejected" } };
+
+  const registrations = await AuctionRegistration.find(regFilter)
     .select("firstName lastName email mobilePhone buyerType status submittedAt")
     .sort({ submittedAt: -1 })
     .skip(skip)
     .limit(parseInt(limit))
     .lean();
 
-  const total = await AuctionRegistration.countDocuments({ auctionId });
+  const total = await AuctionRegistration.countDocuments(regFilter);
 
   const formatted = registrations.map((r) => ({
     id: r._id,
