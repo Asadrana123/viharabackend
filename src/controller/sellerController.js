@@ -4,6 +4,7 @@ const Product = require("../model/productModel");
 const ManualBid = require("../model/manualBiddingModel");
 const AuctionRegistration = require("../model/auctionRegistration");
 const BidsManager = require("../utils/bidsManager");
+const { resolvePropertyTimezone } = require("../utils/resolveTimezone");
 const mongoose = require("mongoose");
 
 // Get all auctions the requester can view.
@@ -143,6 +144,10 @@ exports.getSellerAuctionDetails = catchAsyncError(async (req, res, next) => {
       monthlyHOADues: auction.monthlyHOADues,
       apn: auction.apn,
       status: auction.status,
+      // IANA timezone resolved from the property's state + zipCode, so the
+      // frontend can render auction/bid/registration times in the property's
+      // own local time rather than the viewer's browser timezone.
+      timezone: resolvePropertyTimezone(auction),
       auctionStartDate: auction.auctionStartDate,
       auctionEndDate: auction.auctionEndDate,
       reservePrice: auction.reservePrice,
