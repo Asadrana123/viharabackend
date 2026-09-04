@@ -8,6 +8,27 @@ const BidsManager = require("../utils/bidsManager");
 const { resolvePropertyTimezone } = require("../utils/resolveTimezone");
 const mongoose = require("mongoose");
 
+// Seller-dashboard only: house/admin accounts whose bids must not be shown to
+// sellers (excluded from the bids list, the bids count, and the highest-bid
+// figure). These are normal userModel accounts, so we match them by email
+// (case-insensitive). Scoped to this controller — admin and buyer views are
+// unaffected.
+const SELLER_DASHBOARD_EXCLUDED_BID_EMAILS = [
+  "asad@vihara.ai",
+  "vin@vihara.ai",
+  "trisha@vihara.ai",
+  'tvtimes27@gmail.com'
+];
+
+// Resolve the excluded house accounts to their userModel _ids for a bid query.
+async function getExcludedBidderIds() {
+  const pattern = SELLER_DASHBOARD_EXCLUDED_BID_EMAILS
+    .map((e) => e.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("|");
+  if (!pattern) return [];
+  return User.find({ email: { $regex: `^(${pattern})$`, $options: "i" } }).distinct("_id");
+}
+
 // Get all auctions the requester can view.
 // - Seller: only the properties assigned to them.
 // - Admin: every property (admins may inspect any seller dashboard).
@@ -49,9 +70,9 @@ exports.getSellerAuctionBids = catchAsyncError(async (req, res, next) => {
 
   const skip = (parseInt(page) - 1) * parseInt(limit);
 
-  // Exclude bids placed by admin accounts — sellers only see real user bids.
-  const adminIds = await User.find({ role: "admin" }).distinct("_id");
-  const bidFilter = { auctionId, userId: { $nin: adminIds } };
+  // Exclude house/admin bids — sellers only see real bidder activity.
+  const excludedBidderIds = await getExcludedBidderIds();
+  const bidFilter = { auctionId, userId: { $nin: excludedBidderIds } };
 
   const bids = await ManualBid.find(bidFilter)
     .sort({ createdAt: -1 })
@@ -126,9 +147,10 @@ exports.getSellerAuctionDetails = catchAsyncError(async (req, res, next) => {
     registrations.total += g.count;
   });
 
-  // Highest bid shown to the seller is the top bid by a real user (admins excluded).
-  const adminIds = await User.find({ role: "admin" }).distinct("_id");
-  const topUserBid = await ManualBid.findOne({ auctionId, userId: { $nin: adminIds } })
+  // Highest bid shown to the seller is the top bid by a real bidder
+  // (house/admin accounts excluded).
+  const excludedBidderIds = await getExcludedBidderIds();
+  const topUserBid = await ManualBid.findOne({ auctionId, userId: { $nin: excludedBidderIds } })
     .sort({ amount: -1 })
     .select("amount")
     .lean();
