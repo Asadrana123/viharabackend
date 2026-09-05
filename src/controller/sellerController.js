@@ -233,7 +233,7 @@ exports.getSellerAuctionRegistrations = catchAsyncError(async (req, res, next) =
   const regFilter = { auctionId, status: { $ne: "rejected" } };
 
   const registrations = await AuctionRegistration.find(regFilter)
-    .select("firstName lastName email mobilePhone buyerType status submittedAt")
+    .select("firstName lastName buyerType status submittedAt")
     .sort({ submittedAt: -1 })
     .skip(skip)
     .limit(parseInt(limit))
@@ -244,8 +244,6 @@ exports.getSellerAuctionRegistrations = catchAsyncError(async (req, res, next) =
   const formatted = registrations.map((r) => ({
     id: r._id,
     name: `${r.firstName || ""} ${r.lastName || ""}`.trim() || "Unknown",
-    email: r.email || "",
-    phone: r.mobilePhone || "",
     buyerType: r.buyerType || "",
     status: r.status || "pending",
     submittedAt: r.submittedAt
@@ -319,7 +317,7 @@ async function gatherSellerAuctionReport(req, auctionId) {
 
   // All registrations (rejected excluded), newest first.
   const regsRaw = await AuctionRegistration.find({ auctionId, status: { $ne: "rejected" } })
-    .select("firstName lastName email mobilePhone buyerType status submittedAt")
+    .select("firstName lastName buyerType status submittedAt")
     .sort({ submittedAt: -1 })
     .lean();
 
@@ -363,9 +361,7 @@ async function gatherSellerAuctionReport(req, auctionId) {
       name: `${r.firstName || ""} ${r.lastName || ""}`.trim() || "Unknown",
       buyerType: r.buyerType || "",
       status: r.status || "pending",
-      submittedAt: r.submittedAt,
-      email: r.email || "",
-      phone: r.mobilePhone || ""
+      submittedAt: r.submittedAt
     }))
   };
 
