@@ -1,6 +1,7 @@
 const axios = require("axios");
 const { buildVariableValues } = require("./vapiPromptService");
 const { buildPriorContext } = require("./callMemoryService");
+const { pickCallerNumberId } = require("./callerNumberPoolService");
 
 const VAPI_API_KEY = process.env.VAPI_API_KEY;
 const VAPI_ASSISTANT_ID = process.env.VAPI_ASSISTANT_ID;
@@ -268,6 +269,15 @@ const dispatchCall = async (
       propertyId: property && property.id ? property.id : null,
     };
 
+    // Caller-ID rotation: pick the least-used-today number from the pool and
+    // record the use. Returns null only when every pool number has hit its
+    // daily cap — in that case we skip the dial to protect number reputation.
+    const phoneNumberId = await pickCallerNumberId();
+    if (!phoneNumberId) {
+      console.warn(`⏭️  Call skipped (all caller numbers hit daily cap): ${person.fullName} → ${phoneNumber}`);
+      return { success: false, phone: phoneNumber, error: "daily call cap reached on all caller numbers" };
+    }
+
     // Pull prior-call memory for this number. Non-fatal — a lookup failure must
     // never block the call; we just dial without memory.
     let priorContext = "";
@@ -281,6 +291,7 @@ const dispatchCall = async (
 
     console.log("[cb-debug] dispatchCall payload", JSON.stringify({
       to: phoneNumber,
+      phoneNumberId,
       metadata,
       toolsAttached: !!(assistantOverrides.model && assistantOverrides.model.tools),
       toolNames: (assistantOverrides.model?.tools || []).map((t) => t.function?.name),
@@ -294,7 +305,7 @@ const dispatchCall = async (
       "https://api.vapi.ai/call",
       {
         assistantId: VAPI_ASSISTANT_ID,
-        phoneNumberId: VAPI_PHONE_NUMBER_ID,
+        phoneNumberId,
         metadata,
         customer: { number: phoneNumber, name: person.fullName },
         assistantOverrides,
@@ -302,7 +313,7 @@ const dispatchCall = async (
       { headers: { Authorization: `Bearer ${VAPI_API_KEY}`, "Content-Type": "application/json" } }
     );
 
-    console.log(`✅ Call dispatched: ${person.fullName} → ${phoneNumber} | Call ID: ${response.data.id}`);
+    console.log(`✅ Call dispatched: ${person.fullName} → ${phoneNumber} | from ${phoneNumberId} | Call ID: ${response.data.id}`);
     return { success: true, callId: response.data.id, phone: phoneNumber };
   } catch (err) {
     const reason =
@@ -321,4 +332,4 @@ const getCall = async (callId) => {
   return data;
 };
 
-module.exports = { parsePhones, dispatchCall, PROPERTY, getCall };
+module.exports = { parsePhones, dispatchCall, PROPERTY, getCall };
