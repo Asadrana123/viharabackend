@@ -6,6 +6,12 @@ const AuctionRegistration = require("../model/auctionRegistration");
 const User = require("../model/userModel");
 const BidsManager = require("../utils/bidsManager");
 const { resolvePropertyTimezone } = require("../utils/resolveTimezone");
+const {
+  renderAuctionReportPdf,
+  buildAuctionReportWorkbook,
+  buildReportFilename
+} = require("../utils/sellerReportExport");
+const PDFDocument = require("pdfkit");
 const mongoose = require("mongoose");
 
 // Seller-dashboard only: house/admin accounts whose bids must not be shown to
@@ -17,7 +23,7 @@ const SELLER_DASHBOARD_EXCLUDED_BID_EMAILS = [
   "asad@vihara.ai",
   "vin@vihara.ai",
   "trisha@vihara.ai",
-  'tvtimes27@gmail.com'
+  "tvtimes27@gmail.com"
 ];
 
 // Resolve the excluded house accounts to their userModel _ids for a bid query.
@@ -255,4 +261,148 @@ exports.getSellerAuctionRegistrations = catchAsyncError(async (req, res, next) =
       pages: Math.ceil(total / parseInt(limit))
     }
   });
+});
+
+// Gather the full report for one auction — the same data (and same filters:
+// house accounts excluded, rejected registrations excluded) that the seller
+// dashboard shows, but with every bid and registration (no pagination).
+// Returns { error } on access failure, otherwise { report }.
+async function gatherSellerAuctionReport(req, auctionId) {
+  const isAdmin = req.user.role === "admin";
+
+  if (!mongoose.Types.ObjectId.isValid(auctionId)) {
+    return { error: { code: 400, message: "Invalid auction ID" } };
+  }
+
+  const query = isAdmin
+    ? { _id: auctionId }
+    : { _id: auctionId, sellerIds: req.user._id };
+
+  const auction = await Product.findOne(query).select(
+    "productName street city county state zipCode propertyType assetType " +
+    "occupancyStatus beds baths squareFootage lotSize yearBuilt apn status " +
+    "auctionStartDate auctionEndDate reservePrice startBid minIncrement"
+  );
+
+  if (!auction) {
+    return {
+      error: {
+        code: isAdmin ? 404 : 403,
+        message: isAdmin ? "Auction not found" : "Auction not found or you do not have access"
+      }
+    };
+  }
+
+  const excludedBidderIds = await getExcludedBidderIds();
+
+  // Registration counts (rejected excluded).
+  const grouped = await AuctionRegistration.aggregate([
+    { $match: { auctionId: new mongoose.Types.ObjectId(auctionId), status: { $ne: "rejected" } } },
+    { $group: { _id: "$status", count: { $sum: 1 } } }
+  ]);
+  const counts = { total: 0, approved: 0, pending: 0 };
+  grouped.forEach((g) => {
+    if (g._id && counts[g._id] !== undefined) counts[g._id] = g.count;
+    counts.total += g.count;
+  });
+
+  // Highest bid by a real bidder (house accounts excluded).
+  const topBid = await ManualBid.findOne({ auctionId, userId: { $nin: excludedBidderIds } })
+    .sort({ amount: -1 })
+    .select("amount")
+    .lean();
+
+  // All bids (house accounts excluded), newest first.
+  const bidsRaw = await ManualBid.find({ auctionId, userId: { $nin: excludedBidderIds } })
+    .sort({ createdAt: -1 });
+  const bidsFmt = await BidsManager.formatBidsWithUserInfo(bidsRaw);
+
+  // All registrations (rejected excluded), newest first.
+  const regsRaw = await AuctionRegistration.find({ auctionId, status: { $ne: "rejected" } })
+    .select("firstName lastName email mobilePhone buyerType status submittedAt")
+    .sort({ submittedAt: -1 })
+    .lean();
+
+  const report = {
+    generatedAt: new Date(),
+    timezone: resolvePropertyTimezone(auction),
+    property: {
+      productName: auction.productName,
+      location: `${auction.street}, ${auction.city}, ${auction.state}`,
+      zipCode: auction.zipCode,
+      propertyType: auction.propertyType,
+      assetType: auction.assetType,
+      occupancyStatus: auction.occupancyStatus,
+      beds: auction.beds,
+      baths: auction.baths,
+      squareFootage: auction.squareFootage,
+      lotSize: auction.lotSize,
+      yearBuilt: auction.yearBuilt,
+      apn: auction.apn,
+      status: auction.status
+    },
+    terms: {
+      reservePrice: auction.reservePrice,
+      highestBid: topBid ? topBid.amount : null,
+      startBid: auction.startBid,
+      minIncrement: auction.minIncrement
+    },
+    window: {
+      start: auction.auctionStartDate || null,
+      end: auction.auctionEndDate || null
+    },
+    counts,
+    bids: bidsFmt.map((b, i) => ({
+      index: i + 1,
+      bidderName: b.bidderName,
+      amount: b.amount,
+      createdAt: b.createdAt
+    })),
+    registrations: regsRaw.map((r, i) => ({
+      index: i + 1,
+      name: `${r.firstName || ""} ${r.lastName || ""}`.trim() || "Unknown",
+      buyerType: r.buyerType || "",
+      status: r.status || "pending",
+      submittedAt: r.submittedAt,
+      email: r.email || "",
+      phone: r.mobilePhone || ""
+    }))
+  };
+
+  return { report };
+}
+
+// Download the full report as a PDF.
+exports.exportSellerAuctionPdf = catchAsyncError(async (req, res, next) => {
+  const { auctionId } = req.params;
+  const { error, report } = await gatherSellerAuctionReport(req, auctionId);
+  if (error) return next(new ErrorHandler(error.message, error.code));
+
+  const filename = buildReportFilename(report);
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}.pdf"`);
+
+  const doc = new PDFDocument({ size: "A4", margin: 50 });
+  doc.on("error", (err) => next(err));
+  doc.pipe(res);
+  renderAuctionReportPdf(doc, report);
+  doc.end();
+});
+
+// Download the full report as an Excel workbook.
+exports.exportSellerAuctionExcel = catchAsyncError(async (req, res, next) => {
+  const { auctionId } = req.params;
+  const { error, report } = await gatherSellerAuctionReport(req, auctionId);
+  if (error) return next(new ErrorHandler(error.message, error.code));
+
+  const filename = buildReportFilename(report);
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  );
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}.xlsx"`);
+
+  const workbook = await buildAuctionReportWorkbook(report);
+  await workbook.xlsx.write(res);
+  res.end();
 });
