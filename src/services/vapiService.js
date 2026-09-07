@@ -54,6 +54,36 @@ const STOP_SPEAKING_PLAN = {
   backoffSeconds: STOP_BACKOFF_SECONDS,
 };
 
+// ── Silence / no-response handling ─────────────────────────────────────────────
+// Feedback from a live call: when the caller went quiet for a few seconds, the
+// call dropped. Fix = give people TIME and RE-PROMPT before giving up. VAPI's
+// silence timer is a call-config setting the prompt cannot control, so we set it
+// here; the spoken re-prompt behavior is also taught to Maya in the
+// NO_RESPONSE_HANDLING block below, so config and prompt agree.
+//
+// Flow: after IDLE_TIMEOUT_SECONDS of silence Maya speaks an idle line ("still
+// there?"); that repeats up to IDLE_MAX_COUNT times; SILENCE_TIMEOUT_SECONDS is
+// the hard cap that finally ends the call. A dropped/quiet call is treated as
+// no-pickup by the schedulers, so it is automatically retried at the next daily
+// slot — that IS the reschedule. All env-tunable without a redeploy.
+const IDLE_TIMEOUT_SECONDS = Number(process.env.VAPI_IDLE_TIMEOUT_SECONDS || 8);
+const IDLE_MAX_COUNT = Number(process.env.VAPI_IDLE_MAX_COUNT || 3);
+const SILENCE_TIMEOUT_SECONDS = Number(process.env.VAPI_SILENCE_TIMEOUT_SECONDS || 45);
+
+// Gentle re-prompts spoken on silence. VAPI may pick these in any order, so each
+// one stands alone and none assumes it is the first or last.
+const IDLE_MESSAGES = [
+  "Sorry, I think the line went quiet for a second — are you still there?",
+  "No rush at all, take your time — I'm still here whenever you're ready.",
+  "I might've lost you there — if now's not a great time, no worries, I can follow up and we'll pick this up later.",
+];
+
+const MESSAGE_PLAN = {
+  idleMessages: IDLE_MESSAGES,
+  idleMessageMaxSpokenCount: IDLE_MAX_COUNT,
+  idleTimeoutSeconds: IDLE_TIMEOUT_SECONDS,
+};
+
 const buildVoice = () => {
   if (!VAPI_VOICE_PROVIDER || !VAPI_VOICE_ID) return null;
   return { provider: VAPI_VOICE_PROVIDER, voiceId: VAPI_VOICE_ID };
@@ -78,6 +108,15 @@ const HUMAN_STYLE = `
 
 ## How to sound (IMPORTANT)
 Talk like a real person on the phone, not a script. Use contractions and short, natural sentences. It's fine to use small natural fillers like "yeah", "right", "for sure", "got it". Don't read things out as a list. Let the caller finish; if you talk over them, stop and let them speak. Keep your energy warm and easy, like a friendly salesperson who's done this a hundred times.`;
+
+// Silence / no-response guidance, appended to every call's system prompt
+// (idempotent). Pairs with MESSAGE_PLAN + SILENCE_TIMEOUT_SECONDS above: the
+// config makes VAPI wait and re-prompt instead of hanging up; this teaches Maya
+// how to handle the pause conversationally and when to offer a reschedule.
+const NO_RESPONSE_HANDLING = `
+
+## If the caller goes quiet (IMPORTANT)
+People need a few seconds to think — never end the call the instant there's a pause. If you ask something and the caller doesn't answer, do NOT hang up: gently check in and give them room. Re-ask your question (a little simpler the second time), and try up to three times, waiting a beat between each — for example, "Sorry, I think I lost you for a second — are you still there?" If they come back but say it's a bad time, offer to reschedule and book it with scheduleCallback. Only after three tries with no response at all should you wrap up warmly — let them know you'll follow up and try again later — then end the call.`;
 
 // Central objection-handling guidance, appended to every call's system prompt
 // (idempotent — skipped if the authored prompt already teaches objections).
@@ -120,6 +159,8 @@ const buildStyleBlock = (systemPrompt = "") =>
   /##\s*How to sound/i.test(systemPrompt) ? "" : HUMAN_STYLE;
 const buildObjectionBlock = (systemPrompt = "") =>
   /##\s*Handling objections/i.test(systemPrompt) ? "" : OBJECTION_PLAYBOOK;
+const buildNoResponseBlock = (systemPrompt = "") =>
+  /##\s*If the caller goes quiet/i.test(systemPrompt) ? "" : NO_RESPONSE_HANDLING;
 
 const VOICEMAIL_DETECTION = {
   provider: "vapi",
@@ -203,6 +244,9 @@ const buildAssistantOverrides = (contact, researchSummary, property, promptConfi
     // Conversational feel — applied on every call.
     startSpeakingPlan: START_SPEAKING_PLAN,
     stopSpeakingPlan: STOP_SPEAKING_PLAN,
+    // Silence handling — re-prompt on quiet instead of dropping the call.
+    messagePlan: MESSAGE_PLAN,
+    silenceTimeoutSeconds: SILENCE_TIMEOUT_SECONDS,
   };
 
   // Opt-in voice / transcriber (only when env vars are set).
@@ -219,7 +263,7 @@ const buildAssistantOverrides = (contact, researchSummary, property, promptConfi
     // reason to (callback tool and/or memory); when we do, ride the behavioral
     // blocks along so tone/objection handling stay consistent.
     if (callbackTool || priorBlock) {
-      const content = (CALLBACK_INSTRUCTION.trim() + HUMAN_STYLE + OBJECTION_PLAYBOOK + priorBlock).trim();
+      const content = (CALLBACK_INSTRUCTION.trim() + HUMAN_STYLE + OBJECTION_PLAYBOOK + NO_RESPONSE_HANDLING + priorBlock).trim();
       overrides.model = buildModel(content, callbackTool);
     }
     console.log("[cb-debug] overrides built (no promptConfig). tools?", !!(overrides.model && overrides.model.tools),
@@ -237,11 +281,12 @@ const buildAssistantOverrides = (contact, researchSummary, property, promptConfi
         : promptConfig.systemPrompt;
     const styleBlock = buildStyleBlock(promptConfig.systemPrompt);
     const objectionBlock = buildObjectionBlock(promptConfig.systemPrompt);
-    const systemContent = withCallback + styleBlock + objectionBlock + priorBlock;
+    const noResponseBlock = buildNoResponseBlock(promptConfig.systemPrompt);
+    const systemContent = withCallback + styleBlock + objectionBlock + noResponseBlock + priorBlock;
 
     overrides.model = buildModel(systemContent, callbackTool);
   } else if (callbackTool || priorBlock) {
-    const content = (CALLBACK_INSTRUCTION.trim() + HUMAN_STYLE + OBJECTION_PLAYBOOK + priorBlock).trim();
+    const content = (CALLBACK_INSTRUCTION.trim() + HUMAN_STYLE + OBJECTION_PLAYBOOK + NO_RESPONSE_HANDLING + priorBlock).trim();
     overrides.model = buildModel(content, callbackTool);
   }
 
