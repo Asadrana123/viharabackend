@@ -9,6 +9,7 @@ const { getCallsForPhones, normalisePhone } = require("../services/vapiCallsServ
 const { getEmailEventsForEmails } = require("../services/emailEventsService");
 const { getNotesForLeads } = require("../services/leadNotesService");
 const { getMessagesForPhones } = require("../services/sendblueService");
+const { notifyNewLead } = require("../services/slackService");
 
 // Discriminator stamped on each note so notes never bleed across lead types.
 const LEAD_NOTE_TYPE = "earlyAccess";
@@ -106,6 +107,21 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       : "Registered. (No calls — consent not given.)",
     call,
   });
+
+  // ── 3b. Slack notification (fire-and-forget) ────────────────────────────
+  notifyNewLead({
+    leadType: "Early Access",
+    name: lead.fullName,
+    email: lead.email,
+    phone: lead.phone,
+    consent: lead.consent,
+    source: "early-access-lp",
+    extraFields: [
+      { label: "Markets", value: lead.markets },
+      { label: "Buyer Type", value: EARLY_ACCESS_REGISTERING_AS[lead.buyerType] || lead.buyerType },
+      { label: "Deal Size", value: lead.dealSize },
+    ],
+  }).catch((e) => console.error("[slack] early-access notify failed:", e.message));
 
   // ── 4. Enrich + Brevo sync in the background; update the lead in place ───
   (async () => {

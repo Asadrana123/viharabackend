@@ -9,6 +9,7 @@ const { getEmailEventsForEmails } = require("../services/emailEventsService");
 const { getNotesForLeads } = require("../services/leadNotesService");
 const { getMessagesForPhones } = require("../services/sendblueService");
 const { syncNorCalLead } = require("../services/brevoService");
+const { notifyNewLead } = require("../services/slackService");
 
 // Note discriminator for NorCal leads (matches leadNoteModel.LEAD_TYPES + the
 // stop-calling controller's model map).
@@ -107,6 +108,20 @@ const registerNorCalLead = catchAsyncError(async (req, res, next) => {
     leadId: lead._id,
     call,
   });
+
+  // ── 3b. Slack notification (fire-and-forget) ────────────────────────────
+  notifyNewLead({
+    leadType: "Northern California",
+    name: lead.fullName,
+    email: lead.email,
+    phone: lead.phone,
+    consent: lead.consent,
+    source: "norcal-lp",
+    extraFields: [
+      { label: "Market", value: lead.market },
+      { label: "Buyer Type", value: lead.buyerType },
+    ],
+  }).catch((e) => console.error("[slack] nor-cal notify failed:", e.message));
 
   // ── 4. Enrich + Brevo sync in the background; update the lead in place ──
   (async () => {

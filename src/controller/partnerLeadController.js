@@ -8,6 +8,7 @@ const { getCallsForPhones, normalisePhone } = require("../services/vapiCallsServ
 const { getEmailEventsForEmails } = require("../services/emailEventsService");
 const { getNotesForLeads } = require("../services/leadNotesService");
 const { getMessagesForPhones } = require("../services/sendblueService");
+const { notifyNewLead } = require("../services/slackService");
 
 // Discriminator stamped on each note so notes never bleed across lead types.
 const LEAD_NOTE_TYPE = "partner";
@@ -99,6 +100,21 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       : "Application received. (No calls — consent not given.)",
     call,
   });
+
+  // ── 3b. Slack notification (fire-and-forget) ────────────────────────────
+  const partnerFullName = [lead.firstName, lead.lastName].filter(Boolean).join(" ");
+  notifyNewLead({
+    leadType: "Partner Program",
+    name: partnerFullName,
+    email: lead.email,
+    phone: lead.phone,
+    consent: lead.consent,
+    source: "partner-program",
+    extraFields: [
+      { label: "Primary Market", value: lead.primaryMarket },
+      { label: "Persona", value: lead.persona },
+    ],
+  }).catch((e) => console.error("[slack] partner notify failed:", e.message));
 
   // ── 4. Enrich + Brevo sync in the background; update the lead in place ───
   (async () => {

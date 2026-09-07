@@ -16,6 +16,7 @@ const { getEmailEventsForEmails } = require("../services/emailEventsService");
 const { getNotesForLeads } = require("../services/leadNotesService");
 const { getMessagesForPhones } = require("../services/sendblueService");
 const { syncPropertyLead } = require("../services/brevoService");
+const { notifyNewLead } = require("../services/slackService");
 
 // Single note discriminator for all property-auction leads. Lead ids are unique,
 // so one type is enough to keep notes from bleeding into other lead systems.
@@ -128,6 +129,21 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       : "Registered. (No calls — consent not given.)",
     call,
   });
+
+  // ── Slack notification (fire-and-forget) ───────────────────────────────────
+  notifyNewLead({
+    leadType: "Property Auction",
+    name: lead.fullName,
+    email: lead.email,
+    phone: lead.phone,
+    consent: lead.consent,
+    source: lead.source, // `auction-${slug}`
+    extraFields: [
+      { label: "Property", value: property.city || property.productName || slug },
+      { label: "Slug", value: slug },
+      { label: "Buyer Type", value: lead.buyerType },
+    ],
+  }).catch((e) => console.error(`[slack] property notify failed (${slug}):`, e.message));
 
   // ── Enrich + Brevo sync in the background; update the lead in place ─────────
   (async () => {
