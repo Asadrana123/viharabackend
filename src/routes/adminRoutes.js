@@ -25,7 +25,8 @@ const {
   adminUnassignProperty,
   adminGetPropertyRequests,
   adminReviewPropertyRequest,
-  adminGetRealtorRegistrations
+  adminGetRealtorRegistrations,
+  adminGetAllReferrals
 } = require("../controller/realtorController");
 
 const router = express.Router();
@@ -144,6 +145,13 @@ router.get(
   isAuthenticated,
   authorizeRoles("admin"),
   adminGetRealtorRegistrations
+);
+
+router.get(
+  "/realtor-referrals",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  adminGetAllReferrals
 );
 
 router.put(

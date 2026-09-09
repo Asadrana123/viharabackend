@@ -881,3 +881,47 @@ exports.adminGetRealtorRegistrations = catchAsyncError(async (req, res, next) =>
 
   return res.status(200).json({ success: true, registrations: shaped });
 });
+
+
+// GET /api/v1/admin/realtor-referrals?status=&realtorId=   (admin)
+// Combined cross-realtor view: every referral registration (realtorId set),
+// with buyer, property and referring realtor — for the admin "Referrals" tab.
+exports.adminGetAllReferrals = catchAsyncError(async (req, res, next) => {
+  const { status, realtorId } = req.query;
+
+  const filter = { realtorId: { $ne: null } };
+  if (status && ["pending", "approved", "rejected"].includes(status)) filter.status = status;
+  if (realtorId && mongoose.Types.ObjectId.isValid(realtorId)) filter.realtorId = realtorId;
+
+  const regs = await AuctionRegistration.find(filter)
+    .populate("realtorId", "name email slug")
+    .populate("auctionId", "productName street city state")
+    .populate("userId", "name email")
+    .sort({ submittedAt: -1 })
+    .limit(500)
+    .lean();
+
+  const referrals = regs.map((r) => ({
+    id: r._id,
+    buyerName:
+      (r.userId && r.userId.name) ||
+      `${r.firstName || ""} ${r.lastName || ""}`.trim() ||
+      "Unknown",
+    buyerEmail: (r.userId && r.userId.email) || r.email || null,
+    buyerType: r.buyerType || "",
+    status: r.status || "pending",
+    submittedAt: r.submittedAt,
+    realtor: r.realtorId
+      ? { _id: r.realtorId._id, name: r.realtorId.name, slug: r.realtorId.slug }
+      : null,
+    property: r.auctionId
+      ? {
+          _id: r.auctionId._id,
+          productName: r.auctionId.productName,
+          address: [r.auctionId.street, r.auctionId.city, r.auctionId.state].filter(Boolean).join(", ")
+        }
+      : null
+  }));
+
+  return res.status(200).json({ success: true, referrals });
+});
