@@ -53,6 +53,7 @@ const stopCallingRoutes = require("./routes/stopCallingRoutes");
 const propertyImportRoutes = require("./routes/propertyImportRoutes");
 // Unified property auction landing pages (/auction/:slug) — one route for every property.
 const propertyLeadRoutes = require("./routes/propertyLeadRoutes");
+const realtorRoutes = require("./routes/realtorRoutes");
 // Middleware
 app.use(cookieParser());
 app.use(cors(expressCorsOptions));
@@ -120,6 +121,7 @@ app.use("/api/v1/lead-calling", stopCallingRoutes);
 app.use("/api/v1/property-import", propertyImportRoutes);
 // Unified property auction leads (every /auction/:slug page). One mount, forever.
 app.use("/api/v1/property-lead", propertyLeadRoutes);
+app.use("/api/v1/realtor", realtorRoutes); 
 // Error Middleware
 app.use(errorMiddleware);
 

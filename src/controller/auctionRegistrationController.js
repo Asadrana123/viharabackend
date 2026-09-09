@@ -7,6 +7,44 @@ const sendEmail = require("../utils/sendEmail");
 const createRegistrationPendingEmail=require('../htmlPages/registrationPendingEmail');
 const createRegistrationApprovedEmail=require('../htmlPages/registrationApprovedEmail');
 const getAdminRegistrationNotificationEmail = require('../htmlPages/adminRegistrationNotificationEmail');
+const Realtor = require("../model/realtorModel");
+const createRealtorNewLeadEmail = require('../htmlPages/realtorNewLeadEmail');
+
+// Resolve a realtor showcase referral (slug) to an APPROVED realtor doc.
+// Returns null for a missing / stale / unknown-realtor ref, so a bad referral
+// records nothing rather than failing the registration.
+async function resolveRealtor(realtorRef) {
+  if (!realtorRef) return null;
+  const slug = String(realtorRef).trim().toLowerCase();
+  if (!slug) return null;
+  try {
+    return await Realtor.findOne({ slug, status: "approved" }).select("_id slug name email");
+  } catch (e) {
+    return null;
+  }
+}
+
+// Fire-and-forget email to the referring realtor when a new lead is attributed.
+function notifyRealtorNewLead(realtor, { firstName, lastName, buyerType, auction }) {
+  if (!realtor) return;
+  try {
+    const propertyAddress = [auction.street, auction.city, auction.state].filter(Boolean).join(', ');
+    sendEmail(
+      realtor.email,
+      realtor.name,
+      `New lead: ${propertyAddress}`,
+      createRealtorNewLeadEmail(
+        realtor.name,
+        `${firstName || ''} ${lastName || ''}`.trim(),
+        buyerType,
+        propertyAddress,
+        "https://vihara.ai/realtor/dashboard"
+      )
+    );
+  } catch (e) {
+    console.error("realtor new-lead email failed:", e);
+  }
+}
 
 // Submit a registration request for an auction
 exports.submitAuctionRegistration = catchAsyncError(
@@ -18,7 +56,8 @@ exports.submitAuctionRegistration = catchAsyncError(
       lastName,
       email,
       mobilePhone,
-      buyerType
+      buyerType,
+      realtorRef
     } = req.body;
 
     // Validate the required fields
@@ -38,6 +77,17 @@ exports.submitAuctionRegistration = catchAsyncError(
       return next(new Errorhandler("Auction not found", 404));
     }
 
+    // Realtor affiliate attribution (null when not referred / unknown realtor).
+    const attributionRealtor = await resolveRealtor(realtorRef);
+    const attribution = attributionRealtor
+      ? {
+          realtorId: attributionRealtor._id,
+          showcaseSlug: attributionRealtor.slug,
+          attributionSource: "realtor_showcase",
+          attributedAt: new Date()
+        }
+      : null;
+
     // Check if user has already registered for this auction
     const existingRegistration = await AuctionRegistration.findOne({
       userId,
@@ -47,6 +97,15 @@ exports.submitAuctionRegistration = catchAsyncError(
     if (existingRegistration) {
       // If already registered and approved, return success with status
       if (existingRegistration.status === "approved") {
+        // First-touch attribution: stamp only if not already attributed.
+        if (attribution && !existingRegistration.realtorId) {
+          existingRegistration.realtorId = attribution.realtorId;
+          existingRegistration.showcaseSlug = attribution.showcaseSlug;
+          existingRegistration.attributionSource = attribution.attributionSource;
+          existingRegistration.attributedAt = attribution.attributedAt;
+          await existingRegistration.save();
+          notifyRealtorNewLead(attributionRealtor, { firstName, lastName, buyerType, auction });
+        }
         return res.status(200).json({
           success: true,
           message: "You are already approved for this auction",
@@ -64,7 +123,21 @@ exports.submitAuctionRegistration = catchAsyncError(
       existingRegistration.status = "approved";
       existingRegistration.updatedAt = Date.now();
 
+      // First-touch attribution: stamp only if not already attributed.
+      let newlyAttributed = false;
+      if (attribution && !existingRegistration.realtorId) {
+        existingRegistration.realtorId = attribution.realtorId;
+        existingRegistration.showcaseSlug = attribution.showcaseSlug;
+        existingRegistration.attributionSource = attribution.attributionSource;
+        existingRegistration.attributedAt = attribution.attributedAt;
+        newlyAttributed = true;
+      }
+
       await existingRegistration.save();
+
+      if (newlyAttributed) {
+        notifyRealtorNewLead(attributionRealtor, { firstName, lastName, buyerType, auction });
+      }
 
       return res.status(200).json({
         success: true,
@@ -82,8 +155,14 @@ exports.submitAuctionRegistration = catchAsyncError(
       lastName,
       email,
       mobilePhone,
-      buyerType
+      buyerType,
+      ...(attribution || {})
     });
+
+    // Notify the referring realtor of the new attributed lead (fire-and-forget).
+    if (attribution) {
+      notifyRealtorNewLead(attributionRealtor, { firstName, lastName, buyerType, auction });
+    }
 
     // Send pending approval email to user
     try {

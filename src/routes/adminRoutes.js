@@ -17,6 +17,16 @@ const {
   getAllRegistrations,
   updateRegistrationStatus,
 } = require("../controller/auctionRegistrationController");
+const {
+  adminGetRealtors,
+  adminGetRealtor,
+  adminUpdateRealtorStatus,
+  adminAssignProperty,
+  adminUnassignProperty,
+  adminGetPropertyRequests,
+  adminReviewPropertyRequest,
+  adminGetRealtorRegistrations
+} = require("../controller/realtorController");
 
 const router = express.Router();
 
@@ -110,6 +120,66 @@ router.delete(
   isAuthenticated,
   authorizeRoles("admin"),
   unassignSeller
+);
+
+// ============================================================================
+// Realtor affiliate management routes (Req 1, Req 3, Req 11)
+// ============================================================================
+router.get(
+  "/realtors",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  adminGetRealtors
+);
+
+router.get(
+  "/realtor/:id",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  adminGetRealtor
+);
+
+router.get(
+  "/realtor/:id/registrations",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  adminGetRealtorRegistrations
+);
+
+router.put(
+  "/realtor/:id/status",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  adminUpdateRealtorStatus
+);
+
+router.put(
+  "/realtor/:id/property",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  adminAssignProperty
+);
+
+router.delete(
+  "/realtor/:id/property",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  adminUnassignProperty
+);
+
+// Realtor property requests
+router.get(
+  "/realtor-requests",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  adminGetPropertyRequests
+);
+
+router.put(
+  "/realtor-request/:id",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  adminReviewPropertyRequest
 );
 
 module.exports = router;

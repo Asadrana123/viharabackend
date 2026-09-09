@@ -41,6 +41,34 @@ const registrationSchema = new mongoose.Schema({
     enum: ["pending", "approved", "rejected"],
     default: "pending"
   },
+
+  // ============================================
+  // REALTOR AFFILIATE ATTRIBUTION  (Req 4, Req 5)
+  // Stamped when a buyer registers via a realtor showcase journey
+  // (/:slug -> property -> Register for Auction). Defaults keep every
+  // existing and direct (non-referred) registration unaffected.
+  // realtorId is the authoritative per-registration attribution that the
+  // realtor dashboard reads.
+  // ============================================
+  realtorId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "realtorModel",
+    default: null
+  },
+  showcaseSlug: {
+    type: String,
+    default: null
+  },
+  attributionSource: {
+    type: String,
+    enum: ["realtor_showcase", "direct"],
+    default: "direct"
+  },
+  attributedAt: {
+    type: Date,
+    default: null
+  },
+
   submittedAt: {
     type: Date,
     default: Date.now

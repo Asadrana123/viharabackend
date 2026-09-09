@@ -1,0 +1,41 @@
+const express = require("express");
+const {
+  applyRealtor,
+  loginRealtor,
+  logoutRealtor,
+  getRealtorMe,
+  updateRealtorProfile,
+  getShowcase,
+  getMyProperties,
+  getMyPropertyDetail,
+  getRequestableProperties,
+  createPropertyRequest,
+  getMyRequests
+} = require("../controller/realtorController");
+const { isRealtorAuthenticated, requireApprovedRealtor } = require("../middleware/realtorAuth");
+
+const router = express.Router();
+
+// Public
+router.post("/apply", applyRealtor);
+router.post("/login", loginRealtor);
+router.post("/logout", logoutRealtor);
+
+// Public showcase — the bare vanity URL /:slug fetches this.
+router.get("/showcase/:slug", getShowcase);
+
+// Realtor-authenticated. Any logged-in status may reach these; dashboard DATA
+// endpoints (Phase 3) additionally use requireApprovedRealtor.
+router.get("/me", isRealtorAuthenticated, getRealtorMe);
+router.put("/me", isRealtorAuthenticated, updateRealtorProfile);
+
+// Realtor dashboard (approved realtors only) — hard-scoped to the caller.
+router.get("/dashboard/properties", isRealtorAuthenticated, requireApprovedRealtor, getMyProperties);
+router.get("/dashboard/property/:propertyId", isRealtorAuthenticated, requireApprovedRealtor, getMyPropertyDetail);
+
+// Property requests — browse any property, request it, and track your requests.
+router.get("/dashboard/browse", isRealtorAuthenticated, requireApprovedRealtor, getRequestableProperties);
+router.post("/dashboard/request", isRealtorAuthenticated, requireApprovedRealtor, createPropertyRequest);
+router.get("/dashboard/requests", isRealtorAuthenticated, requireApprovedRealtor, getMyRequests);
+
+module.exports = router;
