@@ -64,8 +64,8 @@ function issueRealtorToken(realtor, statusCode, res, message) {
 exports.applyRealtor = catchAsyncError(async (req, res, next) => {
   const { name, email, password, phone, company, licenseNumber, bio } = req.body;
 
-  if (!name || !email || !password) {
-    return next(new Errorhandler("Name, email and password are required", 400));
+  if (!name || !email || !password || !phone || !company || !licenseNumber) {
+    return next(new Errorhandler("All fields are required", 400));
   }
 
   const trimmedEmail = String(email).trim().toLowerCase();
