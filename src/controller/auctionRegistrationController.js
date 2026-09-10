@@ -244,7 +244,8 @@ exports.getAllRegistrations = catchAsyncError(
 
     const registrations = await AuctionRegistration.find(query)
       .populate('userId', 'name email')
-      .populate('auctionId', 'street city state')
+      .populate('auctionId', 'productName street city state')
+      .populate('realtorId', 'name slug')
       .sort({ submittedAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));

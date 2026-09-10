@@ -40,7 +40,10 @@ exports.getProductById = catchAsyncError(async (req, res, next) => {
     if (!product) {
         return next(new Errorhandler("Property not found", 404));
     }
-    return res.json({ success: true, product });
+    // Resolved IANA zone so the frontend can render the auction banner in the
+    // property's local time. Computed on read; nothing stored.
+    const auctionTimezone = resolvePropertyTimezone(product);
+    return res.json({ success: true, product: { ...product.toObject(), auctionTimezone } });
 });
 
 exports.createProduct = catchAsyncError(async (req, res) => {
@@ -76,7 +79,10 @@ exports.getProductBySlug = catchAsyncError(async (req, res, next) => {
     if (!product) {
         return next(new Errorhandler("Property not found", 404));
     }
-    return res.json({ success: true, product });
+    // Resolved IANA zone so the frontend can render the auction banner in the
+    // property's local time. Computed on read; nothing stored.
+    const auctionTimezone = resolvePropertyTimezone(product);
+    return res.json({ success: true, product: { ...product.toObject(), auctionTimezone } });
 });
 
 // Admin — every property, unfiltered, for the Manage Listings tab.
