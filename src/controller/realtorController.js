@@ -631,7 +631,7 @@ exports.getRequestableProperties = catchAsyncError(async (req, res, next) => {
   const realtor = req.realtor;
   const { search } = req.query;
 
-  const filter = {};
+    const filter = { showOnAuctions: true };
   if (search && String(search).trim()) {
     const safe = String(search).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const rx = new RegExp(safe, "i");
