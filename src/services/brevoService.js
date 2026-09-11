@@ -357,4 +357,54 @@ const syncNorCalLead = async (lead) => {
   }
 };
 
-module.exports = { syncPersonaLead, syncEarlyAccessLead, syncPropertyLead, syncPartnerLead, syncNorCalLead };
+// ============================================================================
+// BEHAVIORAL EVENTS  (Realtor Referral Events handoff)
+// Brevo's Events API (POST /v3/events, 204 on success) — distinct from the
+// /contacts upsert above. Used to trigger automations off in-app actions
+// (property_shared, buyer_registered) rather than list-signup forms.
+// event_name must pre-exist as an event in Brevo (or Brevo auto-creates it on
+// first fire — either way this call is non-throwing / fire-and-forget).
+// contact_properties written here must be pre-created as contact attributes
+// in Brevo (Contacts → Settings → Contact Attributes) — e.g.
+// FIRST_PROPERTY_SHARED_AT — or Brevo may silently drop the unknown field.
+const trackEvent = async ({ eventName, email, eventProperties = {}, contactProperties }) => {
+  if (!BREVO_API_KEY) {
+    console.warn(`⚠️  Brevo not configured — skipping event: ${eventName}`);
+    return { success: false, skipped: true };
+  }
+  if (!email) return { success: false, skipped: true };
+
+  const body = {
+    event_name: eventName,
+    identifiers: { email_id: email },
+    event_properties: eventProperties,
+  };
+  if (contactProperties && Object.keys(contactProperties).length) {
+    body.contact_properties = contactProperties;
+  }
+
+  try {
+    await axios.post(`${BREVO_BASE}/events`, body, {
+      headers: {
+        "api-key": BREVO_API_KEY,
+        "Content-Type": "application/json",
+      },
+    });
+
+    console.log(`✅ Brevo event tracked: ${eventName} (${email})`);
+    return { success: true };
+  } catch (err) {
+    const reason = err.response?.data?.message || err.message;
+    console.error(`❌ Brevo event failed: ${eventName} (${email}):`, reason);
+    return { success: false, error: String(reason) };
+  }
+};
+
+module.exports = {
+  syncPersonaLead,
+  syncEarlyAccessLead,
+  syncPropertyLead,
+  syncPartnerLead,
+  syncNorCalLead,
+  trackEvent,
+};

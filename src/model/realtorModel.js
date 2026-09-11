@@ -109,6 +109,17 @@ const realtorSchema = new mongoose.Schema({
     ],
 
     // ============================================
+    // REFERRAL EVENTS  (Brevo handoff — property_shared)
+    // Set once, the first time this realtor shares any property link. Drives
+    // the Brevo FIRST_PROPERTY_SHARED_AT contact attribute (never overwritten
+    // after the first share).
+    // ============================================
+    firstPropertySharedAt: {
+        type: Date,
+        default: null
+    },
+
+    // ============================================
     // PASSWORD RESET
     // ============================================
     resetPasswordToken: String,

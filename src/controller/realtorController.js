@@ -17,6 +17,10 @@ const PropertyRequest = require("../model/propertyRequestModel");
 const createRealtorRequestApprovedEmail = require("../htmlPages/realtorRequestApprovedEmail");
 const createRealtorRequestDeclinedEmail = require("../htmlPages/realtorRequestDeclinedEmail");
 const { notifyNewLead } = require("../services/slackService");
+const { trackEvent } = require("../services/brevoService");
+
+// Public site origin used to build buyer-facing links (referral / listing URLs).
+const FRONTEND_URL = "https://vihara.ai";
 // Realtor session cookie name. Deliberately separate from the buyer/admin
 // `token` cookie so a realtor login never clobbers a buyer session in the same
 // browser (JWT carries { id, kind:'realtor' }, verified in middleware/realtorAuth.js).
@@ -629,6 +633,63 @@ exports.getMyPropertyDetail = catchAsyncError(async (req, res, next) => {
   });
 });
 
+
+// POST /api/v1/realtor/dashboard/property/:propertyId/share   (realtor auth + approved)
+// Realtor creates a property-specific referral link (Vihara x Brevo handoff,
+// event 1: property_shared). Fires the Brevo event on the realtor's contact
+// and, only on this realtor's very first share ever, stamps
+// FIRST_PROPERTY_SHARED_AT on that contact.
+exports.sharePropertyLink = catchAsyncError(async (req, res, next) => {
+  const realtor = req.realtor;
+  const { propertyId } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(propertyId)) {
+    return next(new Errorhandler("Invalid property ID", 400));
+  }
+
+  const assigned = (realtor.assignedPropertyIds || []).some(
+    (id) => String(id) === String(propertyId)
+  );
+  if (!assigned) {
+    return next(new Errorhandler("Property not found or not assigned to you", 403));
+  }
+
+  const product = await Product.findById(propertyId).select("_id slug");
+  if (!product) return next(new Errorhandler("Property not found", 404));
+  if (!product.slug) {
+    return next(new Errorhandler("This property doesn't have a public listing link yet", 409));
+  }
+
+  const propertyUrl = `${FRONTEND_URL}/listing/${product.slug}`;
+  const referralUrl = `${propertyUrl}?ref=${encodeURIComponent(realtor.slug)}`;
+  const timestamp = new Date().toISOString();
+
+  // First-touch only — this is what makes the attribute genuinely mean "first".
+  const isFirstShare = !realtor.firstPropertySharedAt;
+  if (isFirstShare) {
+    await realtorModel.findByIdAndUpdate(realtor._id, { firstPropertySharedAt: timestamp });
+  }
+
+  trackEvent({
+    eventName: "property_shared",
+    email: realtor.email,
+    eventProperties: {
+      realtor_id: String(realtor._id),
+      realtor_email: realtor.email,
+      property_id: String(product._id),
+      property_url: propertyUrl,
+      referral_url: referralUrl,
+      timestamp
+    },
+    contactProperties: isFirstShare ? { FIRST_PROPERTY_SHARED_AT: timestamp } : undefined
+  }).catch((e) => console.error("[brevo] property_shared event failed:", e.message));
+
+  return res.status(200).json({
+    success: true,
+    propertyUrl,
+    referralUrl
+  });
+});
 
 // ============================================================================
 // PROPERTY REQUESTS  (Req: realtor can browse ANY property and request it;

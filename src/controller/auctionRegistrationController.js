@@ -9,6 +9,9 @@ const createRegistrationApprovedEmail=require('../htmlPages/registrationApproved
 const getAdminRegistrationNotificationEmail = require('../htmlPages/adminRegistrationNotificationEmail');
 const Realtor = require("../model/realtorModel");
 const createRealtorNewLeadEmail = require('../htmlPages/realtorNewLeadEmail');
+const { trackEvent } = require("../services/brevoService");
+
+const FRONTEND_URL = "https://vihara.ai";
 
 // Resolve a realtor showcase referral (slug) to an APPROVED realtor doc.
 // Returns null for a missing / stale / unknown-realtor ref, so a bad referral
@@ -44,6 +47,32 @@ function notifyRealtorNewLead(realtor, { firstName, lastName, buyerType, auction
   } catch (e) {
     console.error("realtor new-lead email failed:", e);
   }
+}
+
+// Vihara x Brevo handoff, event 2: buyer_registered. Fired once, the moment a
+// registration is first attributed to a referring realtor (mirrors
+// notifyRealtorNewLead's "newly attributed" gating so it never double-fires
+// on repeat registration checks). Lands on the REALTOR's Brevo contact, same
+// as property_shared, since both events drive the realtor referral funnel.
+function trackBuyerRegistered(realtor, { buyerId, buyerEmail, auction }) {
+  if (!realtor) return;
+  const referralUrl = auction?.slug
+    ? `${FRONTEND_URL}/listing/${auction.slug}?ref=${encodeURIComponent(realtor.slug)}`
+    : null;
+
+  trackEvent({
+    eventName: "buyer_registered",
+    email: realtor.email,
+    eventProperties: {
+      realtor_id: String(realtor._id),
+      realtor_email: realtor.email,
+      buyer_id: buyerId ? String(buyerId) : null,
+      buyer_email: buyerEmail || null,
+      property_id: auction?._id ? String(auction._id) : null,
+      referral_url: referralUrl,
+      timestamp: new Date().toISOString()
+    }
+  }).catch((e) => console.error("[brevo] buyer_registered event failed:", e.message));
 }
 
 // Submit a registration request for an auction
@@ -105,6 +134,7 @@ exports.submitAuctionRegistration = catchAsyncError(
           existingRegistration.attributedAt = attribution.attributedAt;
           await existingRegistration.save();
           notifyRealtorNewLead(attributionRealtor, { firstName, lastName, buyerType, auction });
+          trackBuyerRegistered(attributionRealtor, { buyerId: userId, buyerEmail: email, auction });
         }
         return res.status(200).json({
           success: true,
@@ -137,6 +167,7 @@ exports.submitAuctionRegistration = catchAsyncError(
 
       if (newlyAttributed) {
         notifyRealtorNewLead(attributionRealtor, { firstName, lastName, buyerType, auction });
+        trackBuyerRegistered(attributionRealtor, { buyerId: userId, buyerEmail: email, auction });
       }
 
       return res.status(200).json({
@@ -162,6 +193,7 @@ exports.submitAuctionRegistration = catchAsyncError(
     // Notify the referring realtor of the new attributed lead (fire-and-forget).
     if (attribution) {
       notifyRealtorNewLead(attributionRealtor, { firstName, lastName, buyerType, auction });
+      trackBuyerRegistered(attributionRealtor, { buyerId: userId, buyerEmail: email, auction });
     }
 
     // Send pending approval email to user

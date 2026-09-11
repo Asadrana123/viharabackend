@@ -10,7 +10,8 @@ const {
   getMyPropertyDetail,
   getRequestableProperties,
   createPropertyRequest,
-  getMyRequests
+  getMyRequests,
+  sharePropertyLink
 } = require("../controller/realtorController");
 const { isRealtorAuthenticated, requireApprovedRealtor } = require("../middleware/realtorAuth");
 
@@ -32,6 +33,7 @@ router.put("/me", isRealtorAuthenticated, updateRealtorProfile);
 // Realtor dashboard (approved realtors only) — hard-scoped to the caller.
 router.get("/dashboard/properties", isRealtorAuthenticated, requireApprovedRealtor, getMyProperties);
 router.get("/dashboard/property/:propertyId", isRealtorAuthenticated, requireApprovedRealtor, getMyPropertyDetail);
+router.post("/dashboard/property/:propertyId/share", isRealtorAuthenticated, requireApprovedRealtor, sharePropertyLink);
 
 // Property requests — browse any property, request it, and track your requests.
 router.get("/dashboard/browse", isRealtorAuthenticated, requireApprovedRealtor, getRequestableProperties);
