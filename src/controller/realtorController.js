@@ -16,7 +16,7 @@ const createRealtorSuspendedEmail = require("../htmlPages/realtorSuspendedEmail"
 const PropertyRequest = require("../model/propertyRequestModel");
 const createRealtorRequestApprovedEmail = require("../htmlPages/realtorRequestApprovedEmail");
 const createRealtorRequestDeclinedEmail = require("../htmlPages/realtorRequestDeclinedEmail");
-
+const { notifyNewLead } = require("../services/slackService");
 // Realtor session cookie name. Deliberately separate from the buyer/admin
 // `token` cookie so a realtor login never clobbers a buyer session in the same
 // browser (JWT carries { id, kind:'realtor' }, verified in middleware/realtorAuth.js).
@@ -96,7 +96,18 @@ exports.applyRealtor = catchAsyncError(async (req, res, next) => {
   } catch (e) {
     console.error("realtor application email failed:", e);
   }
-
+  notifyNewLead({
+    leadType: "Realtor Application",
+    name: realtor.name,
+    email: realtor.email,
+    phone: realtor.phone,
+    source: "realtor-application",
+    webhookUrl: process.env.SLACK_REALTOR_WEBHOOK_URL,
+    extraFields: [
+      { label: "Company", value: realtor.company },
+      { label: "License #", value: realtor.licenseNumber },
+    ],
+  }).catch((e) => console.error("[slack] realtor notify failed:", e.message));
   return res.status(201).json({
     success: true,
     message:
@@ -194,13 +205,13 @@ exports.getShowcase = catchAsyncError(async (req, res, next) => {
   const ids = realtor.assignedPropertyIds || [];
   const properties = ids.length
     ? await Product.find({ _id: { $in: ids } })
-        .select(
-          "productName slug street city state zipCode image otherImages beds baths " +
-          "squareFootage lotSize yearBuilt propertyType assetType status currentBid " +
-          "startBid minIncrement auctionStartDate auctionEndDate investmentData.valuation.ViharaValue"
-        )
-        .sort({ createdAt: -1 })
-        .lean()
+      .select(
+        "productName slug street city state zipCode image otherImages beds baths " +
+        "squareFootage lotSize yearBuilt propertyType assetType status currentBid " +
+        "startBid minIncrement auctionStartDate auctionEndDate investmentData.valuation.ViharaValue"
+      )
+      .sort({ createdAt: -1 })
+      .lean()
     : [];
 
   return res.status(200).json({
@@ -631,7 +642,7 @@ exports.getRequestableProperties = catchAsyncError(async (req, res, next) => {
   const realtor = req.realtor;
   const { search } = req.query;
 
-    const filter = { showOnAuctions: true };
+  const filter = { showOnAuctions: true };
   if (search && String(search).trim()) {
     const safe = String(search).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const rx = new RegExp(safe, "i");
@@ -729,12 +740,12 @@ exports.getMyRequests = catchAsyncError(async (req, res, next) => {
     reviewedAt: r.reviewedAt || null,
     property: r.propertyId
       ? {
-          _id: r.propertyId._id,
-          productName: r.propertyId.productName,
-          address: [r.propertyId.street, r.propertyId.city, r.propertyId.state].filter(Boolean).join(", "),
-          image: r.propertyId.image || null,
-          status: r.propertyId.status
-        }
+        _id: r.propertyId._id,
+        productName: r.propertyId.productName,
+        address: [r.propertyId.street, r.propertyId.city, r.propertyId.state].filter(Boolean).join(", "),
+        image: r.propertyId.image || null,
+        status: r.propertyId.status
+      }
       : null
   }));
 
@@ -764,11 +775,11 @@ exports.adminGetPropertyRequests = catchAsyncError(async (req, res, next) => {
       : null,
     property: r.propertyId
       ? {
-          _id: r.propertyId._id,
-          productName: r.propertyId.productName,
-          address: [r.propertyId.street, r.propertyId.city, r.propertyId.state].filter(Boolean).join(", "),
-          image: r.propertyId.image || null
-        }
+        _id: r.propertyId._id,
+        productName: r.propertyId.productName,
+        address: [r.propertyId.street, r.propertyId.city, r.propertyId.state].filter(Boolean).join(", "),
+        image: r.propertyId.image || null
+      }
       : null
   }));
 
@@ -872,10 +883,10 @@ exports.adminGetRealtorRegistrations = catchAsyncError(async (req, res, next) =>
     attributedAt: r.attributedAt || null,
     property: r.auctionId
       ? {
-          _id: r.auctionId._id,
-          productName: r.auctionId.productName,
-          address: [r.auctionId.street, r.auctionId.city, r.auctionId.state].filter(Boolean).join(", ")
-        }
+        _id: r.auctionId._id,
+        productName: r.auctionId.productName,
+        address: [r.auctionId.street, r.auctionId.city, r.auctionId.state].filter(Boolean).join(", ")
+      }
       : null
   }));
 
@@ -916,10 +927,10 @@ exports.adminGetAllReferrals = catchAsyncError(async (req, res, next) => {
       : null,
     property: r.auctionId
       ? {
-          _id: r.auctionId._id,
-          productName: r.auctionId.productName,
-          address: [r.auctionId.street, r.auctionId.city, r.auctionId.state].filter(Boolean).join(", ")
-        }
+        _id: r.auctionId._id,
+        productName: r.auctionId.productName,
+        address: [r.auctionId.street, r.auctionId.city, r.auctionId.state].filter(Boolean).join(", ")
+      }
       : null
   }));
 
