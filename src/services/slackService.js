@@ -157,11 +157,17 @@ function buildLeadMessage(lead) {
  * Post a new-lead notification to Slack. Fire-and-forget: resolves true if sent,
  * false otherwise. It never throws — callers may still add .catch() for symmetry
  * with the other background side-effects, but they don't have to.
+ *
+ * @param {object} lead              Message shape (see buildLeadMessage).
+ * @param {string} [lead.webhookUrl] Optional per-call webhook override. When
+ *   omitted, falls back to SLACK_LEADS_WEBHOOK_URL. Pass this to route a specific
+ *   lead type to a different channel (e.g. SLACK_REALTOR_WEBHOOK_URL). It is only
+ *   used for routing and never rendered into the message.
  */
 async function notifyNewLead(lead = {}) {
-  const webhookUrl = process.env.SLACK_LEADS_WEBHOOK_URL;
+  const webhookUrl = lead.webhookUrl || process.env.SLACK_LEADS_WEBHOOK_URL;
   if (!webhookUrl) {
-    console.warn("[slack] SLACK_LEADS_WEBHOOK_URL not set — skipping lead notification");
+    console.warn("[slack] no webhook configured — skipping lead notification");
     return false;
   }
 
