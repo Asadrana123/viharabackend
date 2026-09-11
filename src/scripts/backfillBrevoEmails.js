@@ -1,17 +1,23 @@
 // scripts/backfillBrevoEmails.js
 //
-// ONE-TIME (safe to re-run) backfill of historical Brevo email events into the
-// emailEvent collection — for emails that were sent BEFORE the webhook existed.
+// Backfill of historical Brevo email events into the emailEvent collection —
+// for emails that were sent BEFORE the webhook existed.
 //
 // The webhook only captures events from the moment it was created. This script
 // fills in the past by reading Brevo's transactional event history API
 // (GET /v3/smtp/statistics/events) and upserting each event, so it never
 // duplicates rows the webhook already stored (or a previous run of this script).
 //
-// Run it from the Render shell (env vars DB_URI + BREVO_API_KEY are already set):
-//     node scripts/backfillBrevoEmails.js
-// Go further back than the default 90 days:
-//     BACKFILL_DAYS=365 node scripts/backfillBrevoEmails.js
+// TWO WAYS TO RUN:
+//   1. Standalone (opens AND closes its own Mongo connection, exits process):
+//        node scripts/backfillBrevoEmails.js
+//        BACKFILL_DAYS=365 node scripts/backfillBrevoEmails.js
+//   2. Programmatically from a scheduled job (reuses the app's live Mongo
+//      connection — NEVER opens or closes one, NEVER exits the process):
+//        const { runBrevoBackfill } = require("../scripts/backfillBrevoEmails");
+//        await runBrevoBackfill({ days: 3 });
+//      This second path is what jobs/brevoBackfillJob.js uses for the daily
+//      09:00 IST run.
 //
 // Notes:
 //   • Brevo caps each API call to a 90-day window, so we loop in 90-day chunks.
@@ -29,7 +35,7 @@ const BREVO_API_KEY = process.env.BREVO_API_KEY;
 const DB_URI = process.env.DB_URI;
 const BREVO_BASE = "https://api.brevo.com/v3";
 
-const BACKFILL_DAYS = Math.max(1, parseInt(process.env.BACKFILL_DAYS, 10) || 90);
+const DEFAULT_BACKFILL_DAYS = Math.max(1, parseInt(process.env.BACKFILL_DAYS, 10) || 90);
 const WINDOW_DAYS = 90;   // Brevo hard limit per call
 const PAGE_LIMIT = 2500;  // Brevo max is 5000; 2500 is comfortable
 
@@ -112,16 +118,17 @@ const upsertEvents = async (docs) => {
   return res.upsertedCount || 0;
 };
 
-const run = async () => {
-  if (!DB_URI) throw new Error("DB_URI is not set");
-  if (!BREVO_API_KEY) throw new Error("BREVO_API_KEY is not set");
-
-  await mongoose.connect(DB_URI);
-  console.log(`✅ Mongo connected. Backfilling last ${BACKFILL_DAYS} day(s)…`);
+// ---------------------------------------------------------------------------
+// CORE LOGIC
+// Assumes an ACTIVE Mongo connection. Does NOT connect / disconnect / exit —
+// so it is safe to call repeatedly from a long-lived scheduler.
+// ---------------------------------------------------------------------------
+const backfill = async (days = DEFAULT_BACKFILL_DAYS) => {
+  const lookback = Math.max(1, parseInt(days, 10) || DEFAULT_BACKFILL_DAYS);
 
   const now = new Date();
   const overallStart = new Date(now);
-  overallStart.setDate(overallStart.getDate() - BACKFILL_DAYS);
+  overallStart.setDate(overallStart.getDate() - lookback);
 
   let totalSeen = 0;
   let totalInserted = 0;
@@ -158,12 +165,45 @@ const run = async () => {
     winStart.setDate(winStart.getDate() + 1);
   }
 
+  return { totalSeen, totalInserted };
+};
+
+// ---------------------------------------------------------------------------
+// PROGRAMMATIC ENTRY (for schedulers)
+// Reuses the app's live connection by default; never tears down the shared pool.
+// ---------------------------------------------------------------------------
+const runBrevoBackfill = async ({ days = DEFAULT_BACKFILL_DAYS } = {}) => {
+  if (!BREVO_API_KEY) throw new Error("BREVO_API_KEY is not set");
+  if (mongoose.connection.readyState !== 1) {
+    throw new Error("Mongo is not connected — skipping Brevo backfill");
+  }
+  return backfill(days);
+};
+
+// ---------------------------------------------------------------------------
+// STANDALONE CLI ENTRY
+// Manages its own connection + process exit (original behaviour, unchanged).
+// ---------------------------------------------------------------------------
+const runStandalone = async () => {
+  if (!DB_URI) throw new Error("DB_URI is not set");
+  if (!BREVO_API_KEY) throw new Error("BREVO_API_KEY is not set");
+
+  await mongoose.connect(DB_URI);
+  console.log(`✅ Mongo connected. Backfilling last ${DEFAULT_BACKFILL_DAYS} day(s)…`);
+
+  const { totalSeen, totalInserted } = await backfill(DEFAULT_BACKFILL_DAYS);
+
   console.log(`\n✅ Done. Events seen: ${totalSeen}. New rows inserted: ${totalInserted}.`);
   await mongoose.disconnect();
 };
 
-run().catch(async (err) => {
-  console.error("❌ Backfill failed:", err.response?.data || err.message);
-  try { await mongoose.disconnect(); } catch (_) {}
-  process.exit(1);
-});
+module.exports = { runBrevoBackfill, backfill };
+
+// Only self-run (connect + exit) when invoked directly from the CLI.
+if (require.main === module) {
+  runStandalone().catch(async (err) => {
+    console.error("❌ Backfill failed:", err.response?.data || err.message);
+    try { await mongoose.disconnect(); } catch (_) {}
+    process.exit(1);
+  });
+}

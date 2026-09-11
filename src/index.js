@@ -10,6 +10,7 @@ const { startPartnerCallScheduler } = require('./services/partnerCallScheduler')
 const { startNorCalCallScheduler } = require('./services/norCalCallScheduler');
 const { startVoiceCallbackScheduler } = require('./services/voiceCallbackScheduler'); // ← ADD
 const { startPropertyCallScheduler } = require('./services/propertyCallScheduler'); // unified /auction/:slug scheduler
+const { startBrevoBackfillJob } = require('./jobs/brevoBackfillJob'); // ← ADD
 require('./passport');
 
 const PORT = process.env.PORT || 8000;
@@ -24,7 +25,8 @@ setIoInstance(io)
 // Start server
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-
+ // Daily Brevo email-event backfill at 09:00 IST (patches gaps the webhook missed).
+  startBrevoBackfillJob();
   // Start the early-access daily 1:32 PM callback scheduler (every-minute sweep).
   startEarlyAccessCallScheduler();
 
