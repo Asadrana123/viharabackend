@@ -13,6 +13,14 @@ const {
   getMyRequests,
   sharePropertyLink
 } = require("../controller/realtorController");
+const {
+  createSubmission,
+  updateSubmission,
+  submitSubmission,
+  listMySubmissions,
+  getMySubmission,
+  deleteSubmission
+} = require("../controller/propertySubmissionController");
 const { isRealtorAuthenticated, requireApprovedRealtor } = require("../middleware/realtorAuth");
 
 const router = express.Router();
@@ -39,5 +47,17 @@ router.post("/dashboard/property/:propertyId/share", isRealtorAuthenticated, req
 router.get("/dashboard/browse", isRealtorAuthenticated, requireApprovedRealtor, getRequestableProperties);
 router.post("/dashboard/request", isRealtorAuthenticated, requireApprovedRealtor, createPropertyRequest);
 router.get("/dashboard/requests", isRealtorAuthenticated, requireApprovedRealtor, getMyRequests);
+
+// ============================================================================
+// Property submissions — realtor self-uploads a property that goes through
+// admin review before it is published (Realtor Property Upload & Management
+// Workflow). All hard-scoped to req.realtor. Static paths first, :id last.
+// ============================================================================
+router.get("/dashboard/submissions", isRealtorAuthenticated, requireApprovedRealtor, listMySubmissions);
+router.post("/dashboard/submissions", isRealtorAuthenticated, requireApprovedRealtor, createSubmission);
+router.get("/dashboard/submissions/:id", isRealtorAuthenticated, requireApprovedRealtor, getMySubmission);
+router.put("/dashboard/submissions/:id", isRealtorAuthenticated, requireApprovedRealtor, updateSubmission);
+router.post("/dashboard/submissions/:id/submit", isRealtorAuthenticated, requireApprovedRealtor, submitSubmission);
+router.delete("/dashboard/submissions/:id", isRealtorAuthenticated, requireApprovedRealtor, deleteSubmission);
 
 module.exports = router;

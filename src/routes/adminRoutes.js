@@ -28,6 +28,13 @@ const {
   adminGetRealtorRegistrations,
   adminGetAllReferrals
 } = require("../controller/realtorController");
+const {
+  adminListSubmissions,
+  adminGetSubmission,
+  adminApproveSubmission,
+  adminRequestChanges,
+  adminRejectSubmission
+} = require("../controller/propertySubmissionController");
 
 const router = express.Router();
 
@@ -188,6 +195,46 @@ router.put(
   isAuthenticated,
   authorizeRoles("admin"),
   adminReviewPropertyRequest
+);
+
+// ============================================================================
+// Realtor property submissions — review queue for realtor self-uploaded
+// properties. Approve publishes a real product; request-changes / reject
+// bounce it back to the realtor. Static paths first, :id last.
+// ============================================================================
+router.get(
+  "/property-submissions",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  adminListSubmissions
+);
+
+router.get(
+  "/property-submission/:id",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  adminGetSubmission
+);
+
+router.put(
+  "/property-submission/:id/approve",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  adminApproveSubmission
+);
+
+router.put(
+  "/property-submission/:id/request-changes",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  adminRequestChanges
+);
+
+router.put(
+  "/property-submission/:id/reject",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  adminRejectSubmission
 );
 
 module.exports = router;
