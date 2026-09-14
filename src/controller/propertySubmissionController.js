@@ -495,10 +495,21 @@ exports.adminApproveSubmission = catchAsyncError(async (req, res, next) => {
     if (submission.assetType) productPayload.assetType = submission.assetType;
     if (submission.occupancyStatus) productPayload.occupancyStatus = submission.occupancyStatus;
 
-    // .create() runs the pre-save hook (slug generation) just like /bulk.
-    let product;
+    // If this submission was approved before and later reverted, reuse the same
+    // product (reactivate + refresh from the payload — status:'active',
+    // showOnAuctions:true are part of it) instead of creating a duplicate.
+    // Otherwise create a new one; .create() runs the slug pre-save hook.
+    let product = null;
+    if (submission.publishedProductId) {
+        product = await Product.findById(submission.publishedProductId);
+    }
     try {
-        product = await Product.create(productPayload);
+        if (product) {
+            Object.assign(product, productPayload);
+            await product.save();
+        } else {
+            product = await Product.create(productPayload);
+        }
     } catch (err) {
         return next(new Errorhandler(`Could not publish property: ${err.message}`, 400));
     }
@@ -671,5 +682,52 @@ exports.adminUpdateSubmission = catchAsyncError(async (req, res, next) => {
         success: true,
         message: "Submission updated",
         submission: realtorSubmissionShape(submission)
+    });
+});
+
+// PUT /api/v1/admin/property-submission/:id/revert
+// Move an APPROVED submission back to pending review. The published product is
+// taken offline (showOnAuctions:false, status:'pending') and unassigned from the
+// realtor, but kept and still linked via publishedProductId so re-approving
+// reuses it instead of creating a duplicate.
+exports.adminRevertSubmission = catchAsyncError(async (req, res, next) => {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+        return next(new Errorhandler("Invalid submission ID", 400));
+    }
+
+    const submission = await PropertySubmission.findById(id);
+    if (!submission) return next(new Errorhandler("Submission not found", 404));
+    if (submission.reviewStatus !== "approved") {
+        return next(new Errorhandler("Only an approved submission can be moved back to pending", 409));
+    }
+
+    if (submission.publishedProductId) {
+        const product = await Product.findById(submission.publishedProductId);
+        if (product) {
+            product.showOnAuctions = false;
+            product.status = "pending";
+            await product.save({ validateBeforeSave: false });
+        }
+        await realtorModel.findByIdAndUpdate(submission.realtorId, {
+            $pull: { assignedPropertyIds: submission.publishedProductId }
+        });
+    }
+
+    submission.reviewStatus = "pending_review";
+    submission.reviewNote = null;
+    submission.reviewedBy = null;
+    submission.reviewedAt = null;
+    // keep publishedProductId — re-approve reuses the same product
+    await submission.save();
+
+    return res.status(200).json({
+        success: true,
+        message: "Moved back to pending review",
+        submission: {
+            _id: submission._id,
+            reviewStatus: submission.reviewStatus,
+            publishedProductId: submission.publishedProductId || null
+        }
     });
 });

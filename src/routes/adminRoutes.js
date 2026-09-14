@@ -34,7 +34,8 @@ const {
   adminApproveSubmission,
   adminRequestChanges,
   adminRejectSubmission,
-  adminUpdateSubmission
+  adminUpdateSubmission,
+  adminRevertSubmission
 } = require("../controller/propertySubmissionController");
 
 const router = express.Router();
@@ -243,6 +244,13 @@ router.put(
   isAuthenticated,
   authorizeRoles("admin"),
   adminUpdateSubmission
+);
+
+router.put(
+  "/property-submission/:id/revert",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  adminRevertSubmission
 );
 
 module.exports = router;
