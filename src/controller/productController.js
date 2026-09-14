@@ -166,3 +166,82 @@ exports.updateListingSettings = catchAsyncError(async (req, res, next) => {
         }
     });
 });
+
+
+// Admin — update only the BASIC descriptive details of one property (title,
+// description, address, classification, specs). Auction terms, images, sellers,
+// visibility and status each have their own endpoints and are left untouched.
+const BASIC_TEXT_FIELDS = ["productName", "propertyDescription", "street", "city", "county", "state", "zipCode"];
+const BASIC_NUMBER_FIELDS = ["beds", "baths", "squareFootage", "lotSize", "yearBuilt", "monthlyHOADues"];
+const BASIC_ENUMS = {
+    propertyType: { values: ['Single Family', 'Condo, Townhouse, other single unit', 'Multi-family', 'Land'], required: true },
+    assetType: { values: ['Reo Bank Owned', 'Foreclosure Homes', 'Short Sale'], required: false },
+    occupancyStatus: { values: ['Vacant', 'Occupied', 'Reported Vacant'], required: false },
+};
+
+exports.updateProductBasicDetails = catchAsyncError(async (req, res, next) => {
+    const product = await productModel.findById(req.params.id);
+    if (!product) {
+        return next(new Errorhandler("Property not found", 404));
+    }
+
+    const b = req.body || {};
+
+    // Text — trim. Title + address are required on the model, so ignore any
+    // attempt to blank them; only the description may be cleared.
+    BASIC_TEXT_FIELDS.forEach((k) => {
+        if (b[k] === undefined) return;
+        const val = b[k] === null ? "" : String(b[k]).trim();
+        if (val === "" && k !== "propertyDescription") return;
+        product[k] = val;
+    });
+
+    // Numbers — "" / null clears to null; reject negatives / NaN.
+    for (const k of BASIC_NUMBER_FIELDS) {
+        if (b[k] === undefined) continue;
+        if (b[k] === null || b[k] === "") { product[k] = null; continue; }
+        const n = Number(b[k]);
+        if (!Number.isFinite(n) || n < 0) {
+            return next(new Errorhandler(`Invalid value for ${k}`, 400));
+        }
+        product[k] = n;
+    }
+
+    // Enums — validate against the schema's allowed values. Blank clears an
+    // optional enum but never a required one.
+    for (const [k, cfg] of Object.entries(BASIC_ENUMS)) {
+        if (b[k] === undefined) continue;
+        const val = b[k] === null ? "" : String(b[k]).trim();
+        if (val === "") {
+            if (cfg.required) continue;
+            product[k] = null;
+            continue;
+        }
+        if (!cfg.values.includes(val)) {
+            return next(new Errorhandler(`Invalid value for ${k}`, 400));
+        }
+        product[k] = val;
+    }
+
+    // validateBeforeSave:false — same rationale as updateListingSettings: this
+    // endpoint only touches the basic fields above and must not be blocked by
+    // unrelated legacy gaps on required auction fields. The slug hook only
+    // regenerates when slug is missing, so editing the address never changes a
+    // live URL.
+    await product.save({ validateBeforeSave: false });
+
+    return res.json({
+        success: true,
+        message: "Property details updated",
+        product: {
+            _id: product._id, slug: product.slug,
+            productName: product.productName, propertyDescription: product.propertyDescription,
+            street: product.street, city: product.city, county: product.county,
+            state: product.state, zipCode: product.zipCode,
+            propertyType: product.propertyType, assetType: product.assetType,
+            occupancyStatus: product.occupancyStatus,
+            beds: product.beds, baths: product.baths, squareFootage: product.squareFootage,
+            lotSize: product.lotSize, yearBuilt: product.yearBuilt, monthlyHOADues: product.monthlyHOADues,
+        }
+    });
+});

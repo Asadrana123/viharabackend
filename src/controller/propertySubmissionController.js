@@ -644,3 +644,32 @@ exports.adminRejectSubmission = catchAsyncError(async (req, res, next) => {
         submission: { _id: submission._id, reviewStatus: submission.reviewStatus, reviewNote: submission.reviewNote }
     });
 });
+
+
+// PUT /api/v1/admin/property-submission/:id/details
+// Admin edits the realtor-entered BASIC details of a submission before it is
+// approved. Reuses the same whitelist/coercion as the realtor edit, so images
+// and pricing are only touched if explicitly present in the body (the admin
+// panel sends basic fields only). Allowed while the submission is still in
+// review — never once it has been published or rejected.
+exports.adminUpdateSubmission = catchAsyncError(async (req, res, next) => {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+        return next(new Errorhandler("Invalid submission ID", 400));
+    }
+
+    const submission = await PropertySubmission.findById(id);
+    if (!submission) return next(new Errorhandler("Submission not found", 404));
+    if (!["pending_review", "changes_requested"].includes(submission.reviewStatus)) {
+        return next(new Errorhandler("Only a submission awaiting review can be edited", 409));
+    }
+
+    applyEditableFields(submission, req.body);
+    await submission.save();
+
+    return res.status(200).json({
+        success: true,
+        message: "Submission updated",
+        submission: realtorSubmissionShape(submission)
+    });
+});

@@ -6,7 +6,8 @@ const {
     getProductBySlug,
     getAllProductsAdmin,
     updateListingSettings,
-    createProductsBulk
+    createProductsBulk,
+    updateProductBasicDetails
 } = require("../controller/productController");
 const { isAuthenticated, authorizeRoles, optionalAuth } = require("../middleware/auth");
 const router = express.Router();
@@ -18,6 +19,7 @@ router.get('/get', optionalAuth, getAllProducts);
 // Admin listing management
 router.get('/admin/all', isAuthenticated, authorizeRoles("admin"), getAllProductsAdmin);
 router.put('/admin/:id/listing-settings', isAuthenticated, authorizeRoles("admin"), updateListingSettings);
+router.put('/admin/:id/basic-details', isAuthenticated, authorizeRoles("admin"), updateProductBasicDetails);
 
 // Public slug fetch (detail + landing pages)
 router.get('/slug/:slug', getProductBySlug);
