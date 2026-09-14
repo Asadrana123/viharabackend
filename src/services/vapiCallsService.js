@@ -12,7 +12,7 @@ const VAPI_CALL_URL = "https://api.vapi.ai/call";
 
 // How far back we scan when matching calls to leads. One-to-two pages covers
 // current volume comfortably; raise if call history outgrows the window.
-const DEFAULT_SCAN = 200;
+const DEFAULT_SCAN = 400;
 
 // ─── Fetch ────────────────────────────────────────────────────────────────────
 /** Cursor-paginate VAPI's call list up to `max` calls (bounded). */
