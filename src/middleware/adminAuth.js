@@ -2,8 +2,8 @@
 const jwt = require("jsonwebtoken");
 const catchAsyncError = require("./catchAsyncError");
 const Errorhandler = require("../utils/errorhandler");
-const adminModel = require("../model/adminModel");
-const userModel = require("../model/userModel");
+const adminModel = require("../model/users/adminModel");
+const userModel = require("../model/users/userModel");
 
 /**
  * Resolves the logged-in advisor for note actions and sets req.advisor.

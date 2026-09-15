@@ -24,9 +24,9 @@
 require("dotenv").config();
 const mongoose = require("mongoose");
 
-const NorCalLead = require("../model/norCalLeadModel");
-const { normalisePhone } = require("../services/vapiCallsService");
-const { scheduleNorCalSignupCall } = require("../services/norCalCallScheduler");
+const NorCalLead = require("../model/leads/norCalLeadModel");
+const { normalisePhone } = require("../services/calling/vapiCallsService");
+const { scheduleNorCalSignupCall } = require("../services/calling/norCalCallScheduler");
 
 const DRY = process.argv.includes("--dry");
 const FORCE = process.argv.includes("--force"); // call regardless of stored consent

@@ -2,7 +2,7 @@
 const socketIO = require('socket.io');
 const jwt = require('jsonwebtoken');
 const { socketIOCorsOptions } = require('../config/corsConfig');
-const User = require('../model/userModel');
+const User = require('../model/users/userModel');
 const { initializeHandlers, registerSocketHandlers } = require('./socketHandlers');
 const rateLimiter = require('../middleware/socketRateLimitMiddleware');
 
@@ -117,7 +117,7 @@ function initSocketServer(server) {
 
   setInterval(async () => {
     try {
-      const Product = require('../model/productModel');
+      const Product = require('../model/property/productModel');
       for (const [auctionId, auctionData] of activeAuctions.entries()) {
         if (auctionData.auctionStatus === "active" && auctionData.currentBidder) {
           await Product.findByIdAndUpdate(auctionId, {

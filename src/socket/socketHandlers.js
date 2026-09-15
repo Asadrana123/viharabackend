@@ -1,17 +1,17 @@
 // socketHandlers.js
-const AuctionRegistration = require('../model/auctionRegistration');
+const AuctionRegistration = require('../model/bidding/auctionRegistration');
 const rateLimiter = require('../middleware/socketRateLimitMiddleware');
-const Product = require('../model/productModel');
-const User = require('../model/userModel');
-const ManualBid = require('../model/manualBiddingModel');
+const Product = require('../model/property/productModel');
+const User = require('../model/users/userModel');
+const ManualBid = require('../model/bidding/manualBiddingModel');
 const BidsManager = require('../utils/bidsManager');
 const mongoose = require('mongoose');
 const sendEmail = require('../utils/sendEmail');
-const getOutbidEmailTemplate = require('../htmlPages/outbidEmail');
-const getAuctionWonEmailTemplate = require('../htmlPages/auctionWonEmail');
-const getAuctionLostEmailTemplate = require('../htmlPages/auctionLostEmail');
-const getLastHourReminderEmailTemplate = require('../htmlPages/lastHourReminderEmail');
-const getAdminBidNotificationEmail = require('../htmlPages/adminBidNotificationEmail');
+const getOutbidEmailTemplate = require('../htmlPages/bidding/outbidEmail');
+const getAuctionWonEmailTemplate = require('../htmlPages/bidding/auctionWonEmail');
+const getAuctionLostEmailTemplate = require('../htmlPages/bidding/auctionLostEmail');
+const getLastHourReminderEmailTemplate = require('../htmlPages/bidding/lastHourReminderEmail');
+const getAdminBidNotificationEmail = require('../htmlPages/bidding/adminBidNotificationEmail');
 
 let activeAuctions;
 let userAuctions;

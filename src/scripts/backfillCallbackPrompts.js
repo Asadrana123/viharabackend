@@ -32,21 +32,21 @@ try { require("dotenv").config(); } catch (_e) { /* dotenv optional */ }
 
 const mongoose = require("mongoose");
 
-const CallbackRequest = require("../model/callbackRequestModel");
-const productModel = require("../model/productModel");
+const CallbackRequest = require("../model/calling/callbackRequestModel");
+const productModel = require("../model/property/productModel");
 
 // Lead models — same paths the schedulers use.
-const NorCalLead = require("../model/norCalLeadModel");
-const EarlyAccessLead = require("../model/earlyAccessLeadModel");
-const PartnerLead = require("../model/partnerLeadModel");
-const PropertyLead = require("../model/propertyLeadModel");
+const NorCalLead = require("../model/leads/norCalLeadModel");
+const EarlyAccessLead = require("../model/leads/earlyAccessLeadModel");
+const PartnerLead = require("../model/leads/partnerLeadModel");
+const PropertyLead = require("../model/leads/propertyLeadModel");
 
 // Legacy single-property funnels: their own collections + their own prompt files.
-const GeorgiaStLead = require("../model/georgiaStLeadModel");
-const RensselaerAveLead = require("../model/rensselaerAveLeadModel");
+const GeorgiaStLead = require("../model/leads/georgiaStLeadModel");
+const RensselaerAveLead = require("../model/leads/rensselaerAveLeadModel");
 
 // Prompt sources.
-const { buildPropertyVoicePrompt } = require("../services/propertyVoicePromptBuilder");
+const { buildPropertyVoicePrompt } = require("../services/calling/propertyVoicePromptBuilder");
 const norCalVoicePrompt = require("../config/norCalVoicePrompt");
 const earlyAccessVoicePrompt = require("../config/earlyAccessVoicePrompt");
 const partnerProgramVoicePrompt = require("../config/partnerProgramVoicePrompt");

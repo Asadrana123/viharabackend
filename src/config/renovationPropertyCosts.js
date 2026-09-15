@@ -7,4 +7,4 @@
  * renovationController.js continues to work unchanged.
  */
 
-module.exports = require('./renovationCosts');
+module.exports = require('./renovationCosts/index');

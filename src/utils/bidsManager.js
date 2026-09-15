@@ -1,11 +1,11 @@
 // utils/bidsManager.js
-const ManualBid = require('../model/manualBiddingModel');
-const AutoBidding = require('../model/autoBiddingModel');
-const Product = require('../model/productModel');
-const User = require('../model/userModel');
+const ManualBid = require('../model/bidding/manualBiddingModel');
+const AutoBidding = require('../model/bidding/autoBiddingModel');
+const Product = require('../model/property/productModel');
+const User = require('../model/users/userModel');
 const withTimeout = require('./queryTimeoutWrapper');
 const sendEmail = require('./sendEmail');
-const getOutbidEmailTemplate=require('../htmlPages/outbidEmail')
+const getOutbidEmailTemplate=require('../htmlPages/bidding/outbidEmail')
 class BidsManager {
   // Get the highest bid for an auction from manual bids
   static async getHighestBid(auctionId) {

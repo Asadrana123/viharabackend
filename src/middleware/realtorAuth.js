@@ -2,7 +2,7 @@
 const jwt = require("jsonwebtoken");
 const catchAsyncError = require("./catchAsyncError");
 const Errorhandler = require("../utils/errorhandler");
-const realtorModel = require("../model/realtorModel");
+const realtorModel = require("../model/users/realtorModel");
 
 /**
  * Realtor session auth.

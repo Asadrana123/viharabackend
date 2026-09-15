@@ -1,5 +1,5 @@
 const cron = require("node-cron");
-const RenovationRequest = require("../model/renovationRequestModel");
+const RenovationRequest = require("../model/property/renovationRequestModel");
 
 /**
  * renovationCleanupJob

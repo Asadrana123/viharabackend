@@ -1,0 +1,241 @@
+// controllers/autoBiddingController.js
+const catchAsyncError = require("../../middleware/catchAsyncError");
+const ErrorHandler = require("../../utils/errorhandler");
+const AutoBidding = require("../../model/bidding/autoBiddingModel");
+const ManualBid = require("../../model/bidding/manualBiddingModel");
+const Product = require("../../model/property/productModel");
+const AuctionRegistration = require("../../model/bidding/auctionRegistration");
+const BidsManager = require("../../utils/bidsManager");
+const mongoose = require('mongoose');
+const { broadcastAutoBidResult } = require("../../socket/socketHandlers");
+
+// Get auto-bidding settings for current user
+exports.getAutoBiddingSettings = catchAsyncError(
+  async (req, res, next) => {
+    const { id } = req.params; // auctionId
+    const userId = req.user._id;
+
+    // Check if user is registered for this auction
+    const registration = await AuctionRegistration.findOne({
+      userId,
+      auctionId: id,
+      status: 'approved'
+    });
+
+    if (!registration) {
+      return next(new ErrorHandler("You do not have access to this auction", 403));
+    }
+
+    const settings = await AutoBidding.findOne({
+      userId,
+      auctionId: id
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: settings
+    });
+  }
+);
+
+// Save auto-bidding settings
+exports.saveAutoBiddingSettings = catchAsyncError(
+  async (req, res, next) => {
+    const { auctionId, enabled, maxAmount, increment } = req.body;
+    const userId = req.user._id;
+
+    // Validate input
+    if (!auctionId || maxAmount === undefined) {
+      return next(new ErrorHandler("Missing required fields", 400));
+    }
+
+    // Check if user is registered for this auction
+    const registration = await AuctionRegistration.findOne({
+      userId,
+      auctionId,
+      status: 'approved'
+    });
+
+    if (!registration) {
+      return next(new ErrorHandler("You do not have access to this auction", 403));
+    }
+
+    // Get current auction data to validate max amount
+    const auction = await Product.findById(auctionId);
+    if (!auction) {
+      return next(new ErrorHandler("Auction not found", 404));
+    }
+
+    // Verify auction is active
+    const now = new Date();
+    const auctionEnd = auction.auctionEndTime || new Date(auction.auctionEndDate);
+
+    if (now > auctionEnd) {
+      return next(new ErrorHandler("This auction has ended", 400));
+    }
+
+    const currentBid = auction.currentBid || auction.startBid;
+
+    if (maxAmount <= currentBid) {
+      return next(new ErrorHandler("Maximum amount must be higher than current bid", 400));
+    }
+
+    // Find existing settings or create new
+    let settings = await AutoBidding.findOne({
+      userId,
+      auctionId
+    });
+
+    if (settings) {
+      // If settings exist and are enabled, don't allow changes
+      if (settings.enabled) {
+        return res.status(200).json({
+          success: true,
+          message: "Auto-bidding already enabled and cannot be modified",
+          data: settings
+        });
+      }
+
+      // Update settings
+      settings.enabled = enabled;
+      settings.maxAmount = maxAmount;
+      settings.increment = increment || 1000;
+    } else {
+      // Create new settings
+      settings = new AutoBidding({
+        userId,
+        auctionId,
+        enabled,
+        maxAmount,
+        increment: increment || 1000
+      });
+    }
+
+    await settings.save();
+
+    // When enabled, immediately settle the auction so the highest auto-bidder is
+    // pushed up to beat every competing auto-bid (including lower ones). This is
+    // what makes auto-bids fight each other instead of resting at the lowest price.
+    if (enabled) {
+      const session = await mongoose.startSession();
+      session.startTransaction();
+      let transactionCommitted = false;
+      let autoBidResult = null;
+
+      try {
+        autoBidResult = await BidsManager.settleAutoBids(auctionId, session);
+        await session.commitTransaction();
+        transactionCommitted = true;
+      } catch (error) {
+        if (!transactionCommitted) {
+          await session.abortTransaction();
+        }
+        console.error('Error settling auto-bids on enable:', error);
+        autoBidResult = null;
+      } finally {
+        session.endSession();
+      }
+
+      // Reflect the settled bid (if any) to everyone in the room and refresh limits
+      await broadcastAutoBidResult(auctionId, autoBidResult, currentBid);
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Auto-bidding settings saved",
+      data: settings
+    });
+  }
+);
+
+// Get minimum bid information for an auction
+exports.getAutoBiddingInfo = catchAsyncError(
+  async (req, res, next) => {
+    const { id } = req.params; // auctionId
+    const userId = req.user._id;
+
+    // Check if user is registered for this auction
+    const registration = await AuctionRegistration.findOne({
+      userId,
+      auctionId: id,
+      status: 'approved'
+    });
+
+    if (!registration) {
+      return next(new ErrorHandler("You do not have access to this auction", 403));
+    }
+
+    // Get current auction data
+    const auction = await Product.findById(id);
+    if (!auction) {
+      return next(new ErrorHandler("Auction not found", 404));
+    }
+
+    const currentBid = auction.currentBid || auction.startBid;
+
+    // Calculate minimum bids using BidsManager
+    const bidLimits = await BidsManager.calculateMinimumBids(id, currentBid);
+
+    return res.status(200).json({
+      success: true,
+      minManualBid: bidLimits.minManualBid,
+      minAutoBidAmount: bidLimits.minAutoBidAmount,
+      currentBid
+    });
+  }
+);
+
+// Disable auto-bidding for a user in an auction (only allowed if no active bids)
+exports.disableAutoBidding = catchAsyncError(
+  async (req, res, next) => {
+    const { id } = req.params; // auctionId
+    const userId = req.user._id;
+
+    // Find existing settings
+    const settings = await AutoBidding.findOne({
+      userId,
+      auctionId: id
+    });
+
+    if (!settings) {
+      return next(new ErrorHandler("Auto-bidding settings not found", 404));
+    }
+
+    // Check if auto-bidding is already enabled
+    if (settings.enabled) {
+      // Get current auction data
+      const auction = await Product.findById(id);
+      if (!auction) {
+        return next(new ErrorHandler("Auction not found", 404));
+      }
+
+      // Check if user is the current highest bidder
+      const isHighestBidder = auction.currentBidder &&
+        auction.currentBidder.toString() === userId.toString();
+
+      // If user is highest bidder, don't allow disabling auto-bidding
+      if (isHighestBidder) {
+        return next(new ErrorHandler("Cannot disable auto-bidding when you are the highest bidder", 400));
+      }
+
+      // Check if user has any bids in this auction
+      const userBids = await ManualBid.countDocuments({
+        userId,
+        auctionId: id
+      });
+
+      if (userBids > 0) {
+        return next(new ErrorHandler("Cannot disable auto-bidding after placing bids", 400));
+      }
+    }
+
+    // Disable auto-bidding
+    settings.enabled = false;
+    await settings.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Auto-bidding disabled successfully"
+    });
+  }
+);

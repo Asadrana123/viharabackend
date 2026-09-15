@@ -23,9 +23,9 @@
 
 require("dotenv").config();
 const mongoose = require("mongoose");
-const User = require("../model/userModel");
-const Product = require("../model/productModel");
-const AuctionRegistration = require("../model/auctionRegistration");
+const User = require("../model/users/userModel");
+const Product = require("../model/property/productModel");
+const AuctionRegistration = require("../model/bidding/auctionRegistration");
 
 const DRY_RUN = process.argv.includes("--dry");
 const BUYER_TYPE = "Buy and hold";

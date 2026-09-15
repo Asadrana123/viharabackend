@@ -14,7 +14,7 @@
 //        BACKFILL_DAYS=365 node scripts/backfillBrevoEmails.js
 //   2. Programmatically from a scheduled job (reuses the app's live Mongo
 //      connection — NEVER opens or closes one, NEVER exits the process):
-//        const { runBrevoBackfill } = require("../scripts/backfillBrevoEmails");
+//        const { runBrevoBackfill } = require("./backfillBrevoEmails");
 //        await runBrevoBackfill({ days: 3 });
 //      This second path is what jobs/brevoBackfillJob.js uses for the daily
 //      09:00 IST run.
@@ -29,7 +29,7 @@ try { require("dotenv").config(); } catch (_) { /* env already set on Render */ 
 
 const mongoose = require("mongoose");
 const axios = require("axios");
-const EmailEvent = require("../model/emailEventModel");
+const EmailEvent = require("../model/integrations/emailEventModel");
 
 const BREVO_API_KEY = process.env.BREVO_API_KEY;
 const DB_URI = process.env.DB_URI;

@@ -24,9 +24,9 @@
 
 require("dotenv").config();
 const mongoose = require("mongoose");
-const EarlyAccessLead = require("../model/earlyAccessLeadModel");
-const { normalisePhone } = require("../services/vapiCallsService");
-const { nextDailyCallAt } = require("../services/earlyAccessCallScheduler");
+const EarlyAccessLead = require("../model/leads/earlyAccessLeadModel");
+const { normalisePhone } = require("../services/calling/vapiCallsService");
+const { nextDailyCallAt } = require("../services/calling/earlyAccessCallScheduler");
 
 const DEFAULT_TZ = "America/New_York"; // fallback for leads with no timezone
 const DRY_RUN = process.argv.includes("--dry");
