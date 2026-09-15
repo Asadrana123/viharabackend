@@ -2,6 +2,26 @@ const axios = require("axios");
 const { buildVariableValues } = require("./vapiPromptService");
 const { buildPriorContext } = require("./callMemoryService");
 const { pickCallerNumberId } = require("./callerNumberPoolService");
+// Shared *script* blocks — single source of truth in config/voicePromptShared.js.
+// These are the blocks common to EVERY funnel; they get appended to every call
+// below (idempotently), so editing one there — or adding a new one to the table
+// below — reflects on every call with no prompt-file edits. The two genuinely
+// per-funnel blocks (personaIntro's role, and the SIGNUP vs REGISTERED contact
+// rule) are intentionally NOT imported here — they stay in each prompt file
+// because they must differ per call. Path assumes services/ and config/ are
+// siblings — the same dir the prompt files import from as "./voicePromptShared".
+const {
+  VOICEMAIL_AND_SCREENING,
+  TURN_DISCIPLINE_CORE,
+  PRONUNCIATION_CORE,
+  HANDOFF,
+  GOOD_EXAMPLES,
+  BAD_EXAMPLES,
+  CALLBACK_REQUESTS,
+  AI_DISCLOSURE,
+  OPT_OUT,
+  KEEP_SHORT,
+} = require("../../config/voicePromptShared");
 
 const VAPI_API_KEY = process.env.VAPI_API_KEY;
 const VAPI_ASSISTANT_ID = process.env.VAPI_ASSISTANT_ID;
@@ -153,14 +173,43 @@ ${ctx}
 Use this only where it helps the conversation — never read it aloud or list it back. If anything here conflicts with what they tell you now, trust what they say now.`;
 };
 
-// Behavioral blocks that ride along on every call, added only if the authored
-// prompt doesn't already cover them (idempotent).
-const buildStyleBlock = (systemPrompt = "") =>
-  /##\s*How to sound/i.test(systemPrompt) ? "" : HUMAN_STYLE;
-const buildObjectionBlock = (systemPrompt = "") =>
-  /##\s*Handling objections/i.test(systemPrompt) ? "" : OBJECTION_PLAYBOOK;
-const buildNoResponseBlock = (systemPrompt = "") =>
-  /##\s*If the caller goes quiet/i.test(systemPrompt) ? "" : NO_RESPONSE_HANDLING;
+// ── Universal blocks appended to EVERY call's system prompt ────────────────────
+// THE single place that puts a shared block on every call — every funnel, every
+// follow-up, every human-requested callback, even a call with no authored prompt.
+// To add a shared block in the future: define it once in
+// config/voicePromptShared.js, import it above, and add one { guard, text } row
+// here. It then appears on every call automatically — no prompt files to touch.
+//
+// Each row is appended ONLY if the authored prompt doesn't already contain it
+// (idempotent guard on a distinctive phrase), so a prompt that already includes a
+// block inline never gets a duplicate — the guard simply skips it there.
+//
+// NOT in this table on purpose: personaIntro (role differs per funnel) and the
+// SIGNUP vs REGISTERED contact rule (mutually exclusive) — those stay per-prompt.
+const UNIVERSAL_BLOCKS = [
+  { guard: /TURN DISCIPLINE/i, text: TURN_DISCIPLINE_CORE },
+  { guard: /PRONUNCIATION/i, text: PRONUNCIATION_CORE },
+  { guard: /VOICEMAIL, GOOGLE VOICE & AUTOMATED SYSTEMS/i, text: VOICEMAIL_AND_SCREENING },
+  { guard: /HUMAN HANDOFF & BOOKING A CALL/i, text: HANDOFF },
+  { guard: /GOOD examples/, text: GOOD_EXAMPLES },
+  { guard: /BAD examples/, text: BAD_EXAMPLES },
+  { guard: /CALLBACK REQUESTS/i, text: CALLBACK_REQUESTS },
+  { guard: /##\s*How to sound/i, text: HUMAN_STYLE },
+  { guard: /##\s*Handling objections/i, text: OBJECTION_PLAYBOOK },
+  { guard: /##\s*If the caller goes quiet/i, text: NO_RESPONSE_HANDLING },
+  { guard: /If asked whether you're an AI/i, text: AI_DISCLOSURE },
+  { guard: /Honor any opt-out/i, text: OPT_OUT },
+  { guard: /Keep the whole call to a few minutes/i, text: KEEP_SHORT },
+];
+
+// Join the universal blocks not already present in the given prompt, each on its
+// own paragraph. Pass "" to force ALL of them (the no-authored-prompt path, where
+// nothing is present yet).
+const buildUniversalBlocks = (systemPrompt = "") =>
+  UNIVERSAL_BLOCKS
+    .filter((b) => !b.guard.test(systemPrompt))
+    .map((b) => "\n\n" + String(b.text).trim())
+    .join("");
 
 const VOICEMAIL_DETECTION = {
   provider: "vapi",
@@ -263,7 +312,7 @@ const buildAssistantOverrides = (contact, researchSummary, property, promptConfi
     // reason to (callback tool and/or memory); when we do, ride the behavioral
     // blocks along so tone/objection handling stay consistent.
     if (callbackTool || priorBlock) {
-      const content = (CALLBACK_INSTRUCTION.trim() + HUMAN_STYLE + OBJECTION_PLAYBOOK + NO_RESPONSE_HANDLING + priorBlock).trim();
+      const content = (CALLBACK_INSTRUCTION.trim() + buildUniversalBlocks("") + priorBlock).trim();
       overrides.model = buildModel(content, callbackTool);
     }
     console.log("[cb-debug] overrides built (no promptConfig). tools?", !!(overrides.model && overrides.model.tools),
@@ -279,14 +328,12 @@ const buildAssistantOverrides = (contact, researchSummary, property, promptConfi
       callbackTool && !alreadyHasTool
         ? promptConfig.systemPrompt + CALLBACK_INSTRUCTION
         : promptConfig.systemPrompt;
-    const styleBlock = buildStyleBlock(promptConfig.systemPrompt);
-    const objectionBlock = buildObjectionBlock(promptConfig.systemPrompt);
-    const noResponseBlock = buildNoResponseBlock(promptConfig.systemPrompt);
-    const systemContent = withCallback + styleBlock + objectionBlock + noResponseBlock + priorBlock;
+    const sharedBlocks = buildUniversalBlocks(promptConfig.systemPrompt);
+    const systemContent = withCallback + sharedBlocks + priorBlock;
 
     overrides.model = buildModel(systemContent, callbackTool);
   } else if (callbackTool || priorBlock) {
-    const content = (CALLBACK_INSTRUCTION.trim() + HUMAN_STYLE + OBJECTION_PLAYBOOK + NO_RESPONSE_HANDLING + priorBlock).trim();
+    const content = (CALLBACK_INSTRUCTION.trim() + buildUniversalBlocks("") + priorBlock).trim();
     overrides.model = buildModel(content, callbackTool);
   }
 
