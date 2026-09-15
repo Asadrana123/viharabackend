@@ -41,6 +41,11 @@ const callLogSchema = new mongoose.Schema(
     startedAt: { type: Date, default: null },
     endedAt: { type: Date, default: null },
     cost: { type: Number, default: 0 },
+
+    // Notifications. Set the first time we post this "interested" call to Slack,
+    // so a re-delivered end-of-call webhook can never trigger a duplicate ping.
+    // Null = not yet notified; used as the atomic claim in callLogService.
+    interestedSlackNotifiedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );
