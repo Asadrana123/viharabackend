@@ -12,6 +12,7 @@ const getAuctionWonEmailTemplate = require('../htmlPages/bidding/auctionWonEmail
 const getAuctionLostEmailTemplate = require('../htmlPages/bidding/auctionLostEmail');
 const getLastHourReminderEmailTemplate = require('../htmlPages/bidding/lastHourReminderEmail');
 const getAdminBidNotificationEmail = require('../htmlPages/bidding/adminBidNotificationEmail');
+const { sendAuctionClosedSellerReport } = require('../controller/property/sellerController');
 
 let activeAuctions;
 let userAuctions;
@@ -503,6 +504,14 @@ function registerSocketHandlers(socket) {
                 currentBidder: winnerId,
                 status: "sold"
               });
+
+              // Email the full closed-auction report (PDF + Excel) to every
+              // assigned seller. Fires whether or not there was a winning bid.
+              // Fire-and-forget — the sender swallows its own errors and never
+              // blocks finalization.
+              sendAuctionClosedSellerReport(data.auctionId)
+                .catch(err => console.error('Seller auction-closed report error:', err));
+
               // Send result emails to all bidders (fire-and-forget)
               if (winnerId) {
                 ManualBid.distinct('userId', { auctionId: data.auctionId })

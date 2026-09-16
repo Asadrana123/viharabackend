@@ -21,6 +21,7 @@
 
 const ExcelJS = require("exceljs");
 const { DateTime } = require("luxon");
+const PDFDocument = require("pdfkit");
 
 // ---------- formatting helpers ----------
 
@@ -336,8 +337,40 @@ async function buildAuctionReportWorkbook(report) {
   return wb;
 }
 
+// ---------- buffer renderers (for email attachments) ----------
+//
+// These wrap the same renderers used by the HTTP exports, but produce an
+// in-memory Buffer instead of streaming to an HTTP response — so the report
+// can be attached to an email when the auction closes automatically.
+
+// Render the PDF report into a Buffer.
+function renderAuctionReportPdfBuffer(report) {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: "A4", margin: 50 });
+      const chunks = [];
+      doc.on("data", (chunk) => chunks.push(chunk));
+      doc.on("end", () => resolve(Buffer.concat(chunks)));
+      doc.on("error", reject);
+
+      renderAuctionReportPdf(doc, report);
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+// Render the Excel workbook into a Buffer.
+async function buildAuctionReportExcelBuffer(report) {
+  const workbook = await buildAuctionReportWorkbook(report);
+  return workbook.xlsx.writeBuffer();
+}
+
 module.exports = {
   renderAuctionReportPdf,
   buildAuctionReportWorkbook,
-  buildReportFilename
+  buildReportFilename,
+  renderAuctionReportPdfBuffer,
+  buildAuctionReportExcelBuffer
 };

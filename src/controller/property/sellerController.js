@@ -9,10 +9,14 @@ const { resolvePropertyTimezone } = require("../../utils/resolveTimezone");
 const {
   renderAuctionReportPdf,
   buildAuctionReportWorkbook,
-  buildReportFilename
+  buildReportFilename,
+  renderAuctionReportPdfBuffer,
+  buildAuctionReportExcelBuffer
 } = require("../../utils/sellerReportExport");
 const PDFDocument = require("pdfkit");
 const mongoose = require("mongoose");
+const sendEmail = require("../../utils/sendEmail");
+const getSellerAuctionClosedEmailTemplate = require("../../htmlPages/bidding/sellerAuctionClosedEmail");
 
 // Seller-dashboard only: house/admin accounts whose bids must not be shown to
 // sellers (excluded from the bids list, the bids count, and the highest-bid
@@ -261,36 +265,18 @@ exports.getSellerAuctionRegistrations = catchAsyncError(async (req, res, next) =
   });
 });
 
-// Gather the full report for one auction — the same data (and same filters:
-// house accounts excluded, rejected registrations excluded) that the seller
-// dashboard shows, but with every bid and registration (no pagination).
-// Returns { error } on access failure, otherwise { report }.
-async function gatherSellerAuctionReport(req, auctionId) {
-  const isAdmin = req.user.role === "admin";
+// Shared field selection so the seller-facing and system-context gathers stay
+// identical.
+const REPORT_AUCTION_SELECT =
+  "productName street city county state zipCode propertyType assetType " +
+  "occupancyStatus beds baths squareFootage lotSize yearBuilt apn status " +
+  "auctionStartDate auctionEndDate reservePrice startBid minIncrement";
 
-  if (!mongoose.Types.ObjectId.isValid(auctionId)) {
-    return { error: { code: 400, message: "Invalid auction ID" } };
-  }
-
-  const query = isAdmin
-    ? { _id: auctionId }
-    : { _id: auctionId, sellerIds: req.user._id };
-
-  const auction = await Product.findOne(query).select(
-    "productName street city county state zipCode propertyType assetType " +
-    "occupancyStatus beds baths squareFootage lotSize yearBuilt apn status " +
-    "auctionStartDate auctionEndDate reservePrice startBid minIncrement"
-  );
-
-  if (!auction) {
-    return {
-      error: {
-        code: isAdmin ? 404 : 403,
-        message: isAdmin ? "Auction not found" : "Auction not found or you do not have access"
-      }
-    };
-  }
-
+// Build the report object from an already-fetched auction document.
+// No access control and no HTTP coupling — callers decide who may see it.
+// Same filters as the dashboard: house accounts excluded, rejected
+// registrations excluded.
+async function buildAuctionReport(auction, auctionId) {
   const excludedBidderIds = await getExcludedBidderIds();
 
   // Registration counts (rejected excluded).
@@ -321,7 +307,7 @@ async function gatherSellerAuctionReport(req, auctionId) {
     .sort({ submittedAt: -1 })
     .lean();
 
-  const report = {
+  return {
     generatedAt: new Date(),
     timezone: resolvePropertyTimezone(auction),
     property: {
@@ -364,7 +350,49 @@ async function gatherSellerAuctionReport(req, auctionId) {
       submittedAt: r.submittedAt
     }))
   };
+}
 
+// Seller/admin gather — enforces access (used by the HTTP export endpoints).
+// Returns { error } on access failure, otherwise { report }.
+async function gatherSellerAuctionReport(req, auctionId) {
+  const isAdmin = req.user.role === "admin";
+
+  if (!mongoose.Types.ObjectId.isValid(auctionId)) {
+    return { error: { code: 400, message: "Invalid auction ID" } };
+  }
+
+  const query = isAdmin
+    ? { _id: auctionId }
+    : { _id: auctionId, sellerIds: req.user._id };
+
+  const auction = await Product.findOne(query).select(REPORT_AUCTION_SELECT);
+
+  if (!auction) {
+    return {
+      error: {
+        code: isAdmin ? 404 : 403,
+        message: isAdmin ? "Auction not found" : "Auction not found or you do not have access"
+      }
+    };
+  }
+
+  const report = await buildAuctionReport(auction, auctionId);
+  return { report };
+}
+
+// System-context gather — no logged-in user. Used when the auction closes
+// automatically and there is no request to authorize against.
+async function gatherAuctionReportById(auctionId) {
+  if (!mongoose.Types.ObjectId.isValid(auctionId)) {
+    return { error: { code: 400, message: "Invalid auction ID" } };
+  }
+
+  const auction = await Product.findOne({ _id: auctionId }).select(REPORT_AUCTION_SELECT);
+  if (!auction) {
+    return { error: { code: 404, message: "Auction not found" } };
+  }
+
+  const report = await buildAuctionReport(auction, auctionId);
   return { report };
 }
 
@@ -402,3 +430,73 @@ exports.exportSellerAuctionExcel = catchAsyncError(async (req, res, next) => {
   await workbook.xlsx.write(res);
   res.end();
 });
+
+// Email the full closed-auction report (PDF + Excel) to every assigned seller.
+// Called from the socket auction-finalization flow. Sends even when there were
+// no bids. Fully self-contained and fire-and-forget: it swallows its own errors
+// so it can never block or break auction finalization.
+exports.sendAuctionClosedSellerReport = async (auctionId) => {
+  try {
+    const { error, report } = await gatherAuctionReportById(auctionId);
+    if (error) {
+      console.error(`Seller report skipped for auction ${auctionId}: ${error.message}`);
+      return;
+    }
+
+    // Resolve every assigned seller's email from the product's sellerIds array.
+    const product = await Product.findById(auctionId).select("sellerIds");
+    const sellerIds = (product && product.sellerIds) || [];
+    if (!sellerIds.length) {
+      console.log(`Auction ${auctionId} has no assigned sellers — report not sent.`);
+      return;
+    }
+
+    const sellers = await User.find({ _id: { $in: sellerIds } })
+      .select("name email")
+      .lean();
+    const recipients = sellers.filter((s) => s.email);
+    if (!recipients.length) {
+      console.log(`Auction ${auctionId} sellers have no email on file — report not sent.`);
+      return;
+    }
+
+    // Render both attachments once and reuse them for every recipient.
+    const [pdfBuffer, excelBuffer] = await Promise.all([
+      renderAuctionReportPdfBuffer(report),
+      buildAuctionReportExcelBuffer(report)
+    ]);
+
+    const filename = buildReportFilename(report);
+    const attachments = [
+      {
+        filename: `${filename}.pdf`,
+        content: pdfBuffer,
+        contentType: "application/pdf"
+      },
+      {
+        filename: `${filename}.xlsx`,
+        content: excelBuffer,
+        contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      }
+    ];
+
+    const propertyLabel =
+      report.property?.productName || report.property?.location || "your property";
+    const subject = `Auction closed — report for ${propertyLabel}`;
+
+    // Send individually so sellers don't see each other's addresses.
+    for (const seller of recipients) {
+      const html = getSellerAuctionClosedEmailTemplate({
+        name: seller.name || "Seller",
+        report
+      });
+      sendEmail(seller.email, seller.name, subject, html, attachments);
+    }
+
+    console.log(
+      `Seller auction-closed report sent for ${auctionId} to ${recipients.length} seller(s).`
+    );
+  } catch (err) {
+    console.error(`sendAuctionClosedSellerReport error for auction ${auctionId}:`, err);
+  }
+};
