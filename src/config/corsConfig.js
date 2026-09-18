@@ -3,7 +3,7 @@
 const allowedOrigins = [
   "https://www.vihara.ai",
   "http://localhost:3000",
-  "https://vihara-new-website-env-staging-nodifys-projects.vercel.app/"
+  "https://vihara-new-website-env-staging-nodifys-projects.vercel.app"
 ];
 
 // CORS options for Express
