@@ -155,6 +155,7 @@ function mapProductToProperty(product) {
 
   return {
     id: String(product._id),
+    slug: product.slug || null,
     name: product.productName,
     address: buildAddress(product),
     type: buildType(product),
@@ -170,6 +171,7 @@ function mapProductToProperty(product) {
 const PROPERTY_FIELDS = [
   "productName", "street", "city", "state", "zipCode",
   "beds", "baths", "assetType", "propertyType", "startBid",
+  "slug",
   "investmentData.valuation", "investmentData.rental",
 ].join(" ");
 

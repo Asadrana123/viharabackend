@@ -5,6 +5,8 @@ const ErrorHandler = require("../../utils/errorhandler");
 const CallbackRequest = require("../../model/calling/callbackRequestModel");
 const { createCallbackRequest } = require("../../services/calling/voiceCallbackService");
 const { saveEndOfCallReport } = require("../../services/calling/callLogService");
+// ── RAG lookup ── retrieval brain for the lookupPropertyInfo tool.
+const { answerPropertyQuestion } = require("../../services/rag/propertyRetrievalService");
 
 const VAPI_WEBHOOK_SECRET = process.env.VAPI_WEBHOOK_SECRET;
 
@@ -56,6 +58,37 @@ function extractCallbackToolCalls(message = {}) {
   return out;
 }
 
+// ── RAG lookup ── Same extraction shape as callbacks, for lookupPropertyInfo.
+function extractLookupToolCalls(message = {}) {
+  const out = [];
+  const list = message.toolCalls || message.toolCallList || [];
+  for (const tc of list) {
+    const fn = tc.function || tc;
+    if (fn && fn.name === "lookupPropertyInfo") {
+      out.push({ id: tc.id || tc.toolCallId, args: parseArgs(fn.arguments) });
+    }
+  }
+  const legacy = message.functionCall;
+  if (legacy && legacy.name === "lookupPropertyInfo") {
+    out.push({ id: message.toolCallId, args: parseArgs(legacy.parameters || legacy.arguments) });
+  }
+  return out;
+}
+
+// ── RAG lookup ── Resolve which property this call is about, from call metadata.
+// Prefer an explicit slug, then the `auction-<slug>` source stamped by the
+// property lead flow, then a raw propertyId. Returns nulls for non-property
+// calls (the lookup tool is only attached on property calls, but stay safe).
+function resolvePropertyRef(metadata = {}) {
+  const propertyId = metadata.propertyId || null;
+  let slug = metadata.propertySlug || null;
+  if (!slug && typeof metadata.source === "string") {
+    const m = metadata.source.match(/^auction-(.+)$/);
+    if (m) slug = m[1];
+  }
+  return { slug, propertyId };
+}
+
 const handleVapiWebhook = catchAsyncError(async (req, res, next) => {
   // ── DEBUG: prove VAPI reached this handler ──────────────────────────────────
   console.log("[cb-debug] === WEBHOOK HIT ===");
@@ -101,11 +134,16 @@ const handleVapiWebhook = catchAsyncError(async (req, res, next) => {
     return res.status(200).json({ received: true });
   }
 
-  const toolCalls = extractCallbackToolCalls(message);
-  console.log("[cb-debug] scheduleCallback tool calls found:", toolCalls.length, JSON.stringify(toolCalls));
+  const callbackCalls = extractCallbackToolCalls(message);
+  const lookupCalls = extractLookupToolCalls(message); // ── RAG lookup ──
+  console.log(
+    "[cb-debug] tool calls →",
+    "scheduleCallback:", callbackCalls.length,
+    "| lookupPropertyInfo:", lookupCalls.length
+  );
 
-  if (toolCalls.length === 0) {
-    console.log("[cb-debug] no scheduleCallback in message. keys on message:", Object.keys(message));
+  if (callbackCalls.length === 0 && lookupCalls.length === 0) {
+    console.log("[cb-debug] no actionable tool calls. keys on message:", Object.keys(message));
     return res.status(200).json({ received: true });
   }
 
@@ -115,7 +153,9 @@ const handleVapiWebhook = catchAsyncError(async (req, res, next) => {
   console.log("[cb-debug] customer.number =", customer.number, "| metadata =", JSON.stringify(metadata));
 
   const results = [];
-  for (const tc of toolCalls) {
+
+  // ── Callbacks (unchanged) ───────────────────────────────────────────────────
+  for (const tc of callbackCalls) {
     try {
       const { callback, spokenReply } = await createCallbackRequest({
         phone: tc.args.phone || customer.number,
@@ -137,6 +177,29 @@ const handleVapiWebhook = catchAsyncError(async (req, res, next) => {
         toolCallId: tc.id,
         result: "I couldn't schedule that callback. Could you tell me again when you'd like me to call?",
       });
+    }
+  }
+
+  // ── RAG lookup ── Property questions ────────────────────────────────────────
+  if (lookupCalls.length) {
+    const { slug, propertyId } = resolvePropertyRef(metadata);
+    for (const tc of lookupCalls) {
+      try {
+        const { text } = await answerPropertyQuestion({
+          question: tc.args.question || tc.args.query || "",
+          slug,
+          propertyId,
+          topic: tc.args.topic || null,
+        });
+        console.log("[lookup] slug:", slug, "| q:", tc.args.question, "| →", text?.slice(0, 120));
+        results.push({ toolCallId: tc.id, result: text });
+      } catch (err) {
+        console.error("[lookup] FAILED:", err.message, err.stack);
+        results.push({
+          toolCallId: tc.id,
+          result: "I can't pull that detail up right this second.",
+        });
+      }
     }
   }
 
