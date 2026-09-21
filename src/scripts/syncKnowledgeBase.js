@@ -19,12 +19,7 @@ const mongoose = require('mongoose');
 const { syncAllProperties, syncProperty } = require('../services/rag/ragSyncService');
 
 // Accept whichever name this project already uses for the Mongo URI.
-const MONGO_URI =
-  process.env.MONGO_URI ||
-  process.env.DB_URL ||
-  process.env.DATABASE_URL ||
-  process.env.MONGODB_URI ||
-  process.env.MONGO_URL;
+const MONGO_URI = process.env.DB_URI
 
 async function main() {
   if (!MONGO_URI) {
