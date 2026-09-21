@@ -42,6 +42,13 @@ const norCalLeadSchema = new mongoose.Schema(
     // Market is fixed for this page but stored explicitly for reporting.
     market: { type: String, default: "Northern California", trim: true },
 
+    // ── Buy-box preferences (from the form) ───────────────────────────────────
+    // Drive the matched shortlist and what Maya references on the call.
+    where: { type: [String], default: [] },              // areas: Central Valley, Sierra foothills, San Francisco, Anywhere in NorCal
+    budget: { type: String, default: "", trim: true },   // e.g. "Up to $450K"
+    bedrooms: { type: String, default: "", trim: true }, // Any | 2+ | 3+ | 4+
+    when: { type: String, default: "", trim: true },     // Right away | 1 to 3 months | 3 to 6 months | Just looking
+
     // IANA timezone captured silently from the browser at submit
     // (e.g. "America/Los_Angeles"). Drives the daily local callback slots.
     timezone: { type: String, default: "", trim: true },

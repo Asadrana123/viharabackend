@@ -37,6 +37,12 @@ const propertyLeadSchema = new mongoose.Schema(
     // Cash investor | Owner-occupant | Fix and flip | Buy and hold
     buyerType: { type: String, default: "", trim: true },
 
+    // Buyer's quoted price (Quote Your Price funnel), in whole dollars. Set from
+    // the client's DB-bound slider (floor = startBid, ceiling = ViharaValue + 50k).
+    // null when the lead did not quote a price. 0 is not expected (slider floor is
+    // startBid), but null vs a number keeps "not quoted" distinct from any value.
+    quotePrice: { type: Number, default: null },
+
     // IANA timezone captured silently from the browser at submit
     // (e.g. "America/Los_Angeles"). Drives the daily local callback.
     timezone: { type: String, default: "", trim: true },

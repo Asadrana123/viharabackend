@@ -68,6 +68,36 @@ const PROMPT_VARIABLES = [
     example: "two hundred fifty thousand to five hundred thousand dollars",
   },
   {
+    key: "prospect_quote",
+    label: "Prospect price quote (property auction, from form, spoken)",
+    scope: "contact",
+    example: "nine hundred thousand dollars",
+  },
+  {
+    key: "prospect_where",
+    label: "Prospect areas (NorCal buy-box, from form)",
+    scope: "contact",
+    example: "Central Valley, Sierra foothills",
+  },
+  {
+    key: "prospect_budget",
+    label: "Prospect budget (NorCal buy-box, from form, spoken)",
+    scope: "contact",
+    example: "up to four hundred fifty thousand dollars",
+  },
+  {
+    key: "prospect_bedrooms",
+    label: "Prospect bedrooms (NorCal buy-box, from form)",
+    scope: "contact",
+    example: "3+",
+  },
+  {
+    key: "prospect_timeline",
+    label: "Prospect timeline (NorCal buy-box, from form)",
+    scope: "contact",
+    example: "1 to 3 months",
+  },
+  {
     key: "property_name",
     label: "Property name",
     scope: "property",
@@ -128,6 +158,11 @@ const buildVariableValues = (contact = {}, researchSummary = "", property = {}) 
   prospect_markets: contact.market || "",
   prospect_buyer_type: contact.buyerType || "",
   prospect_deal_size: contact.dealSize || "",
+  prospect_quote: contact.quote || "",
+  prospect_where: contact.where || "",
+  prospect_budget: contact.budget || "",
+  prospect_bedrooms: contact.bedrooms || "",
+  prospect_timeline: contact.timeline || "",
 
   property_name: property.name || "",
   property_address: property.address || "",

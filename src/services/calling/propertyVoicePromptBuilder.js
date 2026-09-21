@@ -197,7 +197,7 @@ function crossSellEntry(index, p) {
     }${hasText(p.state) ? `, ${p.state}` : ""}`
   );
   lines.push(
-    `- Bank-owned${type ? `, ${type}` : ""}${occ.known ? `; currently ${occ.soldAs}` : ""}.`
+    `- ${type}${occ.known ? `; currently ${occ.soldAs}` : ""}.`
   );
   if (loc) lines.push(`- ${loc}.`);
   if (isPosNum(p.startBid) || isPosNum(estimate)) {
@@ -255,7 +255,7 @@ function buildPropertyVoicePrompt(product = {}, otherProperties = []) {
 
   // ── PROPERTY FACTS (only present fields) ──────────────────────────────────
   const basics = [];
-  if (shortType) basics.push(`- Bank-owned ${shortType}.`);
+  if (shortType) basics.push(`- ${shortType}.`);
   const addrParts = [streetFull, p.city, p.state, p.zipCode].filter(hasText).join(", ");
   if (addrParts)
     basics.push(`- ${addrParts}${hasText(p.county) ? ` — ${p.county} County` : ""}.`);
@@ -288,7 +288,7 @@ function buildPropertyVoicePrompt(product = {}, otherProperties = []) {
       "- The exact auction date goes out with bidding instructions — if asked when the auction is, route it to the advisor rather than stating a date."
     );
   auction.push(
-    `- Bank-owned, sold as-is${occ.soldAs ? ` and ${occ.soldAs}` : ""} — no repairs, warranties, or seller disclosures beyond what's provided.`
+    `- Sold as-is${occ.soldAs ? ` and ${occ.soldAs}` : ""} — no repairs, warranties, or seller disclosures beyond what's provided.`
   );
   auction.push("- Fully online; bidders don't attend in person.");
 
@@ -308,7 +308,7 @@ ${entries}`;
 
   // ── GOAL line 2 (why it's worth a look) ───────────────────────────────────
   const worthLook = [
-    shortType ? `a bank-owned${occ.vacant ? ", vacant" : ""} ${shortType}` : "a bank-owned property",
+    shortType ? `a${occ.vacant ? " vacant" : ""} ${shortType}` : "a property",
     hasText(p.city) ? `in ${p.city}` : "",
     startBidWords ? `opening at ${startBidWords}` : "",
     hasDate ? `on ${startDate}` : "",
@@ -324,8 +324,10 @@ NEVER ASK FOR CONTACT INFO (hard rule — overrides everything else)
 - If they want details sent, say the team will follow up with them — do NOT ask for an email or phone number to send them to. Bidding instructions go by text to the number they registered with.
 
 CONTEXT
-- {{prospect_full_name}} just registered on the Vihara auction landing page for ${addressSpoken} — a bank-owned property going to online auction. You are following up on a request they made seconds ago, not cold-calling.
+- {{prospect_full_name}} just registered on the Vihara auction landing page for ${addressSpoken} — a property going to online auction. You are following up on a request they made seconds ago, not cold-calling.
 - On the form they told us the kind of buyer they are (cash investor, owner-occupant, fix-and-flip, or buy-and-hold). Treat that as a starting point to confirm, not gospel — if it looks blank, just ask.
+- On the form, some buyers also tell us the highest price they'd be willing to pay for this home. This buyer's quoted price is: {{prospect_quote}}
+- If that price is blank, they did NOT give a quote — never mention a price they gave, and never invent one. If it is present, that quote is the reason for this call: bring it up warmly and early, thank them for putting in their number, confirm it's the price they had in mind, and let it guide the conversation. It's a quote to help us match them and get their advisor ready, not a formal offer, so never treat it as binding and don't repeat it back more than once.
 - This is a warm inbound lead. Be upbeat and genuinely helpful, never pushy.
 
 TURN DISCIPLINE (overrides everything else)
@@ -397,7 +399,7 @@ ${auction.join("\n")}${crossSell}
 OBJECTION HANDLING (one or two sentences, then hand the turn back; numbers as words)
 - "How did you get my number?" → "You just registered on our auction page for ${cityState || "this property"}, so I'm following up on that. If you'd rather be removed, just say the word."
 - "Is this a scam?" → "Totally fair to ask — Vihara is a licensed real estate auction platform, and you can verify us at Vihara dot A I."
-- "Why is it priced this way?" → "It's bank-owned, so the lender sets an attractive starting bid to launch online bidding — that opening bid is well below our estimate."
+- "Why is it priced this way?" → "The lender sets an attractive starting bid to launch online bidding — that opening bid is well below our estimate."
 - "Is it occupied?" → "${occ.objection}"
 - "When is the auction?" → "${hasDate ? `${auctionWindow} — we'll text you full instructions before it opens.` : "Let me have our advisor confirm the exact schedule with you — we'll text full instructions before it opens."}"
 - "What time does it start?" → "The exact time goes out with your bidding instructions — let me have our advisor confirm the schedule with you."
@@ -416,7 +418,7 @@ Route to the advisor whenever: they ask something you don't have a verified answ
   const voicemailMessage = `Hi {{prospect_name}}, this is Maya from Vihara. Thanks for registering interest in ${
     hasText(streetFull) ? streetFull : addressSpoken
   }${hasText(p.city) ? ` in ${p.city}` : ""}${
-    startBidWords ? ` — a bank-owned place opening at ${startBidWords}` : ""
+    startBidWords ? ` — opening at ${startBidWords}` : ""
   }${hasDate ? ` on ${startDate}` : ""}. We'll text bidding instructions to your number before the auction opens, and I'll follow up. Talk soon!`;
 
   const endCallMessage = `Perfect, {{prospect_name}} — you're all set${

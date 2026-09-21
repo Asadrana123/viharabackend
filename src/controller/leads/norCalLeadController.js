@@ -37,6 +37,10 @@ const registerNorCalLead = catchAsyncError(async (req, res, next) => {
     phone,
     buyerType,
     market,
+    where,
+    budget,
+    bedrooms,
+    when,
     timezone,
     consent,
     consentText,
@@ -58,6 +62,11 @@ const registerNorCalLead = catchAsyncError(async (req, res, next) => {
   const normalizedMarket =
     market && market.trim() ? market.trim() : "Northern California";
 
+  // Buy-box preferences (kept as sent; where is normalized to a clean array).
+  const whereList = Array.isArray(where)
+    ? where.map((w) => (typeof w === "string" ? w.trim() : "")).filter(Boolean)
+    : [];
+
   // ── 1. Create the lead up front — unique email index is the dedup gate ──
   let lead;
   try {
@@ -68,6 +77,10 @@ const registerNorCalLead = catchAsyncError(async (req, res, next) => {
       phoneNormalized,              // canonical E.164 for calling
       buyerType: buyerType || "",
       market: normalizedMarket,
+      where: whereList,
+      budget: budget || "",
+      bedrooms: bedrooms || "",
+      when: when || "",
       timezone: timezone || "",
       consent: consent === true,
       consentText: consentText || "",
@@ -93,6 +106,10 @@ const registerNorCalLead = catchAsyncError(async (req, res, next) => {
       timezone: lead.timezone,
       market: lead.market,
       buyerType: lead.buyerType,
+      where: lead.where,
+      budget: lead.budget,
+      bedrooms: lead.bedrooms,
+      when: lead.when,
     }).catch((e) => console.error("[nor-cal-call] scheduling failed:", e.message));
     call = { attempted: true };
   } else {
@@ -120,6 +137,10 @@ const registerNorCalLead = catchAsyncError(async (req, res, next) => {
     extraFields: [
       { label: "Market", value: lead.market },
       { label: "Buyer Type", value: lead.buyerType },
+      { label: "Where", value: lead.where && lead.where.length ? lead.where.join(", ") : "—" },
+      { label: "Budget", value: lead.budget || "—" },
+      { label: "Bedrooms", value: lead.bedrooms || "—" },
+      { label: "When", value: lead.when || "—" },
     ],
   }).catch((e) => console.error("[slack] nor-cal notify failed:", e.message));
 

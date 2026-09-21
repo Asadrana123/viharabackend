@@ -29,6 +29,17 @@ const { DID_NOT_CONNECT_REASONS, WAIT_MS } = require("./registrationCallService"
 const { enqueueBurst, PRIORITY } = require("./callDispatchQueue");
 const norCalVoicePrompt = require("../../config/norCalVoicePrompt");
 
+// Speech-friendly budget words (buy-box brackets are a fixed known set; a new
+// bracket falls back to the raw label rather than reading a "$" symbol).
+const BUDGET_SPEECH = {
+  "Up to $350K": "up to three hundred fifty thousand dollars",
+  "Up to $450K": "up to four hundred fifty thousand dollars",
+  "Up to $600K": "up to six hundred thousand dollars",
+  "Up to $800K": "up to eight hundred thousand dollars",
+  "Over $800K": "over eight hundred thousand dollars",
+};
+const budgetToWords = (b) => BUDGET_SPEECH[b] || b || "";
+
 // Three daily follow-up slots in the lead's local timezone (24h clock).
 // A no-answer rolls the lead to the NEXT slot; after the last slot of the day it
 // rolls to the first slot tomorrow. Keep this list sorted ascending.
@@ -84,6 +95,11 @@ function callPayload(lead) {
     phone: lead.phoneNormalized || lead.phone, // dial the canonical E.164 form
     market: lead.market || "Northern California",
     buyerType: lead.buyerType,
+    // Buy-box preferences, in a form Maya can speak ({{prospect_where}} etc.).
+    where: Array.isArray(lead.where) ? lead.where.join(", ") : (lead.where || ""),
+    budget: budgetToWords(lead.budget),
+    bedrooms: lead.bedrooms || "",
+    timeline: lead.when || "",
     promptConfig: norCalVoicePrompt, // { systemPrompt, firstMessage, voicemailMessage, endCallMessage }
     source: "nor-cal",
   };

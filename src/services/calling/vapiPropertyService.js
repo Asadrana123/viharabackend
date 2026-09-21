@@ -115,13 +115,13 @@ function buildAddress(product) {
 }
 
 function buildType(product) {
-  const asset = ASSET_TYPE_SPEECH[product.assetType] || product.assetType || "";
+  // assetType (REO / Foreclosure / Short Sale) is intentionally NOT spoken —
+  // the call does not characterize the property by its distressed type.
   const type = PROPERTY_TYPE_SPEECH[product.propertyType] || product.propertyType || "";
 
   return [
     product.beds ? `${product.beds}-bedroom` : "",
     product.baths ? `${product.baths}-bathroom` : "",
-    asset,
     type,
   ]
     .filter(Boolean)
@@ -155,6 +155,7 @@ function mapProductToProperty(product) {
 
   return {
     id: String(product._id),
+    slug: product.slug || null,
     name: product.productName,
     address: buildAddress(product),
     type: buildType(product),
@@ -170,6 +171,7 @@ function mapProductToProperty(product) {
 const PROPERTY_FIELDS = [
   "productName", "street", "city", "state", "zipCode",
   "beds", "baths", "assetType", "propertyType", "startBid",
+  "slug",
   "investmentData.valuation", "investmentData.rental",
 ].join(" ");
 
