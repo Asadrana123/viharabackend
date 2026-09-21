@@ -63,7 +63,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
 
   const {
     fullName, phone, email, buyerType, timezone,
-    consent, consentText, consentTimestamp, eventId,
+    consent, consentText, consentTimestamp, eventId, quotePrice,
   } = req.body;
 
   if (!fullName || !fullName.trim())
@@ -79,6 +79,11 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
 
   const normalizedEmail = email.trim().toLowerCase();
 
+  // Buyer's quoted price. Stored only when a valid positive number is sent — the
+  // client only sends it when the DB-bound slider was available. Never invented.
+  const quoteNum = Number(quotePrice);
+  const hasQuote = Number.isFinite(quoteNum) && quoteNum > 0;
+
   // ── Create the lead — compound unique (propertySlug, phoneNormalized) gate ──
   let lead;
   try {
@@ -89,6 +94,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       phoneNormalized,
       email: normalizedEmail,
       buyerType: buyerType || "",
+      quotePrice: hasQuote ? quoteNum : null,
       timezone: timezone || "",
       consent: consent === true,
       consentText: consentText || "",
@@ -115,6 +121,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       timezone: lead.timezone,
       email: lead.email,
       buyerType: lead.buyerType,
+      quotePrice: lead.quotePrice,
     }).catch((e) => console.error(`[property-call:${slug}] scheduling failed:`, e.message));
     call = { attempted: true };
   } else {
@@ -142,6 +149,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       { label: "Property", value: property.city || property.productName || slug },
       { label: "Slug", value: slug },
       { label: "Buyer Type", value: lead.buyerType },
+      { label: "Quote", value: hasQuote ? `$${quoteNum.toLocaleString("en-US")}` : "—" },
     ],
   }).catch((e) => console.error(`[slack] property notify failed (${slug}):`, e.message));
 

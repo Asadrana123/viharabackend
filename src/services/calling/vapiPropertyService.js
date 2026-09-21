@@ -115,13 +115,13 @@ function buildAddress(product) {
 }
 
 function buildType(product) {
-  const asset = ASSET_TYPE_SPEECH[product.assetType] || product.assetType || "";
+  // assetType (REO / Foreclosure / Short Sale) is intentionally NOT spoken —
+  // the call does not characterize the property by its distressed type.
   const type = PROPERTY_TYPE_SPEECH[product.propertyType] || product.propertyType || "";
 
   return [
     product.beds ? `${product.beds}-bedroom` : "",
     product.baths ? `${product.baths}-bathroom` : "",
-    asset,
     type,
   ]
     .filter(Boolean)

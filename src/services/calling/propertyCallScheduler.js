@@ -24,6 +24,8 @@ const { buildPropertyVoicePrompt } = require("./propertyVoicePromptBuilder");
 const { resolvePropertyTimezone } = require("../../utils/resolveTimezone");
 const { DID_NOT_CONNECT_REASONS, WAIT_MS } = require("./registrationCallService");
 const { enqueueBurst, PRIORITY } = require("./callDispatchQueue");
+// Spoken currency for the AI call ({{prospect_quote}} in the prompt).
+const { dollarsToWords } = require("./vapiPropertyService");
 
 // Three daily follow-up slots in the lead's local timezone (24h clock).
 const CALL_SLOTS = [
@@ -97,6 +99,8 @@ function callPayload(lead, promptConfig) {
     email: lead.email,
     phone: lead.phoneNormalized || lead.phone,
     buyerType: lead.buyerType,
+    // Buyer's price quote, spelled out for TTS ("" when the lead did not quote).
+    quote: dollarsToWords(lead.quotePrice),
     promptConfig, // { systemPrompt, firstMessage, voicemailMessage, endCallMessage }
     source: `auction-${lead.propertySlug}`,
   };
@@ -137,7 +141,7 @@ async function applyOutcome(lead, connected, fallbackTz) {
  * with consent. Builds this property's prompt, runs the burst (60s initial wait),
  * then stops or schedules the first daily callback.
  *
- * @param {object} lead { leadId, propertySlug, fullName, email, phone, phoneNormalized, timezone, buyerType }
+ * @param {object} lead { leadId, propertySlug, fullName, email, phone, phoneNormalized, timezone, buyerType, quotePrice }
  */
 async function scheduleSignupCall(lead = {}) {
   if (!lead || !lead.leadId || !lead.propertySlug) return;

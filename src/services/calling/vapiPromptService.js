@@ -68,6 +68,12 @@ const PROMPT_VARIABLES = [
     example: "two hundred fifty thousand to five hundred thousand dollars",
   },
   {
+    key: "prospect_quote",
+    label: "Prospect price quote (property auction, from form, spoken)",
+    scope: "contact",
+    example: "nine hundred thousand dollars",
+  },
+  {
     key: "property_name",
     label: "Property name",
     scope: "property",
@@ -128,6 +134,7 @@ const buildVariableValues = (contact = {}, researchSummary = "", property = {}) 
   prospect_markets: contact.market || "",
   prospect_buyer_type: contact.buyerType || "",
   prospect_deal_size: contact.dealSize || "",
+  prospect_quote: contact.quote || "",
 
   property_name: property.name || "",
   property_address: property.address || "",
