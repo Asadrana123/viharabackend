@@ -1,4 +1,4 @@
-// controller/propertyImportController.js
+// controller/property/propertyImportController.js
 //
 // Admin-only endpoints powering the Property Importer tab. These build a draft;
 // they never persist. The admin reviews/edits the returned draft in the UI and
@@ -6,58 +6,52 @@
 
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const Errorhandler = require("../../utils/errorhandler");
-const { buildPropertyDraft } = require("../../services/property/propertyImportService");
+const { buildPropertyDraftFromZillow } = require("../../services/property/propertyImportService");
+const firecrawlService = require("../../services/integrations/firecrawlService");
 const cloudinaryService = require("../../services/shared/cloudinaryService");
 
 /**
- * POST /api/v1/property-import/parse
- * multipart/form-data:
- *   - pdf        : the PropStream CMA PDF (required, field name "pdf")
- *   - imageUrls  : JSON string array of Zillow photo URLs (optional)
+ * Validate a Zillow listing URL and strip query/hash so Firecrawl always gets
+ * the canonical page. Returns the clean URL, or null when invalid.
+ */
+function normalizeZillowUrl(raw) {
+    if (typeof raw !== "string" || !raw.trim()) return null;
+    try {
+        const url = new URL(raw.trim());
+        const isZillowHost = url.hostname === "zillow.com" || url.hostname.endsWith(".zillow.com");
+        if (url.protocol !== "https:" || !isZillowHost) return null;
+        if (!url.pathname.includes("/homedetails/")) return null;
+        return `${url.origin}${url.pathname}`;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * POST /api/v1/property-import/zillow
+ * body: { url: string, folderRoot?: string }
+ *   - url        : Zillow listing URL (https://www.zillow.com/homedetails/...)
  *   - folderRoot : optional Cloudinary root folder override
  *
  * Returns: { success, draft, warnings, imageResults }
  */
-exports.parseFromPropStream = catchAsyncError(async (req, res, next) => {
-    if (!req.file || !req.file.buffer) {
-        return next(new Errorhandler("A PropStream PDF file is required (field name 'pdf')", 400));
+exports.importFromZillow = catchAsyncError(async (req, res, next) => {
+    const { url, folderRoot } = req.body || {};
+
+    const zillowUrl = normalizeZillowUrl(url);
+    if (!zillowUrl) {
+        return next(new Errorhandler(
+            "A valid Zillow listing URL is required (https://www.zillow.com/homedetails/...)",
+            400
+        ));
+    }
+    if (!firecrawlService.isConfigured()) {
+        return next(new Errorhandler("Firecrawl is not configured on the server", 500));
     }
 
-    // imageUrls arrives as a JSON string in multipart form data.
-    let imageUrls = [];
-    if (req.body.imageUrls) {
-        try {
-            const parsed = typeof req.body.imageUrls === "string"
-                ? JSON.parse(req.body.imageUrls)
-                : req.body.imageUrls;
-            if (Array.isArray(parsed)) imageUrls = parsed;
-        } catch {
-            return next(new Errorhandler("imageUrls must be a JSON array of URLs", 400));
-        }
-    }
-
-    const folderRoot = typeof req.body.folderRoot === "string" && req.body.folderRoot.trim()
-        ? req.body.folderRoot.trim()
-        : undefined;
-
-    // Optional Zillow structured data (schools, priceHistory, resoFacts) from
-    // the browser extractor — arrives as a JSON string in the multipart form.
-    let zillowData = null;
-    if (req.body.zillowData) {
-        try {
-            zillowData = typeof req.body.zillowData === "string"
-                ? JSON.parse(req.body.zillowData)
-                : req.body.zillowData;
-        } catch {
-            return next(new Errorhandler("zillowData must be valid JSON", 400));
-        }
-    }
-
-    const { draft, warnings, imageResults } = await buildPropertyDraft({
-        pdfBuffer: req.file.buffer,
-        imageUrls,
-        zillowData,
-        folderRoot,
+    const { draft, warnings, imageResults } = await buildPropertyDraftFromZillow({
+        zillowUrl,
+        folderRoot: typeof folderRoot === "string" && folderRoot.trim() ? folderRoot.trim() : undefined,
     });
 
     return res.status(200).json({ success: true, draft, warnings, imageResults });

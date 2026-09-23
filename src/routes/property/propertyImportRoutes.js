@@ -6,7 +6,7 @@
 const express = require("express");
 const multer = require("multer");
 const {
-    parseFromPropStream,
+    importFromZillow,
     uploadImages,
 } = require("../../controller/property/propertyImportController");
 const { isAuthenticated, authorizeRoles } = require("../../middleware/auth");
@@ -14,34 +14,33 @@ const { isAuthenticated, authorizeRoles } = require("../../middleware/auth");
 const router = express.Router();
 
 // In-memory storage, 50 MB cap, PDF only.
-const upload = multer({
-    storage: multer.memoryStorage(),
-    limits: { fileSize: 50 * 1024 * 1024 },
-    fileFilter: (req, file, cb) => {
-        if (file.mimetype === "application/pdf") return cb(null, true);
-        cb(new Error("Only PDF files are allowed"));
-    },
-});
+// const upload = multer({
+//     storage: multer.memoryStorage(),
+//     limits: { fileSize: 50 * 1024 * 1024 },
+//     fileFilter: (req, file, cb) => {
+//         if (file.mimetype === "application/pdf") return cb(null, true);
+//         cb(new Error("Only PDF files are allowed"));
+//     },
+// });
 
 // Wrap multer so its errors (size/type) return a clean 400 JSON instead of a 500.
-function uploadPdf(req, res, next) {
-    upload.single("pdf")(req, res, (err) => {
-        if (err) {
-            const msg = err.code === "LIMIT_FILE_SIZE"
-                ? "PDF is larger than the 50MB limit"
-                : err.message || "Upload failed";
-            return res.status(400).json({ success: false, message: msg });
-        }
-        next();
-    });
-}
+// function uploadPdf(req, res, next) {
+//     upload.single("pdf")(req, res, (err) => {
+//         if (err) {
+//             const msg = err.code === "LIMIT_FILE_SIZE"
+//                 ? "PDF is larger than the 50MB limit"
+//                 : err.message || "Upload failed";
+//             return res.status(400).json({ success: false, message: msg });
+//         }
+//         next();
+//     });
+// }
 
 router.post(
-    "/parse",
+    "/zillow",
     isAuthenticated,
     authorizeRoles("admin"),
-    uploadPdf,
-    parseFromPropStream
+   importFromZillow
 );
 
 router.post(
