@@ -279,13 +279,6 @@ const EXTERIOR_ROI_BY_PROJECT = {
   'Patio': { recovery: 80, insight: 'Outdoor living spaces are highly valued in warm climates' }
 };
 
-// ==================== REPLICATE MODEL CONFIG ====================
-const REPLICATE_CONFIG = {
-  model: 'adirik/interior-design:76604baddc85b1b4616e1c6475eca080da339c8875bd4996705440484a6eac38',
-  promptStrength: 0.5,  // Increased to ensure damage repair and full transformation
-  numInferenceSteps: 50,
-  guidanceScale: 7.5
-};
 const BFL_CONFIG = {
   baseUrl:           process.env.BFL_BASE_URL || 'https://api.bfl.ai/v1',
   model:             process.env.BFL_MODEL || 'flux-kontext-pro',
@@ -588,7 +581,6 @@ module.exports = {
   BATHROOM_ROI_BY_TIER,
   BEDROOM_ROI_BY_TIER,
   LIVING_ROOM_ROI_BY_TIER,
-  REPLICATE_CONFIG,
   BFL_CONFIG,
   getRegionForState,
   getDataSource,

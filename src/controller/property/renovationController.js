@@ -1,6 +1,4 @@
 const RenovationCostService = require("../../services/property/renovationCostService");
-const ReplicateService = require("../../services/shared/replicateService");
-const ReplicatePromptBuilder = require("../../services/shared/replicatePromptBuilder");
 const RenovationRequest = require("../../model/property/renovationRequestModel");
 const RenovationContractorService = require("../../services/property/renovationContractorService");
 const Product = require("../../model/property/productModel");
@@ -8,9 +6,6 @@ const { scaleCostAnalysis } = require("../../config/renovationCosts/scaleCostAna
 const BflService = require("../../services/shared/bflService");
 const BflPromptBuilder = require("../../services/shared/bflPromptBuilder");
 
-const USE_BFL = process.env.RENOVATION_IMAGE_PROVIDER === "bfl";
-const ImageService = USE_BFL ? BflService : ReplicateService;
-const PromptBuilder = USE_BFL ? BflPromptBuilder : ReplicatePromptBuilder;
 const {
   hasHardcodedCosts,
   buildHardcodedCostAnalysis
@@ -103,7 +98,7 @@ exports.generateRenovationImages = async (req, res) => {
     }
     // ─────────────────────────────────────────────────────────────────────
     costAnalysis = scaleCostAnalysis(costAnalysis);
-    const { prompt, negativePrompt } = PromptBuilder.buildPrompts(
+    const { prompt, negativePrompt } = BflPromptBuilder.buildPrompts(
       { city: property.city, state: property.state, propertyType: property.propertyType },
       renovationData
     );
@@ -304,7 +299,7 @@ async function generateRenovationImagesAsync(requestId, propertyImage, prompt, n
   try {
     await RenovationRequest.findByIdAndUpdate(requestId, { status: "processing" });
 
-    const result = await ImageService.generateRenovationImage(propertyImage, prompt, negativePrompt);
+    const result = await BflService.generateRenovationImage(propertyImage, prompt, negativePrompt);
 
     await RenovationRequest.findByIdAndUpdate(requestId, {
       status: "completed",

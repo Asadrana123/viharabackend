@@ -90,7 +90,7 @@ Client (React Frontend)
 | **Real-Time** | Socket.IO 4.x |
 | **Authentication** | JWT (jsonwebtoken) + Passport.js (Google OAuth2) |
 | **Password Hashing** | bcryptjs |
-| **AI / ML** | Google Gemini AI (`@google/generative-ai`), Replicate |
+| **AI / ML** | Google Gemini AI (`@google/generative-ai`), Black Forest Labs (FLUX Kontext) |
 | **Real Estate APIs** | ATTOM Data Solutions, CoreLogic |
 | **Image Storage** | Cloudinary |
 | **Email** | Nodemailer, SendGrid, Resend |
@@ -146,8 +146,8 @@ CORELOGIC_CONSUMER_SECRET=your_corelogic_secret
 # Google Gemini AI
 GEMINI_API_KEY=your_gemini_api_key
 
-# Replicate (AI image generation)
-REPLICATE_API_TOKEN=your_replicate_token
+# Black Forest Labs (AI image generation)
+BFL_API_KEY=your_bfl_api_key
 
 # Cloudinary (image storage)
 CLOUDINARY_CLOUD_NAME=your_cloud_name
@@ -194,7 +194,7 @@ viharabackend/
 │   │
 │   ├── config/
 │   │   ├── corsConfig.js         # CORS settings for Express & Socket.IO
-│   │   ├── renovationConstants.js        # Replicate model config
+│   │   ├── renovationConstants.js        # BFL model config
 │   │   └── renovationContractorConstants.js
 │   │
 │   ├── controller/
@@ -260,8 +260,8 @@ viharabackend/
 │   │   ├── geminiService.js              # General Gemini AI service
 │   │   ├── renovationCostService.js      # Renovation cost calculation logic
 │   │   ├── renovationContractorService.js # Contractor lookup service
-│   │   ├── replicateService.js           # Replicate AI (image generation)
-│   │   └── replicatePromptBuilder.js     # Prompt construction for Replicate
+│   │   ├── bflService.js                 # BFL FLUX Kontext (image generation)
+│   │   └── bflPromptBuilder.js           # Prompt construction for BFL
 │   │
 │   ├── socket/
 │   │   ├── socketServer.js           # Socket.IO server init, auth middleware, cleanup
@@ -416,10 +416,10 @@ Data is fetched in parallel where possible, with the property ID lookup as a pre
 
 ### 8. AI Renovation Visualization
 
-**Service:** `src/services/replicateService.js`
-**Prompt Builder:** `src/services/replicatePromptBuilder.js`
+**Service:** `src/services/shared/bflService.js`
+**Prompt Builder:** `src/services/shared/bflPromptBuilder.js`
 
-Uses Replicate's image-to-image AI models to generate photorealistic renovation visualizations:
+Uses Black Forest Labs' FLUX Kontext image-editing model to generate photorealistic renovation visualizations:
 
 1. Takes an original property photo (from Cloudinary)
 2. Applies a detailed renovation prompt
