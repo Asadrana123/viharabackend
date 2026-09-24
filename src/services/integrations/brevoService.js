@@ -1,4 +1,5 @@
 const axios = require("axios");
+const { toUsSmsNumber } = require("../../utils/usPhone");
 
 const BREVO_API_KEY = process.env.BREVO_API_KEY;
 const BREVO_PERSONA_LIST_ID = Number(process.env.BREVO_PERSONA_LIST_ID);
@@ -13,6 +14,84 @@ const BREVO_PARTNER_LIST_ID = parseInt(
 );
 
 const BREVO_BASE = "https://api.brevo.com/v3";
+
+// ============================================================================
+// SMS ATTRIBUTES + CONTACT UPSERT  (shared by property / NorCal / partner syncs)
+// ----------------------------------------------------------------------------
+// Brevo sends every SMS from its automation. The backend only saves what the
+// automation needs on the contact:
+//   SMS             — always sent when the phone is valid (ticked or not).
+//                     US numbers are formatted as +1 followed by 10 digits.
+//   SMS_OPT_IN      — true, ONLY when the SMS box was ticked. Never sent as
+//   SMS_OPT_IN_AT     false, so an earlier true is never overwritten.
+//   SMS_OPT_IN_URL
+// SMS_OPT_IN (Boolean), SMS_OPT_IN_AT (Date) and SMS_OPT_IN_URL (Text) must be
+// pre-created in Brevo (Contacts → Settings → Contact Attributes).
+
+// Canonical SMS number: strict US "+1XXXXXXXXXX" when possible, otherwise any
+// clear E.164 (the previous behaviour), otherwise null. Brevo rejects the whole
+// upsert on a non-E.164 SMS value.
+const smsNumberOf = (phone) => {
+  const us = toUsSmsNumber(phone);
+  if (us) return us;
+  const raw = String(phone || "");
+  const digits = raw.replace(/\D/g, "");
+  return raw.startsWith("+") && digits.length >= 11 ? raw : null;
+};
+
+const buildSmsAttributes = (lead) => {
+  const attributes = {};
+  const sms = smsNumberOf(lead.phone);
+  if (sms) attributes.SMS = sms;
+
+  if (lead.smsOptIn === true) {
+    if (!sms) console.warn(`⚠️  Brevo: ${lead.email} ticked SMS but phone "${lead.phone}" is invalid.`);
+    attributes.SMS_OPT_IN = true;
+    attributes.SMS_OPT_IN_AT = new Date(lead.smsOptInAt || Date.now()).toISOString();
+    attributes.SMS_OPT_IN_URL = lead.smsOptInUrl || "";
+  }
+  return attributes;
+};
+
+// Brevo answers 400 (code "duplicate_parameter") when the SMS number already
+// belongs to a different contact.
+const isSmsTakenError = (err) => {
+  if (err.response?.status !== 400) return false;
+  const { code = "", message = "" } = err.response?.data || {};
+  return /sms/i.test(message) && (code === "duplicate_parameter" || /already|another contact/i.test(message));
+};
+
+/**
+ * POST /contacts (upsert). If Brevo says the SMS number is already on another
+ * contact, the contact is saved again WITHOUT the SMS number and the conflict
+ * is logged. Throws on any other error (callers already catch + log).
+ * @returns {Promise<{ smsConflict: boolean }>}
+ */
+const upsertContact = async ({ email, attributes, listIds }, label) => {
+  const post = (attrs) =>
+    axios.post(
+      `${BREVO_BASE}/contacts`,
+      { email, attributes: attrs, listIds, updateEnabled: true },
+      {
+        headers: {
+          "api-key": BREVO_API_KEY,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+  try {
+    await post(attributes);
+    return { smsConflict: false };
+  } catch (err) {
+    if (!attributes.SMS || !isSmsTakenError(err)) throw err;
+  }
+
+  const { SMS, ...withoutSms } = attributes;
+  console.warn(`⚠️  Brevo ${label}: SMS ${SMS} is already on another contact — saving ${email} without SMS.`);
+  await post(withoutSms);
+  return { smsConflict: true };
+};
 
 // Brevo requires custom attributes to be pre-created in the dashboard
 // (Contacts → Settings → Contact Attributes) or the request 400s.
@@ -149,23 +228,16 @@ const syncEarlyAccessLead = async (lead) => {
 // PROPERTY_NAME. LEAD_SOURCE / REGISTERING_AS / PROPERTY_NAME are text attributes
 // pre-created in Brevo. The caller (each property controller) sets leadSource +
 // propertyName; registeringAs is the exact buyer label the user picked.
-const buildPropertyLeadAttributes = (lead) => {
-  const attributes = {
-    FIRSTNAME: lead.fullName || "",
-    LEAD_SOURCE: lead.leadSource || "",
-    REGISTERING_AS: lead.registeringAs || "",
-    PROPERTY_NAME: lead.propertyName || "",
-  };
-
-  // Pass lead.phone as the canonical E.164 (phoneNormalized) from the controller
-  // so this attaches; Brevo rejects the whole upsert on a non-E.164 SMS.
-  const digits = String(lead.phone || "").replace(/\D/g, "");
-  if (lead.phone?.startsWith("+") && digits.length >= 11) {
-    attributes.SMS = lead.phone;
-  }
-
-  return attributes;
-};
+// LISTING_URL (text, pre-created in Brevo) is the property's /listing/:slug page,
+// used by the Brevo SMS automation. SMS fields come from buildSmsAttributes.
+const buildPropertyLeadAttributes = (lead) => ({
+  FIRSTNAME: lead.fullName || "",
+  LEAD_SOURCE: lead.leadSource || "",
+  REGISTERING_AS: lead.registeringAs || "",
+  PROPERTY_NAME: lead.propertyName || "",
+  LISTING_URL: lead.listingUrl || "",
+  ...buildSmsAttributes(lead),
+});
 
 /**
  * Upsert a property-page auction lead into the shared Property Leads list.
@@ -187,24 +259,17 @@ const syncPropertyLead = async (lead) => {
   }
 
   try {
-    await axios.post(
-      `${BREVO_BASE}/contacts`,
+    const { smsConflict } = await upsertContact(
       {
         email: lead.email,
         attributes: buildPropertyLeadAttributes(lead),
         listIds: [targetListId],
-        updateEnabled: true,
       },
-      {
-        headers: {
-          "api-key": BREVO_API_KEY,
-          "Content-Type": "application/json",
-        },
-      }
+      "property"
     );
 
     console.log(`✅ Brevo property synced: ${lead.email} → list ${targetListId}`);
-    return { success: true };
+    return { success: true, smsConflict };
   } catch (err) {
     const reason = err.response?.data?.message || err.message;
     console.error(`❌ Brevo property sync failed: ${lead.email}:`, reason);
@@ -243,13 +308,7 @@ const buildPartnerLeadAttributes = (lead) => {
   const partnerTypeId = PARTNER_TYPE_IDS[normalizePartnerType(lead.persona)];
   if (partnerTypeId) attributes.PARTNER_TYPE = partnerTypeId;
 
-  // Same E.164-only SMS guard as the other builders (controller passes E.164).
-  const digits = String(lead.phone || "").replace(/\D/g, "");
-  if (lead.phone?.startsWith("+") && digits.length >= 11) {
-    attributes.SMS = lead.phone;
-  }
-
-  return attributes;
+  return { ...attributes, ...buildSmsAttributes(lead) };
 };
 
 /**
@@ -267,24 +326,17 @@ const syncPartnerLead = async (lead) => {
   if (!lead.email) return { success: false, skipped: true };
 
   try {
-    await axios.post(
-      `${BREVO_BASE}/contacts`,
+    const { smsConflict } = await upsertContact(
       {
         email: lead.email,
         attributes: buildPartnerLeadAttributes(lead),
         listIds: [BREVO_PARTNER_LIST_ID],
-        updateEnabled: true,
       },
-      {
-        headers: {
-          "api-key": BREVO_API_KEY,
-          "Content-Type": "application/json",
-        },
-      }
+      "partner"
     );
 
     console.log(`✅ Brevo partner synced: ${lead.email}`);
-    return { success: true };
+    return { success: true, smsConflict };
   } catch (err) {
     const reason = err.response?.data?.message || err.message;
     console.error(`❌ Brevo partner sync failed: ${lead.email}:`, reason);
@@ -307,14 +359,7 @@ const buildNorCalAttributes = (lead) => {
     PROPERTY_NAME: lead.propertyName || "",
   };
 
-  // Brevo's SMS attribute must be E.164 (controller passes phoneNormalized);
-  // only attach when it clearly is, or the whole upsert is rejected.
-  const digits = String(lead.phone || "").replace(/\D/g, "");
-  if (lead.phone?.startsWith("+") && digits.length >= 11) {
-    attributes.SMS = lead.phone;
-  }
-
-  return attributes;
+  return { ...attributes, ...buildSmsAttributes(lead) };
 };
 
 /**
@@ -332,24 +377,17 @@ const syncNorCalLead = async (lead) => {
   if (!lead.email) return { success: false, skipped: true };
 
   try {
-    await axios.post(
-      `${BREVO_BASE}/contacts`,
+    const { smsConflict } = await upsertContact(
       {
         email: lead.email,
         attributes: buildNorCalAttributes(lead),
         listIds: [BREVO_NORCAL_LIST_ID],
-        updateEnabled: true,
       },
-      {
-        headers: {
-          "api-key": BREVO_API_KEY,
-          "Content-Type": "application/json",
-        },
-      }
+      "NorCal"
     );
 
     console.log(`✅ Brevo NorCal synced: ${lead.email}`);
-    return { success: true };
+    return { success: true, smsConflict };
   } catch (err) {
     const reason = err.response?.data?.message || err.message;
     console.error(`❌ Brevo NorCal sync failed: ${lead.email}:`, reason);

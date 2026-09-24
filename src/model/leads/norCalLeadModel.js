@@ -76,6 +76,13 @@ const norCalLeadSchema = new mongoose.Schema(
     consentText: { type: String, default: "" },
     consentTimestamp: { type: Date, default: null },
 
+    // ── SMS consent (separate, unchecked-by-default box on the form) ─────────
+    // smsConsentAt is stamped by the SERVER when the box is ticked. Drives
+    // SMS_OPT_IN / SMS_OPT_IN_AT on the Brevo contact; Brevo sends the texts.
+    smsConsent: { type: Boolean, default: false },
+    smsConsentText: { type: String, default: "" },
+    smsConsentAt: { type: Date, default: null },
+
     // Client pixel de-dupe id (client GTM/Meta only; no server CAPI here).
     eventId: { type: String, default: "" },
 

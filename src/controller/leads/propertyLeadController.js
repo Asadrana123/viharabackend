@@ -17,6 +17,7 @@ const { getNotesForLeads } = require("../../services/leads/leadNotesService");
 const { getMessagesForPhones } = require("../../services/integrations/sendblueService");
 const { syncPropertyLead } = require("../../services/integrations/brevoService");
 const { notifyNewLead } = require("../../services/shared/slackService");
+const { auctionPageUrl, listingPageUrl } = require("../../config/siteUrls");
 
 // Single note discriminator for all property-auction leads. Lead ids are unique,
 // so one type is enough to keep notes from bleeding into other lead systems.
@@ -64,6 +65,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
   const {
     fullName, phone, email, buyerType, timezone,
     consent, consentText, consentTimestamp, eventId, quotePrice,
+    smsConsent, smsConsentText,
   } = req.body;
 
   if (!fullName || !fullName.trim())
@@ -84,6 +86,10 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
   const quoteNum = Number(quotePrice);
   const hasQuote = Number.isFinite(quoteNum) && quoteNum > 0;
 
+  // SMS box is separate from the call consent and unchecked by default. Only a
+  // literal `true` counts as opting in. Brevo's automation sends the texts.
+  const smsOptedIn = smsConsent === true;
+
   // ── Create the lead — compound unique (propertySlug, phoneNormalized) gate ──
   let lead;
   try {
@@ -99,6 +105,9 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       consent: consent === true,
       consentText: consentText || "",
       consentTimestamp: consentTimestamp ? new Date(consentTimestamp) : null,
+      smsConsent: smsOptedIn,
+      smsConsentText: smsOptedIn ? String(smsConsentText || "") : "",
+      smsConsentAt: smsOptedIn ? new Date() : null,
       eventId: eventId || "",
       source: `auction-${slug}`,
     });
@@ -178,6 +187,10 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       registeringAs: lead.buyerType,
       propertyName: property.city || property.productName || slug,
       listId: property.brevoListId, // per-page Brevo list (null → shared default)
+      listingUrl: listingPageUrl(slug), // LISTING_URL for the Brevo SMS text
+      smsOptIn: lead.smsConsent,
+      smsOptInAt: lead.smsConsentAt,
+      smsOptInUrl: auctionPageUrl(slug),
     }).catch((e) => console.error(`[brevo-sync:${slug}] failed:`, e.message));
   })();
 });

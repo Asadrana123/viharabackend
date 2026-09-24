@@ -10,6 +10,7 @@ const { getNotesForLeads } = require("../../services/leads/leadNotesService");
 const { getMessagesForPhones } = require("../../services/integrations/sendblueService");
 const { syncNorCalLead } = require("../../services/integrations/brevoService");
 const { notifyNewLead } = require("../../services/shared/slackService");
+const { norCalPageUrl } = require("../../config/siteUrls");
 
 // Note discriminator for NorCal leads (matches leadNoteModel.LEAD_TYPES + the
 // stop-calling controller's model map).
@@ -46,6 +47,8 @@ const registerNorCalLead = catchAsyncError(async (req, res, next) => {
     consentText,
     consentTimestamp,
     eventId,
+    smsConsent,
+    smsConsentText,
   } = req.body;
 
   if (!fullName || !fullName.trim())
@@ -58,6 +61,10 @@ const registerNorCalLead = catchAsyncError(async (req, res, next) => {
   const phoneNormalized = normalisePhone(phone); // canonical E.164 for calling + reporting
   if (!phoneNormalized)
     return next(new ErrorHandler("Enter a valid phone number", 400));
+
+  // SMS box is separate from the call consent and unchecked by default. Only a
+  // literal `true` counts as opting in. Brevo's automation sends the texts.
+  const smsOptedIn = smsConsent === true;
 
   const normalizedMarket =
     market && market.trim() ? market.trim() : "Northern California";
@@ -85,6 +92,9 @@ const registerNorCalLead = catchAsyncError(async (req, res, next) => {
       consent: consent === true,
       consentText: consentText || "",
       consentTimestamp: consentTimestamp ? new Date(consentTimestamp) : null,
+      smsConsent: smsOptedIn,
+      smsConsentText: smsOptedIn ? String(smsConsentText || "") : "",
+      smsConsentAt: smsOptedIn ? new Date() : null,
       eventId: eventId || "",
     });
   } catch (err) {
@@ -168,6 +178,9 @@ const registerNorCalLead = catchAsyncError(async (req, res, next) => {
       market: lead.market,
       registeringAs: lead.buyerType, // exact page label
       leadSource: "norcal-lp",
+      smsOptIn: lead.smsConsent,
+      smsOptInAt: lead.smsConsentAt,
+      smsOptInUrl: norCalPageUrl(),
     }).catch((e) => console.error("[brevo-sync] nor-cal failed:", e.message));
   })();
 });

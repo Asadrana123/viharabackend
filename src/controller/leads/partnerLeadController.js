@@ -17,6 +17,7 @@ const LEAD_NOTE_TYPE = "partner";
 // in the dedicated Test Leads tab.
 const TEST_NAME_REGEX = /\btest\b/i;
 const { syncPartnerLead } = require("../../services/integrations/brevoService");
+const { partnerPageUrl } = require("../../config/siteUrls");
 
 /**
  * POST /api/v1/partner/register   (public)
@@ -34,6 +35,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
   const {
     firstName, lastName, email, phone, primaryMarket, persona, timezone,
     consent, consentText, consentTimestamp, eventId,
+    smsConsent, smsConsentText,
   } = req.body;
 
   if (!firstName || !firstName.trim())
@@ -51,6 +53,10 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
 
   const normalizedEmail = email.trim().toLowerCase();
 
+  // SMS box is separate from the call consent and unchecked by default. Only a
+  // literal `true` counts as opting in. Brevo's automation sends the texts.
+  const smsOptedIn = smsConsent === true;
+
   // ── 1. Create the lead up front — dedup gate via the unique email index ──
   let lead;
   try {
@@ -66,6 +72,9 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       consent: consent === true,
       consentText: consentText || "",
       consentTimestamp: consentTimestamp ? new Date(consentTimestamp) : null,
+      smsConsent: smsOptedIn,
+      smsConsentText: smsOptedIn ? String(smsConsentText || "") : "",
+      smsConsentAt: smsOptedIn ? new Date() : null,
       eventId: eventId || "",
     });
   } catch (err) {
@@ -144,6 +153,9 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       primaryMarket: lead.primaryMarket,
       persona: lead.persona,         // exact page label
       leadSource: "partner-program",
+      smsOptIn: lead.smsConsent,
+      smsOptInAt: lead.smsConsentAt,
+      smsOptInUrl: partnerPageUrl(),
     }).catch((e) => console.error("[brevo-sync] partner failed:", e.message));
   })();
 });
