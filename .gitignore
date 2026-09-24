@@ -9,3 +9,13 @@ src/sendGridFile.js
 src/SendImageEmail.js
 src/resendFile.js
 src/sendHappyNewYearEmail.js
+/.cache
+
+# Local-only test-data seed scripts (vihara-next Chunk 13 testing) — never
+# meant to be committed/pushed, per explicit instruction. Local-DB-only,
+# read-only against prod.
+src/scripts/seedLocalTestUsers.js
+src/scripts/seedLocalProductsFromProd.js
+src/scripts/seedLocalAuctionRegistration.js
+src/scripts/seedLocalTestRealtor.js
+src/scripts/resyncLocalProductIdsToProd.js

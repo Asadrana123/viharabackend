@@ -284,7 +284,11 @@ const BFL_CONFIG = {
   model:             process.env.BFL_MODEL || 'flux-kontext-pro',
   outputFormat:      'jpeg',
   safetyTolerance:   2,
-  promptUpsampling:  false,
+  // Env-driven (2026-09-23) for A/B testing against the now-trimmed prompts —
+  // was hardcoded false when prompts were much longer. Set
+  // BFL_PROMPT_UPSAMPLING=true in .env and restart to test the other arm;
+  // default stays false (today's known-working behavior) when unset.
+  promptUpsampling:  process.env.BFL_PROMPT_UPSAMPLING === 'true',
   pollIntervalMs:    1500,
   pollTimeoutMs:     120000,
   requestTimeoutMs:  30000

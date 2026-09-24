@@ -1,15 +1,8 @@
-const RenovationCostService = require("../../services/property/renovationCostService");
 const RenovationRequest = require("../../model/property/renovationRequestModel");
 const RenovationContractorService = require("../../services/property/renovationContractorService");
 const Product = require("../../model/property/productModel");
-const { scaleCostAnalysis } = require("../../config/renovationCosts/scaleCostAnalysis");
 const BflService = require("../../services/shared/bflService");
 const BflPromptBuilder = require("../../services/shared/bflPromptBuilder");
-
-const {
-  hasHardcodedCosts,
-  buildHardcodedCostAnalysis
-} = require("../../config/renovationPropertyCosts");
 
 /**
  * Ownership check that tolerates anonymous records.
@@ -66,38 +59,6 @@ exports.generateRenovationImages = async (req, res) => {
       return res.status(404).json({ success: false, error: "Property not found" });
     }
 
-    // ── Cost Analysis: hardcoded first, dynamic fallback ──────────────────
-    let costAnalysis;
-
-    if (hasHardcodedCosts(propertyId)) {
-      costAnalysis = buildHardcodedCostAnalysis(propertyId, renovationData);
-      if (!costAnalysis) {
-        console.warn(`[Renovation] Hardcoded config missing area "${renovationData.primaryArea}" for property ${propertyId}. Falling back to dynamic.`);
-      }
-    }
-
-    if (!costAnalysis) {
-      const validation = RenovationCostService.validateInputs(
-        { state: property.state, city: property.city, squareFootage: property.squareFootage },
-        renovationData
-      );
-
-      if (!validation.isValid) {
-        return res.status(400).json({ success: false, error: validation.error });
-      }
-
-      costAnalysis = await RenovationCostService.calculateRenovationCost(
-        {
-          state: property.state,
-          city: property.city,
-          squareFootage: property.squareFootage,
-          lotSize: property.lotSize
-        },
-        renovationData
-      );
-    }
-    // ─────────────────────────────────────────────────────────────────────
-    costAnalysis = scaleCostAnalysis(costAnalysis);
     const { prompt, negativePrompt } = BflPromptBuilder.buildPrompts(
       { city: property.city, state: property.state, propertyType: property.propertyType },
       renovationData
@@ -108,7 +69,6 @@ exports.generateRenovationImages = async (req, res) => {
       propertyId,
       selectedImage,
       renovationData,
-      costAnalysis,
       status: "pending"
     });
 
@@ -120,16 +80,7 @@ exports.generateRenovationImages = async (req, res) => {
       success: true,
       requestId: renovationRequest._id,
       status: "pending",
-      message: "Renovation visualization is being generated. Please wait...",
-      costAnalysis: {
-        finalCost:     costAnalysis.finalCost,
-        costRange:     costAnalysis.costRange,
-        lineItems:     costAnalysis.lineItems,
-        contingency:   costAnalysis.contingency,
-        breakdown:     costAnalysis.breakdown,
-        marketContext: costAnalysis.marketContext,
-        roiEstimate:   costAnalysis.roiEstimate
-      }
+      message: "Renovation visualization is being generated. Please wait..."
     });
   } catch (error) {
     console.error("Error in generateRenovationImages:", error);
@@ -158,7 +109,6 @@ exports.getRenovationRequest = async (req, res) => {
       success: true,
       requestId: renovationRequest._id,
       status: renovationRequest.status,
-      costAnalysis: renovationRequest.costAnalysis,
       message: getStatusMessage(renovationRequest.status)
     };
 
@@ -271,7 +221,6 @@ exports.getSavedRenovations = async (req, res) => {
       requestId: r._id,
       savedAt: r.savedAt,
       renovationData: r.renovationData,
-      costAnalysis: r.costAnalysis,
       images: {
         before: r.imageUrls?.before || null,
         after: r.imageUrls?.after || null,

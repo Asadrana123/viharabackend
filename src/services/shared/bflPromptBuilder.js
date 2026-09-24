@@ -13,6 +13,38 @@
  *      as a description of a finished scene ("Modern renovated kitchen with...").
  *      Descriptive prompts push Kontext toward regenerating the scene, which is
  *      exactly the structural drift we are trying to avoid.
+ *
+ * ── 2026-09-23 rewrite ────────────────────────────────────────────────────────
+ * Reworked after two real, reported failure modes: (a) extra hallucinated
+ * structure (e.g. a second door appearing inside an existing doorway) and
+ * (b) edits that read as "just cleaner" rather than genuinely renovated.
+ * Both trace back to the same root cause, confirmed against Black Forest
+ * Labs' own current prompting guidance (docs + the flux-image-best-practices
+ * skill, github.com/black-forest-labs/skills):
+ *
+ *   - Prompts were running ~120-130 words; BFL's own guidance puts the
+ *     optimal range at 30-80 words and warns that excess length "risks
+ *     confusion." Only ~24% of that length was the actual creative
+ *     instruction — the rest was preservation/repair/render boilerplate
+ *     drowning out the one thing we actually want the model to do.
+ *   - Every area's WORK_BY_TIER instruction asked for 4-6 simultaneous,
+ *     unrelated changes (new vanity + retile + fixtures + mirror + lighting,
+ *     all in one clause). BFL's guidance is explicit: "For complex
+ *     transformations... break edits into sequential steps rather than
+ *     attempting simultaneous multiple changes. This iterative method
+ *     reduces artifact generation and unwanted structural modifications."
+ *     Trimmed every tier down to its 2 highest-impact changes.
+ *   - The preservation clause was almost entirely "Do not..." commands.
+ *     BFL's negative-prompt-alternatives guidance: "Negative prompts can
+ *     actually make models focus MORE on unwanted elements." Rewritten as
+ *     positive, stated-fact descriptions of the room/building's existing
+ *     state (e.g. "every window and door remain in their exact original
+ *     positions" instead of "do not add or remove any structure").
+ *
+ * Deliberately NOT changed: still a single BFL call per renovation (a true
+ * multi-step "structure first, then finishes" pipeline was considered, but
+ * that means 2-3x the real per-call BFL cost and latency — flagged as a
+ * possible follow-up, not adopted here).
  */
 class BflPromptBuilder {
 
@@ -31,14 +63,9 @@ class BflPromptBuilder {
     const edit = this.getEditInstruction(primaryArea, style, colorScheme, budgetTier, propertyData);
     const repair = this.getRepairInstruction(primaryArea);
     const preserve = this.getPreservationClause(primaryArea);
+    const render = this.getRenderInstruction(primaryArea);
 
-    return [
-      edit,
-      repair,
-      preserve,
-      'Keep the original camera angle, perspective, framing, time of day, and direction of light unchanged.',
-      'Render as photorealistic professional real estate photography.'
-    ].join(' ');
+    return [edit, repair, preserve, render].join(' ');
   }
 
   // ==================== AREA ROUTING ====================
@@ -64,7 +91,7 @@ class BflPromptBuilder {
     const styleDetail = this.EXTERIOR_STYLE[style] || this.EXTERIOR_STYLE['Modern'];
     const landscaping = this.getLandscapingInstruction(propertyData);
 
-    return `${work} Finish the exterior in ${color}. ${styleDetail} ${landscaping}`;
+    return `${work} Finish it in ${color}. ${styleDetail} ${landscaping}`;
   }
 
   /**
@@ -75,14 +102,16 @@ class BflPromptBuilder {
     const state = propertyData?.state;
     const vegetation = this.LANDSCAPING_BY_STATE[state] || this.LANDSCAPING_BY_STATE.DEFAULT;
 
-    return `Replace the lawn with healthy green turf, add ${vegetation}, and clean the driveway and walkway surfaces.`;
+    return `The lawn is healthy turf with ${vegetation}.`;
   }
 
+  // Each tier: the two highest-impact changes only, not the full scope of work
+  // (fewer simultaneous edits = fewer chances for Kontext to hallucinate structure).
   static EXTERIOR_WORK_BY_TIER = {
-    'Budget-Friendly': 'Repaint the existing exterior siding and trim in fresh, clean paint. Do not change any materials.',
-    'Mid-Range':       'Replace the exterior siding with new fiber cement lap siding and install clean new trim. Refresh the front entrance door and hardware.',
-    'Premium':         'Replace the exterior siding with premium engineered siding, install new windows in the existing openings, and rebuild the front entrance with an upgraded door and porch finish.',
-    'Luxury':          'Reclad the facade in natural stone and premium siding, install custom windows in the existing openings, and rebuild the front entrance as a grand covered entry.'
+    'Budget-Friendly': 'Repaint the existing siding and trim, keeping the same materials.',
+    'Mid-Range':       'Replace the siding with new fiber cement lap siding and refresh the front door and hardware.',
+    'Premium':         'Replace the siding with premium engineered siding and rebuild the front entrance with an upgraded door.',
+    'Luxury':          'Reclad the facade in natural stone and rebuild the front entrance as a grand covered entry.'
   };
 
   static EXTERIOR_COLORS = {
@@ -93,17 +122,17 @@ class BflPromptBuilder {
   };
 
   static EXTERIOR_STYLE = {
-    'Modern':       'Use clean horizontal lines, flush trim, and matte black fixtures.',
-    'Traditional':  'Use classic proportions, wide trim boards, and warm-toned fixtures.',
-    'Contemporary': 'Use mixed cladding materials with sharp, minimal detailing.',
-    'Rustic':       'Use natural wood accents, stone base, and dark bronze fixtures.',
-    'Luxury':       'Use refined stone and millwork detailing with polished fixtures.'
+    'Modern':       'Clean horizontal lines, flush trim, matte black fixtures.',
+    'Traditional':  'Classic proportions, wide trim boards, warm-toned fixtures.',
+    'Contemporary': 'Mixed cladding materials, sharp minimal detailing.',
+    'Rustic':       'Natural wood accents, stone base, dark bronze fixtures.',
+    'Luxury':       'Refined stone and millwork detailing, polished fixtures.'
   };
 
   static LANDSCAPING_BY_STATE = {
-    'CA':      'drought-tolerant shrubs, ornamental grasses, and a trimmed hedge border',
-    'TX':      'native shrubs, mulched beds, and mature shade planting near the entrance',
-    'DEFAULT': 'trimmed hedges, mulched planting beds, and low shrubs along the foundation'
+    'CA':      'drought-tolerant shrubs and a trimmed hedge border',
+    'TX':      'native shrubs and mature shade planting near the entrance',
+    'DEFAULT': 'trimmed hedges and low shrubs along the foundation'
   };
 
   // ==================== KITCHEN ====================
@@ -113,22 +142,27 @@ class BflPromptBuilder {
     const styleDetail = this.KITCHEN_STYLE[style] || this.KITCHEN_STYLE['Modern'];
     const color = this.INTERIOR_COLORS[colorScheme] || this.INTERIOR_COLORS['Neutral'];
 
-    return `${work} ${styleDetail} Paint the walls in ${color}`;
+    return `${work} ${styleDetail} Walls are painted ${color}`;
   }
 
+  // The sink is the kitchen's equivalent of the bathroom's tub: never
+  // mentioned, but sitting exactly where every tier's countertop
+  // instruction applies. Every tier now pins it (and appliances) in place —
+  // Luxury previously had neither anchor, an inconsistency with Mid-Range/
+  // Premium, not a deliberate choice.
   static KITCHEN_WORK_BY_TIER = {
-    'Budget-Friendly': 'Repaint the existing kitchen cabinets, replace the cabinet hardware, resurface the countertops, and replace the ceiling light fixture.',
-    'Mid-Range':       'Replace the kitchen cabinets with shaker-front cabinets, install quartz countertops, install stainless steel appliances in the existing appliance locations, and hang pendant lights over the counter.',
-    'Premium':         'Replace the kitchen cabinets with full-height custom cabinetry, install a waterfall quartz countertop, install high-end appliances in the existing appliance locations, and add designer lighting.',
-    'Luxury':          'Replace the kitchen cabinets with bespoke millwork, install marble countertops and a full marble backsplash, install professional-grade appliances in the existing appliance locations, and add statement chef lighting.'
+    'Budget-Friendly': 'Repaint the existing cabinets and replace the hardware, keeping the same layout.',
+    'Mid-Range':       'Replace the cabinets with shaker-front cabinets and install quartz countertops, keeping the sink and appliances in their existing locations.',
+    'Premium':         'Replace the cabinets with full-height custom cabinetry and install a waterfall quartz countertop, keeping the sink and appliances in their existing locations.',
+    'Luxury':          'Replace the cabinets with bespoke millwork and install marble countertops with a matching backsplash, keeping the sink and appliances in their existing locations.'
   };
 
   static KITCHEN_STYLE = {
-    'Modern':       'Use handleless flat cabinet fronts and minimalist detailing.',
-    'Traditional':  'Use raised panel cabinet doors, classic hardware, and warm wood tones.',
-    'Contemporary': 'Use flat-front cabinets, mixed materials, and bold fixtures.',
-    'Rustic':       'Use reclaimed wood accents, a farmhouse sink, and natural stone surfaces.',
-    'Luxury':       'Use floor-to-ceiling custom millwork with premium stone finishes.'
+    'Modern':       'Handleless flat cabinet fronts, minimalist detailing.',
+    'Traditional':  'Raised panel cabinet doors, classic hardware, warm wood tones.',
+    'Contemporary': 'Flat-front cabinets, mixed materials, bold fixtures.',
+    'Rustic':       'Reclaimed wood accents, a farmhouse sink, natural stone surfaces.',
+    'Luxury':       'Floor-to-ceiling custom millwork, premium stone finishes.'
   };
 
   // ==================== BATHROOM ====================
@@ -140,19 +174,32 @@ class BflPromptBuilder {
     return `${work} ${styleDetail}`;
   }
 
+  // 2026-09-24: stopped naming "tub" too, for the same reason toilet was
+  // de-named. Even "the existing tub stays exactly as it is" asserts a tub
+  // exists — on a photo without one (e.g. a shower-only bathroom), that
+  // false assertion caused the model to render a tub anyway (a second real,
+  // reported failure, same mechanism as the toilet bug). Budget-Friendly/
+  // Mid-Range now rely entirely on the generic "every other fixture..."
+  // clause instead of naming any specific fixture.
+  //
+  // Premium/Luxury genuinely intend to add a nicer tub as a tier feature —
+  // that mention stays, but reworded from "replacing the EXISTING tub"
+  // (also a false-existence assertion on a tub-less photo) to "add a
+  // freestanding tub", which is correct whether or not the source photo
+  // has one, while still delivering the deliberate upgrade.
   static BATHROOM_WORK_BY_TIER = {
-    'Budget-Friendly': 'Repaint the bathroom walls, replace the faucet and fixtures, replace the vanity mirror, and regrout the existing tile.',
-    'Mid-Range':       'Replace the vanity, retile the walls and floor, install modern fixtures, hang a frameless mirror, and replace the vanity lighting.',
-    'Premium':         'Install a custom vanity, retile in large-format tile, install a rainfall shower head, add a freestanding tub in the existing tub location, and install designer fixtures.',
-    'Luxury':          'Retile floor-to-ceiling in marble, install a custom double vanity, place a freestanding soaking tub in the existing tub location, install a frameless glass shower enclosure, and add statement lighting.'
+    'Budget-Friendly': 'Repaint the walls and replace the faucet, hardware, and vanity mirror. Every other fixture already in the photo stays exactly as it is.',
+    'Mid-Range':       'Replace the vanity and retile the walls and floor, keeping the same layout. Every other fixture already in the photo stays exactly as it is.',
+    'Premium':         'Install a custom vanity and large-format tile, and add a freestanding tub in the same area. Every other fixture already in the photo stays exactly as it is.',
+    'Luxury':          'Retile floor-to-ceiling in marble and install a custom double vanity, and add a freestanding soaking tub in the same area. Every other fixture already in the photo stays exactly as it is.'
   };
 
   static BATHROOM_STYLE = {
-    'Modern':       'Use a floating vanity, a linear drain, and minimalist fixtures.',
-    'Traditional':  'Use subway tile, classic chrome fixtures, and a paneled vanity.',
-    'Contemporary': 'Use mixed metal finishes, geometric tile, and a bold mirror.',
-    'Rustic':       'Use a wood vanity, stone tile, and matte black fixtures.',
-    'Luxury':       'Use premium natural stone throughout for a spa-like finish.'
+    'Modern':       'Floating vanity, linear drain, minimalist fixtures.',
+    'Traditional':  'Subway tile, classic chrome fixtures, a paneled vanity.',
+    'Contemporary': 'Mixed metal finishes, geometric tile, a bold mirror.',
+    'Rustic':       'A wood vanity, stone tile, matte black fixtures.',
+    'Luxury':       'Premium natural stone throughout for a spa-like finish.'
   };
 
   // ==================== BEDROOM ====================
@@ -162,22 +209,22 @@ class BflPromptBuilder {
     const styleDetail = this.BEDROOM_STYLE[style] || this.BEDROOM_STYLE['Modern'];
     const color = this.INTERIOR_COLORS[colorScheme] || this.INTERIOR_COLORS['Neutral'];
 
-    return `${work} ${styleDetail} Paint the walls in ${color}`;
+    return `${work} ${styleDetail} Walls are painted ${color}`;
   }
 
   static BEDROOM_WORK_BY_TIER = {
-    'Budget-Friendly': 'Repaint the bedroom walls, replace the ceiling light fixture, and stage the room with clean, simple furnishings.',
-    'Mid-Range':       'Install new flooring, replace the trim and baseboards, install modern lighting, and stage the room with coordinated furnishings.',
-    'Premium':         'Install hardwood flooring, add a custom built-in wardrobe along the existing wall, install designer lighting, and stage with premium furnishings.',
-    'Luxury':          'Install herringbone hardwood flooring, add full custom millwork, hang a statement chandelier, and stage with luxury furnishings.'
+    'Budget-Friendly': 'Repaint the walls and replace the ceiling light fixture.',
+    'Mid-Range':       'Install new flooring and modern lighting, keeping the same layout.',
+    'Premium':         'Install hardwood flooring and add a custom built-in wardrobe along the existing wall.',
+    'Luxury':          'Install herringbone hardwood flooring and hang a statement chandelier.'
   };
 
   static BEDROOM_STYLE = {
-    'Modern':       'Use clean lines, a neutral palette, and minimal clutter.',
-    'Traditional':  'Use warm wood tones, classic furniture, and layered textiles.',
-    'Contemporary': 'Use one accent wall, mixed textures, and statement lighting.',
-    'Rustic':       'Use a reclaimed wood headboard, warm tones, and cozy textiles.',
-    'Luxury':       'Use a hotel-suite aesthetic with rich fabrics and custom details.'
+    'Modern':       'Clean lines, a neutral palette, minimal clutter.',
+    'Traditional':  'Warm wood tones, classic furniture, layered textiles.',
+    'Contemporary': 'One accent wall, mixed textures, statement lighting.',
+    'Rustic':       'A reclaimed wood headboard, warm tones, cozy textiles.',
+    'Luxury':       'A hotel-suite aesthetic with rich fabrics and custom details.'
   };
 
   // ==================== LIVING ROOM ====================
@@ -187,22 +234,22 @@ class BflPromptBuilder {
     const styleDetail = this.LIVING_ROOM_STYLE[style] || this.LIVING_ROOM_STYLE['Modern'];
     const color = this.INTERIOR_COLORS[colorScheme] || this.INTERIOR_COLORS['Neutral'];
 
-    return `${work} ${styleDetail} Paint the walls in ${color}`;
+    return `${work} ${styleDetail} Walls are painted ${color}`;
   }
 
   static LIVING_ROOM_WORK_BY_TIER = {
-    'Budget-Friendly': 'Repaint the living room walls, replace the light fixtures, and stage the room with a clean furniture layout.',
-    'Mid-Range':       'Install new flooring, replace the trim and crown moulding, install modern lighting, and stage with cohesive furniture.',
-    'Premium':         'Install hardwood flooring, add custom built-ins along the existing wall, refinish the fireplace surround, and stage with designer furniture and statement lighting.',
-    'Luxury':          'Install premium hardwood flooring, add full custom millwork, reclad the fireplace surround in marble, and stage with luxury furniture and curated art lighting.'
+    'Budget-Friendly': 'Repaint the walls and replace the light fixtures.',
+    'Mid-Range':       'Install new flooring and modern lighting, keeping the same layout.',
+    'Premium':         'Install hardwood flooring and refinish the fireplace surround.',
+    'Luxury':          'Install premium hardwood flooring and reclad the fireplace surround in marble.'
   };
 
   static LIVING_ROOM_STYLE = {
-    'Modern':       'Use low-profile furniture and a neutral palette with bold artwork.',
-    'Traditional':  'Use crown moulding, a classic furniture arrangement, and warm wood tones.',
-    'Contemporary': 'Use mixed materials, a statement sofa, and layered lighting.',
-    'Rustic':       'Use exposed beams, a stone fireplace, leather furniture, and warm textiles.',
-    'Luxury':       'Use grand-scale furniture, custom drapery, and a curated art collection.'
+    'Modern':       'Low-profile furniture, a neutral palette, bold artwork.',
+    'Traditional':  'Crown moulding, a classic furniture arrangement, warm wood tones.',
+    'Contemporary': 'Mixed materials, a statement sofa, layered lighting.',
+    'Rustic':       'Exposed beams, a stone fireplace, leather furniture.',
+    'Luxury':       'Grand-scale furniture, custom drapery, curated art.'
   };
 
   // ==================== SHARED ====================
@@ -215,27 +262,45 @@ class BflPromptBuilder {
   };
 
   /**
-   * Damage repair. Phrased as an instruction, not as a description of a clean
-   * room — Kontext acts on verbs.
+   * Damage repair, phrased as the finished state (a positive description of
+   * what the surfaces look like now), not as a list of things to remove —
+   * "free of X" describes the resulting image content; it is not a command
+   * about the editing process the way "do not include X" is.
    */
   static getRepairInstruction(primaryArea) {
     if (primaryArea === 'Exterior') {
-      return 'Repair all visible damage: remove peeling paint, water stains, cracks, rot, and debris. Every exterior surface must read as newly finished and well maintained.';
+      return 'Exterior surfaces are freshly finished, free of peeling paint, rot, or damage.';
     }
 
-    return 'Repair all visible damage: remove mould, water stains, peeling paint, cracks, and damaged surfaces. Replaster and repaint every wall so all surfaces read as brand new and move-in ready.';
+    return 'All surfaces are freshly repaired and repainted, free of damage, mould, or stains.';
   }
 
   /**
-   * Replaces the SD negative prompt. This is the clause that stops Kontext from
-   * silently redrawing the property as a different building or room.
+   * Replaces the SD negative prompt. Written as stated facts about the room/
+   * building's existing structure, not as "do not" commands — BFL's own
+   * guidance warns that negative phrasing can make a model attend MORE to
+   * the exact thing it's told to avoid, which is the likely cause of
+   * hallucinated extra doors/openings under the old wording.
    */
   static getPreservationClause(primaryArea) {
     if (primaryArea === 'Exterior') {
-      return 'Preserve the building exactly: the same roof line and roof pitch, the same chimney, the same number and position of every window and door, the same footprint, the same height, and the same overall architectural form. Do not add or remove any structure. Do not include people, vehicles, scaffolding, text, or watermarks.';
+      return "The building's roofline, chimney, footprint, height, and every window and door remain in their exact original positions and overall form.";
     }
 
-    return 'Preserve the room exactly: the same walls, the same ceiling height, the same room shape, and the same number and position of every window and door. Do not move or remove any wall. Do not change the viewpoint. Do not include people, text, or watermarks.';
+    return "The room's walls, ceiling height, shape, and every window and door remain in their exact original positions. The camera viewpoint stays unchanged.";
+  }
+
+  /**
+   * Final render instruction. Kept short on purpose — the viewpoint/lighting
+   * continuity for interiors is already stated in getPreservationClause, so
+   * this only adds what that clause doesn't cover.
+   */
+  static getRenderInstruction(primaryArea) {
+    if (primaryArea === 'Exterior') {
+      return 'Keep the same camera angle and lighting. Photorealistic real estate photography.';
+    }
+
+    return 'Match the original lighting. Photorealistic real estate photography.';
   }
 }
 
