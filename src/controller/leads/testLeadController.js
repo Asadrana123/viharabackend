@@ -7,7 +7,6 @@ const PartnerLead = require("../../model/leads/partnerLeadModel");
 const { getCallsForPhones, normalisePhone } = require("../../services/calling/vapiCallsService");
 const { getEmailEventsForEmails } = require("../../services/integrations/emailEventsService");
 const { getNotesForLeads } = require("../../services/leads/leadNotesService");
-const { getMessagesForPhones } = require("../../services/integrations/sendblueService");
 
 // Whole-word "test" (case-insensitive): matches "test", "Test User", "John Test",
 // but NOT "Testerson" or "contest". Kept identical to the exclusion regex used by
@@ -31,7 +30,7 @@ const SOURCES = [
  * across ALL four lead collections. These leads are excluded from every other
  * lead tab, so this is the single place they surface.
  *
- * Each row carries its calls, notes, email events and text messages (same shape
+ * Each row carries its calls, notes and email events (same shape
  * as the individual lead tabs) plus `leadType` / `leadTypeLabel` so the UI knows
  * which funnel it came from and can edit notes against the right collection.
  *
@@ -43,7 +42,7 @@ const getTestLeads = catchAsyncError(async (req, res) => {
   const page = Math.max(1, parseInt(req.query.page) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
 
-  // ── 1. Resolve each collection independently (calls + emails + notes + msgs) ─
+  // ── 1. Resolve each collection independently (calls + emails + notes) ─────────
   const perSource = await Promise.all(
     SOURCES.map(async ({ model, leadType, label }) => {
       const leads = await model.find().sort({ createdAt: -1 }).lean();
@@ -52,11 +51,10 @@ const getTestLeads = catchAsyncError(async (req, res) => {
       const emailAddresses = leads.map((l) => l.email).filter(Boolean);
       const leadIds = leads.map((l) => l._id);
 
-      const [callsByPhone, eventsByEmail, notesByLead, messagesByPhone] = await Promise.all([
+      const [callsByPhone, eventsByEmail, notesByLead] = await Promise.all([
         getCallsForPhones(phones),
         getEmailEventsForEmails(emailAddresses),
         getNotesForLeads(leadType, leadIds),
-        getMessagesForPhones(phones),
       ]);
 
       return leads.map((lead) => {
@@ -73,7 +71,6 @@ const getTestLeads = catchAsyncError(async (req, res) => {
           calls: callsByPhone[normalisePhone(lead.phone)] || [],
           emails: eventsByEmail[String(lead.email || "").toLowerCase()] || [],
           notes: notesByLead[String(lead._id)] || [],
-          messages: messagesByPhone[normalisePhone(lead.phone)] || [],
         };
       });
     })

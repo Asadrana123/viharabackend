@@ -22,6 +22,14 @@ const productSchema = new mongoose.Schema({
         type: Date,
         required: false,
     },
+    // The auctionEndDate this auction was last closed for (winner recorded +
+    // seller report emailed). Set atomically by finalizeAuction so an auction
+    // closes once per end date; a relisted property gets a new end date and
+    // closes again.
+    auctionClosedForEndDate: {
+        type: Date,
+        required: false,
+    },
     reservePrice: {
         type: Number,
         required: true,

@@ -114,6 +114,155 @@ function scheduleLastHourReminder(auctionId, endTime) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─── Auction Finalization ─────────────────────────────────────────────────────
+// Closes an auction exactly once, whichever gets here first: a browser countdown
+// ('auction-timer') or the server-side auctionCloseJob. The atomic claim stamps
+// auctionClosedForEndDate with the end date being closed, so the seller report
+// goes out only once per end date — a relisted property (new auctionEndDate) can
+// close again. It also refuses to close an auction whose end time hasn't passed.
+// Returns the final results, or null if there was nothing to close.
+async function finalizeAuction(auctionId) {
+  const auction = await Product.findOneAndUpdate(
+    {
+      _id: auctionId,
+      auctionEndDate: { $lte: new Date() },
+      $expr: { $ne: ['$auctionClosedForEndDate', '$auctionEndDate'] }
+    },
+    [{ $set: { auctionClosedForEndDate: '$auctionEndDate' } }],
+    { new: true }
+  );
+  if (!auction) return null; // already closed, not ended yet, or not found
+
+  const auctionData = activeAuctions && activeAuctions.get(auctionId);
+  const endTime = (auctionData && auctionData.endTime) || auction.auctionEndDate;
+  let reportTriggered = false;
+
+  try {
+    let winningBidAmount = null;
+    let winnerId = null;
+    let winnerName = null;
+
+    if (auction.currentBid && auction.currentBidder) {
+      winningBidAmount = auction.currentBid;
+      winnerId = auction.currentBidder;
+      const winnerUser = await User.findById(winnerId).select('name');
+      winnerName = winnerUser ? winnerUser.name : 'Unknown';
+      console.log(`🏆 Winner determined: ${winnerName} (${winnerId}) with bid $${winningBidAmount}`);
+    } else {
+      console.log('❌ No winner - auction ended with no bids');
+    }
+
+    await Product.findByIdAndUpdate(auctionId, {
+      currentBid: winningBidAmount,
+      currentBidder: winnerId,
+      status: "sold"
+    });
+
+    // Email the full closed-auction report (PDF + Excel) to every
+    // assigned seller. Fires whether or not there was a winning bid.
+    // Fire-and-forget — the sender swallows its own errors and never
+    // blocks finalization.
+    reportTriggered = true;
+    sendAuctionClosedSellerReport(auctionId)
+      .catch(err => console.error('Seller auction-closed report error:', err));
+
+    // Send result emails to all bidders (fire-and-forget)
+    if (winnerId) {
+      ManualBid.distinct('userId', { auctionId })
+        .then(async (bidderIds) => {
+          if (!bidderIds || bidderIds.length === 0) return;
+
+          const bidders = await User.find({ _id: { $in: bidderIds } })
+            .select('name email')
+            .lean();
+
+          const propertyAddress = [auction.street, auction.city, auction.state]
+            .filter(Boolean)
+            .join(', ');
+
+          const auctionLink = `https://www.vihara.ai/auction-bid/${auctionId}`;
+
+          for (const bidder of bidders) {
+            if (!bidder.email) continue;
+
+            const isWinner = bidder._id.toString() === winnerId.toString();
+
+            const html = isWinner
+              ? getAuctionWonEmailTemplate({
+                name: bidder.name || 'Bidder',
+                propertyAddress,
+                winningBid: winningBidAmount,
+                auctionLink
+              })
+              : getAuctionLostEmailTemplate({
+                name: bidder.name || 'Bidder',
+                propertyAddress,
+                winningBid: winningBidAmount,
+                winnerName,
+                auctionLink
+              });
+
+            const subject = isWinner
+              ? `🎉 You were the highest bidder for ${propertyAddress}`
+              : `Auction ended for ${propertyAddress}`;
+
+            // sendEmail(bidder.email, bidder.name, subject, html);
+          }
+        })
+        .catch(err => console.error('Auction result emails error:', err));
+    }
+
+    if (auctionData) {
+      auctionData.auctionStatus = "ended";
+      auctionData.winningBid = winningBidAmount;
+      auctionData.winningBidder = winnerId;
+      auctionData.winnerName = winnerName;
+    }
+
+    const finalResults = {
+      auctionStatus: "ended",
+      hasWinner: !!winnerId,
+      winningBid: winningBidAmount,
+      winningBidder: winnerId,
+      winnerName: winnerName,
+      currentBidder: winnerId ? { id: winnerId, name: winnerName } : null,
+      endTime,                                    // frontend expects endTime
+      participants: (auctionData && auctionData.participants) || 0,
+      recentBids: (auctionData && auctionData.recentBids) || []
+    };
+
+    console.log('📢 Broadcasting final results to all clients:', finalResults);
+    if (io) io.to(auctionId).emit('auction-ended', finalResults);
+    return finalResults;
+
+  } catch (error) {
+    console.error('Error finalizing auction:', error);
+
+    // Nothing was sent yet — release the claim so auctionCloseJob retries it.
+    if (!reportTriggered) {
+      await Product.updateOne({ _id: auctionId }, { $unset: { auctionClosedForEndDate: 1 } })
+        .catch(err => console.error('Failed to release auction close claim:', err));
+      return null;
+    }
+
+    if (auctionData) auctionData.auctionStatus = "ended";
+    if (io) {
+      io.to(auctionId).emit('auction-ended', {
+        auctionStatus: "ended",
+        hasWinner: false,
+        winningBid: null,
+        winningBidder: null,
+        winnerName: null,
+        currentBidder: null,
+        endTime                                   // frontend expects endTime
+      });
+    }
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ─── Admin Helper: Broadcast active users list to all admins in a room ──────────
 
 function getActiveUsersFromRoom(auctionId) {
@@ -477,119 +626,14 @@ function registerSocketHandlers(socket) {
         let newStatus = auctionData.auctionStatus;
 
         if (data.timeLeft <= 0) {
-          newStatus = "ended";
-
           if (auctionData.auctionStatus !== "ended") {
             console.log('🎯 Auction ending, finalizing winner...');
-
-            try {
-              const auction = await Product.findById(data.auctionId);
-
-              let winningBidAmount = null;
-              let winnerId = null;
-              let winnerName = null;
-
-              if (auction && auction.currentBid && auction.currentBidder) {
-                winningBidAmount = auction.currentBid;
-                winnerId = auction.currentBidder;
-                const winnerUser = await User.findById(winnerId).select('name');
-                winnerName = winnerUser ? winnerUser.name : 'Unknown';
-                console.log(`🏆 Winner determined: ${winnerName} (${winnerId}) with bid $${winningBidAmount}`);
-              } else {
-                console.log('❌ No winner - auction ended with no bids');
-              }
-
-              await Product.findByIdAndUpdate(data.auctionId, {
-                currentBid: winningBidAmount,
-                currentBidder: winnerId,
-                status: "sold"
-              });
-
-              // Email the full closed-auction report (PDF + Excel) to every
-              // assigned seller. Fires whether or not there was a winning bid.
-              // Fire-and-forget — the sender swallows its own errors and never
-              // blocks finalization.
-              sendAuctionClosedSellerReport(data.auctionId)
-                .catch(err => console.error('Seller auction-closed report error:', err));
-
-              // Send result emails to all bidders (fire-and-forget)
-              if (winnerId) {
-                ManualBid.distinct('userId', { auctionId: data.auctionId })
-                  .then(async (bidderIds) => {
-                    if (!bidderIds || bidderIds.length === 0) return;
-
-                    const bidders = await User.find({ _id: { $in: bidderIds } })
-                      .select('name email')
-                      .lean();
-
-                    const propertyAddress = [auction.street, auction.city, auction.state]
-                      .filter(Boolean)
-                      .join(', ');
-
-                    const auctionLink = `https://www.vihara.ai/auction-bid/${data.auctionId}`;
-
-                    for (const bidder of bidders) {
-                      if (!bidder.email) continue;
-
-                      const isWinner = bidder._id.toString() === winnerId.toString();
-
-                      const html = isWinner
-                        ? getAuctionWonEmailTemplate({
-                          name: bidder.name || 'Bidder',
-                          propertyAddress,
-                          winningBid: winningBidAmount,
-                          auctionLink
-                        })
-                        : getAuctionLostEmailTemplate({
-                          name: bidder.name || 'Bidder',
-                          propertyAddress,
-                          winningBid: winningBidAmount,
-                          winnerName,
-                          auctionLink
-                        });
-
-                      const subject = isWinner
-                        ? `🎉 You were the highest bidder for ${propertyAddress}`
-                        : `Auction ended for ${propertyAddress}`;
-
-                      // sendEmail(bidder.email, bidder.name, subject, html);
-                    }
-                  })
-                  .catch(err => console.error('Auction result emails error:', err));
-              }
-              auctionData.auctionStatus = "ended";
-              auctionData.winningBid = winningBidAmount;
-              auctionData.winningBidder = winnerId;
-              auctionData.winnerName = winnerName;
-
-              const finalResults = {
-                auctionStatus: "ended",
-                hasWinner: !!winnerId,
-                winningBid: winningBidAmount,
-                winningBidder: winnerId,
-                winnerName: winnerName,
-                currentBidder: winnerId ? { id: winnerId, name: winnerName } : null,
-                endTime: auctionData.endTime,          // frontend expects endTime
-                participants: auctionData.participants || 0,
-                recentBids: auctionData.recentBids || []
-              };
-
-              console.log('📢 Broadcasting final results to all clients:', finalResults);
-              io.to(data.auctionId).emit('auction-ended', finalResults);
-
-            } catch (error) {
-              console.error('Error finalizing auction:', error);
-              io.to(data.auctionId).emit('auction-ended', {
-                auctionStatus: "ended",
-                hasWinner: false,
-                winningBid: null,
-                winningBidder: null,
-                winnerName: null,
-                currentBidder: null,
-                endTime: auctionData.endTime           // frontend expects endTime
-              });
-            }
+            await finalizeAuction(data.auctionId);
           }
+          // finalizeAuction marks the in-memory auction "ended" once the DB close
+          // succeeds. If this browser's clock ran ahead of the real end time the
+          // status is left alone — auctionCloseJob closes it within a minute.
+          newStatus = auctionData.auctionStatus;
         } else {
           newStatus = "active";
         }
@@ -767,6 +811,7 @@ const broadcastAutoBidResult = async (auctionId, autoBidResult, fallbackCurrentB
 module.exports = {
   initializeHandlers,
   registerSocketHandlers,
+  finalizeAuction,
   syncAuctionEndTime,
   syncAuctionStartBid,
   broadcastAutoBidResult

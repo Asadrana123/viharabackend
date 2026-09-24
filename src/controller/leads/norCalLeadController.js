@@ -7,7 +7,6 @@ const { enrichPerson } = require("../../services/shared/fullenrichService");
 const { getCallsForPhones, normalisePhone } = require("../../services/calling/vapiCallsService");
 const { getEmailEventsForEmails } = require("../../services/integrations/emailEventsService");
 const { getNotesForLeads } = require("../../services/leads/leadNotesService");
-const { getMessagesForPhones } = require("../../services/integrations/sendblueService");
 const { syncNorCalLead } = require("../../services/integrations/brevoService");
 const { notifyNewLead } = require("../../services/shared/slackService");
 const { norCalPageUrl } = require("../../config/siteUrls");
@@ -190,7 +189,7 @@ const registerNorCalLead = catchAsyncError(async (req, res, next) => {
  *
  * Paginated Northern California early-access leads for the NorCal Leads tab.
  * Each lead is enriched (best-effort) with its VAPI calls / email events /
- * advisor notes / iMessages, exactly like the property + market lead tabs, so
+ * advisor notes, exactly like the property + market lead tabs, so
  * the admin component renders the same way. Whole-word "test" names are hidden
  * (they live in Test Leads).
  */
@@ -209,11 +208,10 @@ const getAllNorCalLeads = catchAsyncError(async (req, res) => {
   const emailAddresses = leads.map((l) => l.email).filter(Boolean);
   const leadIds = leads.map((l) => l._id);
 
-  const [callsByPhone, eventsByEmail, notesByLead, messagesByPhone] = await Promise.all([
+  const [callsByPhone, eventsByEmail, notesByLead] = await Promise.all([
     getCallsForPhones(phones),
     getEmailEventsForEmails(emailAddresses),
     getNotesForLeads(LEAD_NOTE_TYPE, leadIds),
-    getMessagesForPhones(phones),
   ]);
 
   const leadsWithCalls = leads.map((lead) => ({
@@ -221,7 +219,6 @@ const getAllNorCalLeads = catchAsyncError(async (req, res) => {
     calls: callsByPhone[normalisePhone(lead.phone)] || [],
     emails: eventsByEmail[String(lead.email || "").toLowerCase()] || [],
     notes: notesByLead[String(lead._id)] || [],
-    messages: messagesByPhone[normalisePhone(lead.phone)] || [],
   }));
 
   res.status(200).json({
