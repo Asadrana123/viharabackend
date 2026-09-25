@@ -53,6 +53,9 @@ const propertyImportRoutes = require("./routes/property/propertyImportRoutes");
 // Unified property auction landing pages (/auction/:slug) — one route for every property.
 const propertyLeadRoutes = require("./routes/leads/propertyLeadRoutes");
 const realtorRoutes = require("./routes/users/realtorRoutes");
+// Outbound SMS + Email admin campaigns — new, separate feature. Does not
+// touch/import anything under routes/calling.
+const outboundRoutes = require("./routes/outbound/outboundRoutes");
 // Middleware
 app.use(cookieParser());
 app.use(cors(expressCorsOptions));
@@ -119,7 +122,8 @@ app.use("/api/v1/lead-calling", stopCallingRoutes);
 app.use("/api/v1/property-import", propertyImportRoutes);
 // Unified property auction leads (every /auction/:slug page). One mount, forever.
 app.use("/api/v1/property-lead", propertyLeadRoutes);
-app.use("/api/v1/realtor", realtorRoutes); 
+app.use("/api/v1/realtor", realtorRoutes);
+app.use("/api/v1/outbound", outboundRoutes);
 // Error Middleware
 app.use(errorMiddleware);
 
