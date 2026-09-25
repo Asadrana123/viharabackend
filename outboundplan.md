@@ -376,6 +376,26 @@ This is a real, ongoing setup step each time a new property needs outbound
 SMS (a few minutes each), not a one-time task. The SMS wording lives in these
 automations and isn't editable from our admin UI (decided, §11 #11).
 
+**Worked example — testing with Ogdensburg (2026-09-25):**
+
+1. Create list "Outbound SMS – Ogdensburg" in Brevo, note its numeric id.
+2. Pre-create the 4 `OUTBOUND_*` attributes above if not already done for
+   the account (`FIRSTNAME`/`SMS`/`SMS_OPT_IN*` already exist from the
+   inbound work — don't need recreating).
+3. Build the automation on that list: trigger "contact added to list" →
+   send SMS, message text written directly in (mentions the property by
+   name, since this list is dedicated to one property).
+4. Admin Panel → Manage Listings → Ogdensburg → paste the list id into
+   **"Outbound SMS list"** → save. Until this is set, the property shows
+   "not set up for outbound SMS yet" in the Outbound picker and the launch
+   endpoint rejects it.
+5. Admin Panel → Outbound → SMS tab → pick Ogdensburg → single contact with
+   your own real phone number → tick the required consent checkbox → set
+   `maxContacts` → Launch.
+6. Real cost/side-effect note (same as everywhere else in this doc): this
+   hits live Brevo with real credentials — a real contact gets added to a
+   real list, and if the automation is active, a real text goes out.
+
 ---
 
 ## 6. Campaign tracking in a new Mongo collection, not in memory
@@ -788,6 +808,31 @@ empty by default, over-limit launches rejected, not truncated), and each
 property's Brevo SMS template has the property name written directly into it.
 
 ---
+
+## 2026-09-25 — Implementation shipped; PRs open
+
+All 4 phases implemented and merged into this branch (`ogdensburg-outbound`
+in both repos). Verified: all new/modified modules load cleanly, full
+backend boot, full CRA production build, live-tested SMS campaign (real
+Brevo upsert) and email campaign (real send, verified in inbox) locally.
+Also fixed a real pre-existing bug found along the way: `adminLogin.jsx`
+was reading `response.data.user` when `userService.loginUser` already
+unwraps the axios response — admin login always failed even on a
+successful backend response. Fixed to `response.user`.
+
+Outbound email now matches `welcomeEmail.js`'s look (real logo, same
+fonts/colors/table structure) instead of a one-off plain style. Also fixed
+a real bug in that reused dark-mode CSS: it flipped text to white without
+ever flipping the background to match, making text invisible on a
+dark-mode system — removed in favor of forcing `color-scheme: light`.
+
+Backend PR: https://github.com/Asadrana123/viharabackend/pull/3
+Frontend PR: https://github.com/Asadrana123/vihara-new-website/pull/8
+Both open, not yet merged (blocked on Claude Code's own "Merge Without
+Review" safety guardrail when attempted via `gh pr merge` — needs a human
+to click merge, or a permission rule change to allow it).
+
+Added the Ogdensburg worked-example testing checklist to §5.5 above.
 
 ## Fill in what has changed each time we come back to this
 
