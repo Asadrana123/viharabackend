@@ -396,6 +396,81 @@ const syncNorCalLead = async (lead) => {
 };
 
 // ============================================================================
+// OUTBOUND SMS  (admin-triggered — see outboundplan.md §4/§5.2)
+// ----------------------------------------------------------------------------
+// Unlike the sync* functions above (which react to a public lead-form
+// submission), this is called from an admin-launched campaign
+// (outboundSmsService.js). Every property that needs outbound SMS has its
+// OWN dedicated Brevo list (productModel.brevoOutboundSmsListId) with its
+// own automation — there is no shared list and no env-var fallback. A
+// contact with no resolved list id should never reach this function; callers
+// are expected to check `resolveOutboundSmsListId(property)` first and skip
+// the whole campaign launch when it's null.
+//
+// Removes the contact from the target list before upserting it back in, so
+// every send looks like a fresh "contact added to list" to Brevo's
+// automation — Brevo may not re-fire that trigger for a contact who's
+// already a member (outboundplan.md §4, "re-sends"). The remove call is
+// best-effort: a failure there (e.g. the contact wasn't on the list yet)
+// never blocks the upsert that follows.
+
+/**
+ * @param {object} contact { email, phone, name, listId, smsOptIn, property: { name, slug, listingUrl } }
+ * @returns {Promise<{ success: boolean, smsConflict?: boolean, error?: string, skipped?: boolean }>}
+ */
+const syncOutboundSmsContact = async (contact) => {
+  const listId = Number(contact.listId);
+  if (!Number.isInteger(listId) || listId <= 0) {
+    return { success: false, error: "no outbound SMS list" };
+  }
+  if (!BREVO_API_KEY) {
+    console.warn("⚠️  Brevo not configured — skipping outbound SMS sync.");
+    return { success: false, skipped: true };
+  }
+
+  try {
+    await axios.post(
+      `${BREVO_BASE}/contacts/lists/${listId}/contacts/remove`,
+      { emails: [contact.email] },
+      { headers: { "api-key": BREVO_API_KEY, "Content-Type": "application/json" } }
+    );
+  } catch (err) {
+    // Expected/harmless when the contact wasn't already on this list —
+    // never let a remove failure block the upsert below.
+  }
+
+  try {
+    const { smsConflict } = await upsertContact(
+      {
+        email: contact.email,
+        attributes: {
+          FIRSTNAME: contact.name || "",
+          OUTBOUND_PROPERTY_NAME: contact.property?.name || "",
+          OUTBOUND_LISTING_URL: contact.property?.listingUrl || "",
+          OUTBOUND_PROPERTY_SLUG: contact.property?.slug || "",
+          OUTBOUND_SENT_AT: new Date().toISOString(),
+          ...buildSmsAttributes({
+            phone: contact.phone,
+            smsOptIn: contact.smsOptIn === true,
+            smsOptInAt: new Date(),
+            smsOptInUrl: contact.property?.listingUrl || "",
+          }),
+        },
+        listIds: [listId],
+      },
+      "outbound-sms"
+    );
+
+    console.log(`✅ Brevo outbound SMS synced: ${contact.email} → list ${listId}`);
+    return { success: true, smsConflict };
+  } catch (err) {
+    const reason = err.response?.data?.message || err.message;
+    console.error(`❌ Brevo outbound SMS sync failed: ${contact.email}:`, reason);
+    return { success: false, error: String(reason) };
+  }
+};
+
+// ============================================================================
 // BEHAVIORAL EVENTS  (Realtor Referral Events handoff)
 // Brevo's Events API (POST /v3/events, 204 on success) — distinct from the
 // /contacts upsert above. Used to trigger automations off in-app actions
@@ -444,5 +519,6 @@ module.exports = {
   syncPropertyLead,
   syncPartnerLead,
   syncNorCalLead,
+  syncOutboundSmsContact,
   trackEvent,
 };

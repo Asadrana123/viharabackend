@@ -92,7 +92,7 @@ exports.getProductBySlug = catchAsyncError(async (req, res, next) => {
 exports.getAllProductsAdmin = catchAsyncError(async (req, res) => {
     const products = await productModel
         .find({})
-        .select('productName street city state zipCode slug image showOnAuctions isLandingPage auctionEventLabel brevoListId isTestProperty status availableAreas startBid auctionStartDate auctionEndDate')
+        .select('productName street city state zipCode slug image showOnAuctions isLandingPage auctionEventLabel brevoListId brevoOutboundSmsListId isTestProperty status availableAreas startBid auctionStartDate auctionEndDate')
         .sort({ createdAt: -1 })
         .lean();
 
@@ -111,7 +111,7 @@ exports.getAllProductsAdmin = catchAsyncError(async (req, res) => {
 
 // Admin — update only the listing-control fields for one property.
 exports.updateListingSettings = catchAsyncError(async (req, res, next) => {
-    const { showOnAuctions, isLandingPage, auctionEventLabel, availableAreas, brevoListId } = req.body;
+    const { showOnAuctions, isLandingPage, auctionEventLabel, availableAreas, brevoListId, brevoOutboundSmsListId } = req.body;
 
     const product = await productModel.findById(req.params.id);
     if (!product) {
@@ -133,6 +133,22 @@ exports.updateListingSettings = catchAsyncError(async (req, res, next) => {
                 return next(new Errorhandler("Invalid brevoListId value", 400));
             }
             product.brevoListId = n;
+        }
+    }
+
+    // Per-property outbound-SMS list (Outbound admin feature) — separate
+    // field from brevoListId above. Same accepted shape: a positive integer,
+    // or null/"" to clear it (the property then shows as "not set up for
+    // outbound SMS" and can't be targeted by an outbound SMS campaign).
+    if (brevoOutboundSmsListId !== undefined) {
+        if (brevoOutboundSmsListId === null || brevoOutboundSmsListId === "") {
+            product.brevoOutboundSmsListId = null;
+        } else {
+            const n = Number(brevoOutboundSmsListId);
+            if (!Number.isInteger(n) || n <= 0) {
+                return next(new Errorhandler("Invalid brevoOutboundSmsListId value", 400));
+            }
+            product.brevoOutboundSmsListId = n;
         }
     }
 
@@ -162,7 +178,8 @@ exports.updateListingSettings = catchAsyncError(async (req, res, next) => {
             isLandingPage: product.isLandingPage,
             auctionEventLabel: product.auctionEventLabel,
             availableAreas: product.availableAreas,
-            brevoListId: product.brevoListId
+            brevoListId: product.brevoListId,
+            brevoOutboundSmsListId: product.brevoOutboundSmsListId
         }
     });
 });

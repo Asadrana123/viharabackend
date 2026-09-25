@@ -492,6 +492,17 @@ const productSchema = new mongoose.Schema({
         type: Number,
         default: null
     },
+    // The Brevo list for ADMIN-TRIGGERED OUTBOUND SMS campaigns on this
+    // property (Outbound admin feature, set in Manage Listings). Separate
+    // from brevoListId above, which is the INBOUND registrant nurture list
+    // for people who registered on this property's /auction/:slug page.
+    // null = this property isn't set up for outbound SMS yet — the Outbound
+    // admin UI shows that clearly and refuses to launch a campaign for it.
+    // There is no shared/fallback list; each property needs its own.
+    brevoOutboundSmsListId: {
+        type: Number,
+        default: null
+    },
     // ============================================
     // TIMESTAMPS
     // ============================================
