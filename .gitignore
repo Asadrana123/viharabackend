@@ -1,5 +1,6 @@
 /node_modules
 /.env
+.env.backup-*
 src/22SEP.json
 src/EmailContent.js
 src/EmailContentSecond.js
@@ -19,3 +20,5 @@ src/scripts/seedLocalProductsFromProd.js
 src/scripts/seedLocalAuctionRegistration.js
 src/scripts/seedLocalTestRealtor.js
 src/scripts/resyncLocalProductIdsToProd.js
+src/scripts/seedLocalAdmin.js
+src/scripts/seedLocalVoicePrompt.js
