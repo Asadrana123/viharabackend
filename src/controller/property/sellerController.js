@@ -274,8 +274,8 @@ const REPORT_AUCTION_SELECT =
 
 // Build the report object from an already-fetched auction document.
 // No access control and no HTTP coupling — callers decide who may see it.
-// Same filters as the dashboard: house accounts excluded, rejected
-// registrations excluded.
+// House accounts excluded; the registration list keeps only admin-approved
+// bidders (they are the report's "registered bidders").
 async function buildAuctionReport(auction, auctionId) {
   const excludedBidderIds = await getExcludedBidderIds();
 
@@ -301,8 +301,8 @@ async function buildAuctionReport(auction, auctionId) {
     .sort({ createdAt: -1 });
   const bidsFmt = await BidsManager.formatBidsWithUserInfo(bidsRaw);
 
-  // All registrations (rejected excluded), newest first.
-  const regsRaw = await AuctionRegistration.find({ auctionId, status: { $ne: "rejected" } })
+  // Approved registrations only, newest first.
+  const regsRaw = await AuctionRegistration.find({ auctionId, status: "approved" })
     .select("firstName lastName buyerType status submittedAt")
     .sort({ submittedAt: -1 })
     .lean();

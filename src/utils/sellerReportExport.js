@@ -15,6 +15,7 @@
 //   terms:     { reservePrice, highestBid, startBid, minIncrement },
 //   window:    { start: Date|null, end: Date|null },
 //   counts:    { total, approved, pending },
+//   registrations lists approved bidders only.
 //   bids:          [{ index, bidderName, amount, createdAt }],
 //   registrations: [{ index, name, buyerType, status, submittedAt, email, phone }]
 // }
@@ -84,9 +85,7 @@ function summaryRows(report) {
     ["Min Increment", fmtMoney(t.minIncrement)],
     ["Auction Start", fmtDateTz(w.start, tz, "TBD")],
     ["Auction End", fmtDateTz(w.end, tz, "TBD")],
-    ["Registered Bidders", String(c.total ?? 0)],
-    ["Approved", String(c.approved ?? 0)],
-    ["Pending", String(c.pending ?? 0)]
+    ["Registered Bidders", String(c.approved ?? 0)]  // approved bidders only
   ];
 }
 
@@ -236,10 +235,10 @@ function renderAuctionReportPdf(doc, report) {
   }
 
   // Registrations
-  y = sectionHeading(doc, `Registrations (${report.registrations.length})`, y);
+  y = sectionHeading(doc, `Registered Bidders (${report.registrations.length})`, y);
   if (report.registrations.length === 0) {
     doc.fontSize(9).fillColor(PDF.muted).font("Helvetica")
-      .text("No bidders have registered for this property yet.", left, y);
+      .text("No approved bidders for this property.", left, y);
   } else {
     drawTable(
       doc,
@@ -311,7 +310,7 @@ async function buildAuctionReportWorkbook(report) {
   });
 
   // ----- Registrations sheet -----
-  const regSheet = wb.addWorksheet("Registrations");
+  const regSheet = wb.addWorksheet("Registered Bidders");
   regSheet.columns = [
     { header: "#", key: "index", width: 6 },
     { header: "Name", key: "name", width: 22 },
