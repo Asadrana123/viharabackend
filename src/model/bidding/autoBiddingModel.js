@@ -12,6 +12,13 @@ const autoBiddingSchema = new mongoose.Schema({
     ref: "productModel",
     required: true
   },
+  // The auction round this setting applies to. Settings don't carry into the
+  // next round — bidders set them again.
+  roundId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "AuctionRound",
+    default: null
+  },
   enabled: {
     type: Boolean,
     default: false
@@ -30,7 +37,8 @@ const autoBiddingSchema = new mongoose.Schema({
   }
 });
 
-// Compound index to ensure each user has only one auto-bid setting per auction
-autoBiddingSchema.index({ userId: 1, auctionId: 1 }, { unique: true });
+// Each user has only one auto-bid setting per auction round. (Replaces the old
+// one-per-property index; the auction-rounds migration drops that one.)
+autoBiddingSchema.index({ userId: 1, auctionId: 1, roundId: 1 }, { unique: true });
 
 module.exports = mongoose.model("AutoBidding", autoBiddingSchema);

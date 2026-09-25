@@ -9,6 +9,7 @@
 // {
 //   generatedAt: Date,
 //   timezone:    "America/Los_Angeles",
+//   roundNumber: 2,          // which auction of this property (null before rounds)
 //   property:  { productName, location, zipCode, propertyType, assetType,
 //                occupancyStatus, beds, baths, squareFootage, lotSize,
 //                yearBuilt, apn, status },
@@ -54,7 +55,8 @@ function slugify(str) {
 // Filename (no extension) for the download.
 function buildReportFilename(report) {
   const base = report?.property?.productName || report?.property?.location || "auction";
-  return `${slugify(base)}_report`;
+  const round = report?.roundNumber ? `_auction-${report.roundNumber}` : "";
+  return `${slugify(base)}${round}_report`;
 }
 
 // Rows for the property/terms summary — shared by PDF and Excel so the two
@@ -68,6 +70,7 @@ function summaryRows(report) {
 
   return [
     ["Property", p.productName || "-"],
+    ...(report.roundNumber ? [["Auction", `#${report.roundNumber}`]] : []),
     ["Address", [p.location, p.zipCode].filter(Boolean).join(" ") || "-"],
     ["Status", p.status || "-"],
     ["Property Type", p.propertyType || "-"],

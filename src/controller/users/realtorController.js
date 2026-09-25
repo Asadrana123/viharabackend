@@ -6,6 +6,7 @@ const getCookieOptions = require("../../utils/cookieOptions");
 const mongoose = require("mongoose");
 const AuctionRegistration = require("../../model/bidding/auctionRegistration");
 const ManualBid = require("../../model/bidding/manualBiddingModel");
+const { roundFilter } = require("../../services/bidding/auctionRoundService");
 const BidsManager = require("../../utils/bidsManager");
 const { resolvePropertyTimezone } = require("../../utils/resolveTimezone");
 const sendEmail = require("../../utils/sendEmail");
@@ -595,7 +596,7 @@ exports.getMyPropertyDetail = catchAsyncError(async (req, res, next) => {
   const product = await Product.findById(propertyId).select(
     "productName slug street city county state zipCode propertyType assetType beds " +
     "baths squareFootage lotSize yearBuilt status currentBid startBid minIncrement " +
-    "auctionStartDate auctionEndDate image investmentData.valuation.ViharaValue"
+    "auctionStartDate auctionEndDate image investmentData.valuation.ViharaValue currentRoundId"
   );
   if (!product) return next(new Errorhandler("Property not found", 404));
 
@@ -612,10 +613,10 @@ exports.getMyPropertyDetail = catchAsyncError(async (req, res, next) => {
 
   const myUserIds = registrations.map((r) => r.userId).filter(Boolean);
 
-  // Bids on this property by the realtor's referred buyers ONLY (isolation).
+  // Bids in the current auction by the realtor's referred buyers ONLY (isolation).
   let bids = [];
   if (myUserIds.length) {
-    const raw = await ManualBid.find({ auctionId: propertyId, userId: { $in: myUserIds } })
+    const raw = await ManualBid.find({ ...roundFilter(product), userId: { $in: myUserIds } })
       .sort({ createdAt: -1 });
     const formatted = await BidsManager.formatBidsWithUserInfo(raw);
     bids = formatted.map((b) => ({

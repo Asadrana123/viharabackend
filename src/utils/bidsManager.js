@@ -6,11 +6,16 @@ const User = require('../model/users/userModel');
 const withTimeout = require('./queryTimeoutWrapper');
 const sendEmail = require('./sendEmail');
 const getOutbidEmailTemplate=require('../htmlPages/bidding/outbidEmail')
+const { roundFilter, currentRoundFilter } = require('../services/bidding/auctionRoundService');
+
+// Every bid and auto-bid lookup below is limited to the property's current
+// auction round, so earlier rounds never affect the live auction.
 class BidsManager {
   // Get the highest bid for an auction from manual bids
   static async getHighestBid(auctionId) {
+    const filter = await currentRoundFilter(auctionId);
     const highestManualBid = await withTimeout(
-      ManualBid.findOne({ auctionId }).sort({ amount: -1, createdAt: -1 }).limit(1),
+      ManualBid.findOne(filter).sort({ amount: -1, createdAt: -1 }).limit(1),
       5000
     );
     if (!highestManualBid) {
@@ -23,8 +28,9 @@ class BidsManager {
   // Get recent bids for an auction
   static async getRecentBids(auctionId, limit = 50) {
     // Get manual bids
+    const filter = await currentRoundFilter(auctionId);
     const manualBids = await withTimeout(
-      ManualBid.find({ auctionId }).sort({ createdAt: -1 }).limit(limit),
+      ManualBid.find(filter).sort({ createdAt: -1 }).limit(limit),
       5000
     );
 
@@ -73,6 +79,7 @@ class BidsManager {
     // Create the new bid
     const newBid = new ManualBid({
       auctionId,
+      roundId: auction.currentRoundId || null,
       userId,
       amount
     });
@@ -131,8 +138,9 @@ class BidsManager {
   // Process auto bids after a new manual bid
   static async processAutoBids(auctionId, currentBid, currentBidderId, session = null) {
     // Get all active auto bids for this auction except the current bidder's
+    const filter = await currentRoundFilter(auctionId, session);
     const autoBidSettings = await AutoBidding.find({
-      auctionId,
+      ...filter,
       userId: { $ne: currentBidderId },
       enabled: true,
       maxAmount: { $gt: currentBid } // Only consider auto bids that can still go higher
@@ -217,7 +225,7 @@ class BidsManager {
 
     // All enabled auto-bids, highest ceiling first; earliest wins ties
     const autoBids = await withTimeout(
-      AutoBidding.find({ auctionId, enabled: true }).sort({ maxAmount: -1, createdAt: 1 }),
+      AutoBidding.find({ ...roundFilter(auction), enabled: true }).sort({ maxAmount: -1, createdAt: 1 }),
       5000
     );
 
@@ -261,19 +269,21 @@ class BidsManager {
 
   // Calculate minimum bid amounts
   static async calculateMinimumBids(auctionId, currentBid) {
+    const auction = await withTimeout(Product.findById(auctionId).select('minIncrement startBid currentRoundId'), 5000);
+    const filter = auction ? roundFilter(auction) : { auctionId };
+
     // Get all active auto bids for this auction
     const autoBidSettings = await withTimeout(
       AutoBidding.find({
-        auctionId,
+        ...filter,
         enabled: true
       }).sort({ maxAmount: -1 }),
       5000
     );
 
-    const auction = await withTimeout(Product.findById(auctionId).select('minIncrement startBid'), 5000);
     const increment = auction?.minIncrement || 1000;
     const hasBids = await withTimeout(
-      ManualBid.exists({ auctionId }),
+      ManualBid.exists(filter),
       5000
     );
     const baseMinimum = hasBids ? currentBid + increment : auction?.startBid;

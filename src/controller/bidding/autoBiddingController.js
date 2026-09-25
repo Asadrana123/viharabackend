@@ -8,6 +8,10 @@ const AuctionRegistration = require("../../model/bidding/auctionRegistration");
 const BidsManager = require("../../utils/bidsManager");
 const mongoose = require('mongoose');
 const { broadcastAutoBidResult } = require("../../socket/socketHandlers");
+const { roundFilter, currentRoundFilter } = require("../../services/bidding/auctionRoundService");
+
+// Auto-bid settings belong to one auction round; every lookup below is for the
+// property's current round.
 
 // Get auto-bidding settings for current user
 exports.getAutoBiddingSettings = catchAsyncError(
@@ -28,7 +32,7 @@ exports.getAutoBiddingSettings = catchAsyncError(
 
     const settings = await AutoBidding.findOne({
       userId,
-      auctionId: id
+      ...(await currentRoundFilter(id))
     });
 
     return res.status(200).json({
@@ -80,10 +84,11 @@ exports.saveAutoBiddingSettings = catchAsyncError(
       return next(new ErrorHandler("Maximum amount must be higher than current bid", 400));
     }
 
-    // Find existing settings or create new
+    // Find existing settings for this round or create new
+    const filter = roundFilter(auction);
     let settings = await AutoBidding.findOne({
       userId,
-      auctionId
+      ...filter
     });
 
     if (settings) {
@@ -105,6 +110,7 @@ exports.saveAutoBiddingSettings = catchAsyncError(
       settings = new AutoBidding({
         userId,
         auctionId,
+        roundId: auction.currentRoundId || null,
         enabled,
         maxAmount,
         increment: increment || 1000
@@ -191,10 +197,11 @@ exports.disableAutoBidding = catchAsyncError(
     const { id } = req.params; // auctionId
     const userId = req.user._id;
 
-    // Find existing settings
+    // Find existing settings for the current round
+    const filter = await currentRoundFilter(id);
     const settings = await AutoBidding.findOne({
       userId,
-      auctionId: id
+      ...filter
     });
 
     if (!settings) {
@@ -221,7 +228,7 @@ exports.disableAutoBidding = catchAsyncError(
       // Check if user has any bids in this auction
       const userBids = await ManualBid.countDocuments({
         userId,
-        auctionId: id
+        ...filter
       });
 
       if (userBids > 0) {

@@ -4,8 +4,9 @@
 // depends on someone having the auction page open when the countdown hits zero.
 //
 // It calls the same finalizeAuction the browser countdown uses. That function
-// claims the auction atomically, so if a browser closes it first the job simply
-// skips it — the seller report is never sent twice.
+// claims the property's current auction round atomically, so if a browser
+// closes it first the job simply skips it — the seller report is never sent
+// twice for a round.
 //
 // Only auctions that ended within the lookback window are picked up, so the
 // first run after a deploy doesn't email sellers about long-finished auctions.
@@ -34,8 +35,7 @@ async function closeEndedAuctions() {
     const due = await Product.find({
       showOnAuctions: true,
       status: { $nin: ["sold", "cancelled"] },
-      auctionEndDate: { $lte: now, $gte: since },
-      $expr: { $ne: ["$auctionClosedForEndDate", "$auctionEndDate"] }
+      auctionEndDate: { $lte: now, $gte: since }
     })
       .select("_id")
       .lean();

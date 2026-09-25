@@ -17,6 +17,8 @@ const PDFDocument = require("pdfkit");
 const mongoose = require("mongoose");
 const sendEmail = require("../../utils/sendEmail");
 const getSellerAuctionClosedEmailTemplate = require("../../htmlPages/bidding/sellerAuctionClosedEmail");
+const AuctionRound = require("../../model/bidding/auctionRoundModel");
+const { roundStatus } = require("../../services/bidding/auctionRoundService");
 
 // Seller-dashboard only: house/admin accounts whose bids must not be shown to
 // sellers (excluded from the bids list, the bids count, and the highest-bid
@@ -39,6 +41,89 @@ async function getExcludedBidderIds() {
   return User.find({ email: { $regex: `^(${pattern})$`, $options: "i" } }).distinct("_id");
 }
 
+// ---------- auction rounds ----------
+// A property can be auctioned many times. Every endpoint below takes an optional
+// ?roundId= to show a past auction; without it they show the current round.
+
+// Resolve the round a request is about. `round` is null for a property that
+// predates rounds (its bids are then matched by property alone).
+async function resolveRound(product, roundId) {
+  if (roundId) {
+    if (!mongoose.Types.ObjectId.isValid(roundId)) {
+      return { error: { code: 400, message: "Invalid auction round ID" } };
+    }
+    const round = await AuctionRound.findOne({ _id: roundId, productId: product._id });
+    return round ? { round } : { error: { code: 404, message: "Auction round not found" } };
+  }
+  const round = product.currentRoundId ? await AuctionRound.findById(product.currentRoundId) : null;
+  return { round };
+}
+
+function bidFilterFor(product, round) {
+  return round ? { auctionId: product._id, roundId: round._id } : { auctionId: product._id };
+}
+
+// A closed round keeps its own terms; an open one reads the property's live values.
+function roundTerms(product, round) {
+  const src = round && round.closedAt ? round : product;
+  return {
+    auctionStartDate: src.auctionStartDate || null,
+    auctionEndDate: src.auctionEndDate || null,
+    reservePrice: src.reservePrice ?? null,
+    startBid: src.startBid ?? null,
+    minIncrement: src.minIncrement ?? null
+  };
+}
+
+function roundSummary(product, round) {
+  if (!round) return null;
+  return {
+    id: round._id,
+    roundNumber: round.roundNumber,
+    status: roundStatus(round, product),
+    isCurrent: String(product.currentRoundId) === String(round._id)
+  };
+}
+
+// Registrations for a round: a closed round uses the list saved when it closed;
+// an open round uses the live list. Rejected registrations are always excluded.
+async function roundRegistrations(product, round, { approvedOnly = false } = {}) {
+  if (round && round.closedAt) {
+    return (round.registrations || [])
+      .filter((r) => r.status !== "rejected" && (!approvedOnly || r.status === "approved"))
+      .map((r) => ({
+        id: r.registrationId,
+        name: r.name || "Unknown",
+        buyerType: r.buyerType || "",
+        status: r.status || "pending",
+        submittedAt: r.submittedAt
+      }));
+  }
+  const regs = await AuctionRegistration.find({
+    auctionId: product._id,
+    status: approvedOnly ? "approved" : { $ne: "rejected" }
+  })
+    .select("firstName lastName buyerType status submittedAt")
+    .sort({ submittedAt: -1 })
+    .lean();
+  return regs.map((r) => ({
+    id: r._id,
+    name: `${r.firstName || ""} ${r.lastName || ""}`.trim() || "Unknown",
+    buyerType: r.buyerType || "",
+    status: r.status || "pending",
+    submittedAt: r.submittedAt
+  }));
+}
+
+function countRegistrations(list) {
+  const counts = { total: 0, approved: 0, pending: 0 };
+  list.forEach((r) => {
+    if (counts[r.status] !== undefined) counts[r.status] += 1;
+    counts.total += 1;
+  });
+  return counts;
+}
+
 // Get all auctions the requester can view.
 // - Seller: only the properties assigned to them.
 // - Admin: every property (admins may inspect any seller dashboard).
@@ -47,7 +132,7 @@ exports.getSellerAuctions = catchAsyncError(async (req, res, next) => {
   const filter = isAdmin ? {} : { sellerIds: req.user._id };
 
   const auctions = await Product.find(filter)
-    .select("productName city state street status currentBid auctionEndDate")
+    .select("productName city state street status currentBid auctionEndDate currentRoundId")
     .sort({ createdAt: -1 });
 
   return res.status(200).json({
@@ -70,7 +155,7 @@ exports.getSellerAuctionBids = catchAsyncError(async (req, res, next) => {
     : { _id: auctionId, sellerIds: req.user._id };
 
   const auction = await Product.findOne(query)
-    .select("productName city state street currentBid");
+    .select("productName city state street currentBid currentRoundId auctionStartDate auctionEndDate");
 
   if (!auction) {
     return isAdmin
@@ -78,11 +163,14 @@ exports.getSellerAuctionBids = catchAsyncError(async (req, res, next) => {
       : next(new ErrorHandler("Auction not found or you do not have access", 403));
   }
 
+  const { round, error } = await resolveRound(auction, req.query.roundId);
+  if (error) return next(new ErrorHandler(error.message, error.code));
+
   const skip = (parseInt(page) - 1) * parseInt(limit);
 
   // Exclude house/admin bids — sellers only see real bidder activity.
   const excludedBidderIds = await getExcludedBidderIds();
-  const bidFilter = { auctionId, userId: { $nin: excludedBidderIds } };
+  const bidFilter = { ...bidFilterFor(auction, round), userId: { $nin: excludedBidderIds } };
 
   const bids = await ManualBid.find(bidFilter)
     .sort({ createdAt: -1 })
@@ -98,8 +186,9 @@ exports.getSellerAuctionBids = catchAsyncError(async (req, res, next) => {
     auction: {
       name: auction.productName,
       location: `${auction.street}, ${auction.city}, ${auction.state}`,
-      currentBid: auction.currentBid
+      currentBid: round && round.closedAt ? round.highestBid : auction.currentBid
     },
+    round: roundSummary(auction, round),
     bids: formattedBids,
     pagination: {
       total: totalBids,
@@ -133,7 +222,7 @@ exports.getSellerAuctionDetails = catchAsyncError(async (req, res, next) => {
     "productName street city county state zipCode propertyType assetType " +
     "occupancyStatus beds baths squareFootage lotSize yearBuilt monthlyHOADues " +
     "apn status auctionStartDate auctionEndDate reservePrice startBid currentBid " +
-    "minIncrement emd investmentData.valuation"
+    "minIncrement emd investmentData.valuation currentRoundId"
   );
 
   if (!auction) {
@@ -142,25 +231,18 @@ exports.getSellerAuctionDetails = catchAsyncError(async (req, res, next) => {
       : next(new ErrorHandler("Auction not found or you do not have access", 403));
   }
 
-  // One grouped query for the registration status breakdown.
-  // Rejected registrations are excluded — they don't count toward the totals.
-  const grouped = await AuctionRegistration.aggregate([
-    { $match: { auctionId: new mongoose.Types.ObjectId(auctionId), status: { $ne: "rejected" } } },
-    { $group: { _id: "$status", count: { $sum: 1 } } }
-  ]);
+  const { round, error } = await resolveRound(auction, req.query.roundId);
+  if (error) return next(new ErrorHandler(error.message, error.code));
+  const terms = roundTerms(auction, round);
 
-  const registrations = { total: 0, approved: 0, pending: 0 };
-  grouped.forEach((g) => {
-    if (g._id && registrations[g._id] !== undefined) {
-      registrations[g._id] = g.count;
-    }
-    registrations.total += g.count;
-  });
+  // Registration status breakdown (rejected excluded). A closed round counts
+  // the list saved when it closed.
+  const registrations = countRegistrations(await roundRegistrations(auction, round));
 
   // Highest bid shown to the seller is the top bid by a real bidder
   // (house/admin accounts excluded).
   const excludedBidderIds = await getExcludedBidderIds();
-  const topUserBid = await ManualBid.findOne({ auctionId, userId: { $nin: excludedBidderIds } })
+  const topUserBid = await ManualBid.findOne({ ...bidFilterFor(auction, round), userId: { $nin: excludedBidderIds } })
     .sort({ amount: -1 })
     .select("amount")
     .lean();
@@ -194,16 +276,82 @@ exports.getSellerAuctionDetails = catchAsyncError(async (req, res, next) => {
       // frontend can render auction/bid/registration times in the property's
       // own local time rather than the viewer's browser timezone.
       timezone: resolvePropertyTimezone(auction),
-      auctionStartDate: auction.auctionStartDate,
-      auctionEndDate: auction.auctionEndDate,
-      reservePrice: auction.reservePrice,
-      startBid: auction.startBid,
+      auctionStartDate: terms.auctionStartDate,
+      auctionEndDate: terms.auctionEndDate,
+      reservePrice: terms.reservePrice,
+      startBid: terms.startBid,
       highestBid,
-      minIncrement: auction.minIncrement,
+      minIncrement: terms.minIncrement,
       emd: auction.emd,
       viharaValue: auction.investmentData?.valuation?.ViharaValue ?? null
     },
+    round: roundSummary(auction, round),
     registrations
+  });
+});
+
+// Auction history for one property: every round, newest first, with its
+// dates, highest bid, winner and bid count. Same access rule as above. Bid
+// figures exclude house/admin accounts, like the rest of the seller dashboard.
+exports.getSellerAuctionRounds = catchAsyncError(async (req, res, next) => {
+  const { auctionId } = req.params;
+  const isAdmin = req.user.role === "admin";
+
+  if (!mongoose.Types.ObjectId.isValid(auctionId)) {
+    return next(new ErrorHandler("Invalid auction ID", 400));
+  }
+
+  const query = isAdmin
+    ? { _id: auctionId }
+    : { _id: auctionId, sellerIds: req.user._id };
+
+  const auction = await Product.findOne(query).select(
+    "currentRoundId auctionStartDate auctionEndDate currentBid currentBidder"
+  );
+
+  if (!auction) {
+    return isAdmin
+      ? next(new ErrorHandler("Auction not found", 404))
+      : next(new ErrorHandler("Auction not found or you do not have access", 403));
+  }
+
+  const rounds = await AuctionRound.find({ productId: auction._id })
+    .sort({ roundNumber: -1 })
+    .lean();
+
+  const excludedBidderIds = await getExcludedBidderIds();
+  const stats = await ManualBid.aggregate([
+    {
+      $match: {
+        auctionId: auction._id,
+        roundId: { $in: rounds.map((r) => r._id) },
+        userId: { $nin: excludedBidderIds }
+      }
+    },
+    { $group: { _id: "$roundId", highestBid: { $max: "$amount" }, totalBids: { $sum: 1 } } }
+  ]);
+  const statsByRound = {};
+  stats.forEach((st) => { statsByRound[String(st._id)] = st; });
+
+  const result = rounds.map((r) => {
+    const st = statsByRound[String(r._id)] || {};
+    const terms = roundTerms(auction, r);
+    return {
+      id: r._id,
+      roundNumber: r.roundNumber,
+      status: roundStatus(r, auction),
+      isCurrent: String(auction.currentRoundId) === String(r._id),
+      auctionStartDate: terms.auctionStartDate,
+      auctionEndDate: terms.auctionEndDate,
+      highestBid: st.highestBid ?? null,
+      totalBids: st.totalBids || 0,
+      winnerName: r.closedAt ? r.winnerName || null : null
+    };
+  });
+
+  return res.status(200).json({
+    success: true,
+    rounds: result
   });
 });
 
@@ -223,7 +371,7 @@ exports.getSellerAuctionRegistrations = catchAsyncError(async (req, res, next) =
     ? { _id: auctionId }
     : { _id: auctionId, sellerIds: req.user._id };
 
-  const auction = await Product.findOne(query).select("_id");
+  const auction = await Product.findOne(query).select("_id currentRoundId");
 
   if (!auction) {
     return isAdmin
@@ -231,27 +379,16 @@ exports.getSellerAuctionRegistrations = catchAsyncError(async (req, res, next) =
       : next(new ErrorHandler("Auction not found or you do not have access", 403));
   }
 
+  const { round, error } = await resolveRound(auction, req.query.roundId);
+  if (error) return next(new ErrorHandler(error.message, error.code));
+
   const skip = (parseInt(page) - 1) * parseInt(limit);
 
-  // Rejected registrations are hidden from the seller.
-  const regFilter = { auctionId, status: { $ne: "rejected" } };
-
-  const registrations = await AuctionRegistration.find(regFilter)
-    .select("firstName lastName buyerType status submittedAt")
-    .sort({ submittedAt: -1 })
-    .skip(skip)
-    .limit(parseInt(limit))
-    .lean();
-
-  const total = await AuctionRegistration.countDocuments(regFilter);
-
-  const formatted = registrations.map((r) => ({
-    id: r._id,
-    name: `${r.firstName || ""} ${r.lastName || ""}`.trim() || "Unknown",
-    buyerType: r.buyerType || "",
-    status: r.status || "pending",
-    submittedAt: r.submittedAt
-  }));
+  // Rejected registrations are hidden from the seller. A closed round shows the
+  // list saved when it closed.
+  const all = await roundRegistrations(auction, round);
+  const total = all.length;
+  const formatted = all.slice(skip, skip + parseInt(limit));
 
   return res.status(200).json({
     success: true,
@@ -270,46 +407,39 @@ exports.getSellerAuctionRegistrations = catchAsyncError(async (req, res, next) =
 const REPORT_AUCTION_SELECT =
   "productName street city county state zipCode propertyType assetType " +
   "occupancyStatus beds baths squareFootage lotSize yearBuilt apn status " +
-  "auctionStartDate auctionEndDate reservePrice startBid minIncrement";
+  "auctionStartDate auctionEndDate reservePrice startBid minIncrement currentRoundId";
 
 // Build the report object from an already-fetched auction document.
 // No access control and no HTTP coupling — callers decide who may see it.
 // House accounts excluded; the registration list keeps only admin-approved
-// bidders (they are the report's "registered bidders").
-async function buildAuctionReport(auction, auctionId) {
+// bidders (they are the report's "registered bidders"). `round` picks the
+// auction round (null for a property that predates rounds).
+async function buildAuctionReport(auction, auctionId, round = null) {
   const excludedBidderIds = await getExcludedBidderIds();
+  const bidFilter = { ...bidFilterFor(auction, round), userId: { $nin: excludedBidderIds } };
+  const terms = roundTerms(auction, round);
 
   // Registration counts (rejected excluded).
-  const grouped = await AuctionRegistration.aggregate([
-    { $match: { auctionId: new mongoose.Types.ObjectId(auctionId), status: { $ne: "rejected" } } },
-    { $group: { _id: "$status", count: { $sum: 1 } } }
-  ]);
-  const counts = { total: 0, approved: 0, pending: 0 };
-  grouped.forEach((g) => {
-    if (g._id && counts[g._id] !== undefined) counts[g._id] = g.count;
-    counts.total += g.count;
-  });
+  const counts = countRegistrations(await roundRegistrations(auction, round));
 
   // Highest bid by a real bidder (house accounts excluded).
-  const topBid = await ManualBid.findOne({ auctionId, userId: { $nin: excludedBidderIds } })
+  const topBid = await ManualBid.findOne(bidFilter)
     .sort({ amount: -1 })
     .select("amount")
     .lean();
 
   // All bids (house accounts excluded), newest first.
-  const bidsRaw = await ManualBid.find({ auctionId, userId: { $nin: excludedBidderIds } })
+  const bidsRaw = await ManualBid.find(bidFilter)
     .sort({ createdAt: -1 });
   const bidsFmt = await BidsManager.formatBidsWithUserInfo(bidsRaw);
 
   // Approved registrations only, newest first.
-  const regsRaw = await AuctionRegistration.find({ auctionId, status: "approved" })
-    .select("firstName lastName buyerType status submittedAt")
-    .sort({ submittedAt: -1 })
-    .lean();
+  const regs = await roundRegistrations(auction, round, { approvedOnly: true });
 
   return {
     generatedAt: new Date(),
     timezone: resolvePropertyTimezone(auction),
+    roundNumber: round ? round.roundNumber : null,
     property: {
       productName: auction.productName,
       location: `${auction.street}, ${auction.city}, ${auction.state}`,
@@ -326,14 +456,14 @@ async function buildAuctionReport(auction, auctionId) {
       status: auction.status
     },
     terms: {
-      reservePrice: auction.reservePrice,
+      reservePrice: terms.reservePrice,
       highestBid: topBid ? topBid.amount : null,
-      startBid: auction.startBid,
-      minIncrement: auction.minIncrement
+      startBid: terms.startBid,
+      minIncrement: terms.minIncrement
     },
     window: {
-      start: auction.auctionStartDate || null,
-      end: auction.auctionEndDate || null
+      start: terms.auctionStartDate,
+      end: terms.auctionEndDate
     },
     counts,
     bids: bidsFmt.map((b, i) => ({
@@ -342,11 +472,11 @@ async function buildAuctionReport(auction, auctionId) {
       amount: b.amount,
       createdAt: b.createdAt
     })),
-    registrations: regsRaw.map((r, i) => ({
+    registrations: regs.map((r, i) => ({
       index: i + 1,
-      name: `${r.firstName || ""} ${r.lastName || ""}`.trim() || "Unknown",
-      buyerType: r.buyerType || "",
-      status: r.status || "pending",
+      name: r.name,
+      buyerType: r.buyerType,
+      status: r.status,
       submittedAt: r.submittedAt
     }))
   };
@@ -376,13 +506,17 @@ async function gatherSellerAuctionReport(req, auctionId) {
     };
   }
 
-  const report = await buildAuctionReport(auction, auctionId);
+  const { round, error } = await resolveRound(auction, req.query.roundId);
+  if (error) return { error };
+
+  const report = await buildAuctionReport(auction, auctionId, round);
   return { report };
 }
 
 // System-context gather — no logged-in user. Used when the auction closes
-// automatically and there is no request to authorize against.
-async function gatherAuctionReportById(auctionId) {
+// automatically and there is no request to authorize against. `roundId` picks
+// the auction round (the current one when omitted).
+async function gatherAuctionReportById(auctionId, roundId = null) {
   if (!mongoose.Types.ObjectId.isValid(auctionId)) {
     return { error: { code: 400, message: "Invalid auction ID" } };
   }
@@ -392,7 +526,10 @@ async function gatherAuctionReportById(auctionId) {
     return { error: { code: 404, message: "Auction not found" } };
   }
 
-  const report = await buildAuctionReport(auction, auctionId);
+  const { round, error } = await resolveRound(auction, roundId);
+  if (error) return { error };
+
+  const report = await buildAuctionReport(auction, auctionId, round);
   return { report };
 }
 
@@ -432,12 +569,13 @@ exports.exportSellerAuctionExcel = catchAsyncError(async (req, res, next) => {
 });
 
 // Email the full closed-auction report (PDF + Excel) to every assigned seller.
-// Called from the socket auction-finalization flow. Sends even when there were
-// no bids, but then without the attachments. Fully self-contained and fire-and-forget: it swallows its own errors
-// so it can never block or break auction finalization.
-exports.sendAuctionClosedSellerReport = async (auctionId) => {
+// Called from the socket auction-finalization flow for the round that just
+// closed. Sends even when there were no bids, but then without the attachments.
+// Fully self-contained and fire-and-forget: it swallows its own errors so it can
+// never block or break auction finalization.
+exports.sendAuctionClosedSellerReport = async (auctionId, roundId = null) => {
   try {
-    const { error, report } = await gatherAuctionReportById(auctionId);
+    const { error, report } = await gatherAuctionReportById(auctionId, roundId);
     if (error) {
       console.error(`Seller report skipped for auction ${auctionId}: ${error.message}`);
       return;
@@ -495,6 +633,10 @@ exports.sendAuctionClosedSellerReport = async (auctionId) => {
         report
       });
       sendEmail(seller.email, seller.name, subject, html, attachments);
+    }
+
+    if (roundId) {
+      await AuctionRound.updateOne({ _id: roundId }, { $set: { sellerEmailSentAt: new Date() } });
     }
 
     console.log(

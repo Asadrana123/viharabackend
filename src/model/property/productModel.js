@@ -22,13 +22,13 @@ const productSchema = new mongoose.Schema({
         type: Date,
         required: false,
     },
-    // The auctionEndDate this auction was last closed for (winner recorded +
-    // seller report emailed). Set atomically by finalizeAuction so an auction
-    // closes once per end date; a relisted property gets a new end date and
-    // closes again.
-    auctionClosedForEndDate: {
-        type: Date,
-        required: false,
+    // The auction round currently running (or last run) for this property.
+    // Auction dates, prices and the current bid above are that round's live
+    // values; past rounds live in auctionRoundModel.
+    currentRoundId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "AuctionRound",
+        default: null
     },
     reservePrice: {
         type: Number,
@@ -508,6 +508,7 @@ const productSchema = new mongoose.Schema({
 // Middleware to update lastUpdated when coordinates change
 productSchema.pre('save', async function (next) {
     this.updatedAt = Date.now();
+    this.$locals.wasNew = this.isNew;
 
     if (this.isModified('coordinates.parcel') || this.isModified('coordinates.block')) {
         this.coordinates.lastUpdated = Date.now();
@@ -526,6 +527,18 @@ productSchema.pre('save', async function (next) {
     }
 
     next();
+});
+
+// A new property starts on auction round 1, so its bids and history are kept
+// per round from the first auction on.
+productSchema.post('save', async function (doc) {
+    if (!doc.$locals.wasNew || doc.currentRoundId) return;
+    try {
+        const { ensureCurrentRound } = require('../../services/bidding/auctionRoundService');
+        await ensureCurrentRound(doc);
+    } catch (err) {
+        console.error(`Failed to open auction round 1 for property ${doc._id}:`, err.message);
+    }
 });
 
 module.exports = mongoose.model("productModel", productSchema);

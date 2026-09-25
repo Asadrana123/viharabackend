@@ -13,6 +13,12 @@ const getAuctionLostEmailTemplate = require('../htmlPages/bidding/auctionLostEma
 const getLastHourReminderEmailTemplate = require('../htmlPages/bidding/lastHourReminderEmail');
 const getAdminBidNotificationEmail = require('../htmlPages/bidding/adminBidNotificationEmail');
 const { sendAuctionClosedSellerReport } = require('../controller/property/sellerController');
+const {
+  ensureCurrentRound,
+  claimRoundClose,
+  releaseRoundClose,
+  fillRoundResult
+} = require('../services/bidding/auctionRoundService');
 
 let activeAuctions;
 let userAuctions;
@@ -115,23 +121,20 @@ function scheduleLastHourReminder(auctionId, endTime) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ─── Auction Finalization ─────────────────────────────────────────────────────
-// Closes an auction exactly once, whichever gets here first: a browser countdown
-// ('auction-timer') or the server-side auctionCloseJob. The atomic claim stamps
-// auctionClosedForEndDate with the end date being closed, so the seller report
-// goes out only once per end date — a relisted property (new auctionEndDate) can
-// close again. It also refuses to close an auction whose end time hasn't passed.
-// Returns the final results, or null if there was nothing to close.
+// Closes the property's current auction round exactly once, whichever gets here
+// first: a browser countdown ('auction-timer') or the server-side
+// auctionCloseJob. The atomic claim on the round guarantees the seller report
+// goes out only once per round, and an auction whose end time hasn't passed is
+// never closed. Returns the final results, or null if there was nothing to close.
 async function finalizeAuction(auctionId) {
-  const auction = await Product.findOneAndUpdate(
-    {
-      _id: auctionId,
-      auctionEndDate: { $lte: new Date() },
-      $expr: { $ne: ['$auctionClosedForEndDate', '$auctionEndDate'] }
-    },
-    [{ $set: { auctionClosedForEndDate: '$auctionEndDate' } }],
-    { new: true }
-  );
-  if (!auction) return null; // already closed, not ended yet, or not found
+  const auction = await Product.findById(auctionId);
+  if (!auction || !auction.auctionEndDate || new Date(auction.auctionEndDate) > new Date()) {
+    return null; // not found or not ended yet
+  }
+
+  const currentRound = await ensureCurrentRound(auction);
+  const round = await claimRoundClose(currentRound._id);
+  if (!round) return null; // already closed
 
   const auctionData = activeAuctions && activeAuctions.get(auctionId);
   const endTime = (auctionData && auctionData.endTime) || auction.auctionEndDate;
@@ -152,6 +155,14 @@ async function finalizeAuction(auctionId) {
       console.log('❌ No winner - auction ended with no bids');
     }
 
+    // Record the round's result and registration snapshot before the report
+    // is built from it.
+    await fillRoundResult(round, auction, {
+      highestBid: winningBidAmount,
+      winnerId,
+      winnerName
+    });
+
     await Product.findByIdAndUpdate(auctionId, {
       currentBid: winningBidAmount,
       currentBidder: winnerId,
@@ -164,12 +175,12 @@ async function finalizeAuction(auctionId) {
     // Fire-and-forget — the sender swallows its own errors and never
     // blocks finalization.
     reportTriggered = true;
-    sendAuctionClosedSellerReport(auctionId)
+    sendAuctionClosedSellerReport(auctionId, round._id)
       .catch(err => console.error('Seller auction-closed report error:', err));
 
     // Send result emails to all bidders (fire-and-forget)
     if (winnerId) {
-      ManualBid.distinct('userId', { auctionId })
+      ManualBid.distinct('userId', { auctionId, roundId: round._id })
         .then(async (bidderIds) => {
           if (!bidderIds || bidderIds.length === 0) return;
 
@@ -241,7 +252,7 @@ async function finalizeAuction(auctionId) {
 
     // Nothing was sent yet — release the claim so auctionCloseJob retries it.
     if (!reportTriggered) {
-      await Product.updateOne({ _id: auctionId }, { $unset: { auctionClosedForEndDate: 1 } })
+      await releaseRoundClose(round._id)
         .catch(err => console.error('Failed to release auction close claim:', err));
       return null;
     }
@@ -744,6 +755,25 @@ function handleParticipantLeave(userId, auctionId) {
     broadcastActiveUsersToAdmin(auctionId);
   }
 }
+// A new auction round started for this property: drop the finished round's
+// in-memory state (the next join reloads it from the database) and tell anyone
+// still on the page.
+const resetAuctionRoom = (auctionId, { auctionStartDate, auctionEndDate } = {}) => {
+  const id = String(auctionId);
+  if (reminderTimeouts.has(id)) {
+    clearTimeout(reminderTimeouts.get(id));
+    reminderTimeouts.delete(id);
+  }
+  if (activeAuctions) activeAuctions.delete(id);
+  if (io) {
+    io.to(id).emit('auction-restarted', {
+      auctionStartDate: auctionStartDate || null,
+      auctionEndDate: auctionEndDate || null,
+      endTime: auctionEndDate || null
+    });
+  }
+};
+
 const syncAuctionEndTime = (auctionId, auctionEndDate) => {
   const auctionData = activeAuctions.get(auctionId);
   if (!auctionData) return; // not in memory yet — next join will fetch fresh from DB
@@ -813,6 +843,7 @@ module.exports = {
   initializeHandlers,
   registerSocketHandlers,
   finalizeAuction,
+  resetAuctionRoom,
   syncAuctionEndTime,
   syncAuctionStartBid,
   broadcastAutoBidResult

@@ -9,7 +9,18 @@ const Product = require("../../model/property/productModel");
 const mongoose = require('mongoose');
 const BidsManager = require('../../utils/bidsManager');
 const { resolvePropertyTimezone, wallClockToUtc, utcToWallClock } = require('../../utils/resolveTimezone');
-const { syncAuctionEndTime, syncAuctionStartBid } = require('../../socket/socketHandlers');
+const { syncAuctionEndTime, syncAuctionStartBid, resetAuctionRoom } = require('../../socket/socketHandlers');
+const AuctionRound = require("../../model/bidding/auctionRoundModel");
+const { roundFilter, startNewRound } = require('../../services/bidding/auctionRoundService');
+
+// Dates and the starting bid belong to the current auction round. Once that
+// round has closed they're history: the admin starts a new auction instead.
+async function currentRoundIsClosed(auction) {
+  if (!auction.currentRoundId) return false;
+  const round = await AuctionRound.findById(auction.currentRoundId).select('closedAt').lean();
+  return !!(round && round.closedAt);
+}
+const ROUND_CLOSED_MESSAGE = "This auction has already closed. Start a new auction to set new dates or prices.";
 const { getIoInstance } = require('../../socket/getIoInstance');
 
 // Create an admin account
@@ -99,20 +110,22 @@ exports.getAuctionBids = catchAsyncError(
     const { auctionId } = req.params;
     const { page = 1, limit = 50 } = req.query;
 
-    const auction = await Product.findById(auctionId).select('productName street city state');
+    const auction = await Product.findById(auctionId).select('productName street city state currentRoundId');
     if (!auction) {
       return next(new Errorhandler("Auction not found", 404));
     }
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    const manualBids = await ManualBid.find({ auctionId })
+    // Bids of the current auction round only.
+    const bidFilter = roundFilter(auction);
+    const manualBids = await ManualBid.find(bidFilter)
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit))
       .lean();
 
-    const totalBids = await ManualBid.countDocuments({ auctionId });
+    const totalBids = await ManualBid.countDocuments(bidFilter);
 
     // Batch fetch user info
     const userIds = [...new Set(manualBids.map(b => b.userId.toString()))];
@@ -121,7 +134,7 @@ exports.getAuctionBids = catchAsyncError(
     users.forEach(u => { userMap[u._id.toString()] = u; });
 
     // Fetch auto bid user IDs to tag auto bids
-    const autoBidUserIds = await AutoBidding.find({ auctionId, enabled: true }).distinct('userId');
+    const autoBidUserIds = await AutoBidding.find({ ...bidFilter, enabled: true }).distinct('userId');
     const autoBidSet = new Set(autoBidUserIds.map(id => id.toString()));
 
     const bids = manualBids.map(bid => {
@@ -176,6 +189,9 @@ exports.updateAuctionDates = catchAsyncError(
     if (!auction) {
       return next(new Errorhandler("Auction not found", 404));
     }
+    if (await currentRoundIsClosed(auction)) {
+      return next(new Errorhandler(ROUND_CLOSED_MESSAGE, 409));
+    }
 
     const timezone = resolvePropertyTimezone(auction);
 
@@ -228,6 +244,96 @@ exports.updateAuctionDates = catchAsyncError(
         auctionEndDate: updatedAuction.auctionEndDate,
         auctionStartLocal: utcToWallClock(updatedAuction.auctionStartDate, timezone),
         auctionEndLocal: utcToWallClock(updatedAuction.auctionEndDate, timezone)
+      }
+    });
+  }
+);
+
+
+// Start a new auction for a property (admin only). The current auction must
+// have ended; it stays in the property's auction history with its bids and
+// result. Registrations carry over — approved bidders can bid again.
+// Body: { auctionStartDate, auctionEndDate, startBid, reservePrice?, minIncrement? }.
+// Dates are wall-clock strings in the property's timezone, or ISO instants.
+exports.startNewAuction = catchAsyncError(
+  async (req, res, next) => {
+    const { auctionId } = req.params;
+    const { auctionStartDate, auctionEndDate } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(auctionId)) {
+      return next(new Errorhandler("Invalid auction ID", 400));
+    }
+
+    const auction = await Product.findById(auctionId).select('state zipCode reservePrice minIncrement');
+    if (!auction) {
+      return next(new Errorhandler("Auction not found", 404));
+    }
+
+    const timezone = resolvePropertyTimezone(auction);
+    const start = auctionStartDate ? wallClockToUtc(auctionStartDate, timezone) : null;
+    const end = auctionEndDate ? wallClockToUtc(auctionEndDate, timezone) : null;
+    if (!start || !end) {
+      return next(new Errorhandler("Valid start and end dates are required", 400));
+    }
+    if (new Date(start) >= new Date(end)) {
+      return next(new Errorhandler("The start date must be before the end date", 400));
+    }
+    if (new Date(end) <= new Date()) {
+      return next(new Errorhandler("The end date must be in the future", 400));
+    }
+
+    const startBid = Number(req.body.startBid);
+    if (!Number.isFinite(startBid) || startBid <= 0) {
+      return next(new Errorhandler("Starting bid must be a positive number", 400));
+    }
+    const reservePrice = req.body.reservePrice === undefined || req.body.reservePrice === ''
+      ? auction.reservePrice
+      : Number(req.body.reservePrice);
+    if (!Number.isFinite(reservePrice) || reservePrice < 0) {
+      return next(new Errorhandler("Reserve price must be zero or a positive number", 400));
+    }
+    const minIncrement = req.body.minIncrement === undefined || req.body.minIncrement === ''
+      ? (auction.minIncrement || 1000)
+      : Number(req.body.minIncrement);
+    if (!Number.isFinite(minIncrement) || minIncrement <= 0) {
+      return next(new Errorhandler("Minimum increment must be a positive number", 400));
+    }
+
+    let result;
+    try {
+      result = await startNewRound(
+        auctionId,
+        { auctionStartDate: start, auctionEndDate: end, startBid, reservePrice, minIncrement },
+        req.user?._id || null
+      );
+    } catch (err) {
+      if (err.statusCode) return next(new Errorhandler(err.message, err.statusCode));
+      throw err;
+    }
+
+    const { product, round } = result;
+    resetAuctionRoom(auctionId, {
+      auctionStartDate: product.auctionStartDate,
+      auctionEndDate: product.auctionEndDate
+    });
+
+    res.status(201).json({
+      success: true,
+      message: `Auction #${round.roundNumber} created`,
+      timezone,
+      round: {
+        id: round._id,
+        roundNumber: round.roundNumber
+      },
+      auction: {
+        _id: product._id,
+        status: product.status,
+        auctionStartDate: product.auctionStartDate,
+        auctionEndDate: product.auctionEndDate,
+        startBid: product.startBid,
+        reservePrice: product.reservePrice,
+        minIncrement: product.minIncrement,
+        currentBid: product.currentBid
       }
     });
   }
@@ -289,12 +395,15 @@ exports.updateAuctionStartBid = catchAsyncError(
       return next(new Errorhandler("Invalid auction ID", 400));
     }
 
-    const auction = await Product.findById(auctionId).select('currentBid currentBidder');
+    const auction = await Product.findById(auctionId).select('currentBid currentBidder currentRoundId');
     if (!auction) {
       return next(new Errorhandler("Auction not found", 404));
     }
+    if (await currentRoundIsClosed(auction)) {
+      return next(new Errorhandler(ROUND_CLOSED_MESSAGE, 409));
+    }
 
-    const hasBids = await ManualBid.exists({ auctionId });
+    const hasBids = await ManualBid.exists(roundFilter(auction));
 
     const updates = { startBid };
     if (!hasBids) updates.currentBid = startBid;

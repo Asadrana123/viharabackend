@@ -9,6 +9,8 @@ const User = require("../../model/users/userModel");
 const BidsManager = require("../../utils/bidsManager");
 const mongoose = require('mongoose');
 const withTimeout = require('../../utils/queryTimeoutWrapper');
+const AuctionRound = require("../../model/bidding/auctionRoundModel");
+const { currentRoundFilter } = require("../../services/bidding/auctionRoundService");
 
 exports.checkAuctionAccess = catchAsyncError(
   async (req, res, next) => {
@@ -175,15 +177,16 @@ exports.getBidHistory = catchAsyncError(
       return next(new ErrorHandler("You do not have access to this auction", 403));
     }
 
-    // Get manual bids for this auction with pagination
+    // Get manual bids for the current auction round with pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
-    const bids = await ManualBid.find({ auctionId })
+    const roundBidFilter = await currentRoundFilter(auctionId);
+    const bids = await ManualBid.find(roundBidFilter)
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
 
     // Get total count for pagination
-    const totalBids = await ManualBid.countDocuments({ auctionId });
+    const totalBids = await ManualBid.countDocuments(roundBidFilter);
 
     // Format bids for client consumption
     const formattedBids = await BidsManager.formatBidsWithUserInfo(bids);
@@ -216,15 +219,26 @@ exports.getUserBidHistory = catchAsyncError(
     // Get total count for pagination
     const totalBids = await ManualBid.countDocuments({ userId });
 
+    // Rounds these bids belong to, so a bid from an earlier auction round is
+    // judged against that round's winner rather than the current leader.
+    const roundIds = [...new Set(bids.map(b => b.roundId).filter(Boolean).map(String))];
+    const rounds = await AuctionRound.find({ _id: { $in: roundIds } }).select('closedAt winnerId').lean();
+    const roundMap = {};
+    rounds.forEach(r => { roundMap[String(r._id)] = r; });
+
     // Format bids with auction info
     const formattedBids = await Promise.all(bids.map(async (bid) => {
       const auction = await Product.findById(bid.auctionId)
-        .select('propertyType street city state productName currentBid currentBidder');
+        .select('propertyType street city state productName currentBid currentBidder currentRoundId');
 
       // Determine if this is the winning bid
-      const isWinningBid = auction &&
-        auction.currentBidder &&
-        auction.currentBidder.toString() === userId.toString()
+      const round = bid.roundId ? roundMap[String(bid.roundId)] : null;
+      const isCurrentRound = !bid.roundId || !auction ||
+        String(bid.roundId) === String(auction.currentRoundId);
+      const leaderId = round && round.closedAt
+        ? round.winnerId
+        : (isCurrentRound && auction ? auction.currentBidder : null);
+      const isWinningBid = !!leaderId && leaderId.toString() === userId.toString();
       //&& auction.currentBid === bid.amount;
 
       return {
@@ -278,10 +292,10 @@ exports.getAuctionBiddingStatus = catchAsyncError(
       return next(new ErrorHandler("Auction not found", 404));
     }
 
-    // Get user's auto-bidding settings
+    // Get user's auto-bidding settings for the current round
     const autoBidSettings = await AutoBidding.findOne({
       userId,
-      auctionId
+      ...(await currentRoundFilter(auctionId))
     });
 
     // Get recent bids

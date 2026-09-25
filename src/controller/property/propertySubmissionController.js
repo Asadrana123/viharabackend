@@ -24,6 +24,8 @@ const catchAsyncError = require("../../middleware/catchAsyncError");
 const Errorhandler = require("../../utils/errorhandler");
 const PropertySubmission = require("../../model/property/propertySubmissionModel");
 const Product = require("../../model/property/productModel");
+const { prepareRelist, openRelistRound } = require("../../services/bidding/auctionRoundService");
+const { resetAuctionRoom } = require("../../socket/socketHandlers");
 const realtorModel = require("../../model/users/realtorModel");
 const sendEmail = require("../../utils/sendEmail");
 const { notifyNewLead } = require("../../services/shared/slackService");
@@ -505,8 +507,18 @@ exports.adminApproveSubmission = catchAsyncError(async (req, res, next) => {
     }
     try {
         if (product) {
+            // If this property's last auction is over, it goes into the auction
+            // history and the new terms start a fresh auction round.
+            const needsNewRound = await prepareRelist(product);
             Object.assign(product, productPayload);
             await product.save();
+            if (needsNewRound) {
+                product = await openRelistRound(product);
+                resetAuctionRoom(product._id, {
+                    auctionStartDate: product.auctionStartDate,
+                    auctionEndDate: product.auctionEndDate
+                });
+            }
         } else {
             product = await Product.create(productPayload);
         }

@@ -9,6 +9,7 @@ const {
   updateAuctionDates,
   updateAuctionStatus,
   updateAuctionStartBid,
+  startNewAuction,
   getAuctionsWithSellers,
   assignSeller,
   unassignSeller
@@ -108,6 +109,14 @@ router.put(
   isAuthenticated,
   authorizeRoles("admin"),
   updateAuctionStartBid
+);
+
+// Start a new auction for a property whose current auction has ended.
+router.post(
+  "/auction/:auctionId/new-auction",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  startNewAuction
 );
 
 // Seller assignment routes
