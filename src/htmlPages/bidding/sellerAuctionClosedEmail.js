@@ -43,7 +43,7 @@ const getSellerAuctionClosedEmailTemplate = ({ name, report }) => {
       <span>🏁</span>
       <h1>Auction Closed</h1>
     </div>
-    <div class="info-banner">ℹ️ The auction for your property has ended. The full report is attached.</div>
+    <div class="info-banner">ℹ️ The auction for your property has ended.${hasBids ? " The full report is attached." : ""}</div>
     <div class="body">
       <p>Hi ${name},</p>
       <p>The auction for <strong>${propertyLabel}</strong> has closed. Here's a quick summary:</p>
@@ -62,20 +62,16 @@ const getSellerAuctionClosedEmailTemplate = ({ name, report }) => {
         </tr>
         <tr>
           <td class="label">Registered Bidders</td>
-          <td class="value">${c.total ?? 0}</td>
-        </tr>
-        <tr>
-          <td class="label">Approved / Pending</td>
-          <td class="value">${c.approved ?? 0} / ${c.pending ?? 0}</td>
+          <td class="value">${c.approved ?? 0}</td>
         </tr>
       </table>
-      <div class="attach-note">
+      ${hasBids ? `<div class="attach-note">
         <strong>Attached to this email:</strong><br/>
         • Full auction report (PDF)<br/>
         • Full auction report (Excel)<br/>
         Both include every bid and registration for this property.
       </div>
-      <p>All times in the report are shown in the property's local timezone.</p>
+      <p>All times in the report are shown in the property's local timezone.</p>` : ""}
     </div>
     <div class="footer">
       <p>© ${new Date().getFullYear()} Vihara. All rights reserved.</p>

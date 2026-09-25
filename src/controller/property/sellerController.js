@@ -433,7 +433,7 @@ exports.exportSellerAuctionExcel = catchAsyncError(async (req, res, next) => {
 
 // Email the full closed-auction report (PDF + Excel) to every assigned seller.
 // Called from the socket auction-finalization flow. Sends even when there were
-// no bids. Fully self-contained and fire-and-forget: it swallows its own errors
+// no bids, but then without the attachments. Fully self-contained and fire-and-forget: it swallows its own errors
 // so it can never block or break auction finalization.
 exports.sendAuctionClosedSellerReport = async (auctionId) => {
   try {
@@ -460,25 +460,29 @@ exports.sendAuctionClosedSellerReport = async (auctionId) => {
       return;
     }
 
-    // Render both attachments once and reuse them for every recipient.
-    const [pdfBuffer, excelBuffer] = await Promise.all([
-      renderAuctionReportPdfBuffer(report),
-      buildAuctionReportExcelBuffer(report)
-    ]);
+    // Attach the report only when the auction received bids. Render both
+    // attachments once and reuse them for every recipient.
+    let attachments = [];
+    if (report.bids.length > 0) {
+      const [pdfBuffer, excelBuffer] = await Promise.all([
+        renderAuctionReportPdfBuffer(report),
+        buildAuctionReportExcelBuffer(report)
+      ]);
 
-    const filename = buildReportFilename(report);
-    const attachments = [
-      {
-        filename: `${filename}.pdf`,
-        content: pdfBuffer,
-        contentType: "application/pdf"
-      },
-      {
-        filename: `${filename}.xlsx`,
-        content: excelBuffer,
-        contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-      }
-    ];
+      const filename = buildReportFilename(report);
+      attachments = [
+        {
+          filename: `${filename}.pdf`,
+          content: pdfBuffer,
+          contentType: "application/pdf"
+        },
+        {
+          filename: `${filename}.xlsx`,
+          content: excelBuffer,
+          contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        }
+      ];
+    }
 
     const propertyLabel =
       report.property?.productName || report.property?.location || "your property";
