@@ -5,14 +5,18 @@ const catchAsyncError = require("../../middleware/catchAsyncError");
 const Errorhandler = require("../../utils/errorhandler");
 const careerApplicantEmail = require("../../htmlPages/users/careerApplicantEmail");
 const careerAdminNotificationEmail = require("../../htmlPages/users/careerAdminNotificationEmail");
+const careerMarketingAssignmentEmail = require("../../htmlPages/users/careerMarketingAssignmentEmail");
+const careerVideoEditorAssignmentEmail = require("../../htmlPages/users/careerVideoEditorAssignmentEmail");
+const path = require("path");
+const { ROLE_LABELS } = require("../../config/careerRoles");
 
 // ─── Constants ───────────────────────────────────────────────────────────────
-const ROLE_LABELS = {
-  "senior-software-engineer": "Senior Software Engineer",
-  "product-manager": "Product Manager",
-  "ui-ux-designer": "UI/UX Designer",
-  "marketing-manager": "Marketing Manager",
-};
+// Marketing Manager applicants get the take-home assignment instead of the
+// generic confirmation email.
+const MARKETING_ASSIGNMENT_PDF = path.join(
+  __dirname,
+  "../../assets/careers/Vihara-Marketing-Manager-Assignment.pdf"
+);
 
 // ─── Submit application (public) ────────────────────────────────────────────
 exports.submitApplication = catchAsyncError(async (req, res, next) => {
@@ -70,13 +74,37 @@ exports.submitApplication = catchAsyncError(async (req, res, next) => {
 
   const roleLabel = ROLE_LABELS[role];
 
-  // Confirmation to applicant
-  sendEmail(
-    email,
-    firstName,
-    `Application Received — ${roleLabel} at Vihara`,
-    careerApplicantEmail(firstName, roleLabel)
-  );
+  // Confirmation to applicant (Marketing Manager and Video Editor get their
+  // assignment instead)
+  if (role === "video-editor") {
+    sendEmail(
+      email,
+      firstName,
+      "Vihara Video Editor, Test Assignment",
+      careerVideoEditorAssignmentEmail(firstName)
+    );
+  } else if (role === "marketing-manager") {
+    sendEmail(
+      email,
+      firstName,
+      "Vihara Marketing Manager - Your Assignment",
+      careerMarketingAssignmentEmail(firstName),
+      [
+        {
+          filename: "Vihara - Marketing Manager Assignment.pdf",
+          path: MARKETING_ASSIGNMENT_PDF,
+          contentType: "application/pdf",
+        },
+      ]
+    );
+  } else {
+    sendEmail(
+      email,
+      firstName,
+      `Application Received — ${roleLabel} at Vihara`,
+      careerApplicantEmail(firstName, roleLabel)
+    );
+  }
 
   // Notification to admin
   sendEmail(
