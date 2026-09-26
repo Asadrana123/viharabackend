@@ -56,6 +56,10 @@ const realtorRoutes = require("./routes/users/realtorRoutes");
 // Outbound SMS + Email admin campaigns — new, separate feature. Does not
 // touch/import anything under routes/calling.
 const outboundRoutes = require("./routes/outbound/outboundRoutes");
+// Enrichment Lists — new, separate feature that sits alongside Outbound and
+// the calling admin panel. Does not touch/import anything under
+// routes/calling or routes/outbound.
+const enrichmentRoutes = require("./routes/enrichment/enrichmentRoutes");
 // Middleware
 app.use(cookieParser());
 app.use(cors(expressCorsOptions));
@@ -124,6 +128,7 @@ app.use("/api/v1/property-import", propertyImportRoutes);
 app.use("/api/v1/property-lead", propertyLeadRoutes);
 app.use("/api/v1/realtor", realtorRoutes);
 app.use("/api/v1/outbound", outboundRoutes);
+app.use("/api/v1/enrichment", enrichmentRoutes);
 // Error Middleware
 app.use(errorMiddleware);
 
