@@ -1666,6 +1666,44 @@ Revised the plan in place. Still nothing built.
 - All test lists, seeded records, and throwaway scripts were deleted after
   testing — nothing left in the local DB or repo from this round.
 
+## 2026-09-26 (later still): Phase 3 built and tested — the admin frontend
+
+- **Built** (frontend repo, `enrich-contacts` branch): `enrichment.api.js` /
+  `enrichment.service.js`, `EnrichmentHub` (upload/lists/list views synced
+  to the URL), `ListUpload` (parse-preview then start, no skip-enrichment
+  option), `EnrichmentProgress` + `useEnrichmentPolling` (3s polling,
+  resume/retry-failed actions), `ListsTable`, `ListDetail`, `ReviewTable`
+  (server-side status/channel/activeMarket/search filters; stale/edited/
+  excluded filters are client-side on the loaded page only — the API
+  spec in §6 never took those as query params, and adding that was out of
+  this phase's scope), `RowEditor` (CSV-vs-effective diff per field, reset,
+  exclude, re-enrich). Wired into `adminPanel.jsx` and
+  `adminPanelSidebar.jsx` (new sidebar entry right after Outbound,
+  `AddressBookIcon`).
+- **A real process note, not a code bug**: testing `ListUpload`'s "Start
+  enrichment" button live in the browser froze the browser-automation
+  tab — its confirm dialog before starting is a plain `window.confirm`,
+  which blocks CDP the same way it would block any scripted interaction.
+  Checked first: `window.confirm` is the existing convention across this
+  admin panel (`SmsLauncher.jsx`, `EmailLauncher.jsx`, `LeadNotes.jsx`,
+  `PropertySubmissions.jsx`, `CSAllPosts.jsx` all do the same) — so this
+  wasn't changed. The fix was in how testing was done afterward: confirm-
+  gated actions (start enrichment, delete a list, re-enrich a row) were
+  exercised through the API directly, and only their *rendered result* was
+  verified in the browser, never the confirm click itself.
+- **Verified live end to end**, spending nothing further (no new FullEnrich
+  calls this round): parse-preview against a small test CSV rendered
+  correctly (ready/skipped counts, lookup-key badges per row); a list
+  created via the API with two seeded `enrichedPerson` records (one
+  `found`, one `not_found`) reached `ready` and showed the right counts
+  (reused: 1, not found: 1, no lookup key: 1); the review table showed the
+  FullEnrich-sourced email with its source tag and CSV-sourced email with
+  its own tag, exactly as designed; editing a row's company field and
+  saving showed the "CSV: ..." diff hint, persisted correctly, and both
+  the STALE and EDITED markers appeared on the row afterward, matching
+  §7.4's rule that editing an identity field marks the row stale. All test
+  data (the list, the two seeded person records) deleted after testing.
+
 ## Fill in what has changed each time we come back to this
 
 Same pattern as `outboundplan.md` and `outbound.md`: read the sections above,
