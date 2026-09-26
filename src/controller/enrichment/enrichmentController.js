@@ -1,15 +1,16 @@
 // controller/enrichment/enrichmentController.js
 //
-// Thin admin-only handlers for the Enrichment Lists feature. Phase 2 adds
-// the actual FullEnrich job: createList now starts it, plus
-// resume/retry-failed/re-enrich. The dispatch endpoints (send to
-// calling/SMS/email) are still later phases — see enrich.md §9.
+// Thin admin-only handlers for the Enrichment Lists feature. Phase 4 adds
+// dispatch to SMS/Email. Calling (Phase 5) is still a later phase — see
+// enrich.md §9.
 
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const Errorhandler = require("../../utils/errorhandler");
 const enrichmentListService = require("../../services/enrichment/enrichmentListService");
 const enrichmentJobService = require("../../services/enrichment/enrichmentJobService");
+const enrichmentDispatchService = require("../../services/enrichment/enrichmentDispatchService");
 const { MAX_ROWS_CEILING, EDITABLE_FIELDS } = require("../../services/enrichment/enrichmentContactsService");
+const { EMAIL_VARIABLES, ENRICHED_EMAIL_VARIABLES } = require("../../services/outbound/outboundEmailService");
 
 /**
  * GET /config
@@ -20,6 +21,7 @@ exports.getConfig = catchAsyncError(async (req, res) => {
     maxRowsCeiling: MAX_ROWS_CEILING,
     fullenrichConfigured: Boolean(process.env.FULLENRICH_API_KEY),
     editableFields: EDITABLE_FIELDS,
+    emailVariables: [...EMAIL_VARIABLES, ...ENRICHED_EMAIL_VARIABLES],
   });
 });
 
@@ -161,5 +163,42 @@ exports.reEnrichRow = catchAsyncError(async (req, res) => {
 
   enrichmentJobService.runReEnrich(req.params.id, row, person).catch((err) => {
     console.error(`[enrichment] re-enrich failed for row ${req.params.rowId}:`, err.message);
+  });
+});
+
+/**
+ * POST /lists/:id/dispatch/preview
+ * Body: { channels, propertyId }
+ * Sends nothing.
+ */
+exports.dispatchPreview = catchAsyncError(async (req, res) => {
+  const { channels, propertyId } = req.body;
+  const result = await enrichmentDispatchService.dispatchPreview(req.params.id, { channels, propertyId });
+  return res.json({ success: true, channels: result });
+});
+
+/**
+ * POST /lists/:id/dispatch
+ * Body: { channels, propertyId, maxContacts, sms?: { consentAttested }, email?: { subject, body, bodyFormat } }
+ * Validates every requested channel first — if any fails, nothing is
+ * created. Otherwise creates each Outbound campaign, responds, then starts
+ * them fire-and-forget (the part that actually sends).
+ */
+exports.dispatch = catchAsyncError(async (req, res) => {
+  const { channels, propertyId, maxContacts, sms, email } = req.body;
+  const created = await enrichmentDispatchService.prepareDispatch(
+    req.params.id,
+    { channels, propertyId, maxContacts, sms, email },
+    req.user
+  );
+
+  const response = {};
+  Object.entries(created).forEach(([channel, { campaignId }]) => {
+    response[channel] = { campaignId };
+  });
+  res.status(202).json({ success: true, ...response });
+
+  enrichmentDispatchService.runDispatch(created).catch((err) => {
+    console.error(`[enrichment] dispatch failed to start for list ${req.params.id}:`, err.message);
   });
 });

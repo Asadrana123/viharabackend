@@ -320,6 +320,7 @@ const deleteList = async (listId) => {
 
 module.exports = {
   MAX_ROWS_CEILING,
+  CHANNEL_REQUIREMENTS,
   parseList,
   createList,
   listLists,

@@ -1,7 +1,7 @@
 // routes/enrichment/enrichmentRoutes.js
 //
 // Mounted at /api/v1/enrichment (see app.js). Admin-only, same as Outbound.
-// Dispatch (send to calling/SMS/email) is still a later phase (§6, §9).
+// Dispatch to calls (Phase 5) is still a later phase (§6, §9).
 
 const express = require("express");
 const router = express.Router();
@@ -18,6 +18,8 @@ const {
   resumeList,
   retryFailedList,
   reEnrichRow,
+  dispatchPreview,
+  dispatch,
 } = require("../../controller/enrichment/enrichmentController");
 const { isAuthenticated, authorizeRoles } = require("../../middleware/auth");
 
@@ -36,5 +38,7 @@ router.patch("/lists/:id/rows/:rowId", updateRow);
 router.post("/lists/:id/resume", resumeList);
 router.post("/lists/:id/retry-failed", retryFailedList);
 router.post("/lists/:id/rows/:rowId/re-enrich", reEnrichRow);
+router.post("/lists/:id/dispatch/preview", dispatchPreview);
+router.post("/lists/:id/dispatch", dispatch);
 
 module.exports = router;
