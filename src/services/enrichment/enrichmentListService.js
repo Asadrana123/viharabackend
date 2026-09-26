@@ -176,9 +176,14 @@ const getList = async (id) => {
   return applyStaleCheck(doc);
 };
 
+// SMS takes the first phone that's actually a valid US number, not
+// necessarily phones[0] literally (enrich.md §7.1) — a row can have a non-US
+// number listed first and a valid US one second.
+const hasUsSmsNumber = (phones) => (phones || []).some((p) => Boolean(toUsSmsNumber(p)));
+
 const CHANNEL_REQUIREMENTS = {
   call: (effective) => effective.phones.length > 0,
-  sms: (effective) => Boolean(toUsSmsNumber(effective.phones[0] || "")) && Boolean(effective.email),
+  sms: (effective) => hasUsSmsNumber(effective.phones) && Boolean(effective.email),
   email: (effective) => Boolean(effective.email),
 };
 

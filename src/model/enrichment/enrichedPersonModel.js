@@ -47,11 +47,21 @@ const enrichedPersonSchema = new mongoose.Schema(
 
     // Flattened copy of the fields the UI and hand-off actually use, pulled
     // out of `result` when it's saved. Nothing downstream digs into `result`
-    // directly. jobTitle/companyName/industry/linkedinUrl are only ever
-    // populated if Phase 0 confirms the name+company endpoint returns them
-    // when only email is requested (enrich.md §2.8).
+    // directly.
+    //
+    // Confirmed live against FullEnrich (enrich.md §2.9): the primary name +
+    // company endpoint's contact_info only ever contains
+    // most_probable_work_email ({ email, status }) and most_probable_phone
+    // — never job title, company, industry, or LinkedIn, at any
+    // enrich_fields setting. Those four stay in this schema because the
+    // reverse-email fallback path (rare — only rows that have an email) can
+    // still populate them; they'll just be empty for nearly every
+    // SFR-style, name+company-only record.
     summary: {
       workEmail: { type: String, default: "" },
+      // FullEnrich's own confidence/verification flag on workEmail, e.g.
+      // "CATCH_ALL" (domain accepts anything, not individually verified).
+      workEmailStatus: { type: String, default: "" },
       emails: { type: [String], default: [] },
       jobTitle: { type: String, default: "" },
       companyName: { type: String, default: "" },

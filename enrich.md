@@ -371,14 +371,75 @@ What we request: **email only** (see §12, "Fields requested"). SFR rows
 already carry a phone for free, and a mobile-phone lookup costs 10× an
 email, so phones aren't requested.
 
-**What isn't confirmed yet:** only the request side was fetched. The exact
-shape of a finished `GET /contact/enrich/bulk/{id}` response (the status
-field and its values, where each contact's emails sit, whether our `custom`
-comes back on each result, whether job title / company / industry / LinkedIn
-come back when only email is requested) and the exact `enrich_fields`
-identifier strings are **Phase 0 checks** (§9). This plan names them
-generically ("the found work email", "status finished") rather than
-guessing field names.
+### 2.9 Phase 0 confirmed, live, on 4 real contacts (2026-09-26)
+
+Done with the requesting user's explicit go-ahead, 2 contacts at a time.
+**Real findings, not guesses, from here on** — this replaces every "Phase 0
+check" placeholder that was about the response shape.
+
+- **`enrich_fields` is per-contact, not top-level.** The first attempt put
+  it at the top level of the request and got a 400
+  (`error.enrichment.enrich_fields.empty`). It belongs inside each object in
+  `data`, alongside `first_name`/`last_name`/`company_name`. Fixed and
+  confirmed working.
+- **The three allowed `enrich_fields` values, exactly:** `contact.work_emails`,
+  `contact.personal_emails`, `contact.phones`. We send `["contact.work_emails"]`
+  only, per the "email only" decision above.
+- **Status values seen: `IN_PROGRESS` → `FINISHED`.** (`FAILED` wasn't
+  produced by either run; still assumed to exist per FullEnrich's general
+  docs, not yet seen directly.)
+- **`custom` is echoed back per contact, exactly as sent** — confirms
+  row-matching by `custom` (§5.4) works.
+- **Not-found result:** `contact_info` is present but has nothing about
+  email in it — not even a `null` — only `{ "most_probable_phone": null }`.
+  Read as: FullEnrich only adds a field when it has something to say about
+  it.
+- **Found result** (Daniel Perotti / PENNYMAC SERVICES INC, a real company —
+  picked deliberately as a likelier hit after the first 2 random SFR rows
+  both came back not-found):
+  ```json
+  "contact_info": {
+    "most_probable_work_email": { "email": "dan.perotti@pennymacusa.com", "status": "CATCH_ALL" },
+    "most_probable_phone": null,
+    "work_emails": [ { "email": "dan.perotti@pennymacusa.com", "status": "CATCH_ALL" } ]
+  }
+  ```
+  So the field is `contact_info.most_probable_work_email.email`, and it
+  carries its own `status` (a confidence/verification flag — FullEnrich's
+  docs elsewhere describe a "triple verification" process; `CATCH_ALL`
+  reads as "the domain accepts anything, this wasn't individually
+  verified," as opposed to a fully verified address). `enrichedPersonModel`
+  should keep this status alongside the email (§4.1, updated below).
+- **No job title, industry, company, or LinkedIn field anywhere in either
+  result.** This endpoint's `contact_info` only ever contains
+  email/phone-shaped keys — there is no `enrich_fields` value for anything
+  else (the three values above are the whole list, confirmed in §2.8). **This
+  closes a question the first draft left open the wrong way: job title and
+  industry were never going to come back from this endpoint, at any
+  `enrich_fields` setting.** Only the reverse-email fallback path (unchanged
+  from `shared/fullenrichService.js`'s existing behavior) can ever produce
+  those, and only for the rare row that has an email to begin with. See the
+  correction to decision #18 and §5.2/§8.3 below.
+- **Cost is reported per batch, not per contact.** The 2-found-1-not-found
+  run… no — the second run was 1 found (Perotti) + 1 not found (Sandra
+  Gould / POTSDAM REALTY LLC), and `cost.credits` came back as `1` for the
+  whole batch. There's no per-contact cost field in the response; which
+  contact(s) were billed has to be inferred from which ones have a
+  `most_probable_work_email` (§5.5's per-row marking already only reads the
+  outcome per contact, not a cost field, so this doesn't change the design —
+  just noting the cost field itself isn't per-row).
+- **Timing:** a 2-contact batch took ~72s end to end when nothing was found,
+  ~97s when one was found. Small sample, but consistent with the existing
+  reverse-email endpoint's own pace — the 6s poll interval and a generous
+  timeout ceiling (§5.5) are the right shape, not overkill.
+- **Real hit rate so far: 1 of 4 (25%), and the one hit was a nationally
+  recognized company (Pennymac), not a small local LLC.** The other 3 —
+  Northern View Properties LLC, ZJ Property Management LLC, Potsdam Realty
+  LLC — found nothing. **This is worth being upfront with the requesting
+  user about:** on data that looks like the rest of the real SFR sample
+  (one-off, small, locally-registered LLCs), FullEnrich's hit rate may be
+  low, which directly caps how many rows can ever reach SMS or email
+  (calls are unaffected — every row already has a phone from the CSV).
 
 ---
 
@@ -456,7 +517,7 @@ email**, only for rows that have one.
 | `provider` | String, default `"fullenrich"` | Room for another provider later. |
 | `status` | String, enum `pending`, `found`, `not_found`, `failed` | `pending` doubles as an in-flight lock (§5.5). `failed` means we don't know (API error, rejected contact, poll timeout), so it's retryable; `not_found` means FullEnrich finished and found no email. |
 | `result` | Mixed, default `null` | FullEnrich's raw per-contact result, stored exactly as returned, the same way the lead models store theirs. |
-| `summary` | Object | A small, flattened copy of the fields the UI and hand-off use, pulled out of `result` when it's saved: `workEmail`, `emails: [String]`, and, **if the response carries them** (Phase 0), `jobTitle`, `companyName`, `industry`, `linkedinUrl`. Nothing downstream digs into `result`. |
+| `summary` | Object | A small, flattened copy of the fields the UI and hand-off use, pulled out of `result` when it's saved: `workEmail`, `workEmailStatus` (FullEnrich's own confidence flag on that email, e.g. `"CATCH_ALL"` — confirmed real in §2.9, shown to the admin so a low-confidence email can be treated with caution), `emails: [String]`. `jobTitle`, `companyName`, `industry`, `linkedinUrl` are also here, but **confirmed in §2.9 to only ever be populated by the reverse-email fallback path** (§5.4) — the primary name + company endpoint's `contact_info` never contains them, at any `enrich_fields` setting. On SFR data (almost no rows have an email) these four will be empty for nearly every record. Nothing downstream digs into `result` directly. |
 | `error` | String, default `""` | Last error for `failed`. |
 | `attempts` | Number, default 0 | How many times we've called FullEnrich for this person. |
 | `providerRequestId` | String | FullEnrich's `enrichment_id` for the batch this person was in. Used by resume and retry to re-poll a batch before paying to resubmit it (§5.5). |
@@ -574,8 +635,10 @@ fields. In practice:
 - **Company:** the CSV `Company` is the effective company. If FullEnrich
   returns a company name too, it's shown next to it in the row editor, not
   swapped in.
-- **Job title, industry, LinkedIn URL:** CSV has none, so these come from
-  FullEnrich when it returns them.
+- **Job title, industry, LinkedIn URL:** CSV has none, and (confirmed §2.9)
+  the primary name + company lookup never returns them either — only the
+  reverse-email fallback can, for the rare row with an email. Empty for
+  nearly every SFR-style row in practice.
 
 **Where edits live: on the row only** (decision #13). An edit fixes this
 contact *for this list*. It doesn't change what FullEnrich said, and it
@@ -627,8 +690,8 @@ Indexes: `{ listId: 1, createdAt: -1 }`, `{ createdAt: -1 }`.
 | File | Change |
 |---|---|
 | `src/app.js` | `const enrichmentRoutes = require("./routes/enrichment/enrichmentRoutes");` and `app.use("/api/v1/enrichment", enrichmentRoutes);` next to the Outbound mount (line 126). |
-| `src/model/outbound/outboundCampaignModel.js` | Decision #16: add `"enrichment"` to the `source` enum (line 49) and an optional `enrichmentListId: { type: ObjectId, ref: "EnrichmentList", default: null }`. Decision #18: add an optional `vars` object to `recipientSchema` (lines 14–30): `{ company, jobTitle, industry }`, each `String, default ""`. Existing campaigns and Outbound's own launches are unaffected (the fields default empty). |
-| `src/services/outbound/outboundEmailService.js` | Decision #18: add and export `ENRICHED_EMAIL_VARIABLES = [{ key: "company", label: "Company" }, { key: "job_title", label: "Job title" }, { key: "industry", label: "Industry" }]`, and have `buildRecipientVars` (lines 45–57) also return `company: contact?.vars?.company \|\| ""`, `job_title`, `industry` the same way. `EMAIL_VARIABLES` itself is **not** changed, so Outbound's own email composer doesn't start showing tags that are always blank there. `renderTemplate` already renders an empty value as blank. |
+| `src/model/outbound/outboundCampaignModel.js` | Decision #16: add `"enrichment"` to the `source` enum (line 49) and an optional `enrichmentListId: { type: ObjectId, ref: "EnrichmentList", default: null }`. Decision #18 (**corrected in §2.9**): add an optional `vars` object to `recipientSchema` (lines 14–30): `{ company }` only, `String, default ""`. Existing campaigns and Outbound's own launches are unaffected (the field defaults empty). |
+| `src/services/outbound/outboundEmailService.js` | Decision #18 (**corrected in §2.9**): add and export `ENRICHED_EMAIL_VARIABLES = [{ key: "company", label: "Company" }]`, and have `buildRecipientVars` (lines 45–57) also return `company: contact?.vars?.company \|\| ""`. `EMAIL_VARIABLES` itself is **not** changed, so Outbound's own email composer doesn't start showing a tag that's always blank there. `renderTemplate` already renders an empty value as blank. |
 
 `outboundCampaignService.js` is **not** edited. `createCampaign` already
 passes `source` through, so `"enrichment"` just works once the enum allows
@@ -637,11 +700,16 @@ service on the returned document and saved before `startCampaign` is called
 (§7.3), so `createCampaign`'s recipient mapping (lines 82–87) doesn't need to
 change.
 
-The merge-tag list is final after Phase 0: `company` always works (it comes
-from the CSV). `job_title` and `industry` are only worth offering if the
-name + company endpoint actually returns them when we request email only
-(§2.8). If it doesn't, they're dropped from `ENRICHED_EMAIL_VARIABLES`
-rather than shipped as tags that are always blank.
+**The merge-tag list is final, confirmed live in §2.9 — corrected down from
+the first draft's plan.** `company` always works: it comes from the CSV, not
+FullEnrich, so it's unaffected by anything FullEnrich does or doesn't find.
+`job_title` and `industry` are **dropped entirely** — confirmed real
+(§2.9) that FullEnrich's name + company endpoint never returns them, at any
+`enrich_fields` setting, on any of the four live test contacts. They would
+only ever be populated via the reverse-email fallback (a handful of rows at
+most, since almost no SFR row has an email), which isn't enough rows to be
+worth offering as an email merge tag. If a future property's contact list
+*does* come in with emails already filled in, this can be revisited then.
 
 ### 5.3 CSV parsing (`enrichmentContactsService.js`)
 
@@ -924,7 +992,7 @@ each expect a different contact shape and have different rules.
 | Phones | `phones: []`, all of them, `+1…` or `+91…` (`parsePhones`) | `phone`, **one**, US only (`toUsSmsNumber`), **required** | `phone` optional, unused | `phones: []`, as written |
 | Email | `email` or `null`, optional | `email`, **required** (decision #5 in `outboundplan.md`) | `email`, **required** | CSV emails, then FullEnrich's found emails |
 | Address / city / state / zip | Used (prompt variables `prospect_address`, `prospect_city`, `prospect_state`) | Not accepted | Not accepted | Kept (often blank on SFR rows) |
-| Enrichment | `researchSummary` string, built by us per property (§7.2) | No field for it | `company`, `job_title`, `industry` merge tags (decision #18, §5.2) | Stored result + summary + edits |
+| Enrichment | `researchSummary` string, built by us per property (§7.2) | No field for it | `company` merge tag only (decision #18, corrected §2.9/§5.2) | Stored result + summary + edits |
 | Cap | 500 hard (`MAX_CONTACTS_PER_CAMPAIGN`) | admin `maxContacts` ≤ 500 | admin `maxContacts` ≤ 500 | 500 per list (decision #10) |
 | Must be set up first | Property voice prompt (422 without) | Property `brevoOutboundSmsListId`; consent checkbox | `EMAIL_USERNAME`/`EMAIL_PASSWORD` | |
 
@@ -940,8 +1008,9 @@ What this means:
   (decision #17, matching today's calling campaign); SMS takes the first
   valid US one.
 - **Where enriched data shows up.** Calls get it through
-  `prospect_research` (§7.2). Emails get it as merge tags (`{{company}}`,
-  and `{{job_title}}` / `{{industry}}` if FullEnrich returns them), plus the
+  `prospect_research` (§7.2). Emails get a `{{company}}` merge tag (from the
+  CSV, not FullEnrich — §2.9 confirmed FullEnrich never returns job
+  title/industry from this endpoint, so those aren't offered as tags). The
   found email address itself is what makes most SFR rows emailable at all.
   SMS text lives in Brevo automations (decision #11 in `outboundplan.md`)
   and can't use enriched fields; for SMS, enrichment's value is finding the
@@ -1032,8 +1101,9 @@ running the sendable rows through Outbound's own exported parser, then call
    csvFileName: <list name>, maxContacts, property, createdBy: req.user,
    contacts, parseSkipped, sms | email })` (decision #16).
 5. On the returned document, set `enrichmentListId` (decision #16) and, for
-   email, each recipient's `vars` (`company`, `jobTitle`, `industry` from
-   the effective contact; decision #18). Recipients are matched back to
+   email, each recipient's `vars.company` (from the effective contact;
+   decision #18, corrected §2.9 — `jobTitle`/`industry` dropped, never
+   available from this endpoint). Recipients are matched back to
    rows by email, which is unique among accepted email recipients because
    Outbound dedupes email campaigns by email. `await doc.save()`, then
    `startCampaign(doc._id)` without awaiting.
@@ -1131,10 +1201,13 @@ imported, not changed (decision #2).
 ### 8.3 The review/edit screen
 
 - **Columns:** row #, name, company, primary email (with a small "CSV" /
-  "FullEnrich" source tag), phones, city/state, active market, contact type,
-  job title and industry (only if FullEnrich returns them, per Phase 0),
-  enrichment status (enriched / reused / not found / no lookup key /
-  failed + reason), stale marker, edited marker, last sent per channel.
+  "FullEnrich" source tag and, when FullEnrich, its confidence status like
+  `CATCH_ALL`), phones, city/state, active market, contact type, job title
+  and industry (editable by the admin, but confirmed §2.9 that FullEnrich
+  itself essentially never fills these in — they'll be blank unless
+  hand-entered), enrichment status (enriched / reused / not found / no
+  lookup key / failed + reason), stale marker, edited marker, last sent per
+  channel.
 - **Editable fields:** full name, first name, last name, company, primary
   email, phones, address, city, state, zip, contact type, job title,
   industry, notes. The CSV value wins over FullEnrich's by default wherever
@@ -1173,28 +1246,27 @@ first because they reuse Outbound's services almost unchanged; calls go
 last because they add the most new code (runner, call-run model, research
 summary).
 
-### Phase 0: FullEnrich checks (no code)
+### Phase 0: FullEnrich checks — **done 2026-09-26** (see §2.9 for the full results)
 
-The design decisions are all made (§12). What's left is confirming the
-parts of FullEnrich's API we haven't seen, from their docs or support, or
-with a live test of one or two contacts **only with the requesting user's
-permission** (for example their own name + company):
-- The response of `GET /contact/enrich/bulk/{id}`: the status field and its
-  values, where each contact's emails are, **whether our `custom` comes back
-  on each result** (how rows are matched back, §5.4), and whether job title,
-  company, industry or LinkedIn come back when only email is requested.
-  That last answer fixes the merge-tag list (§5.2) and the table columns
-  (§8.3).
-- The exact `enrich_fields` identifier(s) for work email (and, for
-  reference, personal email).
-- How long a batch of 20 and of 100 usually takes, to set the poll interval
-  and the 30-minute cap.
-- The rate limit, and the exact form of the retry-after message on a `429`.
-- How `silentFail` reports a skipped contact.
-- The reverse-email endpoint's batch limit, for the fallback path.
-- A rough hit rate: on a handful of SFR rows (with permission), how many get
-  an email. This tells the requesting user how much SMS/email reach to
-  expect (§7.1).
+Done live, 4 real contacts total (2 + 2, with the requesting user's explicit
+permission each time), on the real name+company bulk endpoint:
+- ✅ Response shape, status values, `custom` echoed back, the found/not-found
+  shape, and the confirmed answer on job title/company/industry/LinkedIn
+  (never returned by this endpoint — §2.9). Merge-tag list and table columns
+  updated accordingly (§5.2, §8.3).
+- ✅ The exact `enrich_fields` values (`contact.work_emails`,
+  `contact.personal_emails`, `contact.phones`) and that the field belongs
+  **inside each contact object**, not top-level (a real 400 caught this).
+- ✅ Rough timing (~72–97s for a 2-contact batch) and a rough hit rate
+  (1 of 4, and the hit was a large, real company — small local LLCs found
+  nothing in this sample).
+- **Still not directly observed, left as an assumption:** the `FAILED`
+  status value (only `IN_PROGRESS`/`FINISHED` came up in these 2 runs), the
+  exact rate-limit/`429` message, how `silentFail` reports a skipped
+  contact, and the reverse-email endpoint's own batch limit (irrelevant
+  until the fallback path is actually built in Phase 2 — it's used far less
+  often than the primary lookup). None of these block Phase 2; they can be
+  confirmed against real behavior as the job runner is built and tested.
 
 ### Phase 1: Backend foundations (no FullEnrich, no sends)
 
@@ -1487,6 +1559,48 @@ Revised the plan in place. Still nothing built.
   name + company endpoint, especially whether `custom` comes back per
   result, whether job title / industry come back when only email is
   requested, and the exact `enrich_fields` identifiers.
+
+## 2026-09-26: Phase 0 confirmed live, Phase 1 backend built and tested
+
+- **Phase 0 done** (§2.9, §9): 4 real contacts, 2 rounds, with the
+  requesting user's explicit permission each time. Confirmed the found and
+  not-found response shapes, that `custom` comes back per contact, the
+  correct request shape (`enrich_fields` is per-contact, not top-level —
+  caught via a real 400 first), and the three allowed `enrich_fields`
+  values. **Corrected finding, not the hoped-for one:** job title, industry,
+  company, and LinkedIn are never returned by this endpoint, at any
+  `enrich_fields` setting — only the reverse-email fallback can ever
+  produce them, for the rare row with an email. Decision #18's email
+  merge-tag list is cut down to `company` only (still CSV-sourced, unaffected).
+  Real hit rate on 4 contacts: 1 of 4, and the hit was a large, real
+  company (Pennymac), not a small local LLC — worth tempering expectations
+  for the rest of the SFR sample.
+- **Phase 1 built**: `enrichedPersonModel`, `enrichmentListModel`,
+  `enrichmentListRowModel`, `enrichmentContactsService`,
+  `enrichmentListService`, `enrichmentController`, `enrichmentRoutes`,
+  mounted at `/api/v1/enrichment`. No FullEnrich calls yet, no sends — per
+  §9's Phase 1 scope.
+- **Tested end to end against the real SFR file** via curl against a local
+  dev server: parse-preview, create, list, read, paginated/filterable rows,
+  row edit with validation and stale-marking, delete, the 500-row cap,
+  duplicate/junk-row handling, and the admin-only auth guard. Confirmed
+  20/20 rows resolve a name+company key and 0/20 an email key, matching
+  §2.7's findings exactly.
+- **Two real bugs found and fixed during testing, before ever committing
+  broken code:**
+  1. The `channel=call|sms|email` row filter's pagination `total` was
+     computed at the DB level before the in-memory channel-qualification
+     filter ran, so it didn't match the actual filtered count. Fixed by
+     paginating in JS when a channel filter is present (lists are capped at
+     500 rows, so this is cheap).
+  2. The SMS qualification check only tested `effective.phones[0]` for a
+     valid US number, rather than any phone in the list — caught by
+     re-reading §7.1's own "SMS takes the first *valid* US one" wording
+     against the code. Fixed to check every phone.
+- Test data (one list created against the real SFR CSV) was deleted after
+  testing — nothing left in the local DB from this session.
+- Backend branch: `enrich-contacts`, cut from current `main` (post PR #8
+  and PR #9). Committed locally, not pushed.
 
 ## Fill in what has changed each time we come back to this
 
