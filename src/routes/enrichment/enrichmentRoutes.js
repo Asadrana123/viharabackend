@@ -1,8 +1,7 @@
 // routes/enrichment/enrichmentRoutes.js
 //
 // Mounted at /api/v1/enrichment (see app.js). Admin-only, same as Outbound.
-// Phase 1 routes only — resume/retry-failed/re-enrich/dispatch are added in
-// later phases (see enrich.md §6, §9).
+// Dispatch (send to calling/SMS/email) is still a later phase (§6, §9).
 
 const express = require("express");
 const router = express.Router();
@@ -16,6 +15,9 @@ const {
   getRows,
   updateRow,
   deleteList,
+  resumeList,
+  retryFailedList,
+  reEnrichRow,
 } = require("../../controller/enrichment/enrichmentController");
 const { isAuthenticated, authorizeRoles } = require("../../middleware/auth");
 
@@ -31,5 +33,8 @@ router.get("/lists/:id", getList);
 router.delete("/lists/:id", deleteList);
 router.get("/lists/:id/rows", getRows);
 router.patch("/lists/:id/rows/:rowId", updateRow);
+router.post("/lists/:id/resume", resumeList);
+router.post("/lists/:id/retry-failed", retryFailedList);
+router.post("/lists/:id/rows/:rowId/re-enrich", reEnrichRow);
 
 module.exports = router;
