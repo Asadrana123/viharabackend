@@ -1,14 +1,15 @@
 // controller/enrichment/enrichmentController.js
 //
-// Thin admin-only handlers for the Enrichment Lists feature. Phase 4 adds
-// dispatch to SMS/Email. Calling (Phase 5) is still a later phase — see
-// enrich.md §9.
+// Thin admin-only handlers for the Enrichment Lists feature. Dispatch
+// covers all three channels now: SMS/Email (Phase 4, via Outbound) and
+// calls (Phase 5, via enrichmentCallRunner) — see enrich.md §9.
 
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const Errorhandler = require("../../utils/errorhandler");
 const enrichmentListService = require("../../services/enrichment/enrichmentListService");
 const enrichmentJobService = require("../../services/enrichment/enrichmentJobService");
 const enrichmentDispatchService = require("../../services/enrichment/enrichmentDispatchService");
+const enrichmentCallRunner = require("../../services/enrichment/enrichmentCallRunner");
 const { MAX_ROWS_CEILING, EDITABLE_FIELDS } = require("../../services/enrichment/enrichmentContactsService");
 const { EMAIL_VARIABLES, ENRICHED_EMAIL_VARIABLES } = require("../../services/outbound/outboundEmailService");
 
@@ -193,12 +194,22 @@ exports.dispatch = catchAsyncError(async (req, res) => {
   );
 
   const response = {};
-  Object.entries(created).forEach(([channel, { campaignId }]) => {
-    response[channel] = { campaignId };
+  Object.entries(created).forEach(([channel, value]) => {
+    response[channel] = channel === "call" ? { callRunId: value.callRunId } : { campaignId: value.campaignId };
   });
   res.status(202).json({ success: true, ...response });
 
   enrichmentDispatchService.runDispatch(created).catch((err) => {
     console.error(`[enrichment] dispatch failed to start for list ${req.params.id}:`, err.message);
   });
+});
+
+/**
+ * GET /call-runs/:id?all=
+ * Same lightweight/?all=true split as Outbound's GET /campaigns/:id.
+ */
+exports.getCallRun = catchAsyncError(async (req, res, next) => {
+  const callRun = await enrichmentCallRunner.getCallRun(req.params.id, { all: req.query.all === "true" });
+  if (!callRun) return next(new Errorhandler("Call run not found", 404));
+  return res.json({ success: true, callRun });
 });

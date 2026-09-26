@@ -1,23 +1,28 @@
 // services/enrichment/enrichmentDispatchService.js
 //
-// Hands sendable rows off to Outbound's existing SMS/Email pipeline
-// (enrich.md §7.3). Calling is Phase 5 — "call" is not a supported channel
-// here yet.
+// Hands sendable rows off to the existing channels: Outbound's SMS/Email
+// pipeline (enrich.md §7.3) and, for calls, our own runner around
+// dispatchCall (§7.2). enrichmentCallRunner.js is required lazily (inside
+// the functions that need it), since it imports `sendableRows` from this
+// file — a one-directional require cycle, safe because neither side needs
+// the other at module-load time.
 //
 // No edits to outboundContactsService.js, outboundCampaignService.js, or
 // the outbound controller — only the two additive changes described in
 // enrich.md §5.2 (outboundCampaignModel's source enum/enrichmentListId/
 // recipient vars, outboundEmailService's ENRICHED_EMAIL_VARIABLES /
-// buildRecipientVars).
+// buildRecipientVars). Nothing under src/services/calling/ is edited either
+// — enrichmentCallRunner.js only imports from it.
 //
 // Split into prepare (validates everything, creates the Outbound
-// campaign(s) — no network send yet) and run (calls startCampaign, the
-// part that actually dials out) so the controller can respond as soon as
-// prepare finishes and run fire-and-forget, the same shape as
+// campaign(s)/call-run doc — no network send yet) and run (calls
+// startCampaign / places the actual calls) so the controller can respond as
+// soon as prepare finishes and run fire-and-forget, the same shape as
 // createList/startEnrichment.
 
 const Papa = require("papaparse");
 const Product = require("../../model/property/productModel");
+const VoicePrompt = require("../../model/calling/voicePromptModel");
 const EnrichmentList = require("../../model/enrichment/enrichmentListModel");
 const EnrichmentListRow = require("../../model/enrichment/enrichmentListRowModel");
 const EnrichedPerson = require("../../model/enrichment/enrichedPersonModel");
@@ -26,8 +31,10 @@ const { effectiveContact } = require("./enrichmentContactsService");
 const { CHANNEL_REQUIREMENTS } = require("./enrichmentListService");
 const outboundContactsService = require("../../services/outbound/outboundContactsService");
 const outboundCampaignService = require("../../services/outbound/outboundCampaignService");
+const { resolveProperty } = require("../calling/vapiPropertyService");
+const { resolvePromptConfig } = require("../calling/vapiPromptService");
 
-const SUPPORTED_CHANNELS = ["sms", "email"]; // "call" is Phase 5
+const SUPPORTED_CHANNELS = ["sms", "email", "call"];
 
 /** Every non-excluded row in a list, with effective values computed. */
 const allRowsWithEffective = async (listId) => {
@@ -91,6 +98,16 @@ const dispatchPreview = async (listId, { channels, propertyId }) => {
         emailConfigured: Boolean(process.env.EMAIL_USERNAME && process.env.EMAIL_PASSWORD),
       };
     }
+    if (channel === "call") {
+      const promptWritten = property
+        ? Boolean((await VoicePrompt.findOne({ propertyId: property._id }).lean())?.systemPrompt)
+        : null;
+      entry.setup = {
+        propertyPicked: Boolean(property),
+        hasStartBid: property ? Boolean(property.startBid) : null,
+        promptWritten,
+      };
+    }
     result[channel] = entry;
   }
   return result;
@@ -135,6 +152,14 @@ const prepareDispatch = async (listId, { channels, propertyId, maxContacts, sms,
       if (!email?.subject || !String(email.subject).trim()) errors.push("Email: subject is required");
       if (!email?.body || !String(email.body).trim()) errors.push("Email: body is required");
     }
+    if (channel === "call") {
+      try {
+        await resolveProperty(propertyId);
+        await resolvePromptConfig(propertyId);
+      } catch (err) {
+        errors.push(`Call: ${err.message}`);
+      }
+    }
 
     const rows = await sendableRows(listId, channel);
     if (rows.length === 0) errors.push(`${channel}: no sendable rows (every row is excluded or missing what this channel needs)`);
@@ -150,6 +175,18 @@ const prepareDispatch = async (listId, { channels, propertyId, maxContacts, sms,
   const created = {};
 
   for (const channel of requested) {
+    if (channel === "call") {
+      // Lazy require — enrichmentCallRunner.js imports sendableRows from
+      // this file, a one-directional cycle that's only safe if neither
+      // side needs the other at module-load time (see file header).
+      // eslint-disable-next-line global-require
+      const enrichmentCallRunner = require("./enrichmentCallRunner");
+      const { callRunId, property: resolvedProperty, promptConfig } =
+        await enrichmentCallRunner.prepareCallDispatch(listId, { propertyId, maxContacts: validatedMax }, user);
+      created.call = { callRunId, property: resolvedProperty, promptConfig };
+      continue;
+    }
+
     const rows = perChannelRows[channel];
     const csvData = Papa.unparse(rows.map(toOutboundCsvRow));
     const { contacts, skipped, total, overLimit } = outboundContactsService.parseContacts({
@@ -230,14 +267,24 @@ const prepareDispatch = async (listId, { channels, propertyId, maxContacts, sms,
   return created;
 };
 
-/** Slow: the part that actually sends. Called fire-and-forget after prepareDispatch and the HTTP response. */
+/** Slow: the part that actually sends/calls. Called fire-and-forget after prepareDispatch and the HTTP response. */
 const runDispatch = async (created) => {
+  // eslint-disable-next-line global-require
+  const enrichmentCallRunner = created.call ? require("./enrichmentCallRunner") : null;
+
   await Promise.all(
-    Object.values(created).map(({ campaignId }) =>
-      outboundCampaignService.startCampaign(campaignId).catch((err) => {
-        console.error(`[enrichment] dispatch campaign ${campaignId} failed to start:`, err.message);
-      })
-    )
+    Object.entries(created).map(([channel, value]) => {
+      if (channel === "call") {
+        return enrichmentCallRunner
+          .runCallDispatch(value.callRunId, value.property, value.promptConfig)
+          .catch((err) => {
+            console.error(`[enrichment] call run ${value.callRunId} failed to start:`, err.message);
+          });
+      }
+      return outboundCampaignService.startCampaign(value.campaignId).catch((err) => {
+        console.error(`[enrichment] dispatch campaign ${value.campaignId} failed to start:`, err.message);
+      });
+    })
   );
 };
 
