@@ -56,6 +56,8 @@ const realtorRoutes = require("./routes/users/realtorRoutes");
 // Outbound SMS + Email admin campaigns — new, separate feature. Does not
 // touch/import anything under routes/calling.
 const outboundRoutes = require("./routes/outbound/outboundRoutes");
+// Property Marketing Engine (admin-only): brief, copy, compliance, approval.
+const marketingEngineRoutes = require("./routes/marketing/marketingEngineRoutes");
 // Middleware
 app.use(cookieParser());
 app.use(cors(expressCorsOptions));
@@ -124,6 +126,7 @@ app.use("/api/v1/property-import", propertyImportRoutes);
 app.use("/api/v1/property-lead", propertyLeadRoutes);
 app.use("/api/v1/realtor", realtorRoutes);
 app.use("/api/v1/outbound", outboundRoutes);
+app.use("/api/v1/marketing-engine", marketingEngineRoutes);
 // Error Middleware
 app.use(errorMiddleware);
 
