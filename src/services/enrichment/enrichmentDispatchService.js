@@ -66,8 +66,9 @@ const toOutboundCsvRow = ({ effective }) => ({
 
 /**
  * POST /lists/:id/dispatch/preview — sends nothing. For each requested
- * channel: how many non-excluded rows qualify, plus the setup checks the
- * send panel's "Check" button shows.
+ * channel: how many non-excluded rows qualify, how many of those were
+ * already sent this channel before (re-send warning, Phase 6 polish), plus
+ * the setup checks the send panel's "Check" button shows.
  */
 const dispatchPreview = async (listId, { channels, propertyId }) => {
   const list = await EnrichmentList.findById(listId).lean();
@@ -83,7 +84,16 @@ const dispatchPreview = async (listId, { channels, propertyId }) => {
       continue;
     }
     const rows = await sendableRows(listId, channel);
-    const entry = { supported: true, ready: rows.length };
+    const alreadySentTimes = rows
+      .map(({ row }) => row.lastSent?.[channel]?.at)
+      .filter(Boolean)
+      .sort((a, b) => new Date(b) - new Date(a));
+    const entry = {
+      supported: true,
+      ready: rows.length,
+      alreadySent: alreadySentTimes.length,
+      lastSentAt: alreadySentTimes[0] || null,
+    };
     if (channel === "sms") {
       entry.setup = {
         propertyPicked: Boolean(property),
