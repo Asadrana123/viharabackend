@@ -1738,6 +1738,46 @@ Revised the plan in place. Still nothing built.
 - All test data (lists, the one live-looked-up person record, campaign
   documents) deleted after testing.
 
+## 2026-09-26 (later still): Phase 5 built and tested — dispatch to Calls
+
+- **Built**: `enrichmentCallRunModel.js` (recipient snapshot extended
+  beyond §4.4's minimal table with address/city/state/zip/email, so
+  dispatchCall gets `buildContact`'s full shape without re-reading rows
+  at run time), `researchSummary.js` (no Oakland text, always names the
+  property picked for the actual dispatch), `enrichmentCallRunner.js`
+  (prepare/run split, same pacing as `vapiCampaignService.runCampaign`,
+  never silently truncates over `maxContacts` — matching every other
+  channel, a gap the first pass of this file had and fixed before it was
+  ever tested), `call` wired into `dispatch/preview` and `prepareDispatch`
+  in `enrichmentDispatchService.js` (delegates to the runner instead of
+  the Outbound path), `GET /call-runs/:id`. Frontend: Call checkbox
+  enabled in `SendPanel`, `CallRunProgress` + `useCallRunPolling` added,
+  `DispatchProgress` renders it for the call channel.
+- **Tested without ever calling `dispatchCall`**, per the requesting
+  user's explicit instruction for this phase (mirroring Phase 4's
+  approach, extended to the one place in this whole feature where there's
+  no separate "create" step to stop at short of the actual action —
+  solved by calling `prepareDispatch` directly and simply never invoking
+  `runDispatch`/`runCallDispatch`). Confirmed: the call-run document,
+  resolved property snapshot (speech-friendly fields intact), resolved
+  prompt config, and each recipient's research summary text — all with
+  the run left at `queued`, never `running`/`completed`. Confirmed every
+  validation-failure path (no voice prompt, nonexistent property, invalid
+  `maxContacts`) creates zero call-run documents. Confirmed live in the
+  browser through the Check button only (`dispatch/preview`, sends
+  nothing) — Send was never clicked.
+- **Re-confirmed the standing constraint**: `git diff --stat` on
+  `src/services/calling/`, `src/controller/calling/`, `src/routes/calling/`,
+  `src/model/calling/`, and frontend `src/components/AdminPanel/Calls/`
+  is empty. Nothing under calling was touched at any point across all
+  five phases.
+- All test data (lists, seeded person records, the one call-run document
+  created during backend testing) deleted after testing.
+
+**All five phases are now built and tested.** What's left is Phase 6
+(polish — empty/loading/error states, the dispatch log with links,
+documenting env vars) and Phase 7 (deferred future work) per §9.
+
 ## Fill in what has changed each time we come back to this
 
 Same pattern as `outboundplan.md` and `outbound.md`: read the sections above,
