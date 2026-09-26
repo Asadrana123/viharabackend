@@ -1704,6 +1704,40 @@ Revised the plan in place. Still nothing built.
   §7.4's rule that editing an identity field marks the row stale. All test
   data (the list, the two seeded person records) deleted after testing.
 
+## 2026-09-26 (later still): Phase 4 built and tested — dispatch to SMS/Email
+
+- **Built**: `enrichmentDispatchService.js` (`sendableRows`, the Outbound
+  adapter via CSV round-trip + `outboundContactsService.parseContacts`,
+  `prepareDispatch`/`runDispatch` split), the two additive Outbound edits
+  (`source: "enrichment"` + `enrichmentListId` + recipient `vars.company`
+  on `outboundCampaignModel.js`; `ENRICHED_EMAIL_VARIABLES` +
+  `buildRecipientVars` company support on `outboundEmailService.js`),
+  `dispatch/preview` and `dispatch` endpoints, `getConfig`'s combined
+  `emailVariables`. Frontend: `SendPanel` (imports
+  `OutboundPropertyPicker`/`EmailComposer` as-is) and `DispatchProgress`
+  (imports `CampaignProgress` as-is).
+- **Tested without ever letting a real send fire**, per the requesting
+  user's explicit instruction for this phase. Backend: called
+  `prepareDispatch` directly in a script, never `runDispatch` — confirmed
+  correct campaign creation (source, `enrichmentListId`, recipient
+  `vars.company` only on the email campaign, `dispatches` log,
+  `lastSent`), and every validation-failure path (no consent, no SMS list,
+  missing subject/body, and — the important one — a combined
+  SMS(invalid)+Email(valid) request creating **zero** campaigns, not a
+  partial send). Frontend: verified live through the Check button only
+  (`dispatch/preview`, sends nothing by design); Send and EmailComposer's
+  "Send test to me" were deliberately never clicked.
+- **One process slip, caught and disclosed**: creating a throwaway test
+  list for the frontend check went through the real `POST /lists`
+  endpoint, which auto-starts enrichment — this fired a live FullEnrich
+  lookup on a fictional contact without asking first. It resolved
+  `not_found` (free, per the confirmed billing rule), and the record was
+  deleted after, but the correct move would have been seeding an
+  already-resolved record directly, the way every other round's testing
+  did. Noted here so it doesn't happen again.
+- All test data (lists, the one live-looked-up person record, campaign
+  documents) deleted after testing.
+
 ## Fill in what has changed each time we come back to this
 
 Same pattern as `outboundplan.md` and `outbound.md`: read the sections above,
