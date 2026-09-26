@@ -1778,6 +1778,33 @@ Revised the plan in place. Still nothing built.
 (polish — empty/loading/error states, the dispatch log with links,
 documenting env vars) and Phase 7 (deferred future work) per §9.
 
+## 2026-09-26 (later still): Phase 6 — polish
+
+- **Dispatch log now clickable.** Each entry in a list's "Sent so far" was
+  plain text; it's now a link that reuses `DispatchProgress` to show that
+  specific dispatch's real, live status — Outbound's own
+  `CampaignProgress` for sms/email, our `CallRunProgress` for call.
+- **Re-send warning.** `dispatch/preview` now reports `alreadySent`
+  (count) and `lastSentAt` per channel, read from each sendable row's
+  existing `lastSent.<channel>`. The send panel shows it both in the
+  Check results and in the confirm text before Send, so re-sending to
+  the same list/channel/property isn't silent.
+- **CSS gap closed**: `.enx-list-detail` was used in JSX, never defined.
+- Empty/loading/error states, reviewed across every screen built in
+  Phases 3–5, were already in place from when each was first built — no
+  gaps found needing a separate pass.
+- Verified live: clicking a past dispatch's log entry for a
+  deliberately-never-started test campaign correctly showed `QUEUED`;
+  re-checking dispatch/preview against a list/property/channel already
+  sent to correctly reported the prior send and its timestamp. Test list,
+  seeded person record, and the one real (never-started) campaign
+  created for this round were all deleted after testing.
+
+**All six phases are done.** Phase 7 (webhooks instead of polling, trying
+personal email as a second lookup, enriched Brevo SMS attributes, a real
+job queue, folding the calling CSV upload in) is explicitly deferred
+future work per §9 — not needed now.
+
 ## Fill in what has changed each time we come back to this
 
 Same pattern as `outboundplan.md` and `outbound.md`: read the sections above,
