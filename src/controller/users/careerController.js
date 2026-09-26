@@ -87,11 +87,11 @@ exports.submitApplication = catchAsyncError(async (req, res, next) => {
     sendEmail(
       email,
       firstName,
-      "Vihara Marketing Manager - Your Assignment",
+      "Vihara Performance/Growth Marketing Manager - Your Assignment",
       careerMarketingAssignmentEmail(firstName),
       [
         {
-          filename: "Vihara - Marketing Manager Assignment.pdf",
+          filename: "Vihara - Performance/Growth Marketing Manager Assignment.pdf",
           path: MARKETING_ASSIGNMENT_PDF,
           contentType: "application/pdf",
         },

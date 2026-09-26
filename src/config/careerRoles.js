@@ -6,7 +6,7 @@ const ROLE_LABELS = {
   "senior-software-engineer": "Senior Software Engineer",
   "product-manager": "Product Manager",
   "ui-ux-designer": "UI/UX Designer",
-  "marketing-manager": "Marketing Manager",
+  "marketing-manager": "Performance/Growth Marketing Manager",
   "motion-graphics-designer": "Motion Graphics Designer",
   "growth-manager": "Growth Manager",
   "senior-product-manager": "Senior Product Manager",

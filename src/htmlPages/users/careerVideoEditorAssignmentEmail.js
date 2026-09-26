@@ -82,12 +82,18 @@ const careerVideoEditorAssignmentEmail = (firstName) => {
           regardless of whether we move forward with the role.
         </p>
 
-        <p style="margin:0 0 25px 0;font-size:14px;line-height:1.6;color:#555;">
-          Let us know if you have any questions on the property or the brief. Looking forward to seeing what you create.
+        <p style="margin:0 0 15px 0;font-size:14px;line-height:1.6;color:#555;">
+          We encourage you to give this assignment your 100%. If your submission meets our expectations, we will share an
+          offer letter with you within 72 hours of reviewing it.
         </p>
 
-        <p style="margin:0;font-size:14px;color:#666;">
-          Best,<br><strong>Prajwal</strong><br>Vihara
+        <p style="margin:0 0 15px 0;font-size:14px;line-height:1.6;color:#555;">
+          Questions on the assignment? Just write to
+          <a href="mailto:info@vihara.ai" style="color:#0384fb;text-decoration:none;">info@vihara.ai</a>.
+        </p>
+
+        <p style="margin:0 0 25px 0;font-size:14px;line-height:1.6;color:#555;">
+          Looking forward to seeing what you create.
         </p>
       </td>
     </tr>
