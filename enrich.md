@@ -1383,10 +1383,27 @@ a deliberate code change.
   repeat uploads, not the first. Re-enrich and retry-failed can cost again.
   There's no daily lookup cap (decision #10); the parse preview's "to look
   up" count is the admin's warning.
-- **Hit rate is unknown.** Many SFR companies are small property LLCs, not
-  employers with work profiles, so FullEnrich may find emails for only part
-  of a list. That directly limits SMS and email reach (§7.1). Phase 0
-  gives a first read.
+- **Hit rate looks low, confirmed live, not just guessed.** Phase 0 (§2.9)
+  found 1 email out of 4 real contacts, and the one hit was a large,
+  recognizable company (Pennymac) — the small local property LLCs that make
+  up most of the SFR sample found nothing. That directly limits SMS and
+  email reach (§7.1); calls are unaffected (VAPI dials the CSV phone
+  directly, no FullEnrich dependency).
+- **SMS is Brevo-email-keyed, not just Brevo-consent-gated.** Confirmed by
+  reading `brevoService.js`'s `upsertContact` (line 70): Brevo's own
+  `POST /contacts` API requires an `email` to create or find a contact —
+  a phone number only ever exists as an *attribute* on an email-keyed
+  record, never as a standalone key. This is the real reason
+  `outboundContactsService.js` requires both a phone and an email for SMS
+  (decision #5 in `outboundplan.md`) — it isn't a business/compliance
+  choice this feature could relax, it's a hard constraint of the Brevo
+  integration everything reuses. **Practical effect: on the real SFR
+  sample (0/20 rows have an email), every row is un-textable until
+  FullEnrich finds one for it**, and the confirmed hit rate above suggests
+  that may be a minority of rows. The only ways around this — a different
+  SMS provider that supports phone-only contacts, or a synthetic
+  placeholder email to satisfy Brevo's API — are both bigger, separate
+  changes, not something to fold into this feature.
 - **Name + company normalization is plain** (§4.1): punctuation and legal
   suffix variants of the same company won't dedupe.
 - **Long runs in the web process.** Much less of a concern with 100-per-
