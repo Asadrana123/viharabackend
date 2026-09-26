@@ -1619,6 +1619,53 @@ Revised the plan in place. Still nothing built.
 - Backend branch: `enrich-contacts`, cut from current `main` (post PR #8
   and PR #9). Committed locally, not pushed.
 
+## 2026-09-26 (later): Phase 2 built and tested — the real FullEnrich job
+
+- **Built**: `fullenrichClient.js` (name+company bulk primary, reverse-email
+  fallback, never throws per-contact) and `enrichmentJobService.js` (store-
+  first lookup, atomic claim via upsert, batching, polling with heartbeat,
+  stale detection + resume, retry-failed, forced single-row re-enrich).
+  Wired into the controller: `createList` now starts enrichment after
+  responding; new `resume`/`retry-failed`/`re-enrich` endpoints, each split
+  into a fast synchronous precondition/claim step and a slow
+  fire-and-forget run step (a real FullEnrich round trip took 60-100s in
+  Phase 0 — far too slow to hold an HTTP request open for; the first
+  version of these endpoints didn't make this split and would have blocked).
+- **Real bug found and fixed via live testing**: `retry-failed` reset a
+  row back to `pending` but never touched the underlying shared
+  `enrichedPerson` record, which was still `status: "failed"`. The next
+  pass's store-lookup treated `failed` the same as `found`/`not_found` —
+  "already resolved, reuse it" — so retry-failed silently re-reported the
+  exact same stale error without ever attempting a new lookup. This
+  directly contradicted this plan's own §5.5 spec ("`failed` there, or no
+  record: goes into the to-look-up set"), which the implementation had
+  drifted from. Fixed in both places this logic appears (the main pass and
+  the deferred-row recheck loop), the second with its own atomic reclaim
+  to avoid introducing a double-submission race.
+- **Verified live**, spending as little as possible and asking first each
+  time real credits were on the line:
+  - Reuse path: seeded a `found` `enrichedPerson` record directly (zero API
+    calls) and confirmed a new list resolves the same person as `reused`
+    near-instantly, with the FullEnrich-sourced email correctly showing up
+    as the row's effective email.
+  - Failure path: temporarily swapped in an invalid `FULLENRICH_API_KEY`
+    (`.env` backed up first, restored after), confirmed a fresh submit
+    fails cleanly, the row records a clear reason ("Unknown api key"), and
+    the list still reaches `ready` rather than getting stuck.
+  - Retry-failed: with the requesting user's explicit go-ahead (a
+    fictional, guaranteed-zero-cost contact), confirmed retry-failed now
+    actually re-attempts the lookup post-fix (resolved to `not_found`,
+    correctly, rather than repeating the cached "Unknown api key").
+  - Stale detection + resume: seeded an artificially-old `enriching` list
+    (zero API calls), confirmed `GET` flips it to `interrupted`, `resume`
+    correctly finishes it (nothing pending, straight to `ready`), and
+    resuming an already-`ready` list correctly `409`s.
+  - Total real FullEnrich calls made in this round: 1 (the retry-failed
+    confirmation), at the requesting user's explicit go-ahead, 0 credits
+    (fictional contact, not-found).
+- All test lists, seeded records, and throwaway scripts were deleted after
+  testing — nothing left in the local DB or repo from this round.
+
 ## Fill in what has changed each time we come back to this
 
 Same pattern as `outboundplan.md` and `outbound.md`: read the sections above,
