@@ -106,13 +106,6 @@ exports.submitApplication = catchAsyncError(async (req, res, next) => {
     );
   }
 
-  // Notification to admin
-  sendEmail(
-    process.env.ADMIN_EMAIL || "vin@vihara.ai",
-    "Admin",
-    `New Application: ${roleLabel} — ${firstName} ${lastName}`,
-    careerAdminNotificationEmail(application, roleLabel)
-  );
 
   res.status(201).json({
     success: true,
