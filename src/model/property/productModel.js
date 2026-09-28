@@ -503,6 +503,40 @@ const productSchema = new mongoose.Schema({
         type: Number,
         default: null
     },
+
+    // ============================================
+    // MARKETING ENGINE
+    // ============================================
+    // Who the property is marketed to. Suggested by buyerTypeService (plain
+    // rules) and confirmed by the admin in the Marketing Engine tab before a run.
+    // null = not confirmed yet; the engine refuses to run until it is set.
+    buyerType: {
+        type: String,
+        enum: ['investor', 'owner-occupant', 'retail', null],
+        default: null
+    },
+    // Internal monthly rent estimate in dollars (not the Zillow rent Zestimate
+    // stored under investmentData.rental).
+    rentEstimate: {
+        type: Number,
+        default: null
+    },
+    // Internal repair cost estimate in dollars. 0 = no repairs needed.
+    rehabEstimate: {
+        type: Number,
+        default: null
+    },
+    // Short, verified property features the ads may state as facts.
+    features: {
+        type: [String],
+        default: []
+    },
+    // Owner-occupant / retail copy may not mention mortgage financing,
+    // contingencies or closing mechanics until this is true.
+    financingTermsConfirmed: {
+        type: Boolean,
+        default: false
+    },
     // ============================================
     // TIMESTAMPS
     // ============================================

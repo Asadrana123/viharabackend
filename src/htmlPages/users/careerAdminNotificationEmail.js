@@ -5,8 +5,11 @@
  * @param {string} roleLabel    - human-readable role name
  * @returns {string} HTML string
  */
+const { isTechnicalRole, isMarketingRole } = require("../../config/careerRoles");
+
 const careerAdminNotificationEmail = (application, roleLabel) => {
-  const isMarketing = application.role === "marketing-manager";
+  const isTechnical = isTechnicalRole(application.role);
+  const isMarketing = isMarketingRole(application.role);
 
   const row = (label, value) => `
     <tr>
@@ -74,8 +77,8 @@ const careerAdminNotificationEmail = (application, roleLabel) => {
                 Application Questions
               </p>
               <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-                ${!isMarketing ? qaRow("Technical Skills", application.technicalSkills) : ""}
-                ${!isMarketing ? qaRow("MERN & Figma Rating", application.mernAndFigmaRating) : ""}
+                ${isTechnical ? qaRow("Technical Skills", application.technicalSkills) : ""}
+                ${isTechnical ? qaRow("MERN & Figma Rating", application.mernAndFigmaRating) : ""}
                 ${qaRow("Project they're most proud of", application.proudProject)}
                 ${qaRow("Free time learning", application.freeTimeLearning)}
                 ${qaRow("Person / company they admire", application.admirePerson)}
