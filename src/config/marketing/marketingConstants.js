@@ -58,6 +58,17 @@ const LINE_SOURCE_VALUES = Object.freeze(Object.values(LINE_SOURCES));
 
 const IMAGE_FORMATS = Object.freeze(["1:1", "9:16"]);
 
+// Image generation for one ad set (build step 4).
+const IMAGE_JOB_STATUS = Object.freeze({
+    RUNNING: "running",
+    DONE: "done",
+    FAILED: "failed",
+});
+const IMAGE_JOB_STATUS_VALUES = Object.freeze(Object.values(IMAGE_JOB_STATUS));
+
+// An image job still "running" after this long was cut off (e.g. a server restart).
+const IMAGE_JOB_STALE_AFTER_MS = 10 * 60 * 1000;
+
 module.exports = {
     BUYER_TYPES,
     BUYER_TYPE_VALUES,
@@ -72,4 +83,7 @@ module.exports = {
     LINE_SOURCES,
     LINE_SOURCE_VALUES,
     IMAGE_FORMATS,
+    IMAGE_JOB_STATUS,
+    IMAGE_JOB_STATUS_VALUES,
+    IMAGE_JOB_STALE_AFTER_MS,
 };

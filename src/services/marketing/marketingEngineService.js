@@ -13,6 +13,7 @@ const { suggestBuyerType } = require("./buyerTypeService");
 const { getPersonasForBuyerType } = require("./matrixService");
 const { checkLine, contextFromBrief, toStoredFlags } = require("./complianceChecker");
 const { processRun } = require("./runProcessor");
+const { hasActiveImageJob, withImageState } = require("./creativeImageService");
 const {
     BUYER_TYPE_VALUES,
     RUN_STATUS,
@@ -155,7 +156,8 @@ async function getRun(runId) {
         .populate("approvedBy", "name email")
         .lean();
     if (!run) throw new Errorhandler("Marketing run not found", 404);
-    return run;
+    // Adds image.outdated and shows interrupted image jobs as failed.
+    return withImageState(run);
 }
 
 // ---------------------------------------------------------------------------
@@ -190,6 +192,9 @@ async function editLine({ runId, lineId, text, userId }) {
 async function approveRun({ runId, userId }) {
     const run = await findRunOrThrow(runId);
     assertRunIsReady(run, "approved");
+    if (hasActiveImageJob(run)) {
+        throw new Errorhandler("Images are still being made for an ad set. Approve when they finish.", 409);
+    }
 
     run.status = RUN_STATUS.APPROVED;
     run.approvedBy = userId;

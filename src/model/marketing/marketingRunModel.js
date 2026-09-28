@@ -7,6 +7,8 @@ const {
     LINE_SOURCES,
     LINE_SOURCE_VALUES,
     IMAGE_FORMATS,
+    IMAGE_JOB_STATUS,
+    IMAGE_JOB_STATUS_VALUES,
 } = require("../../config/marketing/marketingConstants");
 
 // One document per engine run on a property. Runs are versioned per property
@@ -110,13 +112,51 @@ const skippedCellSchema = new mongoose.Schema(
     { _id: false }
 );
 
-// Rendered ad images (filled by build step 4).
+// Rendered ad images (build step 4). One per cell x slot x format; a
+// regenerated image replaces the old one for the same slot.
 const imageSchema = new mongoose.Schema(
     {
-        cellKey: { type: String, default: "" },
-        kind: { type: String, default: "" },
+        cellKey: { type: String, required: true },
+        // Creative slot from creativeConfig CREATIVE_SLOTS: "staticA", "carousel:card1" ...
+        kind: { type: String, required: true },
         format: { type: String, enum: IMAGE_FORMATS, required: true },
         url: { type: String, required: true },
+        // Cloudinary public id, kept so a replaced image can be cleaned up.
+        publicId: { type: String, default: "" },
+        provider: { type: String, default: "" },
+        providerModel: { type: String, default: "" },
+        // The exact on-image text used. The review screen marks the image as
+        // outdated when the copy changes after it was made.
+        textSnapshot: { type: String, default: "" },
+        createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "userModel", default: null },
+        createdAt: { type: Date, default: Date.now },
+    },
+    { _id: false }
+);
+
+// A slot that could not be made during an image job.
+const imageProblemSchema = new mongoose.Schema(
+    {
+        slot: { type: String, required: true }, // "carousel:card4 (1:1)"
+        message: { type: String, default: "" },
+    },
+    { _id: false }
+);
+
+// Image generation state for one cell. One entry per cell; starting again
+// replaces it.
+const imageJobSchema = new mongoose.Schema(
+    {
+        cellKey: { type: String, required: true },
+        status: { type: String, enum: IMAGE_JOB_STATUS_VALUES, default: IMAGE_JOB_STATUS.RUNNING },
+        total: { type: Number, default: 0 },
+        completed: { type: Number, default: 0 },
+        failed: { type: Number, default: 0 },
+        // Named "problems" because "errors" is reserved by Mongoose.
+        problems: { type: [imageProblemSchema], default: [] },
+        startedBy: { type: mongoose.Schema.Types.ObjectId, ref: "userModel", default: null },
+        startedAt: { type: Date, default: Date.now },
+        finishedAt: { type: Date, default: null },
     },
     { _id: false }
 );
@@ -172,6 +212,10 @@ const marketingRunSchema = new mongoose.Schema(
         },
         images: {
             type: [imageSchema],
+            default: [],
+        },
+        imageJobs: {
+            type: [imageJobSchema],
             default: [],
         },
         error: {

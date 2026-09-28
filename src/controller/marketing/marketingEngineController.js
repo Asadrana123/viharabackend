@@ -1,6 +1,7 @@
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const Errorhandler = require("../../utils/errorhandler");
 const marketingEngineService = require("../../services/marketing/marketingEngineService");
+const creativeImageService = require("../../services/marketing/creativeImageService");
 
 // All business logic lives in services/marketing/marketingEngineService.js.
 // These handlers only read the request and shape the response.
@@ -60,6 +61,21 @@ exports.editLine = catchAsyncError(async (req, res) => {
     message: line.flags.length ? "Line saved with compliance warnings" : "Line saved",
     line,
   });
+});
+
+// ─── GENERATE AD IMAGES FOR ONE AD SET ─────────────────────────────────────
+// Body (optional): { slotIds: ["staticA|1:1"] } regenerates only those images.
+// Returns 202 right away; images are made in the background and the admin tab
+// polls GET /runs/:runId for progress.
+exports.generateCellImages = catchAsyncError(async (req, res) => {
+  const job = await creativeImageService.startCellImages({
+    runId: req.params.runId,
+    cellKey: req.params.cellKey,
+    slotIds: req.body?.slotIds,
+    userId: req.user._id,
+  });
+
+  res.status(202).json({ success: true, message: "Image generation started", job });
 });
 
 // ─── APPROVE A RUN ──────────────────────────────────────────────────────────

@@ -8,6 +8,7 @@ const {
   getRun,
   editLine,
   approveRun,
+  generateCellImages,
 } = require("../../controller/marketing/marketingEngineController");
 
 // All routes require authentication + admin role
@@ -24,5 +25,8 @@ router.get("/runs/:runId", getRun);
 // Review
 router.patch("/runs/:runId/lines/:lineId", editLine);
 router.patch("/runs/:runId/approve", approveRun);
+
+// Ad images (one ad set at a time; body { slotIds } regenerates specific images)
+router.post("/runs/:runId/cells/:cellKey/images", generateCellImages);
 
 module.exports = router;

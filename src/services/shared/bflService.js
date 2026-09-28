@@ -99,6 +99,28 @@ class BflService {
   }
 
   /**
+   * Generic FLUX.2 generation / multi-reference edit (used by the Marketing
+   * Engine). Input images are passed as public URLs in the body
+   * (input_image, input_image_2 ... input_image_8).
+   *
+   * Returns the short-lived signed result URL (valid ~10 minutes); the caller
+   * must copy it to permanent storage.
+   *
+   * @param {String} model  e.g. "flux-2-pro"
+   * @param {Object} body   { prompt, input_image, ..., width, height, output_format, safety_tolerance }
+   * @returns {Promise<String>} signed image URL
+   */
+  async generateImage(model, body) {
+    const { data } = await this.getClient().post(`${BFL_CONFIG.baseUrl}/${model}`, body);
+
+    if (!data?.polling_url) {
+      throw new Error("BFL did not return a polling URL");
+    }
+
+    return this.pollUntilReady(data.polling_url);
+  }
+
+  /**
    * BFL requires the source image as a raw base64 string (no data URI prefix).
    *
    * Uses the bare axios export rather than the configured client — the source
