@@ -346,6 +346,32 @@ module names — zero remaining references except one already-commented-out
 line in `renovationContractorService.js` (harmless, was already inert
 before today).
 
+## 2026-09-26: Tried FLUX.2 [pro], concluded prompt upsampling OFF (opposite of Kontext)
+
+- **Context:** Kontext [max] (`BFL_MODEL=flux-kontext-max`) was tried first —
+  rejected, hallucinated two extra toilets in a bathroom edit.
+- **Switched to FLUX.2 [pro]** (`BFL_MODEL=flux-2-pro`). Endpoint path and
+  `input_image` field are compatible with the existing Kontext request
+  shape, but the prompt-upsampling parameter isn't: Kontext takes
+  `prompt_upsampling` (enable, non-inverted), FLUX.2 takes `disable_pup`
+  (disable, inverted). `bflService.js`'s `submitEditRequest` now branches on
+  `BFL_CONFIG.model.startsWith("flux-2")` to send the right field name for
+  either model family — additive, no behavior change for Kontext.
+- **Live A/B, requesting user's own test:** first tried FLUX.2 [pro] with
+  upsampling on (`BFL_PROMPT_UPSAMPLING=true`, inherited from the Kontext
+  setting) — "much better" than Kontext Max. Then tried upsampling off
+  (`BFL_PROMPT_UPSAMPLING=false` → `disable_pup: true`) — better still.
+  **Concluded: `BFL_PROMPT_UPSAMPLING=false` for FLUX.2 [pro].**
+- **This is the opposite of Kontext's own conclusion** (upsampling ON won
+  for Kontext, back when `BFL_MODEL` defaulted to `flux-kontext-pro`).
+  Worth remembering if either model is revisited: the setting doesn't
+  transfer between model families, each needs its own live comparison.
+- **Current `.env`, both settings now finalized:**
+  `BFL_MODEL=flux-2-pro`, `BFL_PROMPT_UPSAMPLING=false`.
+- No BFL/FLUX.2 cost comparison or further model options (Gemini 2.5 Flash
+  Image, GPT Image 1.5) were tried this round — see chat history if picking
+  this back up; those remain untested alternatives, not ruled out.
+
 ## Fill in what has changed each time we come back to this
 
 Whoever (human or Claude) picks this file back up: read the section above,

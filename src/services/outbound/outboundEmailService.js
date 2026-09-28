@@ -27,6 +27,13 @@ const EMAIL_VARIABLES = [
   { key: "auction_end", label: "Auction end" },
 ];
 
+// Additive for the Enrichment Lists feature (enrich.md decision #18,
+// corrected §2.9 — job title/industry dropped, FullEnrich's name+company
+// endpoint never returns them; company comes from the CSV, not FullEnrich).
+// Not added to EMAIL_VARIABLES itself so Outbound's own email composer
+// doesn't start showing a tag that's always blank there.
+const ENRICHED_EMAIL_VARIABLES = [{ key: "company", label: "Company" }];
+
 const escapeHtml = (str) =>
   String(str || "")
     .replace(/&/g, "&amp;")
@@ -54,6 +61,9 @@ const buildRecipientVars = (contact, property) => ({
   start_bid: typeof property?.startBid === "number" ? `$${property.startBid.toLocaleString()}` : "",
   auction_start: property?.auctionStartDate ? new Date(property.auctionStartDate).toLocaleString() : "",
   auction_end: property?.auctionEndDate ? new Date(property.auctionEndDate).toLocaleString() : "",
+  // Additive: only ever set on recipients created by the Enrichment Lists
+  // feature (enrich.md decision #18) — always "" for Outbound's own launches.
+  company: contact?.vars?.company || "",
 });
 
 /**
@@ -100,6 +110,7 @@ const runEmailCampaign = async (campaignId) => {
 
 module.exports = {
   EMAIL_VARIABLES,
+  ENRICHED_EMAIL_VARIABLES,
   renderTemplate,
   buildRecipientVars,
   renderEmail,

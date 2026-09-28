@@ -33,6 +33,13 @@ const recipientSchema = new mongoose.Schema(
     // Email only — the nodemailer messageId from sendEmailAsync.
     messageId: { type: String, default: "" },
     processedAt: { type: Date, default: null },
+
+    // Additive for the Enrichment Lists feature (enrich.md decision #18).
+    // Always empty on Outbound's own launches (single/csv source) — only
+    // ever set when this campaign was created from an enrichment list.
+    vars: {
+      company: { type: String, default: "" },
+    },
   },
   { _id: false }
 );
@@ -45,9 +52,21 @@ const outboundCampaignSchema = new mongoose.Schema(
       enum: ["queued", "running", "completed", "failed", "interrupted"],
       default: "queued",
     },
-    // Which UI mode created it — a single manually-entered contact, or a CSV.
-    source: { type: String, enum: ["single", "csv"], required: true },
+    // Which UI mode created it — a single manually-entered contact, a CSV,
+    // or (additive) the Enrichment Lists feature (enrich.md decision #16).
+    source: { type: String, enum: ["single", "csv", "enrichment"], required: true },
     csvFileName: { type: String, default: "" },
+
+    // Additive — only set when source is "enrichment". Points at the
+    // enrichmentListModel this campaign was sent from. Not a hard ref
+    // requirement: the list can be deleted later (decision #21) and this
+    // just points at nothing, which is fine — it's an audit link, not
+    // something the campaign depends on to run.
+    enrichmentListId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "enrichmentListModel",
+      default: null,
+    },
 
     // The limit the admin set at launch, always <= MAX_CONTACTS_CEILING (500,
     // shared by both channels — see outboundContactsService.js). Kept on the
