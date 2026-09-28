@@ -122,13 +122,24 @@ class BflService {
   async submitEditRequest(prompt, inputImage) {
     const endpoint = `${BFL_CONFIG.baseUrl}/${BFL_CONFIG.model}`;
 
-    const { data } = await this.getClient().post(endpoint, {
+    const body = {
       prompt,
       input_image: inputImage,
       output_format: BFL_CONFIG.outputFormat,
-      safety_tolerance: BFL_CONFIG.safetyTolerance,
-      prompt_upsampling: BFL_CONFIG.promptUpsampling
-    });
+      safety_tolerance: BFL_CONFIG.safetyTolerance
+    };
+
+    // FLUX.2 models (flux-2-pro, flux-2-max, ...) use disable_pup (inverted
+    // boolean) instead of Kontext's prompt_upsampling — confirmed against
+    // BFL's own API reference per model family. Sending the wrong field name
+    // wouldn't error, it would just silently not apply.
+    if (BFL_CONFIG.model.startsWith("flux-2")) {
+      body.disable_pup = !BFL_CONFIG.promptUpsampling;
+    } else {
+      body.prompt_upsampling = BFL_CONFIG.promptUpsampling;
+    }
+
+    const { data } = await this.getClient().post(endpoint, body);
 
     if (!data?.polling_url) {
       throw new Error("BFL did not return a polling URL");
