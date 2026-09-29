@@ -13,6 +13,13 @@
 const Papa = require("papaparse");
 const Errorhandler = require("../../utils/errorhandler");
 const { toUsSmsNumber } = require("../../utils/usPhone");
+// Read-only reuse of the existing Calls tab's own phone parser — NOT
+// vapiCampaignService.js (the hard constraint above is about that file's
+// CSV/campaign orchestration, not this low-level formatter). Needed because
+// toUsSmsNumber is deliberately US-only (Brevo's SMS number can't text
+// outside the US); VAPI calling has no such restriction, and parsePhones
+// already supports India (+91) alongside US.
+const { parsePhones } = require("../calling/vapiService");
 
 // Single hard ceiling shared by SMS and email (outboundplan.md §11 #12,
 // follow-up correction: NOT split per channel). The admin sets a lower
@@ -95,9 +102,11 @@ const firstAliasValue = (lookup, aliases) => {
  * Normalizes one raw row (from CSV or a single-contact form) into
  * { name, phone, email, address, city, state, zip, ok, reason }. `channel`
  * decides what's required:
- *   sms   -> both a phone that passes toUsSmsNumber AND a valid email
+ *   sms   -> both a phone that passes toUsSmsNumber (US-only — Brevo's SMS
+ *            number can't text outside the US) AND a valid email
  *   email -> a valid email only
- *   call  -> a phone that passes toUsSmsNumber only
+ *   call  -> a phone that passes parsePhones (US or India — VAPI calling has
+ *            no such restriction, same validator the existing Calls tab uses)
  * address/city/state/zip are always captured when present (used by the call
  * channel's prompt variables) but never required.
  */
@@ -111,8 +120,17 @@ const normalizeRow = (raw, channel) => {
   const state = String(firstAliasValue(lookup, STATE_ALIASES) || "").trim();
   const zip = String(firstAliasValue(lookup, ZIP_ALIASES) || "").trim();
 
-  const phone = firstValid(phoneRaw, toUsSmsNumber);
   const email = firstValid(emailRaw, isValidEmail);
+
+  if (channel === "call") {
+    const phone = parsePhones(phoneRaw)[0] || null;
+    if (!phone) {
+      return { name, phone: "", email: email || "", address, city, state, zip, ok: false, reason: "missing valid phone (US or India)" };
+    }
+    return { name, phone, email: email || "", address, city, state, zip, ok: true, reason: "" };
+  }
+
+  const phone = firstValid(phoneRaw, toUsSmsNumber);
 
   if (channel === "sms") {
     const missing = [];
@@ -132,13 +150,6 @@ const normalizeRow = (raw, channel) => {
       };
     }
     return { name, phone, email, address, city, state, zip, ok: true, reason: "" };
-  }
-
-  if (channel === "call") {
-    if (!phone) {
-      return { name, phone: "", email: email || "", address, city, state, zip, ok: false, reason: "missing valid US phone" };
-    }
-    return { name, phone, email: email || "", address, city, state, zip, ok: true, reason: "" };
   }
 
   // channel === "email"
