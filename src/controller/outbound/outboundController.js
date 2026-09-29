@@ -13,6 +13,11 @@ const outboundCampaignService = require("../../services/outbound/outboundCampaig
 const outboundEmailService = require("../../services/outbound/outboundEmailService");
 const outboundCallPromptService = require("../../services/outbound/outboundCallPromptService");
 const outboundCallRunner = require("../../services/outbound/outboundCallRunner");
+// Read-only reuse — same transcript-fetching plumbing VoiceAgentDashboard's
+// GET /calls already uses, so a call dispatched from Outbound reads
+// identically whichever screen it's viewed from.
+const { getCall } = require("../../services/calling/vapiService");
+const { mapCall } = require("../../services/calling/vapiCallsService");
 
 const { MAX_CONTACTS_CEILING, validateMaxContacts, parseContacts: parseContactsRaw } =
   outboundContactsService;
@@ -319,4 +324,21 @@ exports.listCallCampaigns = catchAsyncError(async (req, res) => {
   const { propertyId, page, limit } = req.query;
   const result = await outboundCallRunner.listCallRuns({ propertyId }, page, limit);
   return res.json({ success: true, ...result });
+});
+
+/**
+ * GET /call/transcript/:callId
+ * Fetches one call straight from VAPI by id (the id stored on the
+ * recipient at dispatch time) and maps it the same way
+ * VoiceAgentDashboard's GET /calls does, so it reads identically.
+ */
+exports.getCallTranscript = catchAsyncError(async (req, res, next) => {
+  const { callId } = req.params;
+  let call;
+  try {
+    call = await getCall(callId);
+  } catch (err) {
+    return next(new Errorhandler(err.response?.data?.message || err.message || "Could not load this call from VAPI", 502));
+  }
+  return res.json({ success: true, call: mapCall(call) });
 });

@@ -21,6 +21,7 @@ const {
   launchCallCampaign,
   getCallCampaign,
   listCallCampaigns,
+  getCallTranscript,
 } = require("../../controller/outbound/outboundController");
 const { isAuthenticated, authorizeRoles } = require("../../middleware/auth");
 
@@ -49,5 +50,6 @@ router
 router.post("/call/campaigns", launchCallCampaign);
 router.get("/call/campaigns", listCallCampaigns);
 router.get("/call/campaigns/:id", getCallCampaign);
+router.get("/call/transcript/:callId", getCallTranscript);
 
 module.exports = router;
