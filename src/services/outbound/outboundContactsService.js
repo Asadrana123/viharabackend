@@ -25,6 +25,13 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const NAME_ALIASES = ["full name", "name", "first name"];
 const PHONE_ALIASES = ["phone", "phones", "phone number"];
 const EMAIL_ALIASES = ["email", "emails"];
+// Optional — only actually used by the "call" channel (prompt variables like
+// {{prospect_address}}), but captured for every channel since it's harmless
+// for sms/email to carry unused fields.
+const ADDRESS_ALIASES = ["address", "street", "street address"];
+const CITY_ALIASES = ["city"];
+const STATE_ALIASES = ["state"];
+const ZIP_ALIASES = ["zip", "zip code", "postal code"];
 
 const normalizeHeaderKey = (key) =>
   String(key || "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -86,15 +93,23 @@ const firstAliasValue = (lookup, aliases) => {
 
 /**
  * Normalizes one raw row (from CSV or a single-contact form) into
- * { name, phone, email, ok, reason }. `channel` decides what's required:
+ * { name, phone, email, address, city, state, zip, ok, reason }. `channel`
+ * decides what's required:
  *   sms   -> both a phone that passes toUsSmsNumber AND a valid email
  *   email -> a valid email only
+ *   call  -> a phone that passes toUsSmsNumber only
+ * address/city/state/zip are always captured when present (used by the call
+ * channel's prompt variables) but never required.
  */
 const normalizeRow = (raw, channel) => {
   const lookup = buildRowLookup(raw);
   const name = String(firstAliasValue(lookup, NAME_ALIASES) || "").trim();
   const phoneRaw = firstAliasValue(lookup, PHONE_ALIASES);
   const emailRaw = firstAliasValue(lookup, EMAIL_ALIASES);
+  const address = String(firstAliasValue(lookup, ADDRESS_ALIASES) || "").trim();
+  const city = String(firstAliasValue(lookup, CITY_ALIASES) || "").trim();
+  const state = String(firstAliasValue(lookup, STATE_ALIASES) || "").trim();
+  const zip = String(firstAliasValue(lookup, ZIP_ALIASES) || "").trim();
 
   const phone = firstValid(phoneRaw, toUsSmsNumber);
   const email = firstValid(emailRaw, isValidEmail);
@@ -104,16 +119,33 @@ const normalizeRow = (raw, channel) => {
     if (!phone) missing.push("valid US phone");
     if (!email) missing.push("email");
     if (missing.length) {
-      return { name, phone: phone || "", email: email || "", ok: false, reason: `missing ${missing.join(" and ")}` };
+      return {
+        name,
+        phone: phone || "",
+        email: email || "",
+        address,
+        city,
+        state,
+        zip,
+        ok: false,
+        reason: `missing ${missing.join(" and ")}`,
+      };
     }
-    return { name, phone, email, ok: true, reason: "" };
+    return { name, phone, email, address, city, state, zip, ok: true, reason: "" };
+  }
+
+  if (channel === "call") {
+    if (!phone) {
+      return { name, phone: "", email: email || "", address, city, state, zip, ok: false, reason: "missing valid US phone" };
+    }
+    return { name, phone, email: email || "", address, city, state, zip, ok: true, reason: "" };
   }
 
   // channel === "email"
   if (!email) {
-    return { name, phone: phone || "", email: "", ok: false, reason: "missing valid email" };
+    return { name, phone: phone || "", email: "", address, city, state, zip, ok: false, reason: "missing valid email" };
   }
-  return { name, phone: phone || "", email, ok: true, reason: "" };
+  return { name, phone: phone || "", email, address, city, state, zip, ok: true, reason: "" };
 };
 
 /**
@@ -122,7 +154,7 @@ const normalizeRow = (raw, channel) => {
  * through normalizeRow.
  *
  * @param {Object} params
- * @param {"sms"|"email"} params.channel
+ * @param {"sms"|"email"|"call"} params.channel
  * @param {string} [params.csvData] - raw CSV text (posted as JSON, not multipart)
  * @param {Object} [params.contact] - a single manually-entered contact row
  * @param {number} [params.maxContacts] - if given, flags overLimit when the
@@ -131,8 +163,8 @@ const normalizeRow = (raw, channel) => {
  * @returns {{ contacts: Array, skipped: Array<{row:number,name:string,reason:string}>, total: number, overLimit: boolean }}
  */
 const parseContacts = ({ channel, csvData, contact, maxContacts }) => {
-  if (channel !== "sms" && channel !== "email") {
-    throw new Errorhandler('channel must be "sms" or "email"', 400);
+  if (channel !== "sms" && channel !== "email" && channel !== "call") {
+    throw new Errorhandler('channel must be "sms", "email", or "call"', 400);
   }
 
   const skipped = [];
@@ -153,17 +185,17 @@ const parseContacts = ({ channel, csvData, contact, maxContacts }) => {
 
   rawRows.forEach((raw, idx) => {
     const rowNum = idx + 1; // 1-based data row, header line not counted
-    const { name, phone, email, ok, reason } = normalizeRow(raw, channel);
+    const { name, phone, email, address, city, state, zip, ok, reason } = normalizeRow(raw, channel);
 
     if (!ok) {
       skipped.push({ row: rowNum, name, reason });
       return;
     }
 
-    // De-dup within this batch only: by normalized phone for SMS, by
+    // De-dup within this batch only: by normalized phone for SMS/Call, by
     // lowercased email for Email.
-    const dedupeKey = channel === "sms" ? phone : email;
-    const seenSet = channel === "sms" ? seenPhones : seenEmails;
+    const dedupeKey = channel === "email" ? email : phone;
+    const seenSet = channel === "email" ? seenEmails : seenPhones;
     if (seenSet.has(dedupeKey)) {
       skipped.push({ row: rowNum, name, reason: "duplicate within this list" });
       return;
@@ -172,7 +204,7 @@ const parseContacts = ({ channel, csvData, contact, maxContacts }) => {
     if (phone) seenPhones.add(phone);
     if (email) seenEmails.add(email);
 
-    accepted.push({ name, phone, email });
+    accepted.push({ name, phone, email, address, city, state, zip });
   });
 
   const total = accepted.length;

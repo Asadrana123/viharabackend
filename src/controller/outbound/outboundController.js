@@ -11,6 +11,8 @@ const sendEmail = require("../../utils/sendEmail");
 const outboundContactsService = require("../../services/outbound/outboundContactsService");
 const outboundCampaignService = require("../../services/outbound/outboundCampaignService");
 const outboundEmailService = require("../../services/outbound/outboundEmailService");
+const outboundCallPromptService = require("../../services/outbound/outboundCallPromptService");
+const outboundCallRunner = require("../../services/outbound/outboundCallRunner");
 
 const { MAX_CONTACTS_CEILING, validateMaxContacts, parseContacts: parseContactsRaw } =
   outboundContactsService;
@@ -241,4 +243,80 @@ exports.getCampaign = catchAsyncError(async (req, res, next) => {
   });
   if (!campaign) return next(new Errorhandler("Campaign not found", 404));
   return res.json({ success: true, campaign });
+});
+
+// ==================== CALLS ====================
+// A separate prompt store and call-run collection from the existing Calls
+// tab (voicePromptModel) and from Enrichment's call channel — see the
+// Outbound Calls plan. Only the low-level dispatchCall plumbing is shared.
+
+/**
+ * GET /call/prompt-variables
+ * Static variable catalogue — same shape as the existing Calls tab's
+ * GET /prompt-variables, reused as-is (read-only import).
+ */
+exports.getCallPromptVariables = catchAsyncError(async (req, res) => {
+  res.json({ success: true, variables: outboundCallPromptService.PROMPT_VARIABLES });
+});
+
+/**
+ * GET /call/prompt/:propertyId
+ */
+exports.getCallPrompt = catchAsyncError(async (req, res, next) => {
+  const { propertyId } = req.params;
+  const property = await Product.findById(propertyId).select("productName");
+  if (!property) return next(new Errorhandler("Property not found", 404));
+
+  const { prompt, variables, variablesError } = await outboundCallPromptService.getOutboundCallPrompt(propertyId);
+  return res.json({ success: true, prompt, variables, variablesError });
+});
+
+/**
+ * PUT /call/prompt/:propertyId
+ */
+exports.upsertCallPrompt = catchAsyncError(async (req, res, next) => {
+  const { propertyId } = req.params;
+  const property = await Product.findById(propertyId).select("_id");
+  if (!property) return next(new Errorhandler("Property not found", 404));
+
+  const prompt = await outboundCallPromptService.upsertOutboundCallPrompt(propertyId, req.body, req.user);
+  return res.json({ success: true, message: "Outbound call prompt saved", prompt });
+});
+
+/**
+ * POST /call/campaigns
+ * Body: { propertyId, maxContacts, csvData?, contact?, source, csvFileName? }
+ */
+exports.launchCallCampaign = catchAsyncError(async (req, res) => {
+  const { propertyId, maxContacts, csvData, contact, source, csvFileName } = req.body;
+
+  const { callRunId, total, skipped, property, promptConfig } = await outboundCallRunner.prepareCallDispatch(
+    { propertyId, maxContacts, csvData, contact, source, csvFileName },
+    req.user
+  );
+
+  res.status(202).json({ success: true, callRunId, total, skipped });
+
+  // Fire-and-forget, same shape as the SMS/Email campaigns above.
+  outboundCallRunner.runCallDispatch(callRunId, property, promptConfig).catch((err) => {
+    console.error("Outbound call campaign failed to start:", err);
+  });
+});
+
+/**
+ * GET /call/campaigns/:id?all=
+ */
+exports.getCallCampaign = catchAsyncError(async (req, res, next) => {
+  const callRun = await outboundCallRunner.getCallRun(req.params.id, { all: req.query.all === "true" });
+  if (!callRun) return next(new Errorhandler("Call run not found", 404));
+  return res.json({ success: true, callRun });
+});
+
+/**
+ * GET /call/campaigns?propertyId?&page=&limit=
+ */
+exports.listCallCampaigns = catchAsyncError(async (req, res) => {
+  const { propertyId, page, limit } = req.query;
+  const result = await outboundCallRunner.listCallRuns({ propertyId }, page, limit);
+  return res.json({ success: true, ...result });
 });

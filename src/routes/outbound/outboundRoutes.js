@@ -15,6 +15,12 @@ const {
   launchEmailCampaign,
   listCampaigns,
   getCampaign,
+  getCallPromptVariables,
+  getCallPrompt,
+  upsertCallPrompt,
+  launchCallCampaign,
+  getCallCampaign,
+  listCallCampaigns,
 } = require("../../controller/outbound/outboundController");
 const { isAuthenticated, authorizeRoles } = require("../../middleware/auth");
 
@@ -30,5 +36,18 @@ router.post("/email/test", sendTestEmail);
 router.post("/email/campaigns", launchEmailCampaign);
 router.get("/campaigns", listCampaigns);
 router.get("/campaigns/:id", getCampaign);
+
+// ── Calls — separate prompt store + call-run collection from the existing
+// Calls tab and from Enrichment's call channel. Literal /call/campaigns and
+// /call/prompt-variables before /call/prompt/:propertyId and
+// /call/campaigns/:id so they're not swallowed as params.
+router.get("/call/prompt-variables", getCallPromptVariables);
+router
+  .route("/call/prompt/:propertyId")
+  .get(getCallPrompt)
+  .put(upsertCallPrompt);
+router.post("/call/campaigns", launchCallCampaign);
+router.get("/call/campaigns", listCallCampaigns);
+router.get("/call/campaigns/:id", getCallCampaign);
 
 module.exports = router;
