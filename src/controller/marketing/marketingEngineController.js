@@ -64,7 +64,9 @@ exports.editLine = catchAsyncError(async (req, res) => {
 });
 
 // ─── GENERATE AD IMAGES FOR ONE AD SET ─────────────────────────────────────
-// Body (optional): { slotIds: ["staticA|1:1"] } regenerates only those images.
+// Body (optional):
+//   slotIds    ["staticA|1:1"] regenerates only those images
+//   templateId a template from the library (default: each slot's default template)
 // Returns 202 right away; images are made in the background and the admin tab
 // polls GET /runs/:runId for progress.
 exports.generateCellImages = catchAsyncError(async (req, res) => {
@@ -72,6 +74,7 @@ exports.generateCellImages = catchAsyncError(async (req, res) => {
     runId: req.params.runId,
     cellKey: req.params.cellKey,
     slotIds: req.body?.slotIds,
+    templateId: req.body?.templateId,
     userId: req.user._id,
   });
 

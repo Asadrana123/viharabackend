@@ -18,7 +18,9 @@ const Errorhandler = require("../../utils/errorhandler");
 const MarketingRun = require("../../model/marketing/marketingRunModel");
 const { planCellImages, isImageOutdated, findCell, allSlotIds } = require("./creativePlanner");
 const { getCreativeProvider } = require("./creativeProviders");
-const { CREATIVE_CONFIG, LOGO_PLACEMENT } = require("../../config/marketing/creativeConfig");
+const templateService = require("./templateService");
+const { CREATIVE_CONFIG, LOGO_PLACEMENT, IMAGE_PROVIDERS } = require("../../config/marketing/creativeConfig");
+const { TEMPLATE_STATUS } = require("../../config/marketing/templateConfig");
 const {
     RUN_STATUS,
     IMAGE_JOB_STATUS,
@@ -55,17 +57,28 @@ function publicIdFor(runId, spec) {
 }
 
 /**
+ * The logo layer: a public id in this Cloudinary account when set (layer ids
+ * use ":" instead of "/" for folders), otherwise a remote URL that Cloudinary
+ * fetches. null = no logo configured.
+ */
+function logoOverlay() {
+    if (CREATIVE_CONFIG.logoPublicId) return CREATIVE_CONFIG.logoPublicId.replace(/\//g, ":");
+    if (CREATIVE_CONFIG.logoUrl) return { url: CREATIVE_CONFIG.logoUrl };
+    return null;
+}
+
+/**
  * Cloudinary upload transformation: resize to the final Meta size, then place
  * the real logo file in the top-left corner (the prompt keeps it empty).
- * Layer ids use ":" instead of "/" for folders.
  */
 function uploadTransformation(spec) {
     const steps = [{ ...spec.size.final, crop: "fill", gravity: "center" }];
 
+    const overlay = logoOverlay();
     const placement = LOGO_PLACEMENT[spec.format];
-    if (CREATIVE_CONFIG.logoPublicId && placement) {
+    if (overlay && placement) {
         steps.push(
-            { overlay: CREATIVE_CONFIG.logoPublicId.replace(/\//g, ":"), width: placement.width, crop: "scale" },
+            { overlay, width: placement.width, crop: "scale" },
             { flags: "layer_apply", gravity: "north_west", x: placement.x, y: placement.y }
         );
     }
@@ -96,7 +109,7 @@ function updateJob(runId, cellKey, startedAt, update) {
 // ---------------------------------------------------------------------------
 async function makeOneImage({ runId, spec, provider, userId, job }) {
     try {
-        const { source } = await provider.generate(spec);
+        const { source, template } = await provider.generate(spec);
 
         const upload = await cloudinary.uploader.upload(source, {
             public_id: publicIdFor(runId, spec),
@@ -115,6 +128,7 @@ async function makeOneImage({ runId, spec, provider, userId, job }) {
             provider: provider.name,
             providerModel: provider.model(),
             textSnapshot: spec.textSnapshot,
+            template: template || null,
             createdBy: userId,
             createdAt: new Date(),
         };
@@ -184,13 +198,27 @@ async function processImageJob({ runId, specs, provider, userId, job }) {
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
+/** A picked template must exist and be active; templates need the hybrid provider. */
+async function assertTemplateUsable(templateId, provider) {
+    if (!templateId) return;
+    if (provider.name !== IMAGE_PROVIDERS.HYBRID) {
+        throw new Errorhandler("Templates only work with the hybrid image provider (MARKETING_IMAGE_PROVIDER=hybrid)", 400);
+    }
+    if (templateService.isBuiltIn(templateId)) return;
+    const template = await templateService.getTemplate(templateId);
+    if (template.status !== TEMPLATE_STATUS.ACTIVE) {
+        throw new Errorhandler("This template is archived. Restore it or pick another one.", 400);
+    }
+}
+
 /**
  * Start image generation for one ad set. Pass slotIds (e.g. ["staticA|1:1"])
- * to regenerate only those images.
+ * to regenerate only those images, and templateId to use a template from the
+ * library instead of each slot's default.
  *
  * @returns {Promise<object>} the new image job
  */
-async function startCellImages({ runId, cellKey, slotIds, userId }) {
+async function startCellImages({ runId, cellKey, slotIds, templateId, userId }) {
     if (!mongoose.isValidObjectId(runId)) throw new Errorhandler("Invalid run id", 400);
     if (slotIds != null) {
         const known = new Set(allSlotIds());
@@ -207,8 +235,12 @@ async function startCellImages({ runId, cellKey, slotIds, userId }) {
     if (!findCell(run, cellKey)) throw new Errorhandler("Ad set not found in this run", 404);
 
     const provider = getCreativeProvider();
+    const chosenTemplateId = typeof templateId === "string" && templateId.trim() ? templateId.trim() : "";
+    await assertTemplateUsable(chosenTemplateId, provider);
 
-    const { specs, skipped } = planCellImages(run, cellKey, { slotIds });
+    const planned = planCellImages(run, cellKey, { slotIds });
+    const specs = planned.specs.map((spec) => ({ ...spec, templateId: chosenTemplateId || null }));
+    const { skipped } = planned;
     if (!specs.length) {
         const reasons = [...new Set(skipped.map((s) => s.reason))].join("; ");
         throw new Errorhandler(`No images can be made for this ad set: ${reasons || "nothing to make"}`, 400);
@@ -221,6 +253,7 @@ async function startCellImages({ runId, cellKey, slotIds, userId }) {
         completed: 0,
         failed: 0,
         problems: skipped.map((s) => ({ slot: s.label, message: s.reason })),
+        templateId: chosenTemplateId,
         startedBy: userId,
         startedAt: new Date(),
         finishedAt: null,

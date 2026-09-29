@@ -1,10 +1,11 @@
 // services/marketing/creativePrompts.js
 //
 // Builds the image prompt for one planned ad image (creativePlanner spec).
-// Two styles, chosen per provider in creativeConfig (promptStyle):
+// Styles, chosen per provider in creativeConfig (promptStyle):
 //   compact - short, direct instructions. FLUX follows these best.
 //   master  - the designer's Vihara master prompt, adapted for automation.
 //             GPT Image handles long, detailed prompts well.
+//   background - text-free hero photo for the hybrid provider.
 //
 // Rules shared by both styles (learned from the first test images):
 //   - Every word on the image is in spec.texts, already checked in code.
@@ -170,6 +171,31 @@ Return only the finished creative.`,
     return sections.filter(Boolean).join("\n\n");
 }
 
+// ---------------------------------------------------------------------------
+// Background style (hybrid provider) - no text at all
+// ---------------------------------------------------------------------------
+// Puppeteer places all text on top, over a white fade, so the AI only makes
+// the photographic hero. Where the house sits matches creativeTemplates.js:
+// right side on 1:1, top part on 9:16.
+function buildBackgroundPrompt(spec, inputs) {
+    const { width, height } = spec.size.generate;
+    const placement = isTall(spec)
+        ? "Place the house in the upper half of the frame. The lower half should be calm, simple ground or soft light haze with no important detail, because text is placed there."
+        : "Place the house on the right half of the frame. The left half should be calm, open sky or soft light haze with no important detail, because text is placed there.";
+
+    return [
+        `A bright, premium, photorealistic real estate hero photograph, ${width}x${height}, for a modern property advertisement.`,
+        hasPhoto(inputs)
+            ? "Image 1 is the real property photograph. Show this same property: keep the same house, architecture, roof, windows, doors, materials and surroundings. You may extend the scene to fill the frame and improve the light, sky and color so it looks clear, sunny and inviting. Do not add rooms, floors, pools, people or vehicles."
+            : "",
+        placement,
+        "Style: natural daylight, clear blue sky with a few soft clouds, clean and sharp, true-to-life colors, professional real estate photography, not an illustration or 3D render.",
+        "Absolutely no text of any kind: no words, letters, numbers, prices, signs, labels, logos, watermarks, borders, frames, buttons, cards or graphic elements. Only the photograph.",
+    ]
+        .filter(Boolean)
+        .join("\n");
+}
+
 /**
  * @param {object} spec    creativePlanner spec
  * @param {Array<{ role: string }>} inputs  collectInputImages() result (same order as sent)
@@ -177,7 +203,9 @@ Return only the finished creative.`,
  * @returns {string}
  */
 function buildCreativePrompt(spec, inputs, style = PROMPT_STYLES.COMPACT) {
-    return style === PROMPT_STYLES.MASTER ? buildMasterPrompt(spec, inputs) : buildCompactPrompt(spec, inputs);
+    if (style === PROMPT_STYLES.MASTER) return buildMasterPrompt(spec, inputs);
+    if (style === PROMPT_STYLES.BACKGROUND) return buildBackgroundPrompt(spec, inputs);
+    return buildCompactPrompt(spec, inputs);
 }
 
 module.exports = {

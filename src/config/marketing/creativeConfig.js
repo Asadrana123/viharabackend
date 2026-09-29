@@ -12,14 +12,18 @@
 const IMAGE_PROVIDERS = Object.freeze({
     BFL: "bfl",
     OPENAI: "openai",
+    // AI makes a text-free background, Puppeteer puts the exact text on top.
+    HYBRID: "hybrid",
 });
 
 // How the image prompt is written (services/marketing/creativePrompts.js).
 //   compact - short, direct instructions (FLUX follows these best)
 //   master  - the designer's full Vihara master prompt (GPT Image)
+//   background - text-free hero background for the hybrid provider
 const PROMPT_STYLES = Object.freeze({
     COMPACT: "compact",
     MASTER: "master",
+    BACKGROUND: "background",
 });
 
 const CREATIVE_CONFIG = Object.freeze({
@@ -54,6 +58,20 @@ const CREATIVE_CONFIG = Object.freeze({
             // Downloading each input image before it is sent.
             downloadTimeoutMs: 30000,
         }),
+        [IMAGE_PROVIDERS.HYBRID]: Object.freeze({
+            // Which AI draws the text-free background: "openai" or "bfl".
+            backgroundProvider: process.env.MARKETING_BACKGROUND_PROVIDER || IMAGE_PROVIDERS.OPENAI,
+            // How Chrome is started:
+            //   "sparticuz" - @sparticuz/chromium + puppeteer-core (Linux servers, e.g. Render)
+            //   "puppeteer" - full puppeteer with its own Chrome (local Windows/Mac)
+            browser: process.env.MARKETING_BROWSER || (process.platform === "linux" ? "sparticuz" : "puppeteer"),
+            // Loading the template (fonts + background image) before the screenshot.
+            renderTimeoutMs: 45000,
+            // Close Chrome after this long with nothing to render (frees memory).
+            browserIdleCloseMs: 60000,
+            // Inter, as in the Vihara brand system.
+            fontsCssUrl: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap",
+        }),
     }),
 
     // Images generated at the same time for one ad set.
@@ -63,8 +81,15 @@ const CREATIVE_CONFIG = Object.freeze({
 
     // The real Vihara logo is never drawn by the AI. Cloudinary places the
     // actual logo file on every image after it is made, so it is always exact.
-    // Upload the logo (transparent PNG) to Cloudinary once and set its public
-    // id, e.g. "vihara/brand/logo". Empty = images are stored without a logo.
+    //
+    //   logoUrl      - public URL of the logo (transparent PNG). Cloudinary
+    //                  fetches it, so "Fetched URL" must be allowed in the
+    //                  Cloudinary security settings.
+    //   logoPublicId - optional: the logo's public id in this Cloudinary
+    //                  account (e.g. "vihara/brand/logo"). Faster and safer;
+    //                  used instead of logoUrl when set.
+    // Both empty = images are stored without a logo.
+    logoUrl: process.env.VIHARA_LOGO_URL || "",
     logoPublicId: process.env.VIHARA_LOGO_PUBLIC_ID || "",
 });
 

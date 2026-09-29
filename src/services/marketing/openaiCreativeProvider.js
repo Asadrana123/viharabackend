@@ -9,7 +9,7 @@
 // and places the real logo on it.
 //
 // Follows the provider contract in bflCreativeProvider.js:
-//   name, model(), isConfigured(), generate(spec) -> { source }
+//   name, model(), isConfigured(), generate(spec, { promptStyle }?) -> { source }
 
 const axios = require("axios");
 const { CREATIVE_CONFIG, IMAGE_PROVIDERS } = require("../../config/marketing/creativeConfig");
@@ -137,11 +137,13 @@ module.exports = {
 
     /**
      * @param {object} spec  creativePlanner spec
+     * @param {object} [options]
+     * @param {string} [options.promptStyle]  override (the hybrid provider asks for "background")
      * @returns {Promise<{ source: string }>} base64 data URI of the image
      */
-    async generate(spec) {
+    async generate(spec, { promptStyle = settings.promptStyle } = {}) {
         const inputs = collectInputImages(spec, settings.maxInputImages);
-        const prompt = buildCreativePrompt(spec, inputs, settings.promptStyle);
+        const prompt = buildCreativePrompt(spec, inputs, promptStyle);
 
         const data = inputs.length
             ? await requestEdit(spec, prompt, inputs)

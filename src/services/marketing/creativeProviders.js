@@ -3,7 +3,8 @@
 // The one place that decides which image provider draws the ads.
 // The active provider is CREATIVE_CONFIG.provider (env MARKETING_IMAGE_PROVIDER).
 //
-// Switch providers by setting MARKETING_IMAGE_PROVIDER to "bfl" or "openai".
+// Switch providers by setting MARKETING_IMAGE_PROVIDER to "bfl", "openai" or
+// "hybrid" (AI background + exact text rendered with Puppeteer).
 // To add another provider: create a file following the contract in
 // bflCreativeProvider.js (name, model(), isConfigured(), generate(spec)) and
 // register it below. Nothing else in the engine changes.
@@ -12,10 +13,12 @@ const Errorhandler = require("../../utils/errorhandler");
 const { CREATIVE_CONFIG, IMAGE_PROVIDERS } = require("../../config/marketing/creativeConfig");
 const bflCreativeProvider = require("./bflCreativeProvider");
 const openaiCreativeProvider = require("./openaiCreativeProvider");
+const hybridCreativeProvider = require("./hybridCreativeProvider");
 
 const PROVIDERS = Object.freeze({
     [IMAGE_PROVIDERS.BFL]: bflCreativeProvider,
     [IMAGE_PROVIDERS.OPENAI]: openaiCreativeProvider,
+    [IMAGE_PROVIDERS.HYBRID]: hybridCreativeProvider,
 });
 
 /** The active provider. Throws a readable 500 when it is unknown or has no API key. */

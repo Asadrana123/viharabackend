@@ -1,7 +1,7 @@
 const puppeteer = require("puppeteer");
 const axios = require("axios");
 
-const VIHARA_LOGO_URL = "https://res.cloudinary.com/my1chatapp/image/upload/v1780930235/viharanewlogo_qoipzb.png";
+const VIHARA_LOGO_URL = process.env.VIHARA_LOGO_URL;
 
 exports.generateLinkedInGraphic = async (visualBrief, pillar, dataPoints = [], postText = "", hookLine = "", visualType = "stat-card", topic = "") => {
 

@@ -112,6 +112,18 @@ const skippedCellSchema = new mongoose.Schema(
     { _id: false }
 );
 
+// The template (and exact version) that made an image. id is a
+// marketingTemplate _id, or "builtin-hero-fade" for the built-in design.
+const imageTemplateSchema = new mongoose.Schema(
+    {
+        id: { type: String, required: true },
+        familyId: { type: String, default: "" },
+        version: { type: Number, default: 1 },
+        name: { type: String, default: "" },
+    },
+    { _id: false }
+);
+
 // Rendered ad images (build step 4). One per cell x slot x format; a
 // regenerated image replaces the old one for the same slot.
 const imageSchema = new mongoose.Schema(
@@ -128,6 +140,8 @@ const imageSchema = new mongoose.Schema(
         // The exact on-image text used. The review screen marks the image as
         // outdated when the copy changes after it was made.
         textSnapshot: { type: String, default: "" },
+        // Only set by the hybrid provider.
+        template: { type: imageTemplateSchema, default: null },
         createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "userModel", default: null },
         createdAt: { type: Date, default: Date.now },
     },
@@ -154,6 +168,8 @@ const imageJobSchema = new mongoose.Schema(
         failed: { type: Number, default: 0 },
         // Named "problems" because "errors" is reserved by Mongoose.
         problems: { type: [imageProblemSchema], default: [] },
+        // Template the admin picked for this job; "" = each slot's default.
+        templateId: { type: String, default: "" },
         startedBy: { type: mongoose.Schema.Types.ObjectId, ref: "userModel", default: null },
         startedAt: { type: Date, default: Date.now },
         finishedAt: { type: Date, default: null },
