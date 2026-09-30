@@ -1,5 +1,6 @@
 const RenovationRequest = require("../../model/property/renovationRequestModel");
 const RenovationContractorService = require("../../services/property/renovationContractorService");
+const RenovationContractorRequest = require("../../model/property/renovationContractorRequestModel");
 const Product = require("../../model/property/productModel");
 const BflService = require("../../services/shared/bflService");
 const BflPromptBuilder = require("../../services/shared/bflPromptBuilder");
@@ -38,6 +39,55 @@ exports.getContractors = async (req, res) => {
     });
   } catch (error) {
     console.error("Error in getContractors:", error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+/**
+ * POST /contractors/:propertyId/request
+ * Body: { name, email, phone, consent, consentText, renovationRequestId?, selectedArea? }
+ * Captures a lead from the renovation tool's "Get Contractors & Vendors"
+ * button. Anonymous allowed, same as the renovation tool itself.
+ */
+exports.submitContractorRequest = async (req, res) => {
+  try {
+    const { propertyId } = req.params;
+    const { name, email, phone, consent, consentText, renovationRequestId, selectedArea } = req.body;
+
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({ success: false, error: "Name is required" });
+    }
+    if (!email || !String(email).trim()) {
+      return res.status(400).json({ success: false, error: "Email is required" });
+    }
+    if (!phone || !String(phone).trim()) {
+      return res.status(400).json({ success: false, error: "Phone is required" });
+    }
+    if (!consent) {
+      return res.status(400).json({ success: false, error: "Consent is required" });
+    }
+
+    const property = await Product.findById(propertyId).select("_id");
+    if (!property) {
+      return res.status(404).json({ success: false, error: "Property not found" });
+    }
+
+    const request = await RenovationContractorRequest.create({
+      propertyId,
+      renovationRequestId: renovationRequestId || null,
+      selectedArea: selectedArea || "",
+      name: String(name).trim(),
+      email: String(email).trim().toLowerCase(),
+      phone: String(phone).trim(),
+      userId: req.user?._id || null,
+      consent: true,
+      consentText: consentText || "",
+      consentTimestamp: new Date(),
+    });
+
+    return res.status(201).json({ success: true, request });
+  } catch (error) {
+    console.error("Error in submitContractorRequest:", error);
     return res.status(500).json({ success: false, error: error.message });
   }
 };
