@@ -407,8 +407,10 @@ function extractFromMarkdown(rawMarkdown) {
   const views = parseNumber(/([\d,]+)\s*views/i, activityText);
   const saves = parseNumber(/([\d,]+)\s*saves/i, activityText);
 
-  // List price: the "$249,900" line right above the "# address" heading; else the first $ amount.
-  const price = parseNumber(/\$([0-9,]+)\s*\n+#\s*\d/, markdownText) || parseNumber(/\$([0-9,]+)/, markdownText);
+  // List price: only the "$249,900" line right above the "# address" heading.
+  // No "first $ on the page" fallback — on off-market pages that picks up a tax
+  // or sold amount, which would then seed the starting bid.
+  const price = parseNumber(/\$([0-9,]+)\s*\n+#\s*\d/, markdownText);
 
   // Lot: "- Size: 8,075 Square Feet" or "- Size: 0.41 Acres" (converted to sq ft).
   const lotAcres = parseNumber(/- Size:\s*([\d.,]+)\s*Acres?/i, markdownText);

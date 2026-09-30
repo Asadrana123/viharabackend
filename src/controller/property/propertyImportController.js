@@ -9,23 +9,7 @@ const Errorhandler = require("../../utils/errorhandler");
 const { buildPropertyDraftFromZillow } = require("../../services/property/propertyImportService");
 const firecrawlService = require("../../services/integrations/firecrawlService");
 const cloudinaryService = require("../../services/shared/cloudinaryService");
-
-/**
- * Validate a Zillow listing URL and strip query/hash so Firecrawl always gets
- * the canonical page. Returns the clean URL, or null when invalid.
- */
-function normalizeZillowUrl(raw) {
-    if (typeof raw !== "string" || !raw.trim()) return null;
-    try {
-        const url = new URL(raw.trim());
-        const isZillowHost = url.hostname === "zillow.com" || url.hostname.endsWith(".zillow.com");
-        if (url.protocol !== "https:" || !isZillowHost) return null;
-        if (!url.pathname.includes("/homedetails/")) return null;
-        return `${url.origin}${url.pathname}`;
-    } catch {
-        return null;
-    }
-}
+const { normalizeZillowUrl } = require("../../utils/zillowUrl");
 
 /**
  * POST /api/v1/property-import/zillow

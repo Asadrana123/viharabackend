@@ -12,6 +12,7 @@ const { startVoiceCallbackScheduler } = require('./services/calling/voiceCallbac
 const { startPropertyCallScheduler } = require('./services/calling/propertyCallScheduler'); // unified /auction/:slug scheduler
 const { startBrevoBackfillJob } = require('./jobs/brevoBackfillJob'); // ← ADD
 const { startAuctionCloseJob } = require('./jobs/auctionCloseJob');
+const { startZillowSyncJob } = require('./jobs/zillowSyncJob');
 require('./passport');
 
 const PORT = process.env.PORT || 8000;
@@ -51,4 +52,7 @@ server.listen(PORT, () => {
   // Unified scheduler for every /auction/:slug landing page. New properties need
   // no new scheduler — this one sweeps the shared propertyLeadModel collection.
   startPropertyCallScheduler();
+
+  // Weekly Zillow refresh of every linked property the admin hasn't paused.
+  startZillowSyncJob();
 });

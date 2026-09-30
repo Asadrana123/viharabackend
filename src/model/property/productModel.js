@@ -537,6 +537,39 @@ const productSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
+
+    // ============================================
+    // ZILLOW SYNC (weekly background refresh)
+    // ============================================
+    // Set by the Property Importer (or the one-time link script / the admin's
+    // "Zillow link" field). The weekly job re-reads the listing and refreshes
+    // only Zillow data — never fields the admin edits in Manage Listings.
+    zillowSync: {
+        // Canonical Zillow listing URL. null = this property is not synced.
+        url: { type: String, default: null, trim: true },
+        // Admin pause switch. false = the weekly job skips this property.
+        enabled: { type: Boolean, default: true },
+        // This property's fixed -2%..+2% shift for every Zillow money figure
+        // (see priceTweakService). Set once, reused on every sync.
+        tweakPercent: { type: Number, default: null, min: -2, max: 2 },
+        lastSyncedAt: { type: Date, default: null },
+        lastStatus: { type: String, enum: ["success", "failed", null], default: null },
+        lastError: { type: String, default: null },
+        // Zillow's own listing status (FOR_SALE, PENDING, RECENTLY_SOLD, ...).
+        zillowStatus: { type: String, default: null },
+        // Set when zillowStatus changes between syncs; cleared when the admin
+        // dismisses it in Manage Listings. Nothing else changes automatically.
+        statusAlert: {
+            type: new mongoose.Schema(
+                { from: String, to: String, detectedAt: Date },
+                { _id: false }
+            ),
+            default: null
+        },
+        // Fingerprint of Zillow's photo list. Photos are re-uploaded only when
+        // Zillow's photos change, so admin photo edits survive normal syncs.
+        photoSignature: { type: String, default: null }
+    },
     // ============================================
     // TIMESTAMPS
     // ============================================

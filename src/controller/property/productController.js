@@ -2,6 +2,8 @@ const productModel = require("../../model/property/productModel");
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const Errorhandler = require("../../utils/errorhandler");
 const { resolvePropertyTimezone, utcToWallClock } = require("../../utils/resolveTimezone");
+const { normalizeZillowUrl } = require("../../utils/zillowUrl");
+const { createTweakPercent, isValidTweakPercent } = require("../../services/property/priceTweakService");
 
 // Admin — bulk-create from uploaded JSON. Each file may be one object or an array;
 // the frontend flattens them into a single array before sending.
@@ -92,7 +94,7 @@ exports.getProductBySlug = catchAsyncError(async (req, res, next) => {
 exports.getAllProductsAdmin = catchAsyncError(async (req, res) => {
     const products = await productModel
         .find({})
-        .select('productName street city state zipCode slug image showOnAuctions isLandingPage auctionEventLabel brevoListId brevoOutboundSmsListId isTestProperty status availableAreas startBid auctionStartDate auctionEndDate')
+        .select('productName street city state zipCode slug image showOnAuctions isLandingPage auctionEventLabel brevoListId brevoOutboundSmsListId isTestProperty status availableAreas startBid auctionStartDate auctionEndDate zillowSync')
         .sort({ createdAt: -1 })
         .lean();
 
@@ -260,5 +262,61 @@ exports.updateProductBasicDetails = catchAsyncError(async (req, res, next) => {
             beds: product.beds, baths: product.baths, squareFootage: product.squareFootage,
             lotSize: product.lotSize, yearBuilt: product.yearBuilt, monthlyHOADues: product.monthlyHOADues,
         }
+    });
+});
+
+// Admin — Zillow sync settings for one property (Manage Listings).
+// body (all optional):
+//   url                : Zillow listing link; "" / null unlinks (weekly sync stops)
+//   enabled            : false pauses the weekly sync, true resumes it
+//   dismissStatusAlert : true clears the "Zillow status changed" flag
+// Touches only zillowSync — nothing else on the property.
+exports.updateZillowSyncSettings = catchAsyncError(async (req, res, next) => {
+    const { url, enabled, dismissStatusAlert } = req.body || {};
+
+    const product = await productModel.findById(req.params.id);
+    if (!product) {
+        return next(new Errorhandler("Property not found", 404));
+    }
+    const sync = product.zillowSync;
+
+    if (url !== undefined) {
+        if (url === null || String(url).trim() === "") {
+            sync.url = null;
+        } else {
+            const clean = normalizeZillowUrl(String(url));
+            if (!clean) {
+                return next(new Errorhandler("Enter a valid Zillow listing link (https://www.zillow.com/homedetails/...)", 400));
+            }
+            if (clean !== sync.url) {
+                // A different listing: start its sync history fresh.
+                sync.url = clean;
+                sync.lastSyncedAt = null;
+                sync.lastStatus = null;
+                sync.lastError = null;
+                sync.zillowStatus = null;
+                sync.statusAlert = null;
+                sync.photoSignature = null;
+            }
+            if (!isValidTweakPercent(sync.tweakPercent)) sync.tweakPercent = createTweakPercent();
+        }
+    }
+
+    if (enabled !== undefined) {
+        if (typeof enabled !== "boolean") {
+            return next(new Errorhandler("enabled must be true or false", 400));
+        }
+        sync.enabled = enabled;
+    }
+
+    if (dismissStatusAlert === true) sync.statusAlert = null;
+
+    // validateBeforeSave:false — same rationale as updateListingSettings.
+    await product.save({ validateBeforeSave: false });
+
+    return res.json({
+        success: true,
+        message: "Zillow sync settings updated",
+        zillowSync: product.zillowSync,
     });
 });

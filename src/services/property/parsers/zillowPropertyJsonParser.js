@@ -15,6 +15,15 @@
 const NEXT_DATA_RE = /<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i;
 const SQFT_PER_ACRE = 43560;
 
+// Zillow homeStatus values where the page has no real asking price (the
+// "price" field then holds a sold price or an estimate, not a list price).
+const NOT_FOR_SALE_STATUS = /SOLD|OTHER|OFF_MARKET|RENT/i;
+
+/** True when Zillow's status means there is no current list price. */
+function isNotForSale(homeStatus) {
+    return typeof homeStatus === "string" && NOT_FOR_SALE_STATUS.test(homeStatus);
+}
+
 const isBlank = (v) => v === null || v === undefined || v === "";
 
 function toNum(v) {
@@ -135,8 +144,12 @@ function toParsedShape(p) {
     const lat = toNum(p.latitude);
     const lng = toNum(p.longitude);
 
+    const homeStatus = typeof p.homeStatus === "string" && p.homeStatus.trim() ? p.homeStatus.trim() : null;
+
     return {
-        price: toNum(p.price),
+        // Only a real asking price — sold / off-market pages have none.
+        price: isNotForSale(homeStatus) ? null : toNum(p.price),
+        homeStatus,
         address: {
             fullAddress: street && city && state && zipCode ? `${street}, ${city}, ${state} ${zipCode}` : null,
             street,
@@ -202,4 +215,4 @@ function parseZillowPropertyJson(payload) {
     return property ? toParsedShape(property) : null;
 }
 
-module.exports = { parseZillowPropertyJson, extractZillowProperty };
+module.exports = { parseZillowPropertyJson, extractZillowProperty, isNotForSale };
