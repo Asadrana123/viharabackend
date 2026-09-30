@@ -48,6 +48,7 @@ const brevoWebhookRoutes = require("./routes/integrations/brevoWebhookRoutes");
 const leadNoteRoutes = require("./routes/leads/leadNoteRoutes");
 const interestedLeadRoutes = require("./routes/leads/interestedLeadRoutes");
 const testLeadRoutes = require("./routes/leads/testLeadRoutes");
+const renovationContractorLeadRoutes = require("./routes/leads/renovationContractorLeadRoutes");
 const stopCallingRoutes = require("./routes/calling/stopCallingRoutes");
 const propertyImportRoutes = require("./routes/property/propertyImportRoutes");
 // Unified property auction landing pages (/auction/:slug) — one route for every property.
@@ -124,6 +125,7 @@ app.use("/api/webhooks/brevo", brevoWebhookRoutes);
 app.use("/api/v1/lead-notes", leadNoteRoutes);
 app.use("/api/v1/interested-leads", interestedLeadRoutes);
 app.use("/api/v1/test-leads", testLeadRoutes);
+app.use("/api/v1/renovation-contractor-leads", renovationContractorLeadRoutes);
 app.use("/api/v1/lead-calling", stopCallingRoutes);
 app.use("/api/v1/property-import", propertyImportRoutes);
 // Unified property auction leads (every /auction/:slug page). One mount, forever.
