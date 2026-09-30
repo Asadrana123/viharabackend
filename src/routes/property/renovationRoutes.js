@@ -4,6 +4,7 @@ const {
   generateRenovationImages,
   getRenovationRequest,
   getContractors,
+  submitContractorRequest,
   saveRenovation,
   deleteRenovation,
   getSavedRenovations
@@ -62,5 +63,12 @@ router.delete(
 );
 
 router.get('/contractors/:propertyId', optionalAuth, catchAsyncError(getContractors));
+
+/**
+ * POST /api/property-renovation/contractors/:propertyId/request
+ * Captures a lead from the renovation tool's "Get Contractors & Vendors"
+ * button (public — anonymous allowed, same as the tool itself).
+ */
+router.post('/contractors/:propertyId/request', optionalAuth, catchAsyncError(submitContractorRequest));
 
 module.exports = router;
