@@ -63,6 +63,7 @@ const outboundRoutes = require("./routes/outbound/outboundRoutes");
 const enrichmentRoutes = require("./routes/enrichment/enrichmentRoutes");
 // Property Marketing Engine (admin-only): brief, copy, compliance, approval.
 const marketingEngineRoutes = require("./routes/marketing/marketingEngineRoutes");
+const leadMatchRoutes = require("./routes/leads/leadMatchRoutes");
 // Middleware
 app.use(cookieParser());
 app.use(cors(expressCorsOptions));
@@ -134,6 +135,7 @@ app.use("/api/v1/realtor", realtorRoutes);
 app.use("/api/v1/outbound", outboundRoutes);
 app.use("/api/v1/enrichment", enrichmentRoutes);
 app.use("/api/v1/marketing-engine", marketingEngineRoutes);
+app.use("/api/v1/lead-match", leadMatchRoutes);
 // Error Middleware
 app.use(errorMiddleware);
 
