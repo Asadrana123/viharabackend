@@ -4,6 +4,7 @@ const EarlyAccessLead = require("../../model/leads/earlyAccessLeadModel");
 const GeorgiaStLead = require("../../model/leads/georgiaStLeadModel");
 const RensselaerAveLead = require("../../model/leads/rensselaerAveLeadModel");
 const PartnerLead = require("../../model/leads/partnerLeadModel");
+const RenovationContractorRequest = require("../../model/property/renovationContractorRequestModel");
 const { getCallsForPhones, normalisePhone } = require("../../services/calling/vapiCallsService");
 const { getEmailEventsForEmails } = require("../../services/integrations/emailEventsService");
 const { getNotesForLeads } = require("../../services/leads/leadNotesService");
@@ -17,10 +18,11 @@ const TEST_NAME_REGEX = /\btest\b/i;
 // match the values in leadNoteModel.LEAD_TYPES so note edit/delete resolves
 // against the right collection.
 const SOURCES = [
-  { model: EarlyAccessLead,    leadType: "earlyAccess",   label: "Early Access" },
-  { model: GeorgiaStLead,      leadType: "georgiaSt",     label: "449 Georgia St" },
-  { model: RensselaerAveLead,  leadType: "rensselaerAve", label: "401 Rensselaer Ave" },
-  { model: PartnerLead,        leadType: "partner",       label: "Partner Program" },
+  { model: EarlyAccessLead,             leadType: "earlyAccess",         label: "Early Access" },
+  { model: GeorgiaStLead,               leadType: "georgiaSt",           label: "449 Georgia St" },
+  { model: RensselaerAveLead,           leadType: "rensselaerAve",       label: "401 Rensselaer Ave" },
+  { model: PartnerLead,                 leadType: "partner",             label: "Partner Program" },
+  { model: RenovationContractorRequest, leadType: "renovationContractor", label: "Renovation Contractors/Vendors" },
 ];
 
 /**
@@ -58,9 +60,11 @@ const getTestLeads = catchAsyncError(async (req, res) => {
       ]);
 
       return leads.map((lead) => {
-        // Unify partner (firstName + lastName) with the rest (fullName).
+        // Unify partner (firstName + lastName) and renovation-contractor
+        // (name) with the rest (fullName).
         const fullName =
           lead.fullName ||
+          lead.name ||
           [lead.firstName, lead.lastName].filter(Boolean).join(" ");
 
         return {
