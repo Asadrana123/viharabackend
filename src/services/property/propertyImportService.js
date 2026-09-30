@@ -2,7 +2,8 @@
 //
 // Orchestrates the property importer end to end:
 //   1. Scrape the Zillow listing through Firecrawl (markdown + raw HTML, in parallel).
-//   2. Parse the markdown into property facts and the raw HTML into photo URLs.
+//   2. Parse the raw HTML's property JSON (core facts) and the markdown (facts,
+//      schools, price/tax history), merge them, and read photo URLs from the raw HTML.
 //   3. Upload the photos to Cloudinary.
 //   4. Assemble a complete productModel-shaped DRAFT — with the auction business
 //      fields defaulted / left blank for the admin to fill.
@@ -15,6 +16,7 @@ const Errorhandler = require("../../utils/errorhandler");
 const firecrawlService = require("../integrations/firecrawlService");
 const cloudinaryService = require("../shared/cloudinaryService");
 const { processZillowResponse } = require("./parsers/zillowDetailsParser");
+const { parseZillowPropertyJson } = require("./parsers/zillowPropertyJsonParser");
 const { extractZillowImages } = require("./parsers/zillowImageParser");
 const { generatePropertyDescription } = require("./propertyDescriptionService");
 
@@ -29,6 +31,7 @@ const REQUIRED_CORE_FIELDS = [
 // ---------------------------------------------------------------------------
 const isBlank = (v) => v === null || v === undefined || v === "";
 const compact = (arr) => arr.filter((v) => !isBlank(v));
+const firstFilled = (...values) => values.find((v) => !isBlank(v)) ?? null;
 
 /** "4/15/2021" -> 2021 */
 function yearFromDate(date) {
@@ -45,10 +48,22 @@ function formatSchoolRating(rating) {
 /** Zillow special conditions / foreclosure history -> productModel assetType enum. */
 function mapAssetType(zillow) {
     const conditions = String(zillow.details?.specialConditions || "").toLowerCase();
-    if (/real estate owned|bank owned|\breo\b/.test(conditions)) return "Reo Bank Owned";
+    // Zillow writes "RealEstateOwned" (no spaces).
+    if (/real\s*estate\s*owned|bank\s*owned|\breo\b/.test(conditions)) return "Reo Bank Owned";
     if (/short sale/.test(conditions)) return "Short Sale";
     if (/foreclos|trustee/.test(conditions) || zillow.foreclosureHistory?.length) return "Foreclosure Homes";
     return "";
+}
+
+/** Zillow home type ("SingleFamily", "SINGLE_FAMILY", "Condo", ...) -> productModel propertyType enum. */
+function mapPropertyType(homeType) {
+    const t = String(homeType || "").toLowerCase().replace(/[^a-z]/g, "");
+    if (!t) return null;
+    if (t.includes("singlefamily")) return "Single Family";
+    if (t.includes("multifamily")) return "Multi-family";
+    if (/condo|townhouse|townhome|cooperative|apartment/.test(t)) return "Condo, Townhouse, other single unit";
+    if (/lot|land/.test(t)) return "Land";
+    return null;
 }
 
 /** Accepts { lat, lng } or { latitude, longitude }. */
@@ -93,6 +108,48 @@ function auctionDefaults(parsed) {
         trusteeSaleNumber: "TBD",
         onlineOrInPerson: "Online",
         assetType: parsed?.assetType || "",
+    };
+}
+
+// ---------------------------------------------------------------------------
+// Merge the two parsed sources (same shape)
+//   - JSON first for core facts: it is Zillow's own structured data.
+//   - Markdown first for facts & features, schools and history: the JSON's
+//     first-load data usually doesn't include them.
+// Each value falls back to the other source when blank.
+// ---------------------------------------------------------------------------
+function mergeFields(primary, fallback) {
+    const out = {};
+    new Set([...Object.keys(primary || {}), ...Object.keys(fallback || {})]).forEach((key) => {
+        out[key] = firstFilled(primary?.[key], fallback?.[key]);
+    });
+    return out;
+}
+
+const nonEmptyList = (primary, fallback) =>
+    Array.isArray(primary) && primary.length ? primary : Array.isArray(fallback) ? fallback : [];
+
+function mergeParsedListing(json, markdown) {
+    if (!json) return markdown;
+    return {
+        price: firstFilled(json.price, markdown.price),
+        address: mergeFields(json.address, markdown.address),
+        coordinates: json.coordinates || markdown.coordinates || null,
+        specs: mergeFields(json.specs, markdown.specs),
+        financials: mergeFields(json.financials, markdown.financials),
+        details: mergeFields(markdown.details, json.details),
+        description: firstFilled(json.description, markdown.description),
+        schools: nonEmptyList(markdown.schools, json.schools),
+        priceHistory: nonEmptyList(markdown.priceHistory, json.priceHistory),
+        taxHistory: nonEmptyList(markdown.taxHistory, json.taxHistory),
+        foreclosureHistory: nonEmptyList(markdown.foreclosureHistory, json.foreclosureHistory),
+        walkScores: mergeFields(markdown.walkScores, json.walkScores),
+        listingAgent: json.listingAgent || markdown.listingAgent
+            ? mergeFields(json.listingAgent, markdown.listingAgent)
+            : null,
+        mlsNumber: firstFilled(json.mlsNumber, markdown.mlsNumber),
+        mlsSource: firstFilled(json.mlsSource, markdown.mlsSource),
+        marketActivity: mergeFields(json.marketActivity, markdown.marketActivity),
     };
 }
 
@@ -156,6 +213,9 @@ function buildInvestmentData(z) {
         assessmentChange: "",
     }));
     const latestTax = taxHistory[0] || {};
+    // The newest year is often assessed but not billed yet ("--"), so take the
+    // tax amount from the newest year that has one.
+    const latestPaidTax = taxHistory.find((t) => t.propertyTax != null) || {};
     const rent = financials.rentZestimate ?? null;
 
     return {
@@ -176,7 +236,7 @@ function buildInvestmentData(z) {
             vacancyRate: null,
         },
         taxData: {
-            annualPropertyTax: latestTax.propertyTax ?? null,
+            annualPropertyTax: latestPaidTax.propertyTax ?? null,
             assessedValue: financials.taxAssessedValue ?? latestTax.taxAssessment ?? null,
             assessmentYear: latestTax.year ?? null,
             landValue: null,
@@ -281,7 +341,10 @@ async function buildPropertyDraftFromZillow({ zillowUrl, folderRoot = "vihara/pr
     const { detailsPayload, imagesPayload } = await scrapeListing(zillowUrl, warnings);
 
     // 2) Parse ---------------------------------------------------------------
-    const zillow = processZillowResponse(detailsPayload);
+    const zillow = mergeParsedListing(
+        parseZillowPropertyJson(imagesPayload),
+        processZillowResponse(detailsPayload)
+    );
     const { address = {}, specs = {}, financials = {}, details = {} } = zillow;
 
     if (!address.street && !specs.beds && !specs.sqft) {
@@ -313,7 +376,7 @@ async function buildPropertyDraftFromZillow({ zillowUrl, folderRoot = "vihara/pr
         lotSize: specs.lotSizeSqft ?? null,
         yearBuilt: specs.yearBuilt ?? null,
         apn: details.apn || null,
-        propertyType: null,     // not available on the Zillow listing — admin fills
+        propertyType: mapPropertyType(details.homeType), // null when Zillow's type has no match — admin fills
         occupancyStatus: null,  // not available on the Zillow listing — admin fills
         assetType: mapAssetType(zillow),
         estimatedValue: financials.zestimate ?? zillow.price ?? null,

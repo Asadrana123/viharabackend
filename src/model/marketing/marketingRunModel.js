@@ -170,6 +170,9 @@ const imageJobSchema = new mongoose.Schema(
         problems: { type: [imageProblemSchema], default: [] },
         // Template the admin picked for this job; "" = each slot's default.
         templateId: { type: String, default: "" },
+        // Property photos the admin picked, in order ({{photo.1}}, {{photo.2}} ...).
+        // Empty = default order. Kept so "Redo" uses the same photos.
+        photos: { type: [String], default: [] },
         startedBy: { type: mongoose.Schema.Types.ObjectId, ref: "userModel", default: null },
         startedAt: { type: Date, default: Date.now },
         finishedAt: { type: Date, default: null },

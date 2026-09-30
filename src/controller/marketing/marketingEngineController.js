@@ -67,6 +67,7 @@ exports.editLine = catchAsyncError(async (req, res) => {
 // Body (optional):
 //   slotIds    ["staticA|1:1"] regenerates only those images
 //   templateId a template from the library (default: each slot's default template)
+//   photos     the property's photo URLs in order for {{photo.1}}, {{photo.2}} ...
 // Returns 202 right away; images are made in the background and the admin tab
 // polls GET /runs/:runId for progress.
 exports.generateCellImages = catchAsyncError(async (req, res) => {
@@ -75,10 +76,24 @@ exports.generateCellImages = catchAsyncError(async (req, res) => {
     cellKey: req.params.cellKey,
     slotIds: req.body?.slotIds,
     templateId: req.body?.templateId,
+    photos: req.body?.photos,
     userId: req.user._id,
   });
 
   res.status(202).json({ success: true, message: "Image generation started", job });
+});
+
+// ─── PREVIEW ONE AD IMAGE (no AI, nothing saved) ───────────────────────────
+// Body: { templateId?, photos?, format? } -> { image: PNG data URI, label }
+exports.previewCellImage = catchAsyncError(async (req, res) => {
+  const preview = await creativeImageService.previewCellImage({
+    runId: req.params.runId,
+    cellKey: req.params.cellKey,
+    templateId: req.body?.templateId,
+    photos: req.body?.photos,
+    format: req.body?.format,
+  });
+  res.status(200).json({ success: true, ...preview });
 });
 
 // ─── APPROVE A RUN ──────────────────────────────────────────────────────────

@@ -7,7 +7,9 @@
 // Placeholders a template may use:
 //   {{headline}} {{secondaryHeadline}} {{supportingCopy}} {{cta}}  - exact text
 //   {{background}}  - AI background image (hybrid provider)
-//   {{photo}}       - the real property photo
+//   {{photo}}       - the real property photo (same as {{photo.1}})
+//   {{photo.N}}     - property photo number N (1 to MAX_TEMPLATE_PHOTOS); the
+//                     admin picks which property photo fills each number
 //   {{asset.NAME}}  - an image uploaded with the template (NAME = its name)
 
 const TEMPLATE_STATUS = Object.freeze({
@@ -24,8 +26,26 @@ const TEMPLATE_FORMAT_KEYS = Object.freeze({
 
 const TEXT_PLACEHOLDERS = Object.freeze(["headline", "secondaryHeadline", "supportingCopy", "cta"]);
 const IMAGE_PLACEHOLDERS = Object.freeze(["background", "photo"]);
+const MAX_TEMPLATE_PHOTOS = 6;
+const MAX_PHOTO_SLOT_LABEL_CHARS = 40;
+
+/** "photo" -> 1, "photo.3" -> 3, anything else -> null. */
+function photoIndexOf(name) {
+    if (name === "photo") return 1;
+    const m = /^photo\.(\d+)$/.exec(name);
+    return m ? Number(m[1]) : null;
+}
 const ASSET_PLACEHOLDER_PREFIX = "asset.";
 const REQUIRED_PLACEHOLDERS = Object.freeze(["headline"]);
+
+// Wording checks on the template's own fixed words (numbers, compliance
+// terms). The designer has the final say, so by default these only warn.
+//   "warn"  - shown in the editor, never block saving (default)
+//   "block" - the template can't be saved until they are fixed
+//   "off"   - not checked at all
+// Safety rules (scripts, outside links, SVG ...) always block.
+const TEMPLATE_CONTENT_RULES = Object.freeze({ WARN: "warn", BLOCK: "block", OFF: "off" });
+const TEMPLATE_CONTENT_RULE_MODE = process.env.TEMPLATE_CONTENT_RULES || TEMPLATE_CONTENT_RULES.WARN;
 
 const TEMPLATE_LIMITS = Object.freeze({
     maxHtmlBytes: 100 * 1024,
@@ -60,12 +80,17 @@ const PREVIEW_TEXTS = Object.freeze({
 });
 
 module.exports = {
+    TEMPLATE_CONTENT_RULES,
+    TEMPLATE_CONTENT_RULE_MODE,
     PREVIEW_TEXTS,
     TEMPLATE_STATUS,
     TEMPLATE_STATUS_VALUES,
     TEMPLATE_FORMAT_KEYS,
     TEXT_PLACEHOLDERS,
     IMAGE_PLACEHOLDERS,
+    MAX_TEMPLATE_PHOTOS,
+    MAX_PHOTO_SLOT_LABEL_CHARS,
+    photoIndexOf,
     ASSET_PLACEHOLDER_PREFIX,
     REQUIRED_PLACEHOLDERS,
     TEMPLATE_LIMITS,

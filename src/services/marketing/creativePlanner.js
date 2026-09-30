@@ -83,6 +83,16 @@ function toTextSnapshot(texts) {
     return JSON.stringify([texts.headline, texts.secondaryHeadline, texts.supportingCopy, texts.cta].map((t) => t || ""));
 }
 
+/**
+ * Property photos for one image, in order: photos[0] fills {{photo.1}} ...
+ *   chosen by the admin -> that order
+ *   otherwise           -> this slot's own photo first, then the rest
+ */
+function photosForSlot(slotPhoto, ctx) {
+    if (ctx.chosenPhotos.length) return ctx.chosenPhotos;
+    return slotPhoto ? [slotPhoto, ...ctx.photos.filter((p) => p !== slotPhoto)] : [...ctx.photos];
+}
+
 /** @returns {{ spec: object } | { skip: string }} */
 function planSlot(slot, format, ctx) {
     const size = IMAGE_SIZES[format];
@@ -102,7 +112,10 @@ function planSlot(slot, format, ctx) {
     }
     if (slot.showCta && ctx.cell.cta) texts.cta = ctx.cell.cta;
 
-    const photoUrl = slot.photoIndex == null ? null : ctx.photos[slot.photoIndex] || null;
+    // Graphic slots (photoIndex null) never get a photo, even when the admin chose some.
+    const slotPhoto = slot.photoIndex == null ? null : ctx.photos[slot.photoIndex] || null;
+    const photos = slot.photoIndex == null ? [] : photosForSlot(slotPhoto, ctx);
+    const photoUrl = photos[0] || null;
 
     return {
         spec: {
@@ -115,6 +128,7 @@ function planSlot(slot, format, ctx) {
             format,
             size,
             photoUrl,
+            photos,
             referenceUrls: REFERENCE_IMAGES[slot.group] || [],
             texts,
             audience: ctx.audience,
@@ -127,6 +141,9 @@ function planSlot(slot, format, ctx) {
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
+/** Every photo of the run's property (main photo first). */
+const propertyPhotos = (run) => (Array.isArray(run.gate?.verified?.photos) ? run.gate.verified.photos : []);
+
 const findCell = (run, cellKey) => (run.cells || []).find((c) => c.key === cellKey) || null;
 
 /** Every slot id a cell can have, buildable or not ("staticA|1:1", ...). */
@@ -139,13 +156,15 @@ function allSlotIds() {
  * @param {string} cellKey
  * @param {object} [opts]
  * @param {string[]} [opts.slotIds]  only plan these slots (e.g. one regenerate)
+ * @param {string[]} [opts.photos]   property photos chosen by the admin, in order
  * @returns {{ specs: object[], skipped: Array<{ slotId: string, label: string, reason: string }> }}
  */
-function planCellImages(run, cellKey, { slotIds } = {}) {
+function planCellImages(run, cellKey, { slotIds, photos } = {}) {
     const cell = findCell(run, cellKey);
     if (!cell) return { specs: [], skipped: [] };
 
     const ctx = buildContext(run, cell);
+    ctx.chosenPhotos = Array.isArray(photos) ? photos : [];
     const wanted = slotIds ? new Set(slotIds) : null;
     const specs = [];
     const skipped = [];
@@ -177,6 +196,7 @@ module.exports = {
     planCellImages,
     isImageOutdated,
     findCell,
+    propertyPhotos,
     allSlotIds,
     toSlotId,
 };

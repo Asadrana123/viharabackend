@@ -23,7 +23,35 @@ const toLines = (text) =>
     .map((l) => l.trim())
     .filter(Boolean);
 
-function extractFromMarkdown(markdownText) {
+const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** Text of one "## Heading" section, up to the next "## " heading ('' if absent). */
+function sectionOf(text, heading) {
+  const start = text.indexOf(`\n${heading}\n`);
+  if (start === -1) return '';
+  const rest = text.slice(start + heading.length + 2);
+  const next = rest.search(/\n##\s/);
+  return next === -1 ? rest : rest.slice(0, next);
+}
+
+/** Bullet list under a "###### Name" sub-heading: "###### Heating\n\n- Central Forced Air" -> ["Central Forced Air"] */
+function listUnderSubheading(text, name) {
+  const re = new RegExp(`######\\s*${escapeRegex(name)}\\s*\\n+((?:-\\s*[^\\n]+\\n?)+)`, 'i');
+  const m = text.match(re);
+  if (!m) return [];
+  return m[1].split('\n').map((l) => l.replace(/^-\s*/, '').trim()).filter(Boolean);
+}
+
+/** Pipe-table rows of a section as cell arrays (header and separator rows skipped). */
+function tableRows(section) {
+  return toLines(section)
+    .filter((l) => l.startsWith('|') && !/^\|\s*-{3}/.test(l))
+    .map((l) => l.split('|').map((c) => c.trim()).filter((c, i, arr) => !(c === '' && (i === 0 || i === arr.length - 1))));
+}
+
+function extractFromMarkdown(rawMarkdown) {
+  // Firecrawl escapes dashes ("\-\-" for an empty tax cell); unescape once.
+  const markdownText = String(rawMarkdown || '').replace(/\\-/g, '-');
   // ============================================
   // 1. ADDRESS
   // ============================================
@@ -50,7 +78,8 @@ function extractFromMarkdown(markdownText) {
   // ============================================
   // 2. DESCRIPTION ("What's special")
   // ============================================
-  const descMatch = markdownText.match(/## What's special\n\n(.*?)(?=\n\nShow more|\n\n\*\*|\n\n##)/s);
+  // Ends at the expand button ("Show more", or "Hide" once expanded), stats or next heading.
+  const descMatch = markdownText.match(/## What's special\n\n(.*?)(?=\n\n(?:Show more|Hide)\b|\n\n\*\*|\n\n##)/s);
   const description = descMatch ? descMatch[1].trim() : null;
 
   // ============================================
@@ -61,6 +90,12 @@ function extractFromMarkdown(markdownText) {
                 (/\*\s*Central Forced Air/i.test(markdownText) ? 'Central Forced Air' : null);
   let cooling = parseString(/- Cooling features:\s*([^\n]+)/i, markdownText) ||
                 parseString(/Cooling:\s*([^\n]+)/i, markdownText);
+
+  // Current Zillow layout: "###### Heating\n\n- Central Forced Air"
+  const factsSection = sectionOf(markdownText, '## Facts & features') || markdownText;
+  if (!heating) heating = listUnderSubheading(factsSection, 'Heating').join(', ') || null;
+  if (!cooling) cooling = listUnderSubheading(factsSection, 'Cooling').join(', ') || null;
+  const homeType = parseString(/- Home type:\s*([^\n]+)/i, markdownText);
 
   if (heating) heating = String(heating).replace(/[\r\n]+/g, ' ').trim();
   if (cooling) cooling = String(cooling).replace(/[\r\n]+/g, ' ').trim();
@@ -185,7 +220,27 @@ function extractFromMarkdown(markdownText) {
     return out;
   }
 
-  const priceHistory = extractPriceHistoryLines(markdownText);
+  // Current layout: "| 8/22/2026 | Listed for sale | $325,000$234/sqft |"
+  function extractPriceHistorySection(text) {
+    const out = [];
+    tableRows(sectionOf(text, '## Price history')).forEach((cols) => {
+      const dm = (cols[0] || '').match(/^(\d{1,2}\/\d{1,2}\/\d{4})$/);
+      if (!dm || cols.length < 3) return;
+      const priceMatch = cols[2].match(/\$([\d,]+)/);
+      const ppsfMatch = cols[2].match(/\$([\d,]+)\s*\/\s*sqft/i);
+      out.push({
+        date: dm[1],
+        year: Number(dm[1].split('/')[2]),
+        event: cols[1] || '',
+        price: priceMatch ? parseFloat(priceMatch[1].replace(/,/g, '')) : null,
+        pricePerSqft: ppsfMatch ? parseFloat(ppsfMatch[1].replace(/,/g, '')) : null,
+      });
+    });
+    return out;
+  }
+
+  const priceHistory = extractPriceHistorySection(markdownText);
+  if (priceHistory.length === 0) priceHistory.push(...extractPriceHistoryLines(markdownText));
   if (priceHistory.length === 0) priceHistory.push(...extractPriceHistoryTable(markdownText));
 
   // ============================================
@@ -235,10 +290,10 @@ function extractFromMarkdown(markdownText) {
     return out;
   }
 
-  const taxHistory = extractTaxHistory(markdownText);
-  // Current assessed value convenience field (most recent row, or direct regex fallback)
-  const taxAssessedValue = (taxHistory[0] && taxHistory[0].taxAssessment) ||
-    parseNumber(/Tax assessed value:\s*\$([0-9,]+)/, markdownText);
+  const taxHistory = extractTaxHistory(sectionOf(markdownText, '## Public tax history') || markdownText);
+  // Current assessed value: the facts line first, else the most recent row.
+  const taxAssessedValue = parseNumber(/Tax assessed value:\s*\$([0-9,]+)/, markdownText) ||
+    (taxHistory[0] && taxHistory[0].taxAssessment) || null;
 
   // ============================================
   // 7. FORECLOSURE HISTORY (present on REO/pre-foreclosure listings only)
@@ -269,7 +324,20 @@ function extractFromMarkdown(markdownText) {
     return out;
   }
 
-  const foreclosureHistory = extractForeclosureHistory(markdownText);
+  // Current layout: "| 8/4/2026 | Foreclosed auction | $310,644unpaid balance |"
+  function extractForeclosureSection(text) {
+    const out = [];
+    tableRows(sectionOf(text, '## Foreclosure details')).forEach((cols) => {
+      const dm = (cols[0] || '').match(/^(\d{1,2}\/\d{1,2}\/\d{4})$/);
+      if (!dm || cols.length < 3) return;
+      const am = cols[2].match(/\$([\d,]+)/);
+      out.push({ date: dm[1], event: cols[1] || '', amount: am ? parseFloat(am[1].replace(/,/g, '')) : null });
+    });
+    return out;
+  }
+
+  const foreclosureHistory = extractForeclosureSection(markdownText);
+  if (foreclosureHistory.length === 0) foreclosureHistory.push(...extractForeclosureHistory(markdownText));
 
   // ============================================
   // 8. WALK / BIKE / TRANSIT SCORE + COORDINATES
@@ -296,12 +364,20 @@ function extractFromMarkdown(markdownText) {
   // whatever's left before the first comma is the agent's name.
   // "Source: MLSListings Inc,  MLS#: ML82058659"
   // ============================================
-  const listedByLine = parseString(/Listed by:\s*([^\n]+)/i, markdownText);
+  // The block can span several lines ("Listed by:\n\nName License Phone,\n\nCompany Phone\n\nSource: ..."),
+  // so read it up to "Source:" and collapse it to one line.
+  const listedByBlock = parseString(/Listed by:\s*([\s\S]*?)\n\s*(?:Source:|#)/i, markdownText);
+  const listedByLine = listedByBlock
+    ? listedByBlock.replace(/\s+/g, ' ').trim()
+    : parseString(/Listed by:\s*([^\n]+)/i, markdownText);
   let listingAgent = null;
   if (listedByLine) {
     const commaIdx = listedByLine.indexOf(',');
     let namePart = commaIdx !== -1 ? listedByLine.slice(0, commaIdx) : listedByLine;
-    const company = commaIdx !== -1 ? listedByLine.slice(commaIdx + 1).trim() : null;
+    // The company is the next comma segment; a co-listing agent may follow
+    // ("Name, Company,Phone, Name 2, Company 2"), so ignore the rest.
+    const companySegment = commaIdx !== -1 ? listedByLine.slice(commaIdx + 1).split(',')[0] : '';
+    const company = companySegment.replace(/\s*\d{3}-\d{3}-\d{4}\s*$/, '').trim() || null;
 
     const phoneMatch = namePart.match(/(\d{3}-\d{3}-\d{4})/);
     const phone = phoneMatch ? phoneMatch[1] : null;
@@ -318,25 +394,36 @@ function extractFromMarkdown(markdownText) {
       company,
     };
   }
-  const mlsMatch = markdownText.match(/MLS#?:?\s*([A-Z0-9]+)/i);
+  // "MLS#: ML82058659" (require the # so "MLSListings" isn't read as the number)
+  const mlsMatch = markdownText.match(/MLS\s*#\s*:?\s*([A-Z0-9-]+)/i);
   const sourceMatch = markdownText.match(/Source:\s*([^,\n]+)/i);
 
   // ============================================
   // 10. MARKET ACTIVITY (days on market, views, saves)
   // ============================================
-  const daysOnMarket = parseNumber(/(\d+)\s*days?\s*on\s*Zillow/i, markdownText);
-  const views = parseNumber(/([\d,]+)\s*views/i, markdownText);
-  const saves = parseNumber(/(\d+)\s*saves/i, markdownText);
+  // "**31 days**on Zillow**2,286**views**136**saves" -> drop the bold markers first.
+  const activityText = markdownText.replace(/\*\*/g, ' ');
+  const daysOnMarket = parseNumber(/(\d+)\s*days?\s*on\s*Zillow/i, activityText);
+  const views = parseNumber(/([\d,]+)\s*views/i, activityText);
+  const saves = parseNumber(/([\d,]+)\s*saves/i, activityText);
+
+  // List price: the "$249,900" line right above the "# address" heading; else the first $ amount.
+  const price = parseNumber(/\$([0-9,]+)\s*\n+#\s*\d/, markdownText) || parseNumber(/\$([0-9,]+)/, markdownText);
+
+  // Lot: "- Size: 8,075 Square Feet" or "- Size: 0.41 Acres" (converted to sq ft).
+  const lotAcres = parseNumber(/- Size:\s*([\d.,]+)\s*Acres?/i, markdownText);
+  const lotSizeSqft = parseNumber(/- Size:\s*([0-9,]+)\s*Square Feet/, markdownText) ||
+    (lotAcres != null ? Math.round(lotAcres * 43560) : null);
 
   return {
-    price: parseNumber(/\$([0-9,]+)/, markdownText),
+    price,
     address: { fullAddress, street, city, state, zipCode },
     coordinates,
     specs: {
       beds: parseNumber(/- Bedrooms:\s*(\d+)/, markdownText) || parseNumber(/(\d+)\s*beds/, markdownText),
       baths: parseNumber(/- Bathrooms:\s*(\d+)/, markdownText) || parseNumber(/(\d+)\s*baths/, markdownText),
       sqft: parseNumber(/Total interior livable area:\s*([0-9,]+)\s*sqft/, markdownText) || parseNumber(/([0-9,]+)\s*sqft/, markdownText),
-      lotSizeSqft: parseNumber(/- Size:\s*([0-9,]+)\s*Square Feet/, markdownText),
+      lotSizeSqft,
       yearBuilt: parseNumber(/Built in (\d{4})/, markdownText) || parseNumber(/- Year built:\s*(\d{4})/, markdownText),
       stories,
     },
@@ -364,6 +451,7 @@ function extractFromMarkdown(markdownText) {
       specialConditions,
       listingAgreement,
       dateOnMarket,
+      homeType,
     },
     description,
     schools,

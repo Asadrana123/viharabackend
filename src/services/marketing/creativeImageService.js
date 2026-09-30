@@ -16,11 +16,11 @@ const mongoose = require("mongoose");
 const cloudinary = require("cloudinary").v2;
 const Errorhandler = require("../../utils/errorhandler");
 const MarketingRun = require("../../model/marketing/marketingRunModel");
-const { planCellImages, isImageOutdated, findCell, allSlotIds } = require("./creativePlanner");
+const { planCellImages, isImageOutdated, findCell, allSlotIds, propertyPhotos } = require("./creativePlanner");
 const { getCreativeProvider } = require("./creativeProviders");
 const templateService = require("./templateService");
 const { CREATIVE_CONFIG, LOGO_PLACEMENT, IMAGE_PROVIDERS } = require("../../config/marketing/creativeConfig");
-const { TEMPLATE_STATUS } = require("../../config/marketing/templateConfig");
+const { TEMPLATE_STATUS, MAX_TEMPLATE_PHOTOS } = require("../../config/marketing/templateConfig");
 const {
     RUN_STATUS,
     IMAGE_JOB_STATUS,
@@ -198,6 +198,26 @@ async function processImageJob({ runId, specs, provider, userId, job }) {
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
+/**
+ * The admin's photo choice: up to MAX_TEMPLATE_PHOTOS of THIS property's photos,
+ * in order. Anything else is rejected, so no outside image can get in.
+ * @returns {string[]} [] = use the default order
+ */
+function normalizePhotoChoice(photos, run) {
+    if (photos == null) return [];
+    if (!Array.isArray(photos) || photos.some((p) => typeof p !== "string")) {
+        throw new Errorhandler("photos must be a list of the property's photo URLs", 400);
+    }
+    if (photos.length > MAX_TEMPLATE_PHOTOS) {
+        throw new Errorhandler(`Pick at most ${MAX_TEMPLATE_PHOTOS} photos`, 400);
+    }
+    const own = new Set(propertyPhotos(run));
+    if (photos.some((p) => !own.has(p))) {
+        throw new Errorhandler("Only this property's own photos can be used", 400);
+    }
+    return photos;
+}
+
 /** A picked template must exist and be active; templates need the hybrid provider. */
 async function assertTemplateUsable(templateId, provider) {
     if (!templateId) return;
@@ -213,12 +233,13 @@ async function assertTemplateUsable(templateId, provider) {
 
 /**
  * Start image generation for one ad set. Pass slotIds (e.g. ["staticA|1:1"])
- * to regenerate only those images, and templateId to use a template from the
- * library instead of each slot's default.
+ * to regenerate only those images, templateId to use a template from the
+ * library instead of each slot's default, and photos to choose which property
+ * photos fill {{photo.1}}, {{photo.2}} ... (default: the property's own order).
  *
  * @returns {Promise<object>} the new image job
  */
-async function startCellImages({ runId, cellKey, slotIds, templateId, userId }) {
+async function startCellImages({ runId, cellKey, slotIds, templateId, photos, userId }) {
     if (!mongoose.isValidObjectId(runId)) throw new Errorhandler("Invalid run id", 400);
     if (slotIds != null) {
         const known = new Set(allSlotIds());
@@ -238,7 +259,9 @@ async function startCellImages({ runId, cellKey, slotIds, templateId, userId }) 
     const chosenTemplateId = typeof templateId === "string" && templateId.trim() ? templateId.trim() : "";
     await assertTemplateUsable(chosenTemplateId, provider);
 
-    const planned = planCellImages(run, cellKey, { slotIds });
+    const chosenPhotos = normalizePhotoChoice(photos, run);
+
+    const planned = planCellImages(run, cellKey, { slotIds, photos: chosenPhotos });
     const specs = planned.specs.map((spec) => ({ ...spec, templateId: chosenTemplateId || null }));
     const { skipped } = planned;
     if (!specs.length) {
@@ -254,6 +277,7 @@ async function startCellImages({ runId, cellKey, slotIds, templateId, userId }) 
         failed: 0,
         problems: skipped.map((s) => ({ slot: s.label, message: s.reason })),
         templateId: chosenTemplateId,
+        photos: chosenPhotos,
         startedBy: userId,
         startedAt: new Date(),
         finishedAt: null,
@@ -297,6 +321,35 @@ async function startCellImages({ runId, cellKey, slotIds, templateId, userId }) 
     return job;
 }
 
+/**
+ * Quick look at one ad image with a template and photo choice, WITHOUT the AI
+ * (the real photo stands in for the AI background). Nothing is saved.
+ *
+ * @returns {Promise<{ image: string, label: string }>} PNG data URI
+ */
+async function previewCellImage({ runId, cellKey, templateId, photos, format = "1:1" }) {
+    if (!mongoose.isValidObjectId(runId)) throw new Errorhandler("Invalid run id", 400);
+    const run = await MarketingRun.findById(runId).lean();
+    if (!run) throw new Errorhandler("Marketing run not found", 404);
+    if (!findCell(run, cellKey)) throw new Errorhandler("Ad set not found in this run", 404);
+
+    const provider = getCreativeProvider();
+    if (typeof provider.preview !== "function") {
+        throw new Errorhandler("Previews need the hybrid image provider (MARKETING_IMAGE_PROVIDER=hybrid)", 400);
+    }
+    const chosenTemplateId = typeof templateId === "string" && templateId.trim() ? templateId.trim() : "";
+    await assertTemplateUsable(chosenTemplateId, provider);
+
+    const { specs } = planCellImages(run, cellKey, { photos: normalizePhotoChoice(photos, run) });
+    // First image in this size that shows a photo (else any image in this size).
+    const inFormat = specs.filter((s) => s.format === format);
+    const spec = inFormat.find((s) => s.photos.length) || inFormat[0];
+    if (!spec) throw new Errorhandler("No image of this ad set can be previewed yet", 400);
+
+    const { source } = await provider.preview({ ...spec, templateId: chosenTemplateId || null });
+    return { image: source, label: spec.label };
+}
+
 /** True when any cell of the run has a live (not stale) image job. */
 function hasActiveImageJob(run) {
     return (run.imageJobs || []).some(isJobActive);
@@ -318,6 +371,7 @@ function withImageState(run) {
 
 module.exports = {
     startCellImages,
+    previewCellImage,
     hasActiveImageJob,
     withImageState,
 };

@@ -12,6 +12,13 @@
 //
 // No property photo = no AI call, so no house is ever invented.
 //
+// Templates can show several property photos ({{photo.1}} ... {{photo.6}});
+// spec.photos holds them in order (chosen by the admin, or a default order).
+//
+// preview(spec) renders the same image without calling the AI (the real photo
+// stands in for the AI background), so the admin can check photo placement
+// in a second or two before generating.
+//
 // Follows the provider contract in bflCreativeProvider.js, and also returns
 // which template (and version) made the image.
 
@@ -62,18 +69,17 @@ async function aiBackground(spec) {
 
 const toDataUri = (png) => `data:image/png;base64,${png.toString("base64")}`;
 
-async function renderBuiltIn(spec) {
-    const background = await aiBackground(spec);
+async function renderBuiltIn(spec, background) {
     const png = await renderHtmlToPng(buildAdHtml(spec, background), spec.size.final, {
         allowedUrls: imageUrlsOf({ background }),
     });
     return { source: toDataUri(png), template: BUILTIN_REF };
 }
 
-async function renderUploaded(spec, template, html) {
+async function renderUploaded(spec, template, html, background) {
     const images = {
-        background: template.usesBackground ? await aiBackground(spec) : null,
-        photo: spec.photoUrl || null,
+        background,
+        photos: spec.photos?.length ? spec.photos : [spec.photoUrl].filter(Boolean),
         assets: Object.fromEntries((template.assets || []).map((a) => [a.name, a.url])),
     };
 
@@ -91,6 +97,24 @@ async function renderUploaded(spec, template, html) {
     };
 }
 
+/**
+ * @param {object} spec
+ * @param {boolean} useAi  false = the real photo stands in for the AI background
+ */
+async function render(spec, useAi) {
+    const resolved = await resolveTemplate({
+        templateId: spec.templateId || null,
+        slotKind: spec.kind,
+        format: spec.format,
+    });
+    const needsBackground = resolved.builtIn || resolved.template.usesBackground;
+    const background = needsBackground ? (useAi ? await aiBackground(spec) : spec.photoUrl || null) : null;
+
+    return resolved.builtIn
+        ? renderBuiltIn(spec, background)
+        : renderUploaded(spec, resolved.template, resolved.html, background);
+}
+
 module.exports = {
     name: IMAGE_PROVIDERS.HYBRID,
 
@@ -102,12 +126,8 @@ module.exports = {
      * @param {object} spec  creativePlanner spec (+ templateId chosen by the admin, if any)
      * @returns {Promise<{ source: string, template: object }>} PNG data URI + template used
      */
-    async generate(spec) {
-        const resolved = await resolveTemplate({
-            templateId: spec.templateId || null,
-            slotKind: spec.kind,
-            format: spec.format,
-        });
-        return resolved.builtIn ? renderBuiltIn(spec) : renderUploaded(spec, resolved.template, resolved.html);
-    },
+    generate: (spec) => render(spec, true),
+
+    /** Same image without the AI call, for the photo picker's live preview. */
+    preview: (spec) => render(spec, false),
 };

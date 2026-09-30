@@ -6,8 +6,9 @@
 //     (images only through placeholders or inline data: images),
 //   - only known placeholders, and {{headline}} is required,
 //   - image placeholders only where an image goes (src="..." or url(...)),
-//   - fixed words in the layout pass every compliance rule and contain no
-//     numbers, so a template can never add an unverified claim.
+//   - fixed words in the layout are checked for numbers and compliance terms.
+//     These are warnings by default (the designer has the final say); see
+//     TEMPLATE_CONTENT_RULE_MODE in templateConfig.
 //
 // Rendering adds its own guards (Content-Security-Policy and a network
 // allowlist); this validator is the first line.
@@ -18,8 +19,12 @@ const {
     TEXT_PLACEHOLDERS,
     IMAGE_PLACEHOLDERS,
     ASSET_PLACEHOLDER_PREFIX,
+    MAX_TEMPLATE_PHOTOS,
+    photoIndexOf,
     REQUIRED_PLACEHOLDERS,
     TEMPLATE_LIMITS,
+    TEMPLATE_CONTENT_RULES,
+    TEMPLATE_CONTENT_RULE_MODE,
 } = require("../../config/marketing/templateConfig");
 
 const PLACEHOLDER_PATTERN = /\{\{\s*([a-zA-Z]+(?:\.[a-zA-Z0-9_-]+)?)\s*\}\}/g;
@@ -43,7 +48,8 @@ const FORBIDDEN = Object.freeze([
 // Inline images allowed in src / url(): raster data: images only.
 const DATA_IMAGE = /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=\s]+$/i;
 
-const isImagePlaceholder = (name) => IMAGE_PLACEHOLDERS.includes(name) || name.startsWith(ASSET_PLACEHOLDER_PREFIX);
+const isImagePlaceholder = (name) =>
+    IMAGE_PLACEHOLDERS.includes(name) || name.startsWith(ASSET_PLACEHOLDER_PREFIX) || photoIndexOf(name) !== null;
 
 function decodeEntities(text) {
     return text
@@ -94,13 +100,16 @@ function checkResourceValues(html, errors) {
  * @param {string} html
  * @param {object} [opts]
  * @param {string[]} [opts.assetNames]  names of images uploaded with the template
- * @returns {{ ok: boolean, errors: string[], usesBackground: boolean, usesPhoto: boolean }}
+ * @param {string} [opts.contentMode]  TEMPLATE_CONTENT_RULES value (default from config)
+ * @returns {{ ok: boolean, errors: string[], warnings: string[], usesBackground: boolean, usesPhoto: boolean, photoCount: number }}
+ *   errors block saving; warnings are shown but never block.
  */
-function validateTemplateHtml(html, { assetNames = [] } = {}) {
+function validateTemplateHtml(html, { assetNames = [], contentMode = TEMPLATE_CONTENT_RULE_MODE } = {}) {
     const errors = [];
+    const contentIssues = [];
 
     if (typeof html !== "string" || !html.trim()) {
-        return { ok: false, errors: ["HTML is empty"], usesBackground: false, usesPhoto: false };
+        return { ok: false, errors: ["HTML is empty"], warnings: [], usesBackground: false, usesPhoto: false, photoCount: 0 };
     }
     if (Buffer.byteLength(html, "utf8") > TEMPLATE_LIMITS.maxHtmlBytes) {
         errors.push(`HTML must be ${Math.round(TEMPLATE_LIMITS.maxHtmlBytes / 1024)} KB or smaller`);
@@ -113,10 +122,18 @@ function validateTemplateHtml(html, { assetNames = [] } = {}) {
     // Placeholders
     const used = new Set();
     const knownAssets = new Set(assetNames);
+    let photoCount = 0;
     for (const m of html.matchAll(PLACEHOLDER_PATTERN)) {
         const name = m[1];
         used.add(name);
-        if (name.startsWith(ASSET_PLACEHOLDER_PREFIX)) {
+        const photoIndex = photoIndexOf(name);
+        if (photoIndex !== null) {
+            if (photoIndex < 1 || photoIndex > MAX_TEMPLATE_PHOTOS) {
+                errors.push(`{{${name}}}: photos go from {{photo.1}} to {{photo.${MAX_TEMPLATE_PHOTOS}}}`);
+            } else {
+                photoCount = Math.max(photoCount, photoIndex);
+            }
+        } else if (name.startsWith(ASSET_PLACEHOLDER_PREFIX)) {
             const assetName = name.slice(ASSET_PLACEHOLDER_PREFIX.length);
             if (!knownAssets.has(assetName)) errors.push(`{{${name}}} has no uploaded image named "${assetName}"`);
         } else if (!TEXT_PLACEHOLDERS.includes(name) && !IMAGE_PLACEHOLDERS.includes(name)) {
@@ -136,22 +153,29 @@ function validateTemplateHtml(html, { assetNames = [] } = {}) {
     }
     checkResourceValues(html, errors);
 
-    // Fixed words: no numbers, and every compliance rule (strictest audience).
-    const text = fixedText(html);
-    if (/\d/.test(text)) {
-        errors.push("Fixed text in the template can't contain numbers; numbers come from placeholders");
+    // Fixed words: numbers and compliance terms (strictest audience).
+    if (contentMode !== TEMPLATE_CONTENT_RULES.OFF) {
+        const text = fixedText(html);
+        if (/\d/.test(text)) {
+            contentIssues.push("Fixed text contains numbers. They will be the same on every property.");
+        }
+        checkLine(text, {
+            buyerType: BUYER_TYPES.OWNER_OCCUPANT,
+            financingTermsConfirmed: false,
+            allowedDollarAmounts: [],
+        }).forEach((flag) => contentIssues.push(`Fixed text: ${flag.label} ("${flag.match}")`));
     }
-    checkLine(text, {
-        buyerType: BUYER_TYPES.OWNER_OCCUPANT,
-        financingTermsConfirmed: false,
-        allowedDollarAmounts: [],
-    }).forEach((flag) => errors.push(`Fixed text: ${flag.label} ("${flag.match}")`));
+
+    const block = contentMode === TEMPLATE_CONTENT_RULES.BLOCK;
+    const allErrors = block ? [...errors, ...contentIssues] : errors;
 
     return {
-        ok: errors.length === 0,
-        errors: [...new Set(errors)],
+        ok: allErrors.length === 0,
+        errors: [...new Set(allErrors)],
+        warnings: block ? [] : [...new Set(contentIssues)],
         usesBackground: used.has("background"),
-        usesPhoto: used.has("photo"),
+        usesPhoto: photoCount > 0,
+        photoCount,
     };
 }
 

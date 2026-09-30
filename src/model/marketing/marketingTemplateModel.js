@@ -18,6 +18,16 @@ const assetSchema = new mongoose.Schema(
     { _id: false }
 );
 
+// A property-photo spot in the design ({{photo.N}}) and the designer's name
+// for it ("Living room"), shown to the admin when picking photos.
+const photoSlotSchema = new mongoose.Schema(
+    {
+        index: { type: Number, required: true, min: 1 },
+        label: { type: String, default: "" },
+    },
+    { _id: false }
+);
+
 const marketingTemplateSchema = new mongoose.Schema(
     {
         // All versions of one template share the first version's _id.
@@ -66,6 +76,9 @@ const marketingTemplateSchema = new mongoose.Schema(
         // Derived from the HTML by the validator.
         usesBackground: { type: Boolean, default: false },
         usesPhoto: { type: Boolean, default: false },
+        // How many property photos the design shows (highest {{photo.N}}).
+        photoCount: { type: Number, default: 0 },
+        photoSlots: { type: [photoSlotSchema], default: [] },
         assets: {
             type: [assetSchema],
             default: [],

@@ -2,8 +2,10 @@
 //
 // Thin client for the Firecrawl v2 scrape API. Holds the two request formats
 // used by the Property Importer:
-//   - DETAILS: markdown of the Zillow listing (facts, schools, history, ...)
-//   - IMAGES : raw HTML of the listing (the photo gallery lives in __NEXT_DATA__)
+//   - DETAILS: markdown of the Zillow listing (facts, schools, history, ...),
+//              scrolled and with collapsed sections expanded first
+//   - IMAGES : raw HTML of the listing (the photo gallery AND the property JSON
+//              live in __NEXT_DATA__)
 //
 // Env: FIRECRAWL_API_KEY (required)
 
@@ -15,19 +17,48 @@ const FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v2/scrape";
 // hung request can't hold the admin's HTTP request open forever.
 const REQUEST_TIMEOUT_MS = 120000;
 
+// Runs inside the page: clicks every "Show more" / "See more" BUTTON so the
+// collapsed sections (tax history, foreclosure details, facts) are in the
+// markdown. Links (<a>) are skipped on purpose: they navigate away. An expanded
+// section's button reads "Show less", so running it twice is safe.
+const EXPAND_SECTIONS_SCRIPT = `
+  [...document.querySelectorAll("button")]
+    .filter((b) => /^\\s*(show more|see more)\\s*$/i.test(b.textContent))
+    .forEach((b) => b.click());
+`;
+
+const SCROLL_STEP = Object.freeze([
+    { type: "scroll", direction: "down" },
+    { type: "wait", milliseconds: 1500 },
+]);
+
 const DETAILS_SCRAPE_OPTIONS = Object.freeze({
     proxy: "stealth",
     onlyMainContent: true,
     removeBase64Images: true,
     excludeTags: ["script", "style", "nav", "svg", "noscript", "iframe"],
-    waitFor: 7000,
+    maxAge: 0, // never serve a cached (possibly partial) render
     formats: ["markdown"],
+    actions: [
+        { type: "wait", milliseconds: 4000 },
+        // Scroll so lazy-loaded sections (schools, price/tax history) render.
+        ...SCROLL_STEP,
+        ...SCROLL_STEP,
+        ...SCROLL_STEP,
+        ...SCROLL_STEP,
+        { type: "executeJavascript", script: EXPAND_SECTIONS_SCRIPT },
+        { type: "wait", milliseconds: 2000 },
+        // Second pass catches buttons revealed by the first one.
+        { type: "executeJavascript", script: EXPAND_SECTIONS_SCRIPT },
+        { type: "wait", milliseconds: 1500 },
+    ],
 });
 
 const IMAGES_SCRAPE_OPTIONS = Object.freeze({
     proxy: "stealth",
     waitFor: 5000,
     removeBase64Images: true,
+    maxAge: 0,
     formats: ["rawHtml"],
 });
 

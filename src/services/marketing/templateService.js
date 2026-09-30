@@ -17,7 +17,7 @@ const cloudinary = require("cloudinary").v2;
 const Errorhandler = require("../../utils/errorhandler");
 const Template = require("../../model/marketing/marketingTemplateModel");
 const { validateTemplateHtml } = require("./templateValidator");
-const { buildTemplateDocument, imageUrlsOf, PREVIEW_IMAGE } = require("./templateRenderer");
+const { buildTemplateDocument, imageUrlsOf, PREVIEW_IMAGE, PREVIEW_PHOTOS } = require("./templateRenderer");
 const { renderHtmlToPng } = require("./htmlRenderer");
 const { buildAdHtml } = require("./creativeTemplates");
 const { CREATIVE_SLOTS, IMAGE_SIZES } = require("../../config/marketing/creativeConfig");
@@ -29,6 +29,7 @@ const {
     ASSET_NAME_PATTERN,
     TEMPLATE_ASSET_FOLDER,
     TEMPLATE_PREVIEW_FOLDER,
+    MAX_PHOTO_SLOT_LABEL_CHARS,
     BUILTIN_TEMPLATE,
     PREVIEW_TEXTS,
 } = require("../../config/marketing/templateConfig");
@@ -92,6 +93,18 @@ function normalizeAssets(assets) {
     });
 }
 
+/** Designer names for photo spots 1..photoCount ("Living room"). */
+function normalizePhotoSlots(photoSlots, photoCount) {
+    if (!Array.isArray(photoSlots)) return [];
+    const byIndex = new Map();
+    photoSlots.forEach((slot) => {
+        const index = Number(slot?.index);
+        const label = String(slot?.label || "").trim().slice(0, MAX_PHOTO_SLOT_LABEL_CHARS);
+        if (Number.isInteger(index) && index >= 1 && index <= photoCount && label) byIndex.set(index, label);
+    });
+    return [...byIndex.entries()].sort((a, b) => a[0] - b[0]).map(([index, label]) => ({ index, label }));
+}
+
 /**
  * Validate everything the admin sent. Throws 400/422 with every problem listed.
  * @returns {object} clean fields for a new version
@@ -124,7 +137,13 @@ function prepareTemplateData(data = {}) {
     ];
     if (errors.length) throw new Errorhandler(`Template not saved: ${errors.join("; ")}`, 422);
 
+    const warnings = [
+        ...squareCheck.warnings.map((w) => `1:1 - ${w}`),
+        ...(tallCheck ? tallCheck.warnings.map((w) => `9:16 - ${w}`) : []),
+    ];
+
     return {
+        warnings,
         name,
         description,
         slots,
@@ -132,6 +151,8 @@ function prepareTemplateData(data = {}) {
         html: { square, tall: tall.trim() ? tall : "" },
         usesBackground: squareCheck.usesBackground || Boolean(tallCheck?.usesBackground),
         usesPhoto: squareCheck.usesPhoto || Boolean(tallCheck?.usesPhoto),
+        photoCount: Math.max(squareCheck.photoCount, tallCheck?.photoCount || 0),
+        photoSlots: normalizePhotoSlots(data.photoSlots, Math.max(squareCheck.photoCount, tallCheck?.photoCount || 0)),
     };
 }
 
@@ -207,11 +228,11 @@ async function findLatestOrThrow(templateId) {
 // Create / edit
 // ---------------------------------------------------------------------------
 async function createTemplate({ data, userId }) {
-    const clean = prepareTemplateData(data);
+    const { warnings, ...clean } = prepareTemplateData(data);
     const previewImages = await storePreviewImages(clean.html, clean.assets);
     const _id = new mongoose.Types.ObjectId();
     const created = await Template.create({ ...clean, previewImages, _id, familyId: _id, version: 1, createdBy: userId });
-    return getTemplate(created._id);
+    return { ...(await getTemplate(created._id)), warnings };
 }
 
 /**
@@ -223,7 +244,7 @@ async function updateTemplate({ templateId, data, userId }) {
     if (latest.status !== TEMPLATE_STATUS.ACTIVE) {
         throw new Errorhandler("Restore this template before editing it", 400);
     }
-    const clean = prepareTemplateData(data);
+    const { warnings, ...clean } = prepareTemplateData(data);
     const previewImages = await storePreviewImages(clean.html, clean.assets);
 
     let created;
@@ -247,7 +268,7 @@ async function updateTemplate({ templateId, data, userId }) {
     }
 
     await Template.updateOne({ _id: latest._id }, { $set: { isLatest: false, defaultForSlots: [] } });
-    return getTemplate(created._id);
+    return { ...(await getTemplate(created._id)), warnings };
 }
 
 // ---------------------------------------------------------------------------
@@ -357,7 +378,8 @@ function htmlByFormat(html = {}) {
 async function renderPreviewPngs(html, assets) {
     const images = {
         background: PREVIEW_IMAGE,
-        photo: PREVIEW_IMAGE,
+        // Numbered stand-ins show which photo goes where.
+        photos: PREVIEW_PHOTOS,
         assets: Object.fromEntries(assets.map((a) => [a.name, a.url])),
     };
 
@@ -430,7 +452,8 @@ function ensureBuiltInPreview() {
  * is saved. Runs the same validation as saving.
  *
  * @param {object} data  { html: { square, tall }, assets }
- * @returns {Promise<{ "1:1": string, "9:16": string|null }>} PNG data URIs
+ * @returns {Promise<{ previews: { "1:1": string, "9:16": string|null }, warnings: string[] }>}
+ *   PNG data URIs + wording warnings (never blocking)
  */
 async function previewTemplate(data = {}) {
     const assets = normalizeAssets(data.assets);
@@ -439,14 +462,18 @@ async function previewTemplate(data = {}) {
     if (!byFormat["1:1"].trim()) throw new Errorhandler("The 1:1 HTML is required", 400);
 
     const errors = [];
+    const warnings = [];
     Object.entries(byFormat).forEach(([format, html]) => {
         if (!html.trim()) return;
-        validateTemplateHtml(html, { assetNames }).errors.forEach((e) => errors.push(`${format} - ${e}`));
+        const check = validateTemplateHtml(html, { assetNames });
+        check.errors.forEach((e) => errors.push(`${format} - ${e}`));
+        check.warnings.forEach((w) => warnings.push(`${format} - ${w}`));
     });
     if (errors.length) throw new Errorhandler(`Template has problems: ${errors.join("; ")}`, 422);
 
     const pngs = await renderPreviewPngs(data.html, assets);
-    return Object.fromEntries(Object.entries(pngs).map(([format, png]) => [format, png ? toDataUri(png) : null]));
+    const previews = Object.fromEntries(Object.entries(pngs).map(([format, png]) => [format, png ? toDataUri(png) : null]));
+    return { previews, warnings };
 }
 
 // ---------------------------------------------------------------------------

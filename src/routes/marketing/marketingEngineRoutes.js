@@ -9,6 +9,7 @@ const {
   editLine,
   approveRun,
   generateCellImages,
+  previewCellImage,
 } = require("../../controller/marketing/marketingEngineController");
 const {
   uploadAssetFile,
@@ -41,6 +42,7 @@ router.patch("/runs/:runId/approve", approveRun);
 
 // Ad images (one ad set at a time; body { slotIds } regenerates specific images)
 router.post("/runs/:runId/cells/:cellKey/images", generateCellImages);
+router.post("/runs/:runId/cells/:cellKey/preview", previewCellImage);   // no AI, nothing saved
 
 // Ad template library (upload once, use for any property)
 router.get("/templates", listTemplates);                         // ?includeArchived=true
