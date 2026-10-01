@@ -10,6 +10,7 @@ const SendifyMessage = require("../../model/sendify/sendifyMessageModel");
 const { getRouteQueue } = require("./queue/queues");
 const { canSend } = require("./sendifyComplianceService");
 const { toUsSmsNumber } = require("../../utils/usPhone");
+const Errorhandler = require("../../utils/errorhandler");
 
 function normalizeAddress(raw) {
   if (typeof raw !== "string") return null;
@@ -31,10 +32,10 @@ function normalizeAddress(raw) {
 async function enqueueOutbound({ to: rawTo, body, origin, channelPolicy, isReplyToInbound, idempotencyKey, scheduledFor }) {
   const to = normalizeAddress(rawTo);
   if (!to) {
-    throw Object.assign(new Error("to is not a valid US phone number or email address"), { statusCode: 400 });
+    throw new Errorhandler("to is not a valid US phone number or email address", 400);
   }
   if (!body || typeof body !== "string") {
-    throw Object.assign(new Error("body is required"), { statusCode: 400 });
+    throw new Errorhandler("body is required", 400);
   }
 
   let contact = await SendifyContact.findOne({ phoneE164: to });

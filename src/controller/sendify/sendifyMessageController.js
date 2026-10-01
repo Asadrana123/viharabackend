@@ -71,7 +71,11 @@ const listMessagesByStatus = catchAsyncError(async (req, res) => {
 
   const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
   const statuses = status.split(",");
-  const messages = await SendifyMessage.find({ status: { $in: statuses } }).sort({ updatedAt: -1 }).limit(limit);
+  const messages = await SendifyMessage.find({ status: { $in: statuses } })
+    .sort({ updatedAt: -1 })
+    .limit(limit)
+    .populate("contactId", "name phoneE164")
+    .populate("lineId", "name address");
 
   return res.status(200).json({ success: true, messages });
 });

@@ -61,15 +61,21 @@ const listLines = catchAsyncError(async (req, res) => {
   const filter = {};
   if (channelType) filter.channelType = channelType;
   if (status) filter.status = status;
-  // -credentials is explicit (not just relying on schema select:false) — see
-  // the comment in createLine above for why that alone isn't trustworthy.
-  const lines = await SendifyLine.find(filter).select("-credentials").sort({ createdAt: -1 });
+  // Excluding the three leaf fields explicitly (not just relying on schema
+  // select:false, nor on excluding the parent `credentials` path — found via
+  // direct reproduction that `.select("-credentials")` actually THROWS
+  // ("Path collision at credentials.iv remaining portion iv"): Mongo won't
+  // accept an exclusion on a parent path together with the schema's own
+  // select:false exclusions on that path's children in the same projection).
+  const lines = await SendifyLine.find(filter)
+    .select("-credentials.iv -credentials.tag -credentials.ciphertext")
+    .sort({ createdAt: -1 });
   return res.status(200).json({ success: true, lines });
 });
 
 /** GET /api/v1/sendify/lines/:id */
 const getLine = catchAsyncError(async (req, res) => {
-  const line = await SendifyLine.findById(req.params.id).select("-credentials");
+  const line = await SendifyLine.findById(req.params.id).select("-credentials.iv -credentials.tag -credentials.ciphertext");
   if (!line) return res.status(404).json({ success: false, message: "Line not found" });
   return res.status(200).json({ success: true, line });
 });
@@ -96,7 +102,7 @@ const updateLine = catchAsyncError(async (req, res) => {
     update.credentials = encryptCredentials(credentials);
   }
 
-  const line = await SendifyLine.findByIdAndUpdate(req.params.id, update, { new: true }).select("-credentials");
+  const line = await SendifyLine.findByIdAndUpdate(req.params.id, update, { new: true }).select("-credentials.iv -credentials.tag -credentials.ciphertext");
   if (!line) return res.status(404).json({ success: false, message: "Line not found" });
   return res.status(200).json({ success: true, line });
 });
@@ -158,7 +164,13 @@ const reinstateLine = catchAsyncError(async (req, res) => {
   }
   line.warmup.enabled = true;
   line.warmup.startedAt = new Date();
-  line.health = { ...line.health, consecutiveFailures: 0, failureRateRecent: 0 };
+  // Not `line.health = {...line.health, ...}` — spreading a Mongoose
+  // subdocument copies its unset nested paths (e.g. health.device) as
+  // explicit `undefined` properties, and reassigning the whole subdocument
+  // with those present throws a CastError on save. Setting the two fields
+  // directly avoids touching the rest of the subdocument at all.
+  line.health.consecutiveFailures = 0;
+  line.health.failureRateRecent = 0;
   await setLineStatus(line, "warming", "reinstated by admin, warm-up restarted", req);
   return res.status(200).json({ success: true, line: line.toObject() });
 });
