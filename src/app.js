@@ -64,6 +64,11 @@ const enrichmentRoutes = require("./routes/enrichment/enrichmentRoutes");
 // Property Marketing Engine (admin-only): brief, copy, compliance, approval.
 const marketingEngineRoutes = require("./routes/marketing/marketingEngineRoutes");
 const leadMatchRoutes = require("./routes/leads/leadMatchRoutes");
+// Sendify — in-house two-way iMessage (later: +SMS) infra, replacing Brevo's
+// 10DLC-registered SMS. Inert unless SENDIFY_ENABLED=true (see
+// controller/sendify/sendifyAdminController.js). Does not touch/import
+// anything under routes/outbound or routes/calling. See sendify-infra.md.
+const sendifyAdminRoutes = require("./routes/sendify/sendifyAdminRoutes");
 // Middleware
 app.use(cookieParser());
 app.use(cors(expressCorsOptions));
@@ -136,6 +141,7 @@ app.use("/api/v1/outbound", outboundRoutes);
 app.use("/api/v1/enrichment", enrichmentRoutes);
 app.use("/api/v1/marketing-engine", marketingEngineRoutes);
 app.use("/api/v1/lead-match", leadMatchRoutes);
+app.use("/api/v1/sendify", sendifyAdminRoutes);
 // Error Middleware
 app.use(errorMiddleware);
 
