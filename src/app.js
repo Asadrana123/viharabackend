@@ -142,6 +142,14 @@ app.use("/api/v1/enrichment", enrichmentRoutes);
 app.use("/api/v1/marketing-engine", marketingEngineRoutes);
 app.use("/api/v1/lead-match", leadMatchRoutes);
 app.use("/api/v1/sendify", sendifyAdminRoutes);
+
+// D7 (sendify-infra.md §2): fail loudly at boot if CHANNEL_TYPES has an enum
+// entry with no registered adapter, rather than discovering it the first
+// time someone tries to use that channel. Gated behind SENDIFY_ENABLED so
+// the feature stays fully inert (no extra startup work at all) when off.
+if (process.env.SENDIFY_ENABLED === 'true') {
+  require('./services/sendify/channels/registry').assertRegistryMatchesEnum();
+}
 // Error Middleware
 app.use(errorMiddleware);
 

@@ -19,6 +19,9 @@ const {
 const { closeAllQueues } = require("../services/sendify/queue/queues");
 
 async function startSendifyWorkers() {
+  // Same boot assertion as app.js (D7) — this process loads the registry
+  // independently, so it needs its own check, not a shared one.
+  require("../services/sendify/channels/registry").assertRegistryMatchesEnum();
   await startMaintenanceWorker();
   await ensureMaintenanceSchedulers();
   console.log("🔧 Sendify workers started");
