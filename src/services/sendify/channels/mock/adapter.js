@@ -5,12 +5,17 @@
 // tested without needing real BlueBubbles/Apple ID hardware. Only registered
 // when SENDIFY_ENABLE_MOCK_CHANNEL=true (checked by registry.js, not here).
 //
-// Deliberately injectable failure modes via `to`, so worker/retry/quarantine
+// Deliberately injectable failure modes via a marker in `body` (not `to` —
+// by the time a message reaches an adapter's send() through the real
+// enqueueOutbound pipeline, `to` is always a normalized phone/email, since
+// normalizeAddress() runs before a contact is even created; a magic `to`
+// value could never survive that far. `body` stays free-form all the way
+// through, so that's where the trigger lives), so worker/retry/quarantine
 // logic can be exercised without faking provider HTTP responses:
-//   to === "mock-fail-recipient" -> ChannelError kind "recipient"
-//   to === "mock-fail-line"      -> ChannelError kind "line"
-//   to === "mock-fail-transient" -> ChannelError kind "transient"
-//   to === "mock-fail-config"    -> ChannelError kind "config"
+//   body contains "MOCK_FAIL_RECIPIENT" -> ChannelError kind "recipient"
+//   body contains "MOCK_FAIL_LINE"      -> ChannelError kind "line"
+//   body contains "MOCK_FAIL_TRANSIENT" -> ChannelError kind "transient"
+//   body contains "MOCK_FAIL_CONFIG"    -> ChannelError kind "config"
 //   anything else -> succeeds
 const { ChannelError } = require("../channelError");
 
@@ -41,16 +46,16 @@ module.exports = {
   },
 
   async send({ to, body, clientMessageId }) {
-    if (to === "mock-fail-recipient") {
+    if (body?.includes("MOCK_FAIL_RECIPIENT")) {
       throw new ChannelError("recipient", "MOCK_INVALID_RECIPIENT", "Mock: simulated invalid recipient");
     }
-    if (to === "mock-fail-line") {
+    if (body?.includes("MOCK_FAIL_LINE")) {
       throw new ChannelError("line", "MOCK_LINE_DOWN", "Mock: simulated line failure");
     }
-    if (to === "mock-fail-transient") {
+    if (body?.includes("MOCK_FAIL_TRANSIENT")) {
       throw new ChannelError("transient", "MOCK_TIMEOUT", "Mock: simulated transient error");
     }
-    if (to === "mock-fail-config") {
+    if (body?.includes("MOCK_FAIL_CONFIG")) {
       throw new ChannelError("config", "MOCK_AUTH_FAILED", "Mock: simulated config/auth error");
     }
     mockMessageCounter += 1;

@@ -6,9 +6,8 @@
 // same functions inside the web process instead, for local dev/a tiny pilot —
 // see startSendifyWorkersInProcess() below, called from src/index.js).
 //
-// Phase 0: only the maintenance worker + its noop-heartbeat scheduler exist.
-// Later phases add routeWorker, lineSendWorker (one per line), inboundWorker —
-// each gets started here too.
+// Phase 2 adds routeWorker and one lineSendWorker-backed Worker per line
+// (managed by lineWorkerManager's reconcile loop). inboundWorker is Phase 3.
 require("dotenv").config();
 const mongoose = require("mongoose");
 const {
@@ -16,6 +15,8 @@ const {
   startMaintenanceWorker,
   stopMaintenanceWorker,
 } = require("../services/sendify/workers/maintenanceWorker");
+const { startRouteWorker, stopRouteWorker } = require("../services/sendify/workers/routeWorker");
+const { startLineWorkerManager, stopLineWorkerManager } = require("../services/sendify/queue/lineWorkerManager");
 const { closeAllQueues } = require("../services/sendify/queue/queues");
 
 async function startSendifyWorkers() {
@@ -24,11 +25,15 @@ async function startSendifyWorkers() {
   require("../services/sendify/channels/registry").assertRegistryMatchesEnum();
   await startMaintenanceWorker();
   await ensureMaintenanceSchedulers();
+  startRouteWorker();
+  await startLineWorkerManager();
   console.log("🔧 Sendify workers started");
 }
 
 async function stopSendifyWorkers() {
   await stopMaintenanceWorker();
+  await stopRouteWorker();
+  await stopLineWorkerManager();
   await closeAllQueues();
 }
 
