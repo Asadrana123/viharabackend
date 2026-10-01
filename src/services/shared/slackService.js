@@ -184,7 +184,16 @@ async function notifyNewLead(lead = {}) {
  * Post a generic Sendify alert (line quarantined/offline/restored, a final
  * send failure, backlog over threshold, etc. — sendify-infra.md §8.4).
  * Same fire-and-forget contract as notifyNewLead: never throws, resolves
- * false if unconfigured or the post fails.
+ * false if unconfigured, disabled, or the post fails.
+ *
+ * Off by default (SENDIFY_ENABLE_SLACK_ALERTS must be exactly "true") —
+ * separate from whether a webhook URL happens to be configured. Also never
+ * falls back to SLACK_LEADS_WEBHOOK_URL (the real lead-notification
+ * channel): a first version did, and during Sendify dev/testing that meant
+ * every test opt-out/alert posted straight into the real leads Slack
+ * channel the team actually watches, since that var is set in this repo's
+ * local .env for its real purpose. Needs its OWN SLACK_SENDIFY_WEBHOOK_URL,
+ * never borrows another feature's.
  *
  * @param {object} params
  * @param {"info"|"warning"|"error"} [params.level]
@@ -192,9 +201,13 @@ async function notifyNewLead(lead = {}) {
  * @param {Array<{label:string,value:*}>} [params.fields]
  */
 async function notifySendifyAlert({ level = "info", title, fields = [] } = {}) {
-  const webhookUrl = process.env.SLACK_SENDIFY_WEBHOOK_URL || process.env.SLACK_LEADS_WEBHOOK_URL;
+  if (process.env.SENDIFY_ENABLE_SLACK_ALERTS !== "true") {
+    return false; // silent, deliberately — this is the expected state during dev/testing, not worth a log line every time
+  }
+
+  const webhookUrl = process.env.SLACK_SENDIFY_WEBHOOK_URL;
   if (!webhookUrl) {
-    console.warn("[slack] no Sendify webhook configured — skipping alert:", title);
+    console.warn("[slack] SENDIFY_ENABLE_SLACK_ALERTS is true but SLACK_SENDIFY_WEBHOOK_URL is unset — skipping alert:", title);
     return false;
   }
 
