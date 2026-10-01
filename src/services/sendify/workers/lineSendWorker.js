@@ -14,6 +14,7 @@ const { getAdapter } = require("../channels/registry");
 const capacity = require("../sendifyCapacityService");
 const { canSend } = require("../sendifyComplianceService");
 const { evaluateAndMaybeQuarantine } = require("../sendifyLineHealthService");
+const { publishEvent } = require("../sendifyEventsBus");
 
 async function rerouteExcluding(message, lineId) {
   message.excludeLineIds = [...(message.excludeLineIds || []), lineId];
@@ -101,6 +102,8 @@ async function processSendJob(lineId, job) {
         $inc: { "counts.outbound": 1 },
       }
     );
+
+    publishEvent({ type: "message.updated", messageId: String(message._id), conversationId: String(message.conversationId), status: message.status });
   } catch (err) {
     await capacity.recordFailed(line, reservationDay);
 
@@ -110,6 +113,7 @@ async function processSendJob(lineId, job) {
       message.failedAt = new Date();
       await message.save();
       await capacity.release(line, reservationDay, { wasReply: message.isReplyToInbound });
+      publishEvent({ type: "message.updated", messageId: String(message._id), conversationId: message.conversationId ? String(message.conversationId) : null, status: message.status });
       // Permanent — tells BullMQ not to retry this job at all.
       throw new UnrecoverableError(err.message);
     }

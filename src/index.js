@@ -14,6 +14,7 @@ const { startBrevoBackfillJob } = require('./jobs/brevoBackfillJob'); // ← ADD
 const { startAuctionCloseJob } = require('./jobs/auctionCloseJob');
 const { startZillowSyncJob } = require('./jobs/zillowSyncJob');
 const { startSendifyWorkersInProcess } = require('./workers/sendifyWorker');
+const { startSendifySocketBridge } = require('./socket/sendifySocketBridge');
 require('./passport');
 
 const PORT = process.env.PORT || 8000;
@@ -65,5 +66,11 @@ server.listen(PORT, () => {
     startSendifyWorkersInProcess().catch((err) => {
       console.error('[sendify] failed to start in-process workers:', err);
     });
+  }
+  // The socket bridge always belongs to the WEB process (it owns the live
+  // socket.io connections) regardless of where the workers themselves run —
+  // unlike the workers-in-process flag above, this doesn't depend on it.
+  if (process.env.SENDIFY_ENABLED === 'true') {
+    startSendifySocketBridge(io);
   }
 });

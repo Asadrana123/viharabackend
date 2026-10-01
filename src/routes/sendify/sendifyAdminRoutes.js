@@ -1,9 +1,9 @@
 // routes/sendify/sendifyAdminRoutes.js
 //
 // Mounted at /api/v1/sendify (see app.js). Admin-only, same pattern as
-// outboundRoutes.js. Phase 2 adds the real POST /messages(/bulk) (queued,
-// routed) and removes Phase 1's temporary dev/send-direct. Later phases add
-// conversations/contacts/lines-status-actions/stats per sendify-infra.md §8.1.
+// outboundRoutes.js. Phase 5 adds the remaining §8.1 read/write surface the
+// admin UI needs: conversations, contacts, message retry/cancel/reroute, and
+// the stats overview.
 const express = require("express");
 const router = express.Router();
 
@@ -13,7 +13,10 @@ const {
   pauseLine, resumeLine, quarantineLine, reinstateLine, retireLine, toggleDrainMode,
   startWarmup, testSend, getLineUsage, getLineEvents,
 } = require("../../controller/sendify/sendifyLineController");
-const { sendMessage, sendBulkMessages } = require("../../controller/sendify/sendifyMessageController");
+const { sendMessage, sendBulkMessages, listMessagesByStatus, retryMessage, cancelMessage, rerouteMessage } = require("../../controller/sendify/sendifyMessageController");
+const { listConversations, getConversationMessages, updateConversation } = require("../../controller/sendify/sendifyConversationController");
+const { getContact, updateContactConsent } = require("../../controller/sendify/sendifyContactController");
+const { getStatsOverview } = require("../../controller/sendify/sendifyStatsController");
 const { isAuthenticated, authorizeRoles } = require("../../middleware/auth");
 const { requireSendifyEnabled } = require("../../middleware/sendifyEnabled");
 
@@ -25,8 +28,21 @@ router.use(isAuthenticated, authorizeRoles("admin"));
 router.get("/health", health);
 router.use(requireSendifyEnabled);
 
+router.get("/stats/overview", getStatsOverview);
+
+router.get("/conversations", listConversations);
+router.get("/conversations/:id/messages", getConversationMessages);
+router.patch("/conversations/:id", updateConversation);
+
+router.get("/contacts/:id", getContact);
+router.patch("/contacts/:id/consent", updateContactConsent);
+
 router.post("/messages", sendMessage);
 router.post("/messages/bulk", sendBulkMessages);
+router.get("/messages", listMessagesByStatus);
+router.post("/messages/:id/retry", retryMessage);
+router.post("/messages/:id/cancel", cancelMessage);
+router.post("/messages/:id/reroute", rerouteMessage);
 
 router.post("/lines", createLine);
 router.get("/lines", listLines);

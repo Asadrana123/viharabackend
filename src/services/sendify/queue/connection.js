@@ -57,6 +57,22 @@ function bullmqConnection() {
   return { url: REDIS_URL, ...redisConnectionOptions() };
 }
 
+/**
+ * A dedicated client for Redis SUBSCRIBE mode (sendifySocketBridge's
+ * sendify:events listener) — a subscribing client can't run normal commands,
+ * so this can never be the shared getRedisClient() instance.
+ */
+let subscriberClient = null;
+function getSubscriberClient() {
+  if (!subscriberClient) {
+    subscriberClient = new Redis(REDIS_URL, redisConnectionOptions());
+    subscriberClient.on("error", (err) => {
+      console.error("[sendify] Redis subscriber client error:", err.message);
+    });
+  }
+  return subscriberClient;
+}
+
 async function pingRedis() {
   try {
     // Belt-and-suspenders timeout on top of the client's own connectTimeout —
@@ -71,4 +87,4 @@ async function pingRedis() {
   }
 }
 
-module.exports = { REDIS_URL, getRedisClient, bullmqConnection, pingRedis };
+module.exports = { REDIS_URL, getRedisClient, bullmqConnection, getSubscriberClient, pingRedis };

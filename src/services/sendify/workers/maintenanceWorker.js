@@ -21,6 +21,7 @@ const { getAdapter } = require("../channels/registry");
 const { evaluateAndMaybeQuarantine } = require("../sendifyLineHealthService");
 const { dayKey } = require("../sendifyCapacityService");
 const { notifySendifyAlert } = require("../../shared/slackService");
+const { publishEvent } = require("../sendifyEventsBus");
 
 const HEARTBEAT_KEY = "sendify:worker:lastHeartbeatAt";
 
@@ -99,6 +100,7 @@ async function runLineHealthSweep() {
     line.statusChangedBy = { kind: "system" };
     await line.save();
     await SendifyLineEvent.create({ lineId: line._id, type: "heartbeat-lost", from: fromStatus, to: "offline", reason: line.statusReason, actor: { kind: "system" } });
+    publishEvent({ type: "line.updated", lineId: String(line._id), status: "offline" });
     notifySendifyAlert({ level: "warning", title: "Line offline", fields: [{ label: "Line", value: line.name }] }).catch(() => {});
   }
 
@@ -119,6 +121,7 @@ async function runLineHealthSweep() {
     line.statusChangedBy = { kind: "system" };
     await line.save();
     await SendifyLineEvent.create({ lineId: line._id, type: "heartbeat-restored", from: "offline", to: restoreTo, actor: { kind: "system" } });
+    publishEvent({ type: "line.updated", lineId: String(line._id), status: restoreTo });
     notifySendifyAlert({ level: "info", title: "Line restored", fields: [{ label: "Line", value: line.name }] }).catch(() => {});
   }
 

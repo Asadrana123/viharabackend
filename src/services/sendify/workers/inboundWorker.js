@@ -16,6 +16,7 @@ const { bullmqConnection } = require("../queue/connection");
 const { QUEUE_NAMES, QUEUE_PREFIX, getRouteQueue } = require("../queue/queues");
 const capacity = require("../sendifyCapacityService");
 const { detectKeyword } = require("../sendifyComplianceService");
+const { publishEvent } = require("../sendifyEventsBus");
 const { MODEL_BY_TYPE } = require("../../leads/leadModelsByType");
 const { notifySendifyAlert } = require("../../shared/slackService");
 
@@ -249,6 +250,8 @@ async function handleMessageReceived(event, line) {
       await sendSystemReply(contact, line, "You're resubscribed to messages from Vihara.", "resubscribe-confirm");
     }
   }
+
+  publishEvent({ type: "message.inbound", conversationId: String(conversation._id), contactId: String(contact._id) });
 }
 
 async function handleMessageStatus(event) {
@@ -272,6 +275,7 @@ async function handleMessageStatus(event) {
     if (event.status === "delivered") message.deliveredAt = event.at || new Date();
   }
   await message.save();
+  publishEvent({ type: "message.updated", messageId: String(message._id), conversationId: message.conversationId ? String(message.conversationId) : null, status: message.status });
 }
 
 async function handleLineHeartbeat(event, line) {

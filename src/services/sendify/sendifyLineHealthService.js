@@ -18,6 +18,7 @@ const SendifyLine = require("../../model/sendify/sendifyLineModel");
 const SendifyMessage = require("../../model/sendify/sendifyMessageModel");
 const SendifyLineEvent = require("../../model/sendify/sendifyLineEventModel");
 const { notifySendifyAlert } = require("../shared/slackService");
+const { publishEvent } = require("./sendifyEventsBus");
 
 const CONSECUTIVE_FAILURE_THRESHOLD = Number(process.env.SENDIFY_HEALTH_CONSECUTIVE_FAILURES || 5);
 const FAILURE_RATE_WINDOW = Number(process.env.SENDIFY_HEALTH_FAILURE_RATE_WINDOW || 50);
@@ -81,6 +82,8 @@ async function evaluateAndMaybeQuarantine(line, reason) {
   });
 
   await require("./sendifyLineDrainService").drainLine(line._id);
+
+  publishEvent({ type: "line.updated", lineId: String(line._id), status: line.status });
 
   notifySendifyAlert({
     level: "error",
