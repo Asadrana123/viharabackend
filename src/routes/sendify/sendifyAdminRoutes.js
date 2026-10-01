@@ -11,11 +11,15 @@ const { health } = require("../../controller/sendify/sendifyAdminController");
 const { createLine, listLines, getLine, updateLine } = require("../../controller/sendify/sendifyLineController");
 const { sendMessage, sendBulkMessages } = require("../../controller/sendify/sendifyMessageController");
 const { isAuthenticated, authorizeRoles } = require("../../middleware/auth");
+const { requireSendifyEnabled } = require("../../middleware/sendifyEnabled");
 
 router.use(isAuthenticated, authorizeRoles("admin"));
 
-// Literal paths before /lines/:id so "health"/"messages" never get swallowed as an id.
+// /health stays reachable even when disabled — it's the one endpoint whose
+// whole job is reporting that state, with more detail than the generic 503
+// below. Every other route needs the feature actually on.
 router.get("/health", health);
+router.use(requireSendifyEnabled);
 
 router.post("/messages", sendMessage);
 router.post("/messages/bulk", sendBulkMessages);

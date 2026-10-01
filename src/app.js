@@ -69,6 +69,7 @@ const leadMatchRoutes = require("./routes/leads/leadMatchRoutes");
 // controller/sendify/sendifyAdminController.js). Does not touch/import
 // anything under routes/outbound or routes/calling. See sendify-infra.md.
 const sendifyAdminRoutes = require("./routes/sendify/sendifyAdminRoutes");
+const sendifyWebhookRoutes = require("./routes/sendify/sendifyWebhookRoutes");
 // Middleware
 app.use(cookieParser());
 app.use(cors(expressCorsOptions));
@@ -142,6 +143,7 @@ app.use("/api/v1/enrichment", enrichmentRoutes);
 app.use("/api/v1/marketing-engine", marketingEngineRoutes);
 app.use("/api/v1/lead-match", leadMatchRoutes);
 app.use("/api/v1/sendify", sendifyAdminRoutes);
+app.use("/api/webhooks/sendify", sendifyWebhookRoutes);
 
 // D7 (sendify-infra.md §2): fail loudly at boot if CHANNEL_TYPES has an enum
 // entry with no registered adapter, rather than discovering it the first

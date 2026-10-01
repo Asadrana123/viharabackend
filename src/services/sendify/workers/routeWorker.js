@@ -56,8 +56,16 @@ async function processRouteJob(job) {
     return;
   }
 
-  // Gate #2 — a STOP could have arrived between enqueue and now.
-  const complianceResult = canSend(contact, { isReplyToInbound: message.isReplyToInbound, origin: message.origin });
+  // Gate #2 — a STOP could have arrived between enqueue and now. Pass
+  // contact.lastInboundAt as context so the conversational-reply exemption
+  // (§6.3) can actually fire — found this missing entirely: without it, a
+  // genuine timely reply to an inbound message had no way to pass the gate
+  // through the real pipeline, only in a direct unit-style call to canSend().
+  const complianceResult = canSend(
+    contact,
+    { isReplyToInbound: message.isReplyToInbound, origin: message.origin },
+    { lastInboundAt: contact.lastInboundAt }
+  );
   if (!complianceResult.allowed) {
     message.status = "blocked";
     message.error = { kind: complianceResult.errorKind, message: complianceResult.reason };

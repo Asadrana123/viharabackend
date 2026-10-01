@@ -180,4 +180,44 @@ async function notifyNewLead(lead = {}) {
   }
 }
 
-module.exports = { notifyNewLead };
+/**
+ * Post a generic Sendify alert (line quarantined/offline/restored, a final
+ * send failure, backlog over threshold, etc. — sendify-infra.md §8.4).
+ * Same fire-and-forget contract as notifyNewLead: never throws, resolves
+ * false if unconfigured or the post fails.
+ *
+ * @param {object} params
+ * @param {"info"|"warning"|"error"} [params.level]
+ * @param {string} params.title
+ * @param {Array<{label:string,value:*}>} [params.fields]
+ */
+async function notifySendifyAlert({ level = "info", title, fields = [] } = {}) {
+  const webhookUrl = process.env.SLACK_SENDIFY_WEBHOOK_URL || process.env.SLACK_LEADS_WEBHOOK_URL;
+  if (!webhookUrl) {
+    console.warn("[slack] no Sendify webhook configured — skipping alert:", title);
+    return false;
+  }
+
+  const emoji = { info: "ℹ️", warning: "⚠️", error: "🔴" }[level] || "ℹ️";
+  const blocks = [
+    { type: "header", text: { type: "plain_text", text: `${emoji} Sendify: ${title}`, emoji: true } },
+  ];
+  const sectionFields = fields
+    .filter((f) => f && f.value !== undefined && f.value !== null && String(f.value).trim() !== "")
+    .slice(0, 10)
+    .map((f) => ({ type: "mrkdwn", text: `*${f.label}:*\n${f.value}` }));
+  if (sectionFields.length) {
+    blocks.push({ type: "section", fields: sectionFields });
+  }
+  blocks.push({ type: "context", elements: [{ type: "mrkdwn", text: `📅 ${formatTimestamp(new Date())}` }] });
+
+  try {
+    await postToSlack(webhookUrl, { text: `Sendify: ${title}`, blocks });
+    return true;
+  } catch (e) {
+    console.error("[slack] Sendify alert failed:", e.message);
+    return false;
+  }
+}
+
+module.exports = { notifyNewLead, notifySendifyAlert };

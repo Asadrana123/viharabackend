@@ -137,6 +137,11 @@ async function recordFailed(line, day) {
   await SendifyLineUsage.updateOne({ lineId: line._id, day }, { $inc: { failed: 1 } });
 }
 
+/** An inbound reply arrived on this line — feeds the reply-ratio health metric (Phase 4). Always today's day (inbound never reserves capacity, so there's no reservation day to pass). */
+async function recordInbound(line) {
+  await SendifyLineUsage.updateOne({ lineId: line._id, day: dayKey() }, { $inc: { inbound: 1 } }, { upsert: true });
+}
+
 async function remainingToday(line) {
   const cap = effectiveDailyCap(line);
   const day = dayKey();
@@ -152,5 +157,6 @@ module.exports = {
   release,
   recordSent,
   recordFailed,
+  recordInbound,
   remainingToday,
 };

@@ -70,7 +70,32 @@ module.exports = {
   },
 
   parseWebhook({ body }) {
-    // Expects { from, to, body: text, providerEventId? } from the dev mock-inbound endpoint.
+    // Simulates all three NormalizedEvent types (§5.2) for test coverage —
+    // a real provider sends one event type per webhook, same here. Default
+    // (no `type` field) is "message.received" for backward compat with
+    // every test call written before status/heartbeat simulation existed.
+    const type = body.type || "message.received";
+
+    if (type === "message.status") {
+      // Expects { type:"message.status", providerMessageId, status, errorCode?, errorMessage? }.
+      return [
+        {
+          type: "message.status",
+          providerEventId: `mock-status-${Date.now()}`,
+          providerMessageId: body.providerMessageId,
+          status: body.status,
+          errorCode: body.errorCode,
+          errorMessage: body.errorMessage,
+          at: new Date(),
+        },
+      ];
+    }
+
+    if (type === "line.heartbeat") {
+      return [{ type: "line.heartbeat", providerEventId: `mock-hb-${Date.now()}`, at: new Date(), device: body.device }];
+    }
+
+    // message.received — expects { from, to, body: text, providerEventId? }.
     return [
       {
         type: "message.received",

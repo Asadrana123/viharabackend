@@ -38,6 +38,17 @@ const sendifyMessageSchema = new mongoose.Schema(
 
     origin: {
       kind: { type: String, enum: ["manual", "bulk", "automation", "system", "api"], default: "manual" },
+      // Which system-generated reply this is — "stop-confirm" | "help" |
+      // "resubscribe-confirm" (inboundWorker.js). sendifyComplianceService's
+      // canSend() checks this to let a kind:"system" reply through even to an
+      // opted-out contact. Mongoose silently drops unrecognized subdocument
+      // fields on save (strict mode default) — this was missing from the
+      // schema entirely until found directly: every system reply was saving
+      // successfully but losing templateKey in the process, which made the
+      // compliance bypass check fail and the reply itself come back blocked
+      // (by the very opt-out it existed to confirm), with no error anywhere
+      // to point at the cause.
+      templateKey: { type: String },
       batchId: { type: String },
       campaignId: { type: mongoose.Schema.Types.ObjectId },
       replyToMessageId: { type: mongoose.Schema.Types.ObjectId, ref: "sendifyMessageModel" },

@@ -12,6 +12,7 @@ const SendifyConversation = require("../../../model/sendify/sendifyConversationM
 const { ROUTABLE_STATUSES } = SendifyLine;
 const { getAdapter } = require("../channels/registry");
 const capacity = require("../sendifyCapacityService");
+const { canSend } = require("../sendifyComplianceService");
 
 async function rerouteExcluding(message, lineId) {
   message.excludeLineIds = [...(message.excludeLineIds || []), lineId];
@@ -43,8 +44,21 @@ async function processSendJob(lineId, job) {
   const contact = await SendifyContact.findById(message.contactId);
   const line = await SendifyLine.findById(lineId).select("+credentials.iv +credentials.tag +credentials.ciphertext");
 
-  // GATE #3 — opt-out could have arrived between routing and this send.
-  if (contact?.optOut?.isOptedOut) {
+  // GATE #3 — opt-out (or anything else) could have changed between routing
+  // and this send. Goes through the SAME canSend() as gates #1/#2, not a
+  // separate hardcoded opt-out check — a standalone `if (optOut) cancel`
+  // here had no system-bypass awareness at all, so a stop-confirm reply
+  // (deliberately sent to a now-opted-out contact, by design) sailed through
+  // gates #1/#2 only to get silently cancelled right here, at the last
+  // possible step, with no error anywhere pointing at why. One gate
+  // definition, reused three times, is what actually keeps that from
+  // happening again.
+  const complianceResult = canSend(
+    contact,
+    { isReplyToInbound: message.isReplyToInbound, origin: message.origin },
+    { lastInboundAt: contact?.lastInboundAt }
+  );
+  if (!complianceResult.allowed) {
     message.status = "cancelled";
     await message.save();
     await capacity.release(line, reservationDay, { wasReply: message.isReplyToInbound });

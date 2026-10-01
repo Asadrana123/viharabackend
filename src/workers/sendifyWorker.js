@@ -7,7 +7,7 @@
 // see startSendifyWorkersInProcess() below, called from src/index.js).
 //
 // Phase 2 adds routeWorker and one lineSendWorker-backed Worker per line
-// (managed by lineWorkerManager's reconcile loop). inboundWorker is Phase 3.
+// (managed by lineWorkerManager's reconcile loop). Phase 3 adds inboundWorker.
 require("dotenv").config();
 const mongoose = require("mongoose");
 const {
@@ -16,6 +16,7 @@ const {
   stopMaintenanceWorker,
 } = require("../services/sendify/workers/maintenanceWorker");
 const { startRouteWorker, stopRouteWorker } = require("../services/sendify/workers/routeWorker");
+const { startInboundWorker, stopInboundWorker } = require("../services/sendify/workers/inboundWorker");
 const { startLineWorkerManager, stopLineWorkerManager } = require("../services/sendify/queue/lineWorkerManager");
 const { closeAllQueues } = require("../services/sendify/queue/queues");
 
@@ -26,6 +27,7 @@ async function startSendifyWorkers() {
   await startMaintenanceWorker();
   await ensureMaintenanceSchedulers();
   startRouteWorker();
+  startInboundWorker();
   await startLineWorkerManager();
   console.log("🔧 Sendify workers started");
 }
@@ -33,6 +35,7 @@ async function startSendifyWorkers() {
 async function stopSendifyWorkers() {
   await stopMaintenanceWorker();
   await stopRouteWorker();
+  await stopInboundWorker();
   await stopLineWorkerManager();
   await closeAllQueues();
 }

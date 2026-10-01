@@ -46,7 +46,8 @@ async function enqueueOutbound({ to: rawTo, body, origin, channelPolicy, isReply
     });
   }
 
-  const complianceResult = canSend(contact, { isReplyToInbound, origin });
+  // See routeWorker.js's matching call for why lastInboundAt is passed here too.
+  const complianceResult = canSend(contact, { isReplyToInbound, origin }, { lastInboundAt: contact.lastInboundAt });
 
   const message = await SendifyMessage.create({
     direction: "out",

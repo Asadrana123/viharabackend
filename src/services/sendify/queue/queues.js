@@ -5,10 +5,10 @@
 // per-request, which opens a new Redis connection per call; sendify-infra.md
 // §0 item 7 explicitly calls this out as the anti-pattern to avoid).
 //
-// Phase 0: sendify-maintenance. Phase 2 adds sendify-route + one
+// Phase 0: sendify-maintenance. Phase 2: sendify-route + one
 // sendify-line-<lineId> queue per line (created on demand via
-// getLineQueue, cached, never recreated per-request). sendify-inbound
-// is Phase 3 — see sendify-infra.md §4.1/§4.2.
+// getLineQueue, cached, never recreated per-request). Phase 3:
+// sendify-inbound. See sendify-infra.md §4.1/§4.2.
 const { Queue } = require("bullmq");
 const { bullmqConnection } = require("./connection");
 
@@ -17,8 +17,7 @@ const QUEUE_PREFIX = "vihara"; // namespaces Sendify's keys from any other proje
 const QUEUE_NAMES = {
   MAINTENANCE: "sendify-maintenance",
   ROUTE: "sendify-route",
-  // Added in Phase 3:
-  // INBOUND: "sendify-inbound",
+  INBOUND: "sendify-inbound",
 };
 
 const DEFAULT_QUEUE_OPTS = {
@@ -38,6 +37,7 @@ const DEFAULT_QUEUE_OPTS = {
 const RETENTION = { removeOnComplete: { age: 86400, count: 5000 }, removeOnFail: { age: 7 * 86400 } };
 const ROUTE_JOB_OPTS = { attempts: 5, backoff: { type: "exponential", delay: 10_000 }, ...RETENTION };
 const LINE_JOB_OPTS = { attempts: 4, backoff: { type: "exponential", delay: 30_000 }, ...RETENTION };
+const INBOUND_JOB_OPTS = { attempts: 5, backoff: { type: "exponential", delay: 5_000 }, ...RETENTION };
 
 // BullMQ v5 rejects ":" in queue names (sendify-infra.md §4.2) — lineId is a
 // Mongo ObjectId hex string, so this is already safe without any escaping.
@@ -59,6 +59,14 @@ function getRouteQueue() {
   return routeQueue;
 }
 
+let inboundQueue = null;
+function getInboundQueue() {
+  if (!inboundQueue) {
+    inboundQueue = new Queue(QUEUE_NAMES.INBOUND, { ...DEFAULT_QUEUE_OPTS, defaultJobOptions: INBOUND_JOB_OPTS });
+  }
+  return inboundQueue;
+}
+
 const lineQueues = new Map(); // lineId (string) -> Queue instance
 function getLineQueue(lineId) {
   const key = String(lineId);
@@ -72,6 +80,7 @@ function getLineQueue(lineId) {
 async function closeAllQueues() {
   if (maintenanceQueue) await maintenanceQueue.close();
   if (routeQueue) await routeQueue.close();
+  if (inboundQueue) await inboundQueue.close();
   for (const queue of lineQueues.values()) {
     await queue.close();
   }
@@ -85,6 +94,7 @@ module.exports = {
   lineQueueName,
   getMaintenanceQueue,
   getRouteQueue,
+  getInboundQueue,
   getLineQueue,
   closeAllQueues,
 };
