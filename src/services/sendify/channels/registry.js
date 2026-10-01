@@ -8,6 +8,7 @@
 const { CHANNEL_TYPES } = require("../../../model/sendify/sendifyLineModel");
 
 const imessageBluebubblesAdapter = require("./imessageBluebubbles/adapter");
+const androidSmsAdapter = require("./androidSmsGateway/adapter");
 
 // "mock" is deliberately not a normal channel: it only loads when explicitly
 // opted into, and assertRegistryMatchesEnum() below treats its absence as
@@ -18,6 +19,7 @@ const mockAdapter = MOCK_ENABLED ? require("./mock/adapter") : null;
 
 const adapters = {
   "imessage-bluebubbles": imessageBluebubblesAdapter,
+  "android-sms": androidSmsAdapter,
 };
 if (mockAdapter) {
   adapters.mock = mockAdapter;

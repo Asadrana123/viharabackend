@@ -1,18 +1,14 @@
 // model/sendify/sendifyLineModel.js
 //
 // The sending-identity pool. A "line" is one channel-specific identity capable
-// of sending/receiving messages — today that means one Mac + one dedicated
-// Apple ID running BlueBubbles for iMessage (channelType "imessage-bluebubbles");
-// "android-sms" (a phone + SIM running android-sms-gateway) is a later fallback
-// channel, stubbed in the registry but not implemented yet — see
-// /Users/adi/projects/work/vihara/sendify-infra.md §3.1/§5 for the full design.
+// of sending/receiving messages — a Mac + dedicated Apple ID running
+// BlueBubbles for iMessage (channelType "imessage-bluebubbles"), or (Phase 6)
+// an Android phone + SIM running android-sms-gateway (channelType
+// "android-sms") as the real-SMS fallback for contacts iMessage can't reach —
+// see /Users/adi/projects/work/vihara/sendify-infra.md §3.1/§5 for the full design.
 const mongoose = require("mongoose");
 
-// "android-sms" is added here in Phase 6 (sendify-infra.md §5.4) when the
-// SMS fallback adapter actually gets built — not before, so the registry's
-// boot assertion (every enum entry needs an adapter) can't pass against a
-// channel nobody's implemented.
-const CHANNEL_TYPES = ["imessage-bluebubbles", "mock"];
+const CHANNEL_TYPES = ["imessage-bluebubbles", "android-sms", "mock"];
 const LINE_STATUSES = ["provisioning", "warming", "active", "paused", "offline", "quarantined", "retired"];
 const ROUTABLE_STATUSES = ["warming", "active"];
 
