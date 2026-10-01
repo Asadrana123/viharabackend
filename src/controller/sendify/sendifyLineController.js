@@ -1,13 +1,15 @@
 // controller/sendify/sendifyLineController.js
 //
-// Phase 1 scope: plain CRUD only. Status-transition actions (pause, resume,
-// quarantine, start-warmup, etc. — sendify-infra.md §7.4/§7.1) come in
-// Phase 4 once there's a router/health-sweep that actually cares about them.
+// Phase 1: plain CRUD. Phase 4 adds the status-transition actions
+// (sendify-infra.md §7.1/§7.4) and usage/events read endpoints (§8.1).
 const crypto = require("crypto");
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const SendifyLine = require("../../model/sendify/sendifyLineModel");
+const SendifyLineEvent = require("../../model/sendify/sendifyLineEventModel");
+const SendifyLineUsage = require("../../model/sendify/sendifyLineUsageModel");
 const { getAdapter } = require("../../services/sendify/channels/registry");
-const { encryptCredentials } = require("../../utils/secretBox");
+const { encryptCredentials, decryptCredentials } = require("../../utils/secretBox");
+const { drainLine } = require("../../services/sendify/sendifyLineDrainService");
 
 /**
  * POST /api/v1/sendify/lines
@@ -99,4 +101,130 @@ const updateLine = catchAsyncError(async (req, res) => {
   return res.status(200).json({ success: true, line });
 });
 
-module.exports = { createLine, listLines, getLine, updateLine };
+/** Shared status transition: writes line.status + a sendifyLineEvent audit row. Does NOT validate the transition is sensible — each action handler below decides that. */
+async function setLineStatus(line, toStatus, reason, req) {
+  const fromStatus = line.status;
+  line.status = toStatus;
+  line.statusReason = reason || "";
+  line.statusChangedAt = new Date();
+  line.statusChangedBy = { kind: "admin", adminId: req.user?._id, adminName: req.user?.name };
+  await line.save();
+  await SendifyLineEvent.create({
+    lineId: line._id,
+    type: "status-change",
+    from: fromStatus,
+    to: toStatus,
+    reason,
+    actor: { kind: "admin", adminId: req.user?._id, adminName: req.user?.name },
+  });
+}
+
+/** POST /api/v1/sendify/lines/:id/pause */
+const pauseLine = catchAsyncError(async (req, res) => {
+  const line = await SendifyLine.findById(req.params.id);
+  if (!line) return res.status(404).json({ success: false, message: "Line not found" });
+  await setLineStatus(line, "paused", req.body?.reason, req);
+  return res.status(200).json({ success: true, line: line.toObject() });
+});
+
+/** POST /api/v1/sendify/lines/:id/resume — back to the status it was in before pausing, defaulting to "active". */
+const resumeLine = catchAsyncError(async (req, res) => {
+  const line = await SendifyLine.findById(req.params.id);
+  if (!line) return res.status(404).json({ success: false, message: "Line not found" });
+  if (line.status !== "paused") {
+    return res.status(400).json({ success: false, message: `Line is "${line.status}", not "paused" — nothing to resume` });
+  }
+  const lastPause = await SendifyLineEvent.findOne({ lineId: line._id, type: "status-change", to: "paused" }).sort({ createdAt: -1 });
+  const restoreTo = lastPause?.from && ["warming", "active"].includes(lastPause.from) ? lastPause.from : "active";
+  await setLineStatus(line, restoreTo, "resumed by admin", req);
+  return res.status(200).json({ success: true, line: line.toObject() });
+});
+
+/** POST /api/v1/sendify/lines/:id/quarantine — manual quarantine (auto-quarantine goes through sendifyLineHealthService instead, not this endpoint). */
+const quarantineLine = catchAsyncError(async (req, res) => {
+  const line = await SendifyLine.findById(req.params.id);
+  if (!line) return res.status(404).json({ success: false, message: "Line not found" });
+  await setLineStatus(line, "quarantined", req.body?.reason || "manually quarantined by admin", req);
+  const drainResult = await drainLine(line._id);
+  return res.status(200).json({ success: true, line: line.toObject(), ...drainResult });
+});
+
+/** POST /api/v1/sendify/lines/:id/reinstate — the ONLY way out of quarantine (§7.4: "manual only"). Re-enters warming at a reduced (restarted) schedule. */
+const reinstateLine = catchAsyncError(async (req, res) => {
+  const line = await SendifyLine.findById(req.params.id);
+  if (!line) return res.status(404).json({ success: false, message: "Line not found" });
+  if (line.status !== "quarantined") {
+    return res.status(400).json({ success: false, message: `Line is "${line.status}", not "quarantined" — nothing to reinstate` });
+  }
+  line.warmup.enabled = true;
+  line.warmup.startedAt = new Date();
+  line.health = { ...line.health, consecutiveFailures: 0, failureRateRecent: 0 };
+  await setLineStatus(line, "warming", "reinstated by admin, warm-up restarted", req);
+  return res.status(200).json({ success: true, line: line.toObject() });
+});
+
+/** POST /api/v1/sendify/lines/:id/retire — permanent, drains and stops routing to this line for good. */
+const retireLine = catchAsyncError(async (req, res) => {
+  const line = await SendifyLine.findById(req.params.id);
+  if (!line) return res.status(404).json({ success: false, message: "Line not found" });
+  await setLineStatus(line, "retired", req.body?.reason || "retired by admin", req);
+  const drainResult = await drainLine(line._id);
+  return res.status(200).json({ success: true, line: line.toObject(), ...drainResult });
+});
+
+/** POST /api/v1/sendify/lines/:id/drain — toggles routing.acceptsNewContacts off without changing status (§7.1 "drain mode": sticky conversations keep working, no new ones start). */
+const toggleDrainMode = catchAsyncError(async (req, res) => {
+  const line = await SendifyLine.findById(req.params.id);
+  if (!line) return res.status(404).json({ success: false, message: "Line not found" });
+  line.routing.acceptsNewContacts = req.body?.acceptsNewContacts !== undefined ? !!req.body.acceptsNewContacts : !line.routing.acceptsNewContacts;
+  await line.save();
+  return res.status(200).json({ success: true, line: line.toObject() });
+});
+
+/** POST /api/v1/sendify/lines/:id/start-warmup — §7.1 step 5, after a successful test send. */
+const startWarmup = catchAsyncError(async (req, res) => {
+  const line = await SendifyLine.findById(req.params.id);
+  if (!line) return res.status(404).json({ success: false, message: "Line not found" });
+  line.warmup.enabled = true;
+  line.warmup.startedAt = new Date();
+  await setLineStatus(line, "warming", "warm-up started by admin", req);
+  return res.status(200).json({ success: true, line: line.toObject() });
+});
+
+/** POST /api/v1/sendify/lines/:id/test-send — §7.1 step 5, a real send bypassing the queue/compliance gate entirely (admin-to-self verification only, never a real contact). */
+const testSend = catchAsyncError(async (req, res) => {
+  const { to, body } = req.body;
+  if (!to || !body) return res.status(400).json({ success: false, message: "to and body are required" });
+
+  const line = await SendifyLine.findById(req.params.id).select("+credentials.iv +credentials.tag +credentials.ciphertext");
+  if (!line) return res.status(404).json({ success: false, message: "Line not found" });
+
+  const adapter = getAdapter(line.channelType);
+  try {
+    const credentials = line.credentials?.ciphertext ? decryptCredentials(line.credentials) : undefined;
+    const result = await adapter.send({ line, credentials, to, body, clientMessageId: `test-${Date.now()}` });
+    return res.status(200).json({ success: true, result });
+  } catch (err) {
+    return res.status(502).json({ success: false, message: err.message, kind: err.kind });
+  }
+});
+
+/** GET /api/v1/sendify/lines/:id/usage?days=30 */
+const getLineUsage = catchAsyncError(async (req, res) => {
+  const days = Math.min(90, Math.max(1, Number(req.query.days) || 30));
+  const since = require("luxon").DateTime.now().minus({ days }).toFormat("yyyy-LL-dd");
+  const usage = await SendifyLineUsage.find({ lineId: req.params.id, day: { $gte: since } }).sort({ day: 1 });
+  return res.status(200).json({ success: true, usage });
+});
+
+/** GET /api/v1/sendify/lines/:id/events */
+const getLineEvents = catchAsyncError(async (req, res) => {
+  const events = await SendifyLineEvent.find({ lineId: req.params.id }).sort({ createdAt: -1 }).limit(200);
+  return res.status(200).json({ success: true, events });
+});
+
+module.exports = {
+  createLine, listLines, getLine, updateLine,
+  pauseLine, resumeLine, quarantineLine, reinstateLine, retireLine, toggleDrainMode,
+  startWarmup, testSend, getLineUsage, getLineEvents,
+};

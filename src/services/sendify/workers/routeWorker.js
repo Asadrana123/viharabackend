@@ -81,9 +81,14 @@ async function processRouteJob(job) {
     return;
   }
 
-  const line = await selectLine(message, contact);
+  // waitingOnStickyLine: the contact's sticky line for this channel is the
+  // right answer but it's over budget right now — stay stuck to it and wait,
+  // rather than silently switching the contact to a different number
+  // mid-conversation (sendifyRouter.pickInChannel's "WAIT" case, §7.2).
+  const { line, waitingOnStickyLine } = await selectLine(message, contact);
   if (!line) {
     message.status = "waiting-capacity";
+    message.statusHistory.push({ status: "waiting-capacity", detail: waitingOnStickyLine ? "sticky line over budget" : "no routable line with capacity" });
     await message.save();
     await requeueRoute(message._id, WAITING_CAPACITY_RETRY_MS);
     return;

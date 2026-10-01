@@ -65,6 +65,7 @@ const sendifyLineSchema = new mongoose.Schema(
       consecutiveFailures: { type: Number, default: 0 },
       failureRateRecent: { type: Number },
       replyRatio7d: { type: Number },
+      sentLast7d: { type: Number }, // rollup paired with replyRatio7d (daily-rollover job) — the volume guard for the §7.4 soft throttle
       device: {
         batteryPct: { type: Number },
         signal: { type: Number },

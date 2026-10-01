@@ -109,7 +109,17 @@ module.exports = {
     ];
   },
 
-  async healthCheck() {
+  // Controllable via line.config.simulateHealthCheckFailure — needed to test
+  // the heartbeat-staleness -> offline transition (sendify-infra.md §7.4),
+  // which requires BOTH a stale heartbeat AND a failing healthCheck() before
+  // taking a line offline. A hardcoded always-true healthCheck (the original
+  // version of this method) made that transition untestable against the
+  // mock channel at all — there was no way to ever produce the "failing"
+  // half of the condition.
+  async healthCheck({ line }) {
+    if (line?.config?.simulateHealthCheckFailure) {
+      return { ok: false, details: "mock: simulated health check failure (line.config.simulateHealthCheckFailure)" };
+    }
     return { ok: true, details: "mock channel is always healthy" };
   },
 

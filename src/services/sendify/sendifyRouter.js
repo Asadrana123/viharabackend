@@ -1,54 +1,153 @@
 // services/sendify/sendifyRouter.js
 //
-// Phase 2 scope: a deliberately minimal selectLine — "least-used-today among
-// routable lines of the requested channel(s)," same idea as
-// callerNumberPoolService's rotation, no stickiness yet. Phase 4
-// (sendify-infra.md §7.2) replaces this with the full version: sticky lines
-// per contact, weighted scoring, WAIT-don't-switch-mid-conversation. Kept in
-// its own file now specifically so that upgrade is a body-swap, not a new
-// call site everywhere routeWorker uses it.
+// The full version (sendify-infra.md §7.2) — Phase 2 shipped a minimal
+// least-used-today selectLine with no stickiness; this replaces it.
+// Stickiness: a contact talking to the same line twice keeps talking to
+// that line (continuity matters more than a few hours' latency — if the
+// sticky line is just over budget, we WAIT for it rather than switching
+// numbers mid-conversation). A sticky line that's gone bad (quarantined/
+// retired) is detected lazily here too, not just during an explicit drain.
 const SendifyLine = require("../../model/sendify/sendifyLineModel");
-const { ROUTABLE_STATUSES } = SendifyLine;
+const { ROUTABLE_STATUSES, CHANNEL_TYPES } = SendifyLine;
+const SendifyConversation = require("../../model/sendify/sendifyConversationModel");
 const { getAdapter } = require("./channels/registry");
-const { remainingToday } = require("./sendifyCapacityService");
+const capacity = require("./sendifyCapacityService");
+
+const REACHABILITY_STALE_DAYS = 30;
 
 /** Resolves message.channelPolicy to an ordered list of channel types to try. */
 function resolveChannelCandidates(channelPolicy) {
   if (channelPolicy?.channels?.length) {
     return channelPolicy.channels;
   }
-  // No explicit channels -> every channel the registry knows about except "mock"
-  // (mock is opt-in only, never a silent default for a real send).
-  const { CHANNEL_TYPES } = SendifyLine;
+  // No explicit channels -> every registered channel except "mock" (opt-in
+  // only, never a silent default for a real send).
   return CHANNEL_TYPES.filter((type) => type !== "mock");
 }
 
-/**
- * @param {object} message - a sendifyMessageModel doc/object: needs channelPolicy, excludeLineIds
- * @param {object} contact - a sendifyContactModel doc (unused for routing yet — stickiness is Phase 4)
- * @returns {Promise<object|null>} the chosen sendifyLineModel doc, or null if nothing has room right now
- */
-async function selectLine(message, contact) {
-  const channels = resolveChannelCandidates(message.channelPolicy);
-  const excludeLineIds = message.excludeLineIds || [];
+/** True/false/null per the adapter's own checkReachability contract; refreshes a stale or never-checked cache entry. Only called for channels that don't reach every US number (capabilities.reachesAllUsNumbers === false). */
+async function resolveReachability(contact, channelType, adapter) {
+  const cached = contact.channelReachability?.find((r) => r.channelType === channelType);
+  const isStale = !cached || !cached.checkedAt || Date.now() - new Date(cached.checkedAt).getTime() > REACHABILITY_STALE_DAYS * 24 * 60 * 60 * 1000;
 
-  for (const channelType of channels) {
-    const lines = await SendifyLine.find({
-      channelType,
-      status: { $in: ROUTABLE_STATUSES },
-      "routing.acceptsNewContacts": true,
-      _id: { $nin: excludeLineIds },
-    });
-    if (!lines.length) continue;
+  if (!isStale) return cached.reachable;
+  if (!adapter.checkReachability) return cached?.reachable ?? null;
 
-    const scored = await Promise.all(
-      lines.map(async (line) => ({ line, remaining: await remainingToday(line) }))
-    );
-    const eligible = scored.filter((s) => s.remaining > 0).sort((a, b) => b.remaining - a.remaining);
-    if (eligible.length) return eligible[0].line;
+  let reachable = null;
+  try {
+    reachable = await adapter.checkReachability({ to: contact.phoneE164 });
+  } catch {
+    reachable = cached?.reachable ?? null; // a check failure falls back to the last known value, not an outright "no"
   }
 
-  return null;
+  if (cached) {
+    cached.reachable = reachable;
+    cached.checkedAt = new Date();
+  } else {
+    contact.channelReachability = contact.channelReachability || [];
+    contact.channelReachability.push({ channelType, reachable, checkedAt: new Date() });
+  }
+  await contact.save();
+
+  return reachable;
+}
+
+/**
+ * Sticky-first, then least-used-today scoring among the rest.
+ * @returns {Promise<"WAIT"|object|null>} a line document, "WAIT" (a specific
+ *   sticky line is the right answer but it's over budget right now — don't
+ *   fall through to a different line), or null (nothing usable at all on
+ *   this channel).
+ */
+async function pickInChannel(channel, message, contact) {
+  const stickyLineId = contact.stickyLines?.get(channel);
+
+  if (stickyLineId) {
+    const stickyLine = await SendifyLine.findById(stickyLineId);
+    if (stickyLine && ROUTABLE_STATUSES.includes(stickyLine.status) && !(message.excludeLineIds || []).some((id) => String(id) === String(stickyLineId))) {
+      const remaining = await capacity.remainingForSend(stickyLine, { isReply: message.isReplyToInbound });
+      if (remaining > 0) return stickyLine;
+      return "WAIT"; // over budget right now — do not switch numbers mid-conversation
+    }
+
+    // Sticky line is gone (quarantined/retired/deleted) or explicitly
+    // excluded for this message — mark the conversation and clear the
+    // stale pointer so future routing doesn't keep trying it, then fall
+    // through to picking a fresh line.
+    if (stickyLine && !ROUTABLE_STATUSES.includes(stickyLine.status)) {
+      await SendifyConversation.updateOne(
+        { contactId: contact._id, lineId: stickyLineId },
+        { $set: { lineRetired: true } }
+      );
+      contact.stickyLines.delete(channel);
+      await contact.save();
+    }
+  }
+
+  const candidates = await SendifyLine.find({
+    channelType: channel,
+    status: { $in: ROUTABLE_STATUSES },
+    "routing.acceptsNewContacts": true,
+    _id: { $nin: message.excludeLineIds || [] },
+  });
+  if (!candidates.length) return null;
+
+  const scored = [];
+  for (const line of candidates) {
+    const remaining = await capacity.remainingForSend(line, { isReply: message.isReplyToInbound });
+    if (remaining <= 0) continue;
+
+    // A brand-new (contact, line) pairing draws on the new-recipient-per-hour
+    // budget — an existing conversation doesn't, regardless of channel.
+    const hasExistingConversation = await SendifyConversation.exists({ contactId: contact._id, lineId: line._id });
+    if (!hasExistingConversation) {
+      const used = await capacity.peekNewRecipientCount(line._id);
+      const limit = capacity.limitsFor(line).newRecipientsPerHour;
+      if (used >= limit) continue;
+    }
+
+    const cap = capacity.effectiveDailyCap(line);
+    const score = cap > 0 ? (remaining / cap) * (line.routing?.weight || 1) : 0;
+    scored.push({ line, score });
+  }
+
+  if (!scored.length) return null;
+  scored.sort((a, b) => b.score - a.score);
+  // Tie-break randomly among the top-scored lines (same idea as callerNumberPoolService's rotation).
+  const topScore = scored[0].score;
+  const top = scored.filter((s) => s.score === topScore);
+  return top[Math.floor(Math.random() * top.length)].line;
+}
+
+/**
+ * @param {object} message - needs channelPolicy, excludeLineIds, isReplyToInbound
+ * @param {object} contact - a sendifyContactModel document (mutated in place for reachability-cache/sticky-line cleanup — caller should already hold the loaded doc, not a .lean() copy)
+ * @returns {Promise<{line: object|null, waitingOnStickyLine: boolean}>}
+ */
+async function selectLine(message, contact) {
+  const policy = message.channelPolicy || { mode: "any" };
+  const channels = resolveChannelCandidates(policy);
+
+  for (const channelType of channels) {
+    const adapter = getAdapter(channelType);
+
+    if (!adapter.capabilities.reachesAllUsNumbers) {
+      const reachable = await resolveReachability(contact, channelType, adapter);
+      if (reachable !== true) {
+        if (policy.mode === "only" && channels.length === 1) {
+          // The one channel explicitly requested isn't reachable — no point trying others.
+          return { line: null, waitingOnStickyLine: false };
+        }
+        continue;
+      }
+    }
+
+    const result = await pickInChannel(channelType, message, contact);
+    if (result === "WAIT") return { line: null, waitingOnStickyLine: true };
+    if (result) return { line: result, waitingOnStickyLine: false };
+  }
+
+  return { line: null, waitingOnStickyLine: false };
 }
 
 module.exports = { selectLine, resolveChannelCandidates };

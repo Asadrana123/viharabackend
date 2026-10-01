@@ -13,6 +13,7 @@ const { ROUTABLE_STATUSES } = SendifyLine;
 const { getAdapter } = require("../channels/registry");
 const capacity = require("../sendifyCapacityService");
 const { canSend } = require("../sendifyComplianceService");
+const { evaluateAndMaybeQuarantine } = require("../sendifyLineHealthService");
 
 async function rerouteExcluding(message, lineId) {
   message.excludeLineIds = [...(message.excludeLineIds || []), lineId];
@@ -118,8 +119,12 @@ async function processSendJob(lineId, job) {
       line.health.consecutiveFailures = (line.health.consecutiveFailures || 0) + 1;
       line.health.lastFailureAt = new Date();
       await line.save();
-      // Quarantine evaluation (auto-pull-out past a failure threshold) is
-      // Phase 4 (sendify-infra.md §7.4) — this just tracks the count for now.
+
+      // "config" (auth/credentials wrong) quarantines immediately, no
+      // threshold — there's no reason to let it keep failing to find out.
+      // "line" goes through the normal threshold evaluation (§7.4).
+      await evaluateAndMaybeQuarantine(line, err.kind === "config" ? `config error: ${err.message}` : undefined);
+
       await capacity.release(line, reservationDay, { wasReply: message.isReplyToInbound });
       await rerouteExcluding(message, lineId);
       return;

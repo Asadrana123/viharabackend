@@ -45,11 +45,26 @@ function warmupPerDay(line, limits) {
   return Math.min(applicable.perDay, limits.perDay);
 }
 
-/** The real, computed cap for today — not stored, per sendify-infra.md §3.1. Health throttle (Phase 4) multiplies this later; defaults to 1.0 here. */
-function effectiveDailyCap(line, { healthMultiplier = 1 } = {}) {
+// §7.4 soft throttle: a line replyRatio7d (set by the daily-rollover job,
+// sendifyLineHealthService) below this, with at least this many sends in the
+// trailing 7 days, halves the effective cap until the ratio recovers. The
+// sent-count guard matters — a brand-new line with 3 sends and 0 replies
+// isn't "bad," it just hasn't gotten any replies yet; this only fires once
+// there's enough volume for a low ratio to actually mean something.
+const THROTTLE_REPLY_RATIO = Number(process.env.SENDIFY_HEALTH_THROTTLE_REPLY_RATIO ?? 0.05);
+const THROTTLE_MIN_SENDS_7D = Number(process.env.SENDIFY_HEALTH_THROTTLE_MIN_SENDS || 200);
+const THROTTLE_MULTIPLIER = Number(process.env.SENDIFY_HEALTH_THROTTLE_MULTIPLIER || 0.5);
+
+/** The real, computed cap for today — not stored, per sendify-infra.md §3.1. Automatically applies the §7.4 soft reply-ratio throttle from the line's own stored health fields. */
+function effectiveDailyCap(line) {
   const limits = limitsFor(line);
   const warmupCap = warmupPerDay(line, limits);
-  return Math.max(0, Math.floor(warmupCap * healthMultiplier));
+
+  const sentLast7d = line.health?.sentLast7d ?? Infinity; // unknown (never rolled up) -> don't throttle on a guess
+  const replyRatio7d = line.health?.replyRatio7d;
+  const throttled = sentLast7d >= THROTTLE_MIN_SENDS_7D && typeof replyRatio7d === "number" && replyRatio7d < THROTTLE_REPLY_RATIO;
+
+  return Math.max(0, Math.floor(warmupCap * (throttled ? THROTTLE_MULTIPLIER : 1)));
 }
 
 // Atomic check-and-add over a 1-hour sliding window, in one round trip so two
@@ -149,6 +164,25 @@ async function remainingToday(line) {
   return Math.max(0, cap - (usage?.assigned || 0));
 }
 
+/** Like remainingToday, but against the cold-send cap when isReply is false (§7.2/§7.4) — a reply can still go out even when a cold send couldn't. */
+async function remainingForSend(line, { isReply = false } = {}) {
+  const limits = limitsFor(line);
+  const cap = effectiveDailyCap(line);
+  const capToUse = isReply ? cap : Math.floor(cap * (1 - (limits.replyReservePct || 0) / 100));
+  const day = dayKey();
+  const usage = await SendifyLineUsage.findOne({ lineId: line._id, day });
+  return Math.max(0, capToUse - (usage?.assigned || 0));
+}
+
+/** Non-consuming peek at a line's current new-recipient-this-hour count — for eligibility checks during line SELECTION, where reserving a slot speculatively (before a line is actually chosen) would waste it. */
+async function peekNewRecipientCount(lineId) {
+  const redis = getRedisClient();
+  const key = `sendify:newrcpt:${lineId}`;
+  const now = Date.now();
+  await redis.zremrangebyscore(key, 0, now - 60 * 60 * 1000);
+  return redis.zcard(key);
+}
+
 module.exports = {
   dayKey,
   limitsFor,
@@ -159,4 +193,6 @@ module.exports = {
   recordFailed,
   recordInbound,
   remainingToday,
+  remainingForSend,
+  peekNewRecipientCount,
 };
