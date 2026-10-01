@@ -17,12 +17,12 @@ const CallerNumberUsage = require("../../model/calling/callerNumberUsageModel");
  *                                       VAPI_PHONE_NUMBER_ID when unset, so
  *                                       existing behaviour is unchanged until
  *                                       you set the pool.
- *   VAPI_MAX_CALLS_PER_NUMBER_PER_DAY   Daily cap per number. Default 50.
+ *   VAPI_MAX_CALLS_PER_NUMBER_PER_DAY   Daily cap per number. Default 60.
  *   VAPI_POOL_TIMEZONE                  Timezone the "day" resets in.
  *                                       Default America/Los_Angeles.
  */
 
-const CAP = Number(process.env.VAPI_MAX_CALLS_PER_NUMBER_PER_DAY || 50);
+const CAP = Number(process.env.VAPI_MAX_CALLS_PER_NUMBER_PER_DAY || 60);
 const POOL_TZ = process.env.VAPI_POOL_TIMEZONE || "America/Los_Angeles";
 
 // Parse the pool from env. Accepts commas or pipes, trims blanks, de-dupes.
@@ -50,12 +50,9 @@ const dayKey = () => DateTime.now().setZone(POOL_TZ).toFormat("yyyy-LL-dd");
 const pickCallerNumberId = async () => {
   const pool = getPool();
   if (pool.length === 0) return null; // nothing configured
-  if (pool.length === 1) {
-    // Single number: still count it so the cap applies, but there's no choice.
-    await bumpUsage(pool[0]).catch(() => {});
-    return pool[0];
-  }
 
+  // (A single-number pool goes through the same path, so its cap is enforced
+  // too — it used to be counted but never checked.)
   const day = dayKey();
 
   let counts = {};
@@ -101,4 +98,12 @@ const bumpUsage = (phoneNumberId) =>
     { upsert: true }
   );
 
-module.exports = { pickCallerNumberId, getPool, dayKey, CAP, POOL_TZ };
+/** Today's usage across the whole pool — for the admin "calls left today" line. */
+const getUsageToday = async () => {
+  const pool = getPool();
+  const rows = await CallerNumberUsage.find({ phoneNumberId: { $in: pool }, day: dayKey() }).lean();
+  const used = rows.reduce((n, r) => n + Math.min(CAP, r.count || 0), 0);
+  return { used, total: pool.length * CAP, numbers: pool.length, capPerNumber: CAP };
+};
+
+module.exports = { pickCallerNumberId, getPool, getUsageToday, dayKey, CAP, POOL_TZ };

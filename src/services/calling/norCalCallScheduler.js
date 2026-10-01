@@ -93,6 +93,7 @@ function callPayload(lead) {
     fullName: lead.fullName,
     email: lead.email,
     phone: lead.phoneNormalized || lead.phone, // dial the canonical E.164 form
+    timezone: lead.timezone || "", // caller's tz: Maya's clock + callback times
     market: lead.market || "Northern California",
     buyerType: lead.buyerType,
     // Buy-box preferences, in a form Maya can speak ({{prospect_where}} etc.).

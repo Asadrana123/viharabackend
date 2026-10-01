@@ -13,5 +13,6 @@ const auctionPageUrl = (slug) => `${getSiteUrl()}/auction/${slug}`;
 const listingPageUrl = (slug) => `${getSiteUrl()}/listing/${slug}`;
 const norCalPageUrl = () => `${getSiteUrl()}/northern-california-early-access`;
 const partnerPageUrl = () => `${getSiteUrl()}/partner-page`;
+const buyerListPageUrl = () => `${getSiteUrl()}/buyer-list`;
 
-module.exports = { auctionPageUrl, listingPageUrl, norCalPageUrl, partnerPageUrl };
+module.exports = { auctionPageUrl, listingPageUrl, norCalPageUrl, partnerPageUrl, buyerListPageUrl };

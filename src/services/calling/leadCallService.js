@@ -3,7 +3,7 @@
 const { parsePhones, dispatchCall } = require("./vapiService");
 const UNIVERSAL_PROMPT_FILE = require("../../config/universalVoicePrompt");
 const universalVoicePromptModel = require("../../model/calling/universalVoicePromptModel");
-const { buildFollowUp } = require("../../config/voicePromptFollowUp");
+const { buildFollowUp, buildCallback } = require("../../config/voicePromptFollowUp");
 
 /** DB-first prompt load, with the hardcoded file as fallback. */
 const loadUniversalPrompt = async () => {
@@ -36,6 +36,9 @@ const dispatchRegistrationCall = async (lead = {}) => {
     market: (lead.market || "").toString().trim(),
     buyerType: (lead.buyerType || "").toString().trim(),
     dealSize: (lead.dealSize || "").toString().trim(),
+    // Caller's IANA timezone — lets Maya resolve "call me back at 5" in THEIR
+    // time and lets the callback be stored in the right zone.
+    timezone: (lead.timezone || "").toString().trim(),
   };
 
   // Per-lead prompt override wins (e.g. 449 Georgia St auction); else universal.
@@ -49,6 +52,12 @@ const dispatchRegistrationCall = async (lead = {}) => {
   // variant — one central place, every page.
   if (lead.isFollowUp) {
     promptConfig = buildFollowUp(promptConfig);
+  }
+
+  // Human-requested callbacks open with "calling you back like you asked"
+  // instead of replaying the signup script.
+  if (lead.isCallback) {
+    promptConfig = buildCallback(promptConfig, { note: lead.callbackNote });
   }
 
   return dispatchCall(phones[0], contact, {

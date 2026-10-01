@@ -13,6 +13,7 @@ const {
   renderAuctionReportPdfBuffer,
   buildAuctionReportExcelBuffer
 } = require("../../utils/sellerReportExport");
+const { renderTermsPdfBuffer } = require("../../utils/termsPdfExport");
 const PDFDocument = require("pdfkit");
 const mongoose = require("mongoose");
 const sendEmail = require("../../utils/sendEmail");
@@ -570,7 +571,8 @@ exports.exportSellerAuctionExcel = catchAsyncError(async (req, res, next) => {
 
 // Email the full closed-auction report (PDF + Excel) to every assigned seller.
 // Called from the socket auction-finalization flow for the round that just
-// closed. Sends even when there were no bids, but then without the attachments.
+// closed. Sends even when there were no bids, but then without the report
+// attachments (the Terms & Conditions PDF is always attached).
 // Fully self-contained and fire-and-forget: it swallows its own errors so it can
 // never block or break auction finalization.
 exports.sendAuctionClosedSellerReport = async (auctionId, roundId = null) => {
@@ -582,7 +584,9 @@ exports.sendAuctionClosedSellerReport = async (auctionId, roundId = null) => {
     }
 
     // Resolve every assigned seller's email from the product's sellerIds array.
-    const product = await Product.findById(auctionId).select("sellerIds");
+    const product = await Product.findById(auctionId)
+      .select("sellerIds productName street city county state zipCode yearBuilt slug")
+      .lean();
     const sellerIds = (product && product.sellerIds) || [];
     if (!sellerIds.length) {
       console.log(`Auction ${auctionId} has no assigned sellers — report not sent.`);
@@ -621,6 +625,14 @@ exports.sendAuctionClosedSellerReport = async (auctionId, roundId = null) => {
         }
       ];
     }
+
+    // The property's Terms & Conditions go out with every closed-auction email,
+    // bids or not — same content as the /listing/:slug page.
+    attachments.push({
+      filename: "Terms_and_Conditions.pdf",
+      content: await renderTermsPdfBuffer(product),
+      contentType: "application/pdf"
+    });
 
     const propertyLabel =
       report.property?.productName || report.property?.location || "your property";

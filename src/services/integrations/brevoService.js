@@ -396,6 +396,144 @@ const syncNorCalLead = async (lead) => {
 };
 
 // ============================================================================
+// BUYER LIST  (/buyer-list — "Buyer List — Tracking Spec for Developers")
+// ----------------------------------------------------------------------------
+// Brevo is the CRM source of truth for this funnel. Contacts go to the
+// BREVO_BUYER_LIST_ID list. Attributes to pre-create once in Brevo
+// (Contacts → Settings → Contact Attributes):
+//
+//   text:          BUYER_TIER, SOURCE_FIRST, CAMPAIGN_FIRST, SOURCE_LAST,
+//                  CAMPAIGN_LAST, AD_TERM, AD_CONTENT, CITIES,
+//                  SMS_CONSENT_VERSION, SIGNUP_EVENT_ID
+//   number:        PRICE_MIN, PRICE_MAX, MATCH_MIN, MATCH_MAX
+//   boolean:       SMS_CONSENT          date: SMS_CONSENT_AT
+//   multi-choice:  STATES        options = USPS codes (CA, NY, ...)
+//                  STRATEGY      options = flip, rent, brrrr, wholesale, home
+//                  PROPERTY_TYPE options = sfr, condo, mf_2_4, mf_5_plus, land
+//   category:      CONDITION  1=turnkey 2=light_rehab 3=heavy_rehab 4=any
+//                  FINANCING  1=cash 2=hard_money 3=mortgage 4=not_sure
+//                  DEALS_12MO 1=1 2=2_5 3=6_plus
+//
+// CATEGORY attributes only accept the enumeration id (see PARTNER_TYPE above),
+// so create the options in exactly the order listed. PRICE_MAX / MATCH_MAX are
+// omitted when the buyer picked "$3M+" (no upper limit).
+//
+// If Brevo rejects the full attribute set (an attribute missing or typed
+// differently in the dashboard) the contact is saved again with only the core
+// attribution attributes, so a misconfigured buy-box field never loses the lead.
+const BREVO_BUYER_LIST_ID = parseInt(
+  String(process.env.BREVO_BUYER_LIST_ID || "").replace(/[^0-9]/g, ""),
+  10
+);
+
+const BUYER_CATEGORY_IDS = {
+  CONDITION: { turnkey: 1, light_rehab: 2, heavy_rehab: 3, any: 4 },
+  FINANCING: { cash: 1, hard_money: 2, mortgage: 3, not_sure: 4 },
+  DEALS_12MO: { 1: 1, "2_5": 2, "6_plus": 3 },
+};
+
+const isNum = (v) => typeof v === "number" && Number.isFinite(v);
+
+// Core attributes: identity, tier, attribution and consent. Always sent.
+const buildBuyerListCoreAttributes = (lead) => {
+  const first = lead.firstTouch || {};
+  const last = lead.lastTouch || {};
+  const attribution = lead.attribution || {};
+  return {
+    FIRSTNAME: lead.firstName || "",
+    BUYER_TIER: lead.tier || "",
+    SOURCE_FIRST: first.utm_source || "",
+    CAMPAIGN_FIRST: first.utm_campaign || "",
+    SOURCE_LAST: last.utm_source || "",
+    CAMPAIGN_LAST: last.utm_campaign || "",
+    AD_TERM: attribution.utm_term || "",
+    AD_CONTENT: attribution.utm_content || "",
+    SMS_CONSENT: lead.smsConsent === true,
+    ...(lead.smsConsent === true
+      ? {
+          SMS_CONSENT_AT: new Date(lead.smsConsentAt || Date.now()).toISOString(),
+          SMS_CONSENT_VERSION: lead.smsConsentVersion || "",
+        }
+      : {}),
+    SIGNUP_EVENT_ID: lead.eventId || "",
+    // SMS number + the shared SMS_OPT_IN trio the existing automations use.
+    ...buildSmsAttributes({
+      phone: lead.phone,
+      email: lead.email,
+      smsOptIn: lead.smsConsent === true,
+      smsOptInAt: lead.smsConsentAt,
+      smsOptInUrl: lead.smsOptInUrl,
+    }),
+  };
+};
+
+// Buy-box attributes (multi-choice / number / category).
+const buildBuyerListBuyBoxAttributes = (lead) => {
+  const box = lead.buyBox || {};
+  const attributes = {
+    STATES: Array.isArray(box.states) ? box.states : [],
+    CITIES: Array.isArray(box.cities) ? box.cities.join(", ") : "",
+    STRATEGY: Array.isArray(box.strategy) ? box.strategy : [],
+    PROPERTY_TYPE: Array.isArray(box.property_type) ? box.property_type : [],
+  };
+  if (isNum(box.price_min)) attributes.PRICE_MIN = box.price_min;
+  if (isNum(box.price_max)) attributes.PRICE_MAX = box.price_max;
+  if (isNum(box.match_min)) attributes.MATCH_MIN = box.match_min;
+  if (isNum(box.match_max)) attributes.MATCH_MAX = box.match_max;
+
+  const categoryValues = { CONDITION: box.condition, FINANCING: box.financing, DEALS_12MO: box.deals_12mo };
+  for (const [attr, ids] of Object.entries(BUYER_CATEGORY_IDS)) {
+    const id = ids[categoryValues[attr]];
+    if (id) attributes[attr] = id;
+  }
+  return attributes;
+};
+
+/**
+ * Upsert a Buyer List lead into the Buyer List Brevo list. Idempotent via
+ * updateEnabled:true. Non-throwing.
+ *
+ * @param {object} lead  the buyerListLeadModel doc (plain object) + smsOptInUrl
+ * @returns {Promise<{ success: boolean, partial?: boolean, smsConflict?: boolean, error?: string, skipped?: boolean }>}
+ */
+const syncBuyerListLead = async (lead) => {
+  if (!BREVO_API_KEY || !BREVO_BUYER_LIST_ID) {
+    console.warn("⚠️  Brevo Buyer List not configured — skipping contact sync.");
+    return { success: false, skipped: true, error: "BREVO_BUYER_LIST_ID not configured" };
+  }
+  if (!lead.email) return { success: false, skipped: true, error: "missing email" };
+
+  const core = buildBuyerListCoreAttributes(lead);
+  const listIds = [BREVO_BUYER_LIST_ID];
+
+  try {
+    const { smsConflict } = await upsertContact(
+      { email: lead.email, attributes: { ...core, ...buildBuyerListBuyBoxAttributes(lead) }, listIds },
+      "Buyer List"
+    );
+    console.log(`✅ Brevo Buyer List synced: ${lead.email}`);
+    return { success: true, smsConflict };
+  } catch (err) {
+    const reason = err.response?.data?.message || err.message;
+    if (err.response?.status !== 400) {
+      console.error(`❌ Brevo Buyer List sync failed: ${lead.email}:`, reason);
+      return { success: false, error: String(reason) };
+    }
+    console.warn(`⚠️  Brevo Buyer List rejected buy-box attributes for ${lead.email} (${reason}) — retrying with core attributes.`);
+  }
+
+  try {
+    const { smsConflict } = await upsertContact({ email: lead.email, attributes: core, listIds }, "Buyer List (core)");
+    console.log(`✅ Brevo Buyer List synced (core attributes only): ${lead.email}`);
+    return { success: true, partial: true, smsConflict };
+  } catch (err) {
+    const reason = err.response?.data?.message || err.message;
+    console.error(`❌ Brevo Buyer List sync failed: ${lead.email}:`, reason);
+    return { success: false, error: String(reason) };
+  }
+};
+
+// ============================================================================
 // OUTBOUND SMS  (admin-triggered — see outboundplan.md §4/§5.2)
 // ----------------------------------------------------------------------------
 // Unlike the sync* functions above (which react to a public lead-form
@@ -519,6 +657,7 @@ module.exports = {
   syncPropertyLead,
   syncPartnerLead,
   syncNorCalLead,
+  syncBuyerListLead,
   syncOutboundSmsContact,
   trackEvent,
 };

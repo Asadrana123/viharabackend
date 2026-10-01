@@ -31,6 +31,25 @@
 // env-tunable so they can change without a redeploy.
 
 const { runCallBurst } = require("./registrationCallService");
+const MatchCallCampaign = require("../../model/calling/matchCallCampaignModel");
+const { normalisePhone } = require("./vapiCallsService");
+
+/**
+ * Buyer Match takeover: while an admin-started call schedule is active for a
+ * number, the routine sign-up follow-up calls to that number are skipped (the
+ * scheduler just moves on to its next slot). Signup calls, callbacks the person
+ * asked for, and the Buyer Match calls themselves are never skipped.
+ */
+async function isTakenOverByBuyerMatch(payload) {
+  if (!payload || !payload.isFollowUp) return false;
+  const phone = normalisePhone(payload.phone);
+  if (!phone) return false;
+  try {
+    return !!(await MatchCallCampaign.exists({ phone, status: "active" }));
+  } catch (_e) {
+    return false; // never block calling on a lookup failure
+  }
+}
 
 // At most this many bursts run at once. Each burst = at most 1 live call, so this
 // is effectively the peak live-call count. 6 leaves headroom under a limit of 10.
@@ -68,9 +87,22 @@ let pumpTimer = null;  // pending "start the next burst" timer, if any
  * @param {string} [priority]        PRIORITY.SIGNUP | PRIORITY.SCHEDULED (default scheduled)
  * @returns {Promise<any>}           runCallBurst's resolved value
  */
-function enqueueBurst(payload, opts = {}, priority = PRIORITY.SCHEDULED) {
+async function enqueueBurst(payload, opts = {}, priority = PRIORITY.SCHEDULED) {
+  if (await isTakenOverByBuyerMatch(payload)) {
+    console.log(`[dispatch] follow-up to ${payload.phone} skipped — Buyer Match calls are running for this number`);
+    return { connected: false, suppressed: true };
+  }
+  return enqueueJob(() => runCallBurst(payload, opts), priority);
+}
+
+/**
+ * Queue any calling work (not just a burst) behind the same concurrency cap and
+ * stagger. `run` must place at most ONE live call at a time and return a promise.
+ * Used by Buyer Match calls, which dial once per slot instead of a 2-call burst.
+ */
+function enqueueJob(run, priority = PRIORITY.SCHEDULED) {
   return new Promise((resolve, reject) => {
-    const job = { payload, opts, resolve, reject };
+    const job = { run, resolve, reject };
     if (priority === PRIORITY.SIGNUP) highLane.push(job);
     else normalLane.push(job);
     pump();
@@ -107,7 +139,8 @@ function pump() {
   active += 1;
   lastStartAt = Date.now();
 
-  runCallBurst(job.payload, job.opts)
+  Promise.resolve()
+    .then(job.run)
     .then(job.resolve, job.reject)
     .finally(() => {
       active -= 1;
@@ -120,6 +153,7 @@ function pump() {
 
 module.exports = {
   enqueueBurst,
+  enqueueJob,
   PRIORITY,
   MAX_CONCURRENT_BURSTS,
   STAGGER_MS,

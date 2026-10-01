@@ -1,4 +1,4 @@
-// services/leadMatch/scoring.js
+// services/buyerMatch/scoring.js
 //
 // Scores ONE lead against ONE property. Pure functions, no DB.
 //
@@ -52,9 +52,9 @@ function locationFactor(lead, prop) {
     } else if (t.kind === "state" && t.state === prop.state) {
       consider(0.65, `Wants ${prop.state}`);
     } else if (t.kind === "region" && t.state === prop.state) {
-      const region = REGIONS[t.region];
-      if (region && prop.countyKey && region.counties.includes(prop.countyKey)) {
-        consider(0.9, `In their area (${region.label})`);
+      // prop.regions comes from its county and/or ZIP (see geo.regionsForProperty).
+      if (prop.regions?.has(t.region)) {
+        consider(0.9, `In their area (${REGIONS[t.region].label})`);
       }
     } else if (t.kind === "zip" && t.zip === String(prop.zipCode || "").slice(0, 5)) {
       consider(1, `Same ZIP (${t.zip})`);
@@ -145,7 +145,8 @@ function buyerFitFactor(lead, prop) {
 }
 
 function bedsFactor(lead, prop) {
-  if (!lead.minBeds || prop.propertyType === "Land") return null;
+  // Uploaded sheets often have no bed count — unknown, so skip the factor.
+  if (!lead.minBeds || prop.beds == null || prop.propertyType === "Land") return null;
   const gap = lead.minBeds - prop.beds;
   if (gap <= 0) return { s: 1, reason: `${prop.beds} beds (wants ${lead.minBeds}+)` };
   if (gap === 1) return { s: 0.45, reason: "1 bed short", bad: true };
@@ -173,8 +174,12 @@ function timingFactor(lead, prop, now) {
 
 /** How reachable / warm the lead is. Always known. */
 function engagementFactor(lead, prop, now) {
+  const auctionReg = (lead.auctionRegistrations || []).find((r) => r.propertyId === prop.id);
+  if (auctionReg) {
+    return { s: 1, reason: `Registered for this auction (${auctionReg.status})` };
+  }
   if (prop.slug && lead.registeredSlugs.includes(prop.slug)) {
-    return { s: 1, reason: "Already registered for this property" };
+    return { s: 1, reason: "Signed up on this property's page" };
   }
   const e = lead.engagement;
   let s = 0.3;
@@ -184,6 +189,10 @@ function engagementFactor(lead, prop, now) {
     reason = "Answered our call";
   }
   if (e.smsConsent) s += 0.1;
+  if (lead.emails?.opened) {
+    s += 0.1;
+    reason = reason || "Opens our emails";
+  }
   const ageDays = lead.createdAt ? (now - new Date(lead.createdAt).getTime()) / DAY : Infinity;
   if (ageDays <= 30) {
     s += 0.2;

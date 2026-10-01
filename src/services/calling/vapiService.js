@@ -161,6 +161,13 @@ If they clearly and firmly say no or ask you to stop, respect it, thank them war
 // Same idempotent-append pattern: one central place, every page benefits, no
 // per-prompt edits. Empty context → empty string → prompt untouched (first-ever
 // calls behave exactly as before).
+// The model has no clock. Without this, "call me back at five" was turned into
+// a guessed ISO time (often the wrong day or timezone). {{current_time_local}}
+// and {{caller_timezone}} are filled per call in buildVariableValues.
+const TIME_CONTEXT = `CALLER'S LOCAL TIME
+- Right now it is {{current_time_local}} for the caller (timezone: {{caller_timezone}}).
+- If they ask for a callback at a clock time ("call me at five," "tomorrow at ten"), set callAtISO to that time in THEIR timezone with the correct UTC offset. For "in ten minutes" or "in an hour," use delayMinutes instead.`;
+
 const buildPriorContextBlock = (priorContext) => {
   const ctx = String(priorContext || "").trim();
   if (!ctx) return "";
@@ -194,6 +201,7 @@ const UNIVERSAL_BLOCKS = [
   { guard: /GOOD examples/, text: GOOD_EXAMPLES },
   { guard: /BAD examples/, text: BAD_EXAMPLES },
   { guard: /CALLBACK REQUESTS/i, text: CALLBACK_REQUESTS },
+  { guard: /CALLER'S LOCAL TIME/, text: TIME_CONTEXT },
   { guard: /##\s*How to sound/i, text: HUMAN_STYLE },
   { guard: /##\s*Handling objections/i, text: OBJECTION_PLAYBOOK },
   { guard: /##\s*If the caller goes quiet/i, text: NO_RESPONSE_HANDLING },
@@ -288,7 +296,9 @@ const buildModel = (systemContent, callbackTool) => ({
 
 const buildAssistantOverrides = (contact, researchSummary, property, promptConfig, priorContext = "") => {
   const overrides = {
-    variableValues: buildVariableValues(contact, researchSummary, property),
+    // promptConfig.auctionWindow (live listing dates) → {{auction_*_local}} in
+    // THIS caller's timezone.
+    variableValues: buildVariableValues(contact, researchSummary, property, promptConfig?.auctionWindow),
     voicemailDetection: VOICEMAIL_DETECTION,
     // Conversational feel — applied on every call.
     startSpeakingPlan: START_SPEAKING_PLAN,
@@ -354,11 +364,13 @@ const dispatchCall = async (
   try {
     const metadata = {
       // Funnel tag from the caller (e.g. "nor-cal", "early-access",
-      // "partner-program"). Falls back to the generic tag when not provided
-      // (admin single-call / campaign paths). This flows to the VAPI webhook so a
-      // scheduleCallback booked mid-call knows which funnel prompt to re-use.
+      // "partner-program", "buyer-match:<id>"). Falls back to the generic tag when
+      // not provided (admin single-call / campaign paths). This flows to the VAPI
+      // webhook so a scheduleCallback booked mid-call knows which prompt to re-use.
       source: source || "vihara-voice",
       propertyId: property && property.id ? property.id : null,
+      // Lets the webhook store a booked callback in the caller's own timezone.
+      timezone: person.timezone || "",
     };
 
     // Caller-ID rotation: pick the least-used-today number from the pool and

@@ -10,7 +10,12 @@
 //   2. voiceCallbackScheduler sweeps every minute and dials due requests.
 //   3. applyOutcome() records the result:
 //        • picked up → status "connected", stop
-//        • no answer → nextCallAt = next 1:32 PM local (the normal retry loop)
+//        • no answer → nextCallAt = next 1:32 PM local, up to MAX_CALLBACK_ATTEMPTS
+//          dials in total, then status "failed" (no endless daily loop)
+//
+// On the call itself Maya opens with "calling you back like you asked" (see
+// buildCallback in config/voicePromptFollowUp.js) and has the earlier
+// conversation via call memory.
 
 const { DateTime } = require("luxon");
 const CallbackRequest = require("../../model/calling/callbackRequestModel");
@@ -27,12 +32,11 @@ const earlyAccessVoicePrompt = require("../../config/earlyAccessVoicePrompt");
 const partnerProgramVoicePrompt = require("../../config/partnerProgramVoicePrompt");
 
 // Property auction pages don't have an authored prompt either — their prompt is
-// BUILT from the DB per property (same as propertyCallScheduler). Their callback
-// `source` is "auction-<slug>", so we strip the prefix, look the property up by
-// slug, and rebuild its prompt on the fly. One code path, every property (incl.
-// ones uploaded later) — nothing per-slug to maintain.
-const productModel = require("../../model/property/productModel");
-const { buildPropertyVoicePrompt } = require("./propertyVoicePromptBuilder");
+// BUILT from the LIVE listing (same loader as propertyCallScheduler). Their
+// callback `source` is "auction-<slug>", so we strip the prefix and rebuild the
+// script from the current listing — never a hard-coded one, since price,
+// auction dates and financing change.
+const { loadPropertyBundle } = require("./propertyCallScheduler");
 
 // Prefix the property scheduler stamps on its callback source: `auction-<slug>`.
 const AUCTION_SOURCE_PREFIX = "auction-";
@@ -55,6 +59,11 @@ const DEFAULT_TZ = "America/New_York";
 const MIN_DELAY_MINUTES = 1;
 const MAX_DELAY_MINUTES = 7 * 24 * 60; // 7 days
 
+// The callback at the requested time + 2 daily retries, then give up.
+const MAX_CALLBACK_ATTEMPTS = 3;
+
+// Buyer Match calls stamp `buyer-match:<campaignId>` as their source.
+const BUYER_MATCH_SOURCE_PREFIX = "buyer-match:";
 /**
  * Next 1:32 PM in the given timezone, as a UTC Date. Today if it is still before
  * 1:32 PM there, otherwise tomorrow. DST-correct. Same helper as the schedulers.
@@ -147,43 +156,70 @@ function resolveStaticPromptBySource(source) {
 }
 
 /**
- * Property auction fallback: when the callback `source` is "auction-<slug>",
- * rebuild that property's prompt from the DB — the same way propertyCallScheduler
- * does for the live call — so the callback speaks that property's own script
- * instead of the dashboard default. Generic: works for any slug, incl. properties
- * uploaded later. Returns null on any miss so the caller falls through cleanly.
+ * Property auction pages: when the callback `source` is "auction-<slug>",
+ * build that property's script from its live listing (handles the old short
+ * Georgia St / Rensselaer slugs too). Returns null on any miss.
  */
 async function resolvePromptByAuctionSlug(source) {
   const tag = String(source || "").trim();
   if (!tag.startsWith(AUCTION_SOURCE_PREFIX)) return null;
   const slug = tag.slice(AUCTION_SOURCE_PREFIX.length).trim();
   if (!slug) return null;
-
   try {
-    const product = await productModel.findOne({ slug }).lean();
-    if (!product) return null;
-
-    // Same "other live deals" context the scheduler passes, so the callback
-    // prompt matches the signup-call prompt.
-    const others = await productModel
-      .find({ isLandingPage: true, slug: { $ne: slug }, status: "active" })
-      .select(
-        "productName street city county state zipCode beds baths squareFootage lotSize yearBuilt monthlyHOADues occupancyStatus propertyType startBid investmentData auctionStartDate auctionEndDate"
-      )
-      .limit(3)
-      .lean();
-
-    const built = buildPropertyVoicePrompt(product, others);
-    if (!built || !built.systemPrompt) return null;
-    return {
-      systemPrompt: built.systemPrompt,
-      firstMessage: built.firstMessage || "",
-      voicemailMessage: built.voicemailMessage || "",
-      endCallMessage: built.endCallMessage || "",
-    };
+    const { promptConfig } = await loadPropertyBundle(slug);
+    return promptConfig && promptConfig.systemPrompt ? promptConfig : null;
   } catch (_e) {
     return null;
   }
+}
+
+/**
+ * Buyer Match callback: rebuild the matched-property script in its "calling you
+ * back" form, so the callback talks about the same property for the same
+ * reasons. Lazy require — matchCallService itself uses this module.
+ */
+async function resolveBuyerMatchPrompt(source, note) {
+  const tag = String(source || "").trim();
+  if (!tag.startsWith(BUYER_MATCH_SOURCE_PREFIX)) return null;
+  try {
+    const { buildCallbackPromptForCampaign } = require("../buyerMatch/matchCallService");
+    return await buildCallbackPromptForCampaign(tag.slice(BUYER_MATCH_SOURCE_PREFIX.length), note);
+  } catch (err) {
+    console.error("[callback] buyer-match prompt failed (non-fatal):", err.message);
+    return null;
+  }
+}
+
+/**
+ * Which script a callback speaks. First hit wins:
+ *   0. buyer-match:<id> source — the matched-property script (live listing)
+ *   1. propertyId               — the admin-authored prompt for that property
+ *   2. auction-<slug> source    — property pages (script from the live listing)
+ *   3. brand source map         — nor-cal / early-access / partner-program
+ * null everywhere → the universal prompt.
+ */
+async function resolveCallbackPrompt({ source, propertyId, note } = {}) {
+  return (
+    (await resolveBuyerMatchPrompt(source, note)) ||
+    (await resolvePromptSnapshot(propertyId)) ||
+    (await resolvePromptByAuctionSlug(source)) ||
+    resolveStaticPromptBySource(source)
+  );
+}
+
+/**
+ * The script to use when the callback is DIALED: rebuilt now from the live
+ * listing / current prompt, falling back to what was stored at booking only if
+ * that fails (e.g. the property was removed).
+ */
+async function resolveDialPrompt(cb) {
+  const fresh = await resolveCallbackPrompt({
+    source: cb.source,
+    propertyId: cb.propertyId ? String(cb.propertyId) : null,
+    note: cb.note,
+  }).catch(() => null);
+  if (fresh && fresh.systemPrompt) return fresh;
+  return cb.promptConfig && cb.promptConfig.systemPrompt ? cb.promptConfig : undefined;
 }
 
 /**
@@ -205,15 +241,9 @@ async function createCallbackRequest(args = {}) {
   }
 
   const { callAt, delayMinutes } = resolveCallbackTime(args);
-  // Resolution order:
-  //   1. propertyId          — property funnels with an authored prompt
-  //   2. auction-<slug> src   — property auction pages (prompt built from DB)
-  //   3. brand source map     — nor-cal / early-access / partner-program
-  // First hit wins; null everywhere → dispatchCall uses the dashboard default.
-  const promptConfig =
-    (await resolvePromptSnapshot(args.propertyId)) ||
-    (await resolvePromptByAuctionSlug(args.source)) ||
-    resolveStaticPromptBySource(args.source);
+  // Stored only as a fallback — the script is rebuilt at dial time
+  // (resolveDialPrompt), so a callback days later still has current facts.
+  const promptConfig = await resolveCallbackPrompt(args);
 
   const callback = await CallbackRequest.create({
     phone,
@@ -278,19 +308,22 @@ function spokenConfirmation(callback) {
 }
 
 /**
- * The payload runCallBurst expects (mirrors the schedulers). Pins the resolved
- * prompt so the callback speaks the right pitch. `leadId` carries the callback
+ * The payload runCallBurst expects (mirrors the schedulers). The script is
+ * rebuilt at dial time so it carries the property's current facts. `leadId` carries the callback
  * id purely for logging.
  */
-function buildBurstPayload(cb) {
+async function buildBurstPayload(cb) {
   return {
     leadId: cb._id,
     fullName: cb.fullName,
     email: cb.email,
     phone: cb.phone,
-    promptConfig:
-      cb.promptConfig && cb.promptConfig.systemPrompt ? cb.promptConfig : undefined,
+    promptConfig: await resolveDialPrompt(cb),
     source: cb.source || "human-requested-callback",
+    timezone: cb.timezone || "",
+    // Open with "calling you back like you asked", not the signup script.
+    isCallback: true,
+    callbackNote: cb.note || "",
   };
 }
 
@@ -305,6 +338,12 @@ async function applyOutcome(cb, connected) {
       { _id: cb._id },
       { $set: { status: "connected", nextCallAt: null } }
     );
+  } else if ((cb.attempts || 0) >= MAX_CALLBACK_ATTEMPTS) {
+    // `attempts` was already incremented when the sweep claimed this dial.
+    await CallbackRequest.updateOne(
+      { _id: cb._id },
+      { $set: { status: "failed", nextCallAt: null } }
+    );
   } else {
     await CallbackRequest.updateOne(
       { _id: cb._id },
@@ -314,6 +353,7 @@ async function applyOutcome(cb, connected) {
 }
 
 module.exports = {
+  MAX_CALLBACK_ATTEMPTS,
   CALL_HOUR,
   CALL_MINUTE,
   DEFAULT_TZ,

@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const productModel = require("../../model/property/productModel");
 const { PROPERTY: DEFAULT_PROPERTY } = require("./vapiService");
+const { resolvePropertyTimezone } = require("../../utils/resolveTimezone");
 
 // ─── Listing URLs ─────────────────────────────────────────────────────────────
 // productModel has no slug field, and an ObjectId read aloud is unusable.
@@ -163,6 +164,16 @@ function mapProductToProperty(product) {
     estimate,
     monthly_rent: monthlyRent,
     listing_url: buildListingUrl(product),
+    // Raw auction dates → {{auction_start_local}} / {{auction_end_local}}, spoken
+    // in each caller's own timezone (vapiPromptService.buildVariableValues).
+    auctionWindow:
+      product.auctionStartDate || product.auctionEndDate
+        ? {
+            start: product.auctionStartDate || null,
+            end: product.auctionEndDate || null,
+            propertyZone: resolvePropertyTimezone(product),
+          }
+        : null,
   };
 }
 
@@ -173,6 +184,7 @@ const PROPERTY_FIELDS = [
   "beds", "baths", "assetType", "propertyType", "startBid",
   "slug",
   "investmentData.valuation", "investmentData.rental",
+  "auctionStartDate", "auctionEndDate",
 ].join(" ");
 
 /**

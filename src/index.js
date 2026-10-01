@@ -10,6 +10,7 @@ const { startPartnerCallScheduler } = require('./services/calling/partnerCallSch
 const { startNorCalCallScheduler } = require('./services/calling/norCalCallScheduler');
 const { startVoiceCallbackScheduler } = require('./services/calling/voiceCallbackScheduler'); // ← ADD
 const { startPropertyCallScheduler } = require('./services/calling/propertyCallScheduler'); // unified /auction/:slug scheduler
+const { startMatchCallScheduler } = require('./services/buyerMatch/matchCallService'); // admin-started Buyer Match calls
 const { startBrevoBackfillJob } = require('./jobs/brevoBackfillJob'); // ← ADD
 const { startAuctionCloseJob } = require('./jobs/auctionCloseJob');
 const { startZillowSyncJob } = require('./jobs/zillowSyncJob');
@@ -52,6 +53,9 @@ server.listen(PORT, () => {
   // Unified scheduler for every /auction/:slug landing page. New properties need
   // no new scheduler — this one sweeps the shared propertyLeadModel collection.
   startPropertyCallScheduler();
+
+  // Buyer Match calls an admin started: 12:30 PM + 6:00 PM buyer-local, up to 7 days.
+  startMatchCallScheduler();
 
   // Weekly Zillow refresh of every linked property the admin hasn't paused.
   startZillowSyncJob();

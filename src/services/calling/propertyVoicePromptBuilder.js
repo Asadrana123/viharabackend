@@ -12,7 +12,12 @@
 // spoken as words, COMPUTED from the DB values (start bid, Vihara estimate, rent),
 // so the figures Maya says always match the record.
 //
-// Timing and "how to buy" are the advisor's to give — Maya never states them.
+// Auction dates come from the listing too, but as {{auction_start_local}} /
+// {{auction_end_local}} placeholders: the script is shared by every caller and
+// the date must be spoken in EACH caller's timezone (filled per call in
+// vapiPromptService.buildVariableValues from the returned `auctionWindow`).
+// Other timing (viewings, move-in, closing) and "how to buy" stay with the
+// advisor — Maya never states them.
 // The call's job is to learn the price the buyer would pay for the home.
 
 const { DateTime } = require("luxon");
@@ -258,6 +263,16 @@ function buildPropertyVoicePrompt(product = {}, otherProperties = []) {
   if (rentWords)
     money.push(`- Estimated rent: about ${rentWords} — an estimate, not a formal appraisal.`);
 
+  // ── AUCTION DATES (live listing, spoken in the caller's own timezone) ─────
+  const hasAuction = !!(p.auctionStartDate || p.auctionEndDate);
+  const auctionLines = hasAuction
+    ? [
+        "- It's sold through an online auction. Bidding opens: {{auction_start_local}}. Bidding closes: {{auction_end_local}}.",
+        '- These times are already in the caller\'s own timezone — say them naturally (for example "Saturday, October seventeenth at eleven A M your time"), never as digits. If a line is blank, don\'t mention that date.',
+      ]
+    : [];
+  const auctionBlock = auctionLines.length ? `\n\nThe auction\n${auctionLines.join("\n")}` : "";
+
   // ── OTHER HOMES (auto-built from other landing properties) ────────────────
   const others = (otherProperties || []).filter(Boolean).slice(0, 2);
   let crossSell = "";
@@ -357,7 +372,7 @@ The basics
 ${basics.join("\n")}
 
 The numbers
-${money.length ? money.join("\n") : "- Pricing details are handled by the advisor."}${crossSell}
+${money.length ? money.join("\n") : "- Pricing details are handled by the advisor."}${auctionBlock}${crossSell}
 
 OBJECTION HANDLING (one or two sentences, then hand the turn back; numbers as words)
 - "How did you get my number?" → "You just told us on our page for ${cityState || "this home"} that you're interested, so I'm following up on that. If you'd rather be removed, just say the word."
@@ -383,7 +398,13 @@ Route to the advisor whenever: they ask something you don't have a verified answ
 
   const endCallMessage = `Perfect, {{prospect_name}} — you're all set. Your advisor will follow up on the number you registered with to talk through your price and the home. Have a great day!`;
 
-  return { systemPrompt, firstMessage, voicemailMessage, endCallMessage };
+  // Raw dates for the per-call {{auction_*_local}} values (caller's timezone,
+  // falling back to the property's own zone via utils/resolveTimezone).
+  const auctionWindow = hasAuction
+    ? { start: p.auctionStartDate || null, end: p.auctionEndDate || null, propertyZone: resolvePropertyTimezone(p) }
+    : null;
+
+  return { systemPrompt, firstMessage, voicemailMessage, endCallMessage, auctionWindow };
 }
 
 module.exports = { buildPropertyVoicePrompt };
