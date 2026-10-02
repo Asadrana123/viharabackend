@@ -516,6 +516,17 @@ function registerSocketHandlers(socket) {
         return;
       }
 
+      const isApproved = await AuctionRegistration.exists({
+        userId: socket.userId,
+        auctionId: auctionId,
+        status: 'approved'
+      });
+
+      if (!isApproved) {
+        callback({ success: false, error: 'You are not approved to bid on this auction' });
+        return;
+      }
+
       const auctionData = activeAuctions.get(auctionId);
       const auction = await Product.findById(auctionId);
       if (!auction) {
