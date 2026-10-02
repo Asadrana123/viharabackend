@@ -17,6 +17,7 @@ const { sendMessage, sendBulkMessages, listMessagesByStatus, retryMessage, cance
 const { listConversations, getConversationMessages, updateConversation } = require("../../controller/sendify/sendifyConversationController");
 const { getContact, updateContactConsent } = require("../../controller/sendify/sendifyContactController");
 const { getStatsOverview } = require("../../controller/sendify/sendifyStatsController");
+const { getSendifySettings, updateSendifySettings } = require("../../controller/sendify/sendifySettingsController");
 const {
   getTemplateVariables, createTemplate, listTemplates, getTemplate, updateTemplate, deleteTemplate, previewTemplate,
 } = require("../../controller/sendify/sendifyTemplateController");
@@ -32,6 +33,9 @@ router.get("/health", health);
 router.use(requireSendifyEnabled);
 
 router.get("/stats/overview", getStatsOverview);
+
+router.get("/settings", getSendifySettings);
+router.patch("/settings", updateSendifySettings);
 
 router.get("/conversations", listConversations);
 router.get("/conversations/:id/messages", getConversationMessages);

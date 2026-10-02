@@ -73,7 +73,7 @@ async function processRouteJob(job) {
     return;
   }
 
-  const { inWindow, nextWindowOpensAt } = checkQuietHours(contact);
+  const { inWindow, nextWindowOpensAt } = await checkQuietHours(contact);
   if (!inWindow) {
     message.status = "waiting-window";
     await message.save();

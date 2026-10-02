@@ -47,12 +47,17 @@ const getTemplate = catchAsyncError(async (req, res) => {
   return res.status(200).json({ success: true, template });
 });
 
-/** PATCH /api/v1/sendify/templates/:id */
+/** PATCH /api/v1/sendify/templates/:id — body may also include isAutoSignupTemplate: true to designate this one for the automated property-signup text (unsets it on every other template first, so at most one is ever true). */
 const updateTemplate = catchAsyncError(async (req, res) => {
-  const { name, body } = req.body;
+  const { name, body, isAutoSignupTemplate } = req.body;
   const update = {};
   if (name !== undefined) update.name = name;
   if (body !== undefined) update.body = body;
+  if (isAutoSignupTemplate !== undefined) update.isAutoSignupTemplate = !!isAutoSignupTemplate;
+
+  if (isAutoSignupTemplate === true) {
+    await SendifyTemplate.updateMany({ _id: { $ne: req.params.id } }, { $set: { isAutoSignupTemplate: false } });
+  }
 
   const template = await SendifyTemplate.findByIdAndUpdate(req.params.id, update, { new: true });
   if (!template) return res.status(404).json({ success: false, message: "Template not found" });

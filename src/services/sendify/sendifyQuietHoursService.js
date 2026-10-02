@@ -4,8 +4,13 @@
 // Default window 8:00-21:00 in the contact's local time (env-tunable).
 // Per-state stricter windows (Open Q #6 in sendify-infra.md — e.g. FL/OK
 // 8am-8pm) aren't implemented yet; this is the global default only.
+//
+// Whether the policy is enforced AT ALL is a live admin toggle
+// (sendifySettingsService.js, Settings tab) — checkQuietHours is therefore
+// async now; its one caller (routeWorker.js) awaits it.
 const { DateTime } = require("luxon");
 const { timezoneForPhone } = require("../../utils/areaCodeTimezone");
+const { getSettings } = require("./sendifySettingsService");
 
 const START_HOUR = Number(process.env.SENDIFY_QUIET_HOURS_START ?? 8);
 const END_HOUR = Number(process.env.SENDIFY_QUIET_HOURS_END ?? 21);
@@ -18,9 +23,12 @@ function timezoneFor(contact) {
 /**
  * @param {object} contact
  * @param {Date} [at] - defaults to now
- * @returns {{ inWindow: boolean, nextWindowOpensAt: Date }}
+ * @returns {Promise<{ inWindow: boolean, nextWindowOpensAt: Date|null }>}
  */
-function checkQuietHours(contact, at = new Date()) {
+async function checkQuietHours(contact, at = new Date()) {
+  const { quietHoursEnabled } = await getSettings();
+  if (!quietHoursEnabled) return { inWindow: true, nextWindowOpensAt: null };
+
   const tz = timezoneFor(contact);
   const local = DateTime.fromJSDate(at).setZone(tz);
   const hour = local.hour + local.minute / 60;
