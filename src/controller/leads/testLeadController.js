@@ -8,6 +8,7 @@ const RenovationContractorRequest = require("../../model/property/renovationCont
 const { getCallsForPhones, normalisePhone } = require("../../services/calling/vapiCallsService");
 const { getEmailEventsForEmails } = require("../../services/integrations/emailEventsService");
 const { getNotesForLeads } = require("../../services/leads/leadNotesService");
+const { getSendifyMessagesForPhones } = require("../../services/sendify/sendifyLeadMessagesService");
 
 // Whole-word "test" (case-insensitive): matches "test", "Test User", "John Test",
 // but NOT "Testerson" or "contest". Kept identical to the exclusion regex used by
@@ -53,7 +54,8 @@ const getTestLeads = catchAsyncError(async (req, res) => {
       const emailAddresses = leads.map((l) => l.email).filter(Boolean);
       const leadIds = leads.map((l) => l._id);
 
-      const [callsByPhone, eventsByEmail, notesByLead] = await Promise.all([
+      const [messagesByPhone, callsByPhone, eventsByEmail, notesByLead] = await Promise.all([
+        getSendifyMessagesForPhones(phones),
         getCallsForPhones(phones),
         getEmailEventsForEmails(emailAddresses),
         getNotesForLeads(leadType, leadIds),
@@ -75,6 +77,7 @@ const getTestLeads = catchAsyncError(async (req, res) => {
           calls: callsByPhone[normalisePhone(lead.phone)] || [],
           emails: eventsByEmail[String(lead.email || "").toLowerCase()] || [],
           notes: notesByLead[String(lead._id)] || [],
+          messages: messagesByPhone[normalisePhone(lead.phone)] || [],
         };
       });
     })

@@ -14,6 +14,7 @@ const { enrichPerson } = require("../../services/shared/fullenrichService");
 const { getCallsForPhones, normalisePhone } = require("../../services/calling/vapiCallsService");
 const { getEmailEventsForEmails } = require("../../services/integrations/emailEventsService");
 const { getNotesForLeads } = require("../../services/leads/leadNotesService");
+const { getSendifyMessagesForPhones } = require("../../services/sendify/sendifyLeadMessagesService");
 const { syncPropertyLead } = require("../../services/integrations/brevoService");
 const { notifyNewLead } = require("../../services/shared/slackService");
 const { auctionPageUrl, listingPageUrl } = require("../../config/siteUrls");
@@ -217,7 +218,8 @@ const getLeadsByProperty = catchAsyncError(async (req, res, next) => {
   const emailAddresses = leads.map((l) => l.email).filter(Boolean);
   const leadIds = leads.map((l) => l._id);
 
-  const [callsByPhone, eventsByEmail, notesByLead] = await Promise.all([
+  const [messagesByPhone, callsByPhone, eventsByEmail, notesByLead] = await Promise.all([
+    getSendifyMessagesForPhones(phones),
     getCallsForPhones(phones),
     getEmailEventsForEmails(emailAddresses),
     getNotesForLeads(LEAD_NOTE_TYPE, leadIds),
@@ -228,6 +230,7 @@ const getLeadsByProperty = catchAsyncError(async (req, res, next) => {
     calls: callsByPhone[normalisePhone(lead.phone)] || [],
     emails: eventsByEmail[String(lead.email || "").toLowerCase()] || [],
     notes: notesByLead[String(lead._id)] || [],
+    messages: messagesByPhone[normalisePhone(lead.phone)] || [],
   }));
 
   res.status(200).json({
