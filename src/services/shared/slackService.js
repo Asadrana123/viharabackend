@@ -180,4 +180,4 @@ async function notifyNewLead(lead = {}) {
   }
 }
 
-module.exports = { notifyNewLead };
+module.exports = { notifyNewLead, postToSlack };

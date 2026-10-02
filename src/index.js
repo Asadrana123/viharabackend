@@ -15,6 +15,7 @@ const { startMatchCallScheduler } = require('./services/buyerMatch/matchCallServ
 const { startBrevoBackfillJob } = require('./jobs/brevoBackfillJob'); // ← ADD
 const { startAuctionCloseJob } = require('./jobs/auctionCloseJob');
 const { startZillowSyncJob } = require('./jobs/zillowSyncJob');
+const { startMetaAdsReportJob } = require('./jobs/metaAdsReportJob');
 require('./passport');
 
 const PORT = process.env.PORT || 8000;
@@ -61,4 +62,7 @@ server.listen(PORT, () => {
 
   // Weekly Zillow refresh of every linked property the admin hasn't paused.
   startZillowSyncJob();
+
+  // Daily 9:00 AM IST Meta Ads performance report + AI suggestions to Slack.
+  startMetaAdsReportJob();
 });
