@@ -18,6 +18,7 @@ const QUEUE_NAMES = {
   MAINTENANCE: "sendify-maintenance",
   ROUTE: "sendify-route",
   INBOUND: "sendify-inbound",
+  DRAFT_REPLY: "sendify-draft-reply",
 };
 
 const DEFAULT_QUEUE_OPTS = {
@@ -38,6 +39,10 @@ const RETENTION = { removeOnComplete: { age: 86400, count: 5000 }, removeOnFail:
 const ROUTE_JOB_OPTS = { attempts: 5, backoff: { type: "exponential", delay: 10_000 }, ...RETENTION };
 const LINE_JOB_OPTS = { attempts: 4, backoff: { type: "exponential", delay: 30_000 }, ...RETENTION };
 const INBOUND_JOB_OPTS = { attempts: 5, backoff: { type: "exponential", delay: 5_000 }, ...RETENTION };
+// Lighter than INBOUND_JOB_OPTS on purpose — an LLM draft failing is
+// low-stakes (worst case: no draft, a human replies manually), not worth
+// INBOUND_JOB_OPTS's aggressive retry tuned for webhook reprocessing.
+const DRAFT_REPLY_JOB_OPTS = { attempts: 2, backoff: { type: "exponential", delay: 10_000 }, ...RETENTION };
 
 // BullMQ v5 rejects ":" in queue names (sendify-infra.md §4.2) — lineId is a
 // Mongo ObjectId hex string, so this is already safe without any escaping.
@@ -67,6 +72,14 @@ function getInboundQueue() {
   return inboundQueue;
 }
 
+let draftReplyQueue = null;
+function getDraftReplyQueue() {
+  if (!draftReplyQueue) {
+    draftReplyQueue = new Queue(QUEUE_NAMES.DRAFT_REPLY, { ...DEFAULT_QUEUE_OPTS, defaultJobOptions: DRAFT_REPLY_JOB_OPTS });
+  }
+  return draftReplyQueue;
+}
+
 const lineQueues = new Map(); // lineId (string) -> Queue instance
 function getLineQueue(lineId) {
   const key = String(lineId);
@@ -81,6 +94,7 @@ async function closeAllQueues() {
   if (maintenanceQueue) await maintenanceQueue.close();
   if (routeQueue) await routeQueue.close();
   if (inboundQueue) await inboundQueue.close();
+  if (draftReplyQueue) await draftReplyQueue.close();
   for (const queue of lineQueues.values()) {
     await queue.close();
   }
@@ -95,6 +109,7 @@ module.exports = {
   getMaintenanceQueue,
   getRouteQueue,
   getInboundQueue,
+  getDraftReplyQueue,
   getLineQueue,
   closeAllQueues,
 };

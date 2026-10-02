@@ -69,10 +69,19 @@ async function cancelPendingOutbound(contactId) {
   const pending = await SendifyMessage.find({
     contactId,
     direction: "out",
-    status: { $in: ["queued", "waiting-window", "waiting-capacity", "assigned"] },
+    status: { $in: ["queued", "waiting-window", "waiting-capacity", "assigned", "pending-approval"] },
   });
 
   for (const message of pending) {
+    // A pending AI draft never reached the route queue, so there's no line
+    // job or capacity reservation to undo for it — just reject it below.
+    if (message.status === "pending-approval") {
+      message.status = "cancelled";
+      if (message.aiDraft) message.aiDraft.approvalStatus = "rejected";
+      await message.save();
+      continue;
+    }
+
     // Best-effort job removal — the message's own status flip is what
     // actually stops it from sending even if a stale job slips through
     // (routeWorker/lineSendWorker both check status before doing anything).
@@ -237,6 +246,20 @@ async function handleMessageReceived(event, line) {
       await contact.save();
       await sendSystemReply(contact, line, "You're resubscribed to messages from Vihara.", "resubscribe-confirm");
     }
+  } else if (process.env.SENDIFY_AI_DRAFT_REPLY_ENABLED === "true" && !contact.optOut?.isOptedOut) {
+    // No compliance keyword matched — a real inbound message that may
+    // warrant an AI-drafted reply (Phase 7c). Fire-and-forget: drafting
+    // itself (the LLM call) happens in draftReplyWorker.js, not here, so an
+    // LLM round-trip never blocks this webhook-processing job or its retry
+    // semantics.
+    const { getDraftReplyQueue } = require("../queue/queues");
+    await getDraftReplyQueue().add("draft-reply", {
+      conversationId: String(conversation._id),
+      contactId: String(contact._id),
+      inboundMessageId: String(message._id),
+      lineId: String(line._id),
+      channelType: line.channelType,
+    });
   }
 
   publishEvent({ type: "message.inbound", conversationId: String(conversation._id), contactId: String(contact._id) });

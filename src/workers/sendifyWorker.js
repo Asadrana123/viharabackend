@@ -17,6 +17,7 @@ const {
 } = require("../services/sendify/workers/maintenanceWorker");
 const { startRouteWorker, stopRouteWorker } = require("../services/sendify/workers/routeWorker");
 const { startInboundWorker, stopInboundWorker } = require("../services/sendify/workers/inboundWorker");
+const { startDraftReplyWorker, stopDraftReplyWorker } = require("../services/sendify/workers/draftReplyWorker");
 const { startLineWorkerManager, stopLineWorkerManager } = require("../services/sendify/queue/lineWorkerManager");
 const { closeAllQueues } = require("../services/sendify/queue/queues");
 
@@ -28,6 +29,7 @@ async function startSendifyWorkers() {
   await ensureMaintenanceSchedulers();
   startRouteWorker();
   startInboundWorker();
+  startDraftReplyWorker();
   await startLineWorkerManager();
   console.log("🔧 Sendify workers started");
 }
@@ -36,6 +38,7 @@ async function stopSendifyWorkers() {
   await stopMaintenanceWorker();
   await stopRouteWorker();
   await stopInboundWorker();
+  await stopDraftReplyWorker();
   await stopLineWorkerManager();
   await closeAllQueues();
 }

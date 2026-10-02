@@ -11,6 +11,10 @@ const mongoose = require("mongoose");
 const OUTBOUND_STATUSES = [
   "queued", "waiting-window", "waiting-capacity", "assigned", "sending",
   "accepted", "sent", "delivered", "failed", "cancelled", "blocked", "unknown",
+  // An AI-drafted reply (Phase 7c), sitting un-enqueued until an admin
+  // approves it (or sendifySettingsModel's aiAutoReplyEnabled auto-approves
+  // it). Deliberately excluded from routeWorker.js's STATUSES_ROUTABLE.
+  "pending-approval",
 ];
 const INBOUND_STATUSES = ["received"];
 const ALL_STATUSES = [...OUTBOUND_STATUSES, ...INBOUND_STATUSES];
@@ -85,6 +89,20 @@ const sendifyMessageSchema = new mongoose.Schema(
       method: { type: String, enum: ["exact", "phrase"] },
     },
     readAt: { type: Date },
+
+    // Set only on an AI-drafted reply (Phase 7c, sendifyAiReplyService.js /
+    // draftReplyWorker.js). "pending" until an admin (or auto-approve) acts
+    // on it; "edited" means the body was changed before approval.
+    aiDraft: {
+      approvalStatus: { type: String, enum: ["pending", "approved", "edited", "rejected"] },
+      model: { type: String },
+      generatedAt: { type: Date },
+      approvedBy: {
+        adminId: { type: mongoose.Schema.Types.ObjectId },
+        adminName: { type: String },
+      },
+      approvedAt: { type: Date },
+    },
   },
   { timestamps: true }
 );

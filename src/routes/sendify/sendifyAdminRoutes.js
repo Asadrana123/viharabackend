@@ -13,7 +13,7 @@ const {
   pauseLine, resumeLine, quarantineLine, reinstateLine, retireLine, toggleDrainMode,
   startWarmup, testSend, getLineUsage, getLineEvents, registerWebhooksForLine,
 } = require("../../controller/sendify/sendifyLineController");
-const { sendMessage, sendBulkMessages, listMessagesByStatus, retryMessage, cancelMessage, rerouteMessage } = require("../../controller/sendify/sendifyMessageController");
+const { sendMessage, sendBulkMessages, listMessagesByStatus, retryMessage, cancelMessage, rerouteMessage, approveDraft } = require("../../controller/sendify/sendifyMessageController");
 const { listConversations, getConversationMessages, updateConversation } = require("../../controller/sendify/sendifyConversationController");
 const { getContact, updateContactConsent } = require("../../controller/sendify/sendifyContactController");
 const { getStatsOverview } = require("../../controller/sendify/sendifyStatsController");
@@ -59,6 +59,7 @@ router.get("/messages", listMessagesByStatus);
 router.post("/messages/:id/retry", retryMessage);
 router.post("/messages/:id/cancel", cancelMessage);
 router.post("/messages/:id/reroute", rerouteMessage);
+router.post("/messages/:id/approve-draft", approveDraft);
 
 router.post("/lines", createLine);
 router.get("/lines", listLines);

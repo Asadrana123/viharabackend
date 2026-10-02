@@ -26,6 +26,7 @@ async function getSettings() {
 async function updateSettings(patch) {
   const update = {};
   if (patch.quietHoursEnabled !== undefined) update.quietHoursEnabled = !!patch.quietHoursEnabled;
+  if (patch.aiAutoReplyEnabled !== undefined) update.aiAutoReplyEnabled = !!patch.aiAutoReplyEnabled;
 
   const settings = await SendifySettings.findOneAndUpdate(
     {},

@@ -5,12 +5,13 @@
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const { enqueueOutbound } = require("../../services/sendify/sendifyMessageService");
 const { renderTemplateForProperty, loadTemplateAndProperty, renderTemplate, resolveContactVariables } = require("../../services/sendify/sendifyTemplateService");
+const { approveDraft: approveDraftReply } = require("../../services/sendify/sendifyDraftReplyService");
 const SendifyMessage = require("../../model/sendify/sendifyMessageModel");
 const SendifyLine = require("../../model/sendify/sendifyLineModel");
 const capacity = require("../../services/sendify/sendifyCapacityService");
 const { getRouteQueue, getLineQueue } = require("../../services/sendify/queue/queues");
 
-const CANCELLABLE_STATUSES = ["queued", "waiting-window", "waiting-capacity", "assigned"];
+const CANCELLABLE_STATUSES = ["queued", "waiting-window", "waiting-capacity", "assigned", "pending-approval"];
 
 /**
  * POST /api/v1/sendify/messages
@@ -148,10 +149,30 @@ const cancelMessage = catchAsyncError(async (req, res) => {
     if (line) await capacity.release(line, capacity.dayKey(message.updatedAt), { wasReply: message.isReplyToInbound });
   }
 
+  // Cancelling a pending AI draft IS rejecting it — no separate reject
+  // endpoint, this is the one cancel path for every cancellable status.
+  if (message.status === "pending-approval" && message.aiDraft) {
+    message.aiDraft.approvalStatus = "rejected";
+  }
+
   message.status = "cancelled";
   await message.save();
 
   return res.status(200).json({ success: true, message });
+});
+
+/** POST /api/v1/sendify/messages/:id/approve-draft — body: { body? } (an edited draft). Only a "pending-approval" (AI-drafted) message can be approved. */
+const approveDraft = catchAsyncError(async (req, res) => {
+  const { body } = req.body || {};
+  try {
+    const message = await approveDraftReply(req.params.id, {
+      body,
+      approvedBy: { adminId: req.user?._id, adminName: req.user?.name },
+    });
+    return res.status(200).json({ success: true, message });
+  } catch (err) {
+    return res.status(400).json({ success: false, message: err.message });
+  }
 });
 
 /** POST /api/v1/sendify/messages/:id/reroute — forces an immediate re-route attempt (skips any pending delay), optionally excluding the line it's currently stuck on. */
@@ -175,4 +196,4 @@ const rerouteMessage = catchAsyncError(async (req, res) => {
   return res.status(200).json({ success: true, message });
 });
 
-module.exports = { sendMessage, sendBulkMessages, listMessagesByStatus, retryMessage, cancelMessage, rerouteMessage };
+module.exports = { sendMessage, sendBulkMessages, listMessagesByStatus, retryMessage, cancelMessage, rerouteMessage, approveDraft };
