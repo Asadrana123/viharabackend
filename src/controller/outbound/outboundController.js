@@ -71,30 +71,46 @@ exports.parseContacts = catchAsyncError(async (req, res) => {
 
 /**
  * POST /sms/campaigns
- * Body: { propertyId, maxContacts, consentAttested, csvData?, contact?, source, csvFileName? }
+ * Body: { propertyId, maxContacts, csvData?, contact?, source, csvFileName?, provider? }
+ *   provider "brevo" (default): consentAttested required, property needs brevoOutboundSmsListId.
+ *   provider "sendify": templateId required instead — Sendify enforces its own
+ *     real per-contact consent at send time, no attestation needed/accepted.
  */
 exports.launchSmsCampaign = catchAsyncError(async (req, res, next) => {
-  const { propertyId, maxContacts, consentAttested, csvData, contact, source, csvFileName } = req.body;
+  const { propertyId, maxContacts, consentAttested, csvData, contact, source, csvFileName, provider, templateId } =
+    req.body;
+  const smsProvider = provider === "sendify" ? "sendify" : "brevo";
 
   const property = await Product.findById(propertyId);
   if (!property) return next(new Errorhandler("Property not found", 404));
 
   const validatedMax = validateMaxContacts(maxContacts);
 
-  if (consentAttested !== true) {
-    return next(
-      new Errorhandler("These contacts must be confirmed as having given consent to receive texts", 400)
-    );
-  }
-
-  const listId = resolveOutboundSmsListId(property);
-  if (listId === null) {
-    return next(
-      new Errorhandler(
-        `${property.productName || "This property"} is not set up for outbound SMS yet. Add its Brevo list id in Manage Listings.`,
-        400
-      )
-    );
+  let smsFields;
+  if (smsProvider === "sendify") {
+    if (!templateId) {
+      return next(new Errorhandler("Pick a template before launching a Sendify campaign", 400));
+    }
+    const SendifyTemplate = require("../../model/sendify/sendifyTemplateModel");
+    const template = await SendifyTemplate.findById(templateId).lean();
+    if (!template) return next(new Errorhandler("Template not found", 404));
+    smsFields = { provider: "sendify", templateId, templateName: template.name };
+  } else {
+    if (consentAttested !== true) {
+      return next(
+        new Errorhandler("These contacts must be confirmed as having given consent to receive texts", 400)
+      );
+    }
+    const listId = resolveOutboundSmsListId(property);
+    if (listId === null) {
+      return next(
+        new Errorhandler(
+          `${property.productName || "This property"} is not set up for outbound SMS yet. Add its Brevo list id in Manage Listings.`,
+          400
+        )
+      );
+    }
+    smsFields = { provider: "brevo", listId, consentAttested: true };
   }
 
   const { contacts, skipped, total, overLimit } = parseContactsRaw({
@@ -120,7 +136,7 @@ exports.launchSmsCampaign = catchAsyncError(async (req, res, next) => {
     createdBy: req.user,
     contacts,
     parseSkipped: skipped,
-    sms: { listId, consentAttested: true },
+    sms: smsFields,
   });
 
   res.status(202).json({ success: true, campaignId: campaign._id, total, skipped });
@@ -130,6 +146,19 @@ exports.launchSmsCampaign = catchAsyncError(async (req, res, next) => {
   startCampaign(campaign._id).catch((err) => {
     console.error("Outbound SMS campaign failed to start:", err);
   });
+});
+
+/**
+ * GET /sms/sendify-templates
+ * Thin proxy onto Sendify's own template collection, so SmsLauncher.jsx
+ * (and everything else under AdminPanel/Outbound) only ever talks to
+ * outbound.service.js — not a direct cross-feature frontend call into
+ * Sendify's own API. Templates aren't property-scoped, so no filtering.
+ */
+exports.listSendifyTemplatesForOutbound = catchAsyncError(async (req, res) => {
+  const SendifyTemplate = require("../../model/sendify/sendifyTemplateModel");
+  const templates = await SendifyTemplate.find().sort({ updatedAt: -1 }).select("name body updatedAt");
+  return res.json({ success: true, templates });
 });
 
 /**
