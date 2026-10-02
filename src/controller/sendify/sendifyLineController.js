@@ -12,6 +12,48 @@ const { encryptCredentials, decryptCredentials } = require("../../utils/secretBo
 const { drainLine } = require("../../services/sendify/sendifyLineDrainService");
 
 /**
+ * The URL a provider (BlueBubbles, android-sms-gateway) POSTs inbound events to
+ * for this line — the per-line webhookKey in the path is the actual security
+ * boundary (sendifyWebhookController.js), not a secret on the provider's side.
+ * Returns null when SENDIFY_PUBLIC_BASE_URL isn't configured (e.g. plain local
+ * dev with no tunnel) — there's nothing reachable to build a URL to yet.
+ */
+function buildWebhookUrl(line) {
+  const base = process.env.SENDIFY_PUBLIC_BASE_URL;
+  if (!base) return null;
+  return `${base.replace(/\/$/, "")}/api/webhooks/sendify/${line.channelType}/${line.webhookKey}`;
+}
+
+/** Attaches the computed webhookUrl to a line object headed into a JSON response (never stored on the document itself — always derived from current env + the line's own fields). */
+function withWebhookUrl(lineObj) {
+  return { ...lineObj, webhookUrl: buildWebhookUrl(lineObj) };
+}
+
+/**
+ * Best-effort webhook registration right after a line is created — most lines
+ * are usable without this (BlueBubbles/android-sms-gateway can also have their
+ * webhook pasted in by hand), so a failure here never fails line creation
+ * itself. Skipped entirely (not attempted) when there's no public URL to
+ * register yet, or the channel has no such step (mock).
+ */
+async function tryRegisterWebhooks(line, credentials) {
+  const adapter = getAdapter(line.channelType);
+  if (!adapter.registerWebhooks) {
+    return { attempted: false, reason: "this channel has no webhook-registration step" };
+  }
+  const publicUrl = buildWebhookUrl(line);
+  if (!publicUrl) {
+    return { attempted: false, reason: "SENDIFY_PUBLIC_BASE_URL is not configured — register this line's webhook manually on the provider's side for now" };
+  }
+  try {
+    const result = await adapter.registerWebhooks({ line, credentials, publicUrl });
+    return { attempted: true, ok: true, result };
+  } catch (err) {
+    return { attempted: true, ok: false, error: err.message };
+  }
+}
+
+/**
  * POST /api/v1/sendify/lines
  * Body: { name, channelType, address, config, credentials (plain, e.g. { password }) }
  */
@@ -52,7 +94,23 @@ const createLine = catchAsyncError(async (req, res) => {
   // create response. Strip explicitly rather than trusting the schema here.
   const safeLine = line.toObject();
   delete safeLine.credentials;
-  return res.status(201).json({ success: true, line: safeLine });
+
+  // credentials here is still the PLAIN object from the request body — no
+  // need to decrypt what we never encrypted-and-stored-then-reloaded in this
+  // same request.
+  const webhookRegistration = await tryRegisterWebhooks(line, credentials);
+
+  return res.status(201).json({ success: true, line: withWebhookUrl(safeLine), webhookRegistration });
+});
+
+/** POST /api/v1/sendify/lines/:id/register-webhooks — manual (re-)registration, for when it failed at create time (tunnel not up yet) or the provider-side config changed. */
+const registerWebhooksForLine = catchAsyncError(async (req, res) => {
+  const line = await SendifyLine.findById(req.params.id).select("+credentials.iv +credentials.tag +credentials.ciphertext");
+  if (!line) return res.status(404).json({ success: false, message: "Line not found" });
+
+  const credentials = line.credentials?.ciphertext ? decryptCredentials(line.credentials) : undefined;
+  const webhookRegistration = await tryRegisterWebhooks(line, credentials);
+  return res.status(200).json({ success: true, webhookRegistration });
 });
 
 /** GET /api/v1/sendify/lines */
@@ -70,14 +128,14 @@ const listLines = catchAsyncError(async (req, res) => {
   const lines = await SendifyLine.find(filter)
     .select("-credentials.iv -credentials.tag -credentials.ciphertext")
     .sort({ createdAt: -1 });
-  return res.status(200).json({ success: true, lines });
+  return res.status(200).json({ success: true, lines: lines.map((l) => withWebhookUrl(l.toObject())) });
 });
 
 /** GET /api/v1/sendify/lines/:id */
 const getLine = catchAsyncError(async (req, res) => {
   const line = await SendifyLine.findById(req.params.id).select("-credentials.iv -credentials.tag -credentials.ciphertext");
   if (!line) return res.status(404).json({ success: false, message: "Line not found" });
-  return res.status(200).json({ success: true, line });
+  return res.status(200).json({ success: true, line: withWebhookUrl(line.toObject()) });
 });
 
 /** PATCH /api/v1/sendify/lines/:id — name/config/limits/notes/hardware edits only, no status transitions here (Phase 4). */
@@ -104,7 +162,7 @@ const updateLine = catchAsyncError(async (req, res) => {
 
   const line = await SendifyLine.findByIdAndUpdate(req.params.id, update, { new: true }).select("-credentials.iv -credentials.tag -credentials.ciphertext");
   if (!line) return res.status(404).json({ success: false, message: "Line not found" });
-  return res.status(200).json({ success: true, line });
+  return res.status(200).json({ success: true, line: withWebhookUrl(line.toObject()) });
 });
 
 /** Shared status transition: writes line.status + a sendifyLineEvent audit row. Does NOT validate the transition is sensible — each action handler below decides that. */
@@ -130,7 +188,7 @@ const pauseLine = catchAsyncError(async (req, res) => {
   const line = await SendifyLine.findById(req.params.id);
   if (!line) return res.status(404).json({ success: false, message: "Line not found" });
   await setLineStatus(line, "paused", req.body?.reason, req);
-  return res.status(200).json({ success: true, line: line.toObject() });
+  return res.status(200).json({ success: true, line: withWebhookUrl(line.toObject()) });
 });
 
 /** POST /api/v1/sendify/lines/:id/resume — back to the status it was in before pausing, defaulting to "active". */
@@ -143,7 +201,7 @@ const resumeLine = catchAsyncError(async (req, res) => {
   const lastPause = await SendifyLineEvent.findOne({ lineId: line._id, type: "status-change", to: "paused" }).sort({ createdAt: -1 });
   const restoreTo = lastPause?.from && ["warming", "active"].includes(lastPause.from) ? lastPause.from : "active";
   await setLineStatus(line, restoreTo, "resumed by admin", req);
-  return res.status(200).json({ success: true, line: line.toObject() });
+  return res.status(200).json({ success: true, line: withWebhookUrl(line.toObject()) });
 });
 
 /** POST /api/v1/sendify/lines/:id/quarantine — manual quarantine (auto-quarantine goes through sendifyLineHealthService instead, not this endpoint). */
@@ -152,7 +210,7 @@ const quarantineLine = catchAsyncError(async (req, res) => {
   if (!line) return res.status(404).json({ success: false, message: "Line not found" });
   await setLineStatus(line, "quarantined", req.body?.reason || "manually quarantined by admin", req);
   const drainResult = await drainLine(line._id);
-  return res.status(200).json({ success: true, line: line.toObject(), ...drainResult });
+  return res.status(200).json({ success: true, line: withWebhookUrl(line.toObject()), ...drainResult });
 });
 
 /** POST /api/v1/sendify/lines/:id/reinstate — the ONLY way out of quarantine (§7.4: "manual only"). Re-enters warming at a reduced (restarted) schedule. */
@@ -172,7 +230,7 @@ const reinstateLine = catchAsyncError(async (req, res) => {
   line.health.consecutiveFailures = 0;
   line.health.failureRateRecent = 0;
   await setLineStatus(line, "warming", "reinstated by admin, warm-up restarted", req);
-  return res.status(200).json({ success: true, line: line.toObject() });
+  return res.status(200).json({ success: true, line: withWebhookUrl(line.toObject()) });
 });
 
 /** POST /api/v1/sendify/lines/:id/retire — permanent, drains and stops routing to this line for good. */
@@ -181,7 +239,7 @@ const retireLine = catchAsyncError(async (req, res) => {
   if (!line) return res.status(404).json({ success: false, message: "Line not found" });
   await setLineStatus(line, "retired", req.body?.reason || "retired by admin", req);
   const drainResult = await drainLine(line._id);
-  return res.status(200).json({ success: true, line: line.toObject(), ...drainResult });
+  return res.status(200).json({ success: true, line: withWebhookUrl(line.toObject()), ...drainResult });
 });
 
 /** POST /api/v1/sendify/lines/:id/drain — toggles routing.acceptsNewContacts off without changing status (§7.1 "drain mode": sticky conversations keep working, no new ones start). */
@@ -190,7 +248,7 @@ const toggleDrainMode = catchAsyncError(async (req, res) => {
   if (!line) return res.status(404).json({ success: false, message: "Line not found" });
   line.routing.acceptsNewContacts = req.body?.acceptsNewContacts !== undefined ? !!req.body.acceptsNewContacts : !line.routing.acceptsNewContacts;
   await line.save();
-  return res.status(200).json({ success: true, line: line.toObject() });
+  return res.status(200).json({ success: true, line: withWebhookUrl(line.toObject()) });
 });
 
 /** POST /api/v1/sendify/lines/:id/start-warmup — §7.1 step 5, after a successful test send. */
@@ -200,7 +258,7 @@ const startWarmup = catchAsyncError(async (req, res) => {
   line.warmup.enabled = true;
   line.warmup.startedAt = new Date();
   await setLineStatus(line, "warming", "warm-up started by admin", req);
-  return res.status(200).json({ success: true, line: line.toObject() });
+  return res.status(200).json({ success: true, line: withWebhookUrl(line.toObject()) });
 });
 
 /** POST /api/v1/sendify/lines/:id/test-send — §7.1 step 5, a real send bypassing the queue/compliance gate entirely (admin-to-self verification only, never a real contact). */
@@ -238,5 +296,5 @@ const getLineEvents = catchAsyncError(async (req, res) => {
 module.exports = {
   createLine, listLines, getLine, updateLine,
   pauseLine, resumeLine, quarantineLine, reinstateLine, retireLine, toggleDrainMode,
-  startWarmup, testSend, getLineUsage, getLineEvents,
+  startWarmup, testSend, getLineUsage, getLineEvents, registerWebhooksForLine,
 };

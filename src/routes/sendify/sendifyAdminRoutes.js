@@ -11,7 +11,7 @@ const { health } = require("../../controller/sendify/sendifyAdminController");
 const {
   createLine, listLines, getLine, updateLine,
   pauseLine, resumeLine, quarantineLine, reinstateLine, retireLine, toggleDrainMode,
-  startWarmup, testSend, getLineUsage, getLineEvents,
+  startWarmup, testSend, getLineUsage, getLineEvents, registerWebhooksForLine,
 } = require("../../controller/sendify/sendifyLineController");
 const { sendMessage, sendBulkMessages, listMessagesByStatus, retryMessage, cancelMessage, rerouteMessage } = require("../../controller/sendify/sendifyMessageController");
 const { listConversations, getConversationMessages, updateConversation } = require("../../controller/sendify/sendifyConversationController");
@@ -60,5 +60,6 @@ router.post("/lines/:id/start-warmup", startWarmup);
 router.post("/lines/:id/test-send", testSend);
 router.get("/lines/:id/usage", getLineUsage);
 router.get("/lines/:id/events", getLineEvents);
+router.post("/lines/:id/register-webhooks", registerWebhooksForLine);
 
 module.exports = router;
