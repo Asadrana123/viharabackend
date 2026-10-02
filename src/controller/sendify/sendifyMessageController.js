@@ -4,7 +4,7 @@
 // — real sends now go through the queue via sendifyMessageService.enqueueOutbound.
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const { enqueueOutbound } = require("../../services/sendify/sendifyMessageService");
-const { renderTemplateForProperty } = require("../../services/sendify/sendifyTemplateService");
+const { renderTemplateForProperty, loadTemplateAndProperty, renderTemplate, resolveContactVariables } = require("../../services/sendify/sendifyTemplateService");
 const SendifyMessage = require("../../model/sendify/sendifyMessageModel");
 const SendifyLine = require("../../model/sendify/sendifyLineModel");
 const capacity = require("../../services/sendify/sendifyCapacityService");
@@ -14,16 +14,17 @@ const CANCELLABLE_STATUSES = ["queued", "waiting-window", "waiting-capacity", "a
 
 /**
  * POST /api/v1/sendify/messages
- * Body: { to, body, channelPolicy?, isReplyToInbound?, idempotencyKey?, scheduledFor? }
- * OR:   { to, templateId, propertyId, ... } — body rendered from the template+property instead of typed directly.
+ * Body: { to, body, channelPolicy?, isReplyToInbound?, idempotencyKey?, scheduledFor?, name? }
+ * OR:   { to, templateId, propertyId, name?, ... } — body rendered from the template+property(+name) instead of typed directly.
+ * `name` is used both for the template's {{name}} and, when this is a brand-new contact, as its stored name.
  */
 const sendMessage = catchAsyncError(async (req, res) => {
-  const { to, templateId, propertyId, channelPolicy, isReplyToInbound, idempotencyKey, scheduledFor } = req.body;
+  const { to, templateId, propertyId, name, channelPolicy, isReplyToInbound, idempotencyKey, scheduledFor } = req.body;
   let { body } = req.body;
 
   const origin = { kind: "manual", sentBy: { adminId: req.user?._id, adminName: req.user?.name } };
   if (!body && templateId) {
-    const rendered = await renderTemplateForProperty(templateId, propertyId);
+    const rendered = await renderTemplateForProperty(templateId, propertyId, name);
     body = rendered.body;
     origin.campaignId = templateId;
   }
@@ -36,6 +37,7 @@ const sendMessage = catchAsyncError(async (req, res) => {
     isReplyToInbound,
     idempotencyKey,
     scheduledFor,
+    contactName: name,
   });
 
   return res.status(result.blocked ? 200 : 202).json({
@@ -48,9 +50,10 @@ const sendMessage = catchAsyncError(async (req, res) => {
 
 /**
  * POST /api/v1/sendify/messages/bulk
- * Either body: { recipients: [{ to, body }], batchId? } — a body per recipient, or
- *       body: { to: [phoneNumbers], templateId, propertyId, batchId? } — one template+property
- *             rendered ONCE and sent as-is to every number (the Send tab's bulk-from-template flow).
+ * Either body: { recipients: [{ to, body, name? }], batchId? } — a body per recipient, or
+ *       body: { to: [phoneNumbers] | [{to, name?}], templateId, propertyId, batchId? } — one
+ *             template+property, rendered PER recipient (so each one's {{name}} comes out right,
+ *             property variables stay the same for all) — the Send tab's bulk-from-template flow.
  */
 const sendBulkMessages = catchAsyncError(async (req, res) => {
   const { recipients, to, templateId, propertyId, batchId } = req.body;
@@ -62,8 +65,13 @@ const sendBulkMessages = catchAsyncError(async (req, res) => {
     if (!Array.isArray(to) || to.length === 0) {
       return res.status(400).json({ success: false, message: "Provide either recipients (with per-recipient body) or to (phone numbers) + templateId + propertyId" });
     }
-    const { body } = await renderTemplateForProperty(templateId, propertyId);
-    resolvedRecipients = to.map((phone) => ({ to: phone, body }));
+    const { template, propertyValues } = await loadTemplateAndProperty(templateId, propertyId);
+    resolvedRecipients = to.map((entry) => {
+      const phone = typeof entry === "string" ? entry : entry.to;
+      const name = typeof entry === "string" ? undefined : entry.name;
+      const values = { ...propertyValues, ...resolveContactVariables(name) };
+      return { to: phone, body: renderTemplate(template.body, values), name };
+    });
     origin.campaignId = templateId;
   }
 
@@ -74,7 +82,7 @@ const sendBulkMessages = catchAsyncError(async (req, res) => {
   const results = [];
   for (const recipient of resolvedRecipients) {
     try {
-      const result = await enqueueOutbound({ to: recipient.to, body: recipient.body, origin });
+      const result = await enqueueOutbound({ to: recipient.to, body: recipient.body, origin, contactName: recipient.name });
       results.push({ to: recipient.to, blocked: result.blocked, reason: result.reason, messageId: result.message._id });
     } catch (err) {
       results.push({ to: recipient.to, error: err.message });

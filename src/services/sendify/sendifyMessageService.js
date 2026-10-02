@@ -10,6 +10,7 @@ const SendifyMessage = require("../../model/sendify/sendifyMessageModel");
 const { getRouteQueue } = require("./queue/queues");
 const { canSend } = require("./sendifyComplianceService");
 const { normalizeInternationalPhone } = require("../../utils/internationalPhone");
+const { findLeadRefs } = require("./sendifyLeadLookupService");
 const Errorhandler = require("../../utils/errorhandler");
 
 function normalizeAddress(raw) {
@@ -27,9 +28,10 @@ function normalizeAddress(raw) {
  * @param {boolean} [params.isReplyToInbound]
  * @param {string} [params.idempotencyKey]
  * @param {Date} [params.scheduledFor]
+ * @param {string} [params.contactName] - admin-provided name (e.g. typed into a bulk-send row), takes priority over a lead-lookup match when a NEW contact is created
  * @returns {Promise<{ message: object, blocked: boolean, reason?: string }>}
  */
-async function enqueueOutbound({ to: rawTo, body, origin, channelPolicy, isReplyToInbound, idempotencyKey, scheduledFor }) {
+async function enqueueOutbound({ to: rawTo, body, origin, channelPolicy, isReplyToInbound, idempotencyKey, scheduledFor, contactName }) {
   const to = normalizeAddress(rawTo);
   if (!to) {
     throw new Errorhandler("to is not a valid US phone number or email address", 400);
@@ -40,11 +42,36 @@ async function enqueueOutbound({ to: rawTo, body, origin, channelPolicy, isReply
 
   let contact = await SendifyContact.findOne({ phoneE164: to });
   if (!contact) {
+    // Found as a real gap: this path never looked the number up against the
+    // lead collections at all, unlike inboundWorker's own contact-creation —
+    // meaning an admin bulk-sending to numbers that ARE leads got no name and
+    // no consent-inheritance, every time, even though the exact same lookup
+    // already existed for the inbound direction. One shared lookup now
+    // covers both.
+    const leadRefs = !to.includes("@") ? await findLeadRefs(to) : [];
+    const consentLead = leadRefs.find((r) => r.lead.smsConsent === true);
+
     contact = await SendifyContact.create({
       phoneE164: to,
       email: to.includes("@") ? to : undefined,
-      source: origin?.kind === "manual" ? "admin" : "admin",
+      name: contactName || leadRefs[0]?.name || undefined,
+      source: "admin",
+      leadRefs: leadRefs.map((r) => ({ leadType: r.leadType, leadId: r.leadId })),
+      consent: consentLead
+        ? {
+            status: "opted-in",
+            source: "lead-form",
+            capturedAt: consentLead.lead.smsConsentAt || new Date(),
+            consentText: consentLead.lead.smsConsentText,
+            evidence: { leadType: consentLead.leadType, leadId: consentLead.leadId },
+          }
+        : undefined,
     });
+  } else if (contactName && !contact.name) {
+    // Existing contact with no name yet (e.g. created by an earlier send
+    // before this lookup existed) — a freshly-provided name is still worth saving.
+    contact.name = contactName;
+    await contact.save();
   }
 
   // See routeWorker.js's matching call for why lastInboundAt is passed here too.

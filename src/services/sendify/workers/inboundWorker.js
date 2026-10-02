@@ -17,7 +17,7 @@ const { QUEUE_NAMES, QUEUE_PREFIX, getRouteQueue } = require("../queue/queues");
 const capacity = require("../sendifyCapacityService");
 const { detectKeyword } = require("../sendifyComplianceService");
 const { publishEvent } = require("../sendifyEventsBus");
-const { MODEL_BY_TYPE } = require("../../leads/leadModelsByType");
+const { findLeadRefs } = require("../sendifyLeadLookupService");
 const { notifySendifyAlert } = require("../../shared/slackService");
 
 const HELP_TEXT = process.env.SENDIFY_HELP_TEXT || "This is Vihara. Reply STOP to opt out, or visit vihara.ai for more info.";
@@ -28,22 +28,6 @@ function normalizeInboundAddress(raw) {
   if (typeof raw !== "string") return null;
   if (raw.includes("@")) return raw.trim().toLowerCase();
   return normalizeInternationalPhone(raw);
-}
-
-/** Looks a phone up across every linked lead collection; returns the first match (and stops there — a number rarely appears in more than one source). */
-async function findLeadRefs(phoneE164) {
-  const refs = [];
-  for (const [leadType, Model] of Object.entries(MODEL_BY_TYPE)) {
-    try {
-      const lead = await Model.findOne({ phoneNormalized: phoneE164 }).select("_id smsConsent smsConsentText smsConsentAt").lean();
-      if (lead) {
-        refs.push({ leadType, leadId: lead._id, lead });
-      }
-    } catch (err) {
-      console.error(`[sendify inbound] lead lookup failed for ${leadType}:`, err.message);
-    }
-  }
-  return refs;
 }
 
 /** Sends one system-origin message, routed back through the same channel the inbound message arrived on (not a channelPolicy-default "any" — see channelPolicy below for why that matters) and bypassing the normal compliance gate via sendifyComplianceService's SYSTEM_BYPASS_TEMPLATES (currently stop-confirm and help). */
@@ -135,6 +119,10 @@ async function handleMessageReceived(event, line) {
 
     contact = await SendifyContact.create({
       phoneE164: contactKey,
+      // Any lead match's name, not just the consent-granting one — a lead
+      // record existing at all is a stronger name signal than guessing, even
+      // when it's not the one that happens to carry SMS consent.
+      name: leadRefs[0]?.name || undefined,
       phoneStatus,
       timezone: from ? timezoneForPhone(from) : undefined,
       source: "inbound-unknown",

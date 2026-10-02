@@ -8,16 +8,16 @@ const {
   renderTemplateForProperty,
 } = require("../../services/sendify/sendifyTemplateService");
 
-/** GET /api/v1/sendify/templates/variables — the catalog for the variable-insertion panel, optionally previewed against a real property. */
+/** GET /api/v1/sendify/templates/variables?propertyId?&name? — the catalog for the variable-insertion panel, optionally previewed against a real property and/or a sample name. */
 const getTemplateVariables = catchAsyncError(async (req, res) => {
-  const { propertyId } = req.query;
+  const { propertyId, name } = req.query;
   let product = null;
   if (propertyId) {
     product = await Product.findById(propertyId)
       .select("productName street city state zipCode beds baths assetType propertyType startBid slug investmentData.valuation investmentData.rental")
       .lean();
   }
-  return res.status(200).json({ success: true, variables: buildPreviewValues(product) });
+  return res.status(200).json({ success: true, variables: buildPreviewValues(product, name) });
 });
 
 /** POST /api/v1/sendify/templates — body: { name, body } */
@@ -66,10 +66,10 @@ const deleteTemplate = catchAsyncError(async (req, res) => {
   return res.status(200).json({ success: true });
 });
 
-/** POST /api/v1/sendify/templates/:id/preview — body: { propertyId } → the rendered text, for the Send tab's live preview before launching a send. */
+/** POST /api/v1/sendify/templates/:id/preview — body: { propertyId, name? } → the rendered text, for the Send tab's live preview before launching a send. */
 const previewTemplate = catchAsyncError(async (req, res) => {
-  const { propertyId } = req.body;
-  const { body, property } = await renderTemplateForProperty(req.params.id, propertyId);
+  const { propertyId, name } = req.body;
+  const { body, property } = await renderTemplateForProperty(req.params.id, propertyId, name);
   return res.status(200).json({ success: true, body, property: { id: property._id, name: property.productName } });
 });
 
