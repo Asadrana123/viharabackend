@@ -12,13 +12,21 @@ const { decryptCredentials } = require("../../../../utils/secretBox");
 const crypto = require("crypto");
 
 /**
- * chatGuid for a brand-new/unknown contact — "any;-;+<phone>" or "any;-;<email>".
- * `to` is expected pre-formatted by the caller: E.164 (leading +) for a
- * phone number, or a plain email for an Apple ID — BlueBubbles' own chatGuid
- * format wraps whichever one unchanged.
+ * chatGuid for a brand-new/unknown contact — "iMessage;-;+<phone>" or
+ * "iMessage;-;<email>". `to` is expected pre-formatted by the caller: E.164
+ * (leading +) for a phone number, or a plain email for an Apple ID.
+ *
+ * This was originally "any;-;..." (an assumed wildcard, flagged as unverified
+ * against a real server) — confirmed WRONG during the first real-device test:
+ * BlueBubbles' AppleScript generator passes the GUID's service segment
+ * straight through literally into `service type = <value>`, with no wildcard
+ * handling, so "any" produced invalid AppleScript ("Can't make any into type
+ * constant", -1700) and every send failed. "iMessage" is the actual service
+ * constant Messages.app expects there — this line has no SMS capability at
+ * all (no SIM), so iMessage is the only correct value here regardless.
  */
 function chatGuidFor(to) {
-  return `any;-;${to}`;
+  return `iMessage;-;${to}`;
 }
 
 function credentialsFor(line) {

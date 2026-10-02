@@ -9,13 +9,13 @@ const SendifyContact = require("../../model/sendify/sendifyContactModel");
 const SendifyMessage = require("../../model/sendify/sendifyMessageModel");
 const { getRouteQueue } = require("./queue/queues");
 const { canSend } = require("./sendifyComplianceService");
-const { toUsSmsNumber } = require("../../utils/usPhone");
+const { normalizeInternationalPhone } = require("../../utils/internationalPhone");
 const Errorhandler = require("../../utils/errorhandler");
 
 function normalizeAddress(raw) {
   if (typeof raw !== "string") return null;
   if (raw.includes("@")) return raw.trim().toLowerCase();
-  return toUsSmsNumber(raw);
+  return normalizeInternationalPhone(raw);
 }
 
 /**

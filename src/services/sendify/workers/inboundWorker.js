@@ -4,7 +4,7 @@
 // points at a persisted sendifyWebhookEvent; this re-parses it through the
 // line's channel adapter and handles every NormalizedEvent it yields.
 const { Worker } = require("bullmq");
-const { toUsSmsNumber } = require("../../../utils/usPhone");
+const { normalizeInternationalPhone } = require("../../../utils/internationalPhone");
 const { timezoneForPhone } = require("../../../utils/areaCodeTimezone");
 const SendifyWebhookEvent = require("../../../model/sendify/sendifyWebhookEventModel");
 const SendifyLine = require("../../../model/sendify/sendifyLineModel");
@@ -27,7 +27,7 @@ const AUTO_REPLY_COOLDOWN_MS = 24 * 60 * 60 * 1000; // one HELP / one stop-confi
 function normalizeInboundAddress(raw) {
   if (typeof raw !== "string") return null;
   if (raw.includes("@")) return raw.trim().toLowerCase();
-  return toUsSmsNumber(raw);
+  return normalizeInternationalPhone(raw);
 }
 
 /** Looks a phone up across every linked lead collection; returns the first match (and stops there — a number rarely appears in more than one source). */

@@ -78,7 +78,18 @@ async function runLineHealthSweep() {
   // confirmed by a failing healthCheck() (not heartbeat staleness alone —
   // the heartbeat event itself might just not be wired up on a given
   // channel yet, which shouldn't by itself take a line offline).
-  const candidates = await SendifyLine.find({ status: { $in: ["warming", "active"] } });
+  // +credentials is required here, not optional — every real adapter's
+  // healthCheck() needs them to actually reach the provider. Missing this
+  // was a real bug, found during the first real-device test: healthCheck()
+  // threw ("no stored credentials — was it loaded with +credentials
+  // selected?") on every single call, which the catch block below silently
+  // turned into `healthy = false` — so a perfectly healthy line with no
+  // heartbeat-webhook mechanism (BlueBubbles has none at all; its only
+  // webhook events are new-message/updated-message) got auto-flipped
+  // offline on its very first health sweep, every time, regardless of
+  // actual health.
+  const candidates = await SendifyLine.find({ status: { $in: ["warming", "active"] } })
+    .select("+credentials.iv +credentials.tag +credentials.ciphertext");
   for (const line of candidates) {
     const stale = !line.health?.lastHeartbeatAt || new Date(line.health.lastHeartbeatAt) < staleCutoff;
     if (!stale) continue;

@@ -133,9 +133,19 @@ async function selectLine(message, contact) {
 
     if (!adapter.capabilities.reachesAllUsNumbers) {
       const reachable = await resolveReachability(contact, channelType, adapter);
-      if (reachable !== true) {
+      // Only a CONFIRMED false (known-unreachable) skips this channel. `null`
+      // (unknown — e.g. BlueBubbles' own checkReachability() always returns
+      // this, since it has no real check to run) must fall through to an
+      // actual send attempt, per that adapter's own documented contract
+      // ("the router treats null the same as 'needs a fresh check' and just
+      // tries the send"). This didn't match until now: the real (non-bypass)
+      // queue pipeline could never route a single iMessage send to any real
+      // contact, since no contact starts with a pre-confirmed `true` — every
+      // prior phase's testing only worked because its synthetic contacts had
+      // reachability pre-seeded as true, masking this for every real-world case.
+      if (reachable === false) {
         if (policy.mode === "only" && channels.length === 1) {
-          // The one channel explicitly requested isn't reachable — no point trying others.
+          // The one channel explicitly requested is confirmed unreachable — no point trying others.
           return { line: null, waitingOnStickyLine: false };
         }
         continue;
