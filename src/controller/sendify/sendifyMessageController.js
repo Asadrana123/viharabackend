@@ -4,6 +4,7 @@
 // — real sends now go through the queue via sendifyMessageService.enqueueOutbound.
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const { enqueueOutbound } = require("../../services/sendify/sendifyMessageService");
+const { renderTemplateForProperty } = require("../../services/sendify/sendifyTemplateService");
 const SendifyMessage = require("../../model/sendify/sendifyMessageModel");
 const SendifyLine = require("../../model/sendify/sendifyLineModel");
 const capacity = require("../../services/sendify/sendifyCapacityService");
@@ -14,14 +15,23 @@ const CANCELLABLE_STATUSES = ["queued", "waiting-window", "waiting-capacity", "a
 /**
  * POST /api/v1/sendify/messages
  * Body: { to, body, channelPolicy?, isReplyToInbound?, idempotencyKey?, scheduledFor? }
+ * OR:   { to, templateId, propertyId, ... } — body rendered from the template+property instead of typed directly.
  */
 const sendMessage = catchAsyncError(async (req, res) => {
-  const { to, body, channelPolicy, isReplyToInbound, idempotencyKey, scheduledFor } = req.body;
+  const { to, templateId, propertyId, channelPolicy, isReplyToInbound, idempotencyKey, scheduledFor } = req.body;
+  let { body } = req.body;
+
+  const origin = { kind: "manual", sentBy: { adminId: req.user?._id, adminName: req.user?.name } };
+  if (!body && templateId) {
+    const rendered = await renderTemplateForProperty(templateId, propertyId);
+    body = rendered.body;
+    origin.campaignId = templateId;
+  }
 
   const result = await enqueueOutbound({
     to,
     body,
-    origin: { kind: "manual", sentBy: { adminId: req.user?._id, adminName: req.user?.name } },
+    origin,
     channelPolicy,
     isReplyToInbound,
     idempotencyKey,
@@ -38,23 +48,33 @@ const sendMessage = catchAsyncError(async (req, res) => {
 
 /**
  * POST /api/v1/sendify/messages/bulk
- * Body: { recipients: [{ to, body }], batchId? }
+ * Either body: { recipients: [{ to, body }], batchId? } — a body per recipient, or
+ *       body: { to: [phoneNumbers], templateId, propertyId, batchId? } — one template+property
+ *             rendered ONCE and sent as-is to every number (the Send tab's bulk-from-template flow).
  */
 const sendBulkMessages = catchAsyncError(async (req, res) => {
-  const { recipients, batchId } = req.body;
-  if (!Array.isArray(recipients) || recipients.length === 0) {
-    return res.status(400).json({ success: false, message: "recipients must be a non-empty array" });
+  const { recipients, to, templateId, propertyId, batchId } = req.body;
+
+  let resolvedRecipients = recipients;
+  let origin = { kind: "bulk" };
+
+  if (!Array.isArray(resolvedRecipients) || resolvedRecipients.length === 0) {
+    if (!Array.isArray(to) || to.length === 0) {
+      return res.status(400).json({ success: false, message: "Provide either recipients (with per-recipient body) or to (phone numbers) + templateId + propertyId" });
+    }
+    const { body } = await renderTemplateForProperty(templateId, propertyId);
+    resolvedRecipients = to.map((phone) => ({ to: phone, body }));
+    origin.campaignId = templateId;
   }
 
   const resolvedBatchId = batchId || `bulk-${Date.now()}`;
+  origin.batchId = resolvedBatchId;
+  origin.sentBy = { adminId: req.user?._id, adminName: req.user?.name };
+
   const results = [];
-  for (const recipient of recipients) {
+  for (const recipient of resolvedRecipients) {
     try {
-      const result = await enqueueOutbound({
-        to: recipient.to,
-        body: recipient.body,
-        origin: { kind: "bulk", batchId: resolvedBatchId, sentBy: { adminId: req.user?._id, adminName: req.user?.name } },
-      });
+      const result = await enqueueOutbound({ to: recipient.to, body: recipient.body, origin });
       results.push({ to: recipient.to, blocked: result.blocked, reason: result.reason, messageId: result.message._id });
     } catch (err) {
       results.push({ to: recipient.to, error: err.message });

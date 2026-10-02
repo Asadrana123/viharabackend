@@ -17,6 +17,9 @@ const { sendMessage, sendBulkMessages, listMessagesByStatus, retryMessage, cance
 const { listConversations, getConversationMessages, updateConversation } = require("../../controller/sendify/sendifyConversationController");
 const { getContact, updateContactConsent } = require("../../controller/sendify/sendifyContactController");
 const { getStatsOverview } = require("../../controller/sendify/sendifyStatsController");
+const {
+  getTemplateVariables, createTemplate, listTemplates, getTemplate, updateTemplate, deleteTemplate, previewTemplate,
+} = require("../../controller/sendify/sendifyTemplateController");
 const { isAuthenticated, authorizeRoles } = require("../../middleware/auth");
 const { requireSendifyEnabled } = require("../../middleware/sendifyEnabled");
 
@@ -36,6 +39,15 @@ router.patch("/conversations/:id", updateConversation);
 
 router.get("/contacts/:id", getContact);
 router.patch("/contacts/:id/consent", updateContactConsent);
+
+// Literal path before :id, same ordering convention as the rest of this file.
+router.get("/templates/variables", getTemplateVariables);
+router.post("/templates", createTemplate);
+router.get("/templates", listTemplates);
+router.get("/templates/:id", getTemplate);
+router.patch("/templates/:id", updateTemplate);
+router.delete("/templates/:id", deleteTemplate);
+router.post("/templates/:id/preview", previewTemplate);
 
 router.post("/messages", sendMessage);
 router.post("/messages/bulk", sendBulkMessages);
