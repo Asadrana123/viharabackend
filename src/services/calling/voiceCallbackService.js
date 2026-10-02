@@ -28,6 +28,7 @@ const { resolvePromptConfig } = require("./vapiPromptService");
 // so a callback speaks the SAME pitch the signup call used, instead of falling
 // back to the VAPI dashboard default assistant.
 const norCalVoicePrompt = require("../../config/norCalVoicePrompt");
+const newDealsVoicePrompt = require("../../config/newDealsVoicePrompt");
 const earlyAccessVoicePrompt = require("../../config/earlyAccessVoicePrompt");
 const partnerProgramVoicePrompt = require("../../config/partnerProgramVoicePrompt");
 
@@ -43,10 +44,12 @@ const AUCTION_SOURCE_PREFIX = "auction-";
 
 // Keys MUST match the `source` each scheduler stamps on its callPayload:
 //   norCalCallScheduler   → "nor-cal"
+//   newDealsCallScheduler → "new-deals"
 //   earlyAccessCallScheduler → "early-access"
 //   partnerCallScheduler  → "partner-program"
 const SOURCE_PROMPTS = {
   "nor-cal": norCalVoicePrompt,
+  "new-deals": newDealsVoicePrompt,
   "early-access": earlyAccessVoicePrompt,
   "partner-program": partnerProgramVoicePrompt,
 };

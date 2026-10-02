@@ -23,6 +23,7 @@ const RensselaerAveLead = require("../../model/leads/rensselaerAveLeadModel");
 const PartnerLead = require("../../model/leads/partnerLeadModel");
 const PropertyLead = require("../../model/leads/propertyLeadModel");
 const NorCalLead = require("../../model/leads/norCalLeadModel");
+const NewDealsLead = require("../../model/leads/newDealsLeadModel");
 
 // leadType → Mongoose model. Keys MUST match leadNoteModel.LEAD_TYPES so the
 // admin UI can reuse the same leadType it already passes for notes.
@@ -33,6 +34,7 @@ const MODEL_BY_TYPE = {
   partner: PartnerLead,
   property: PropertyLead, // unified /auction/:slug leads
   norcal: NorCalLead,     // Northern California early-access leads
+  newDeals: NewDealsLead, // /new-deals buy-box leads
 };
 
 /**

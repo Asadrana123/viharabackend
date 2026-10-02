@@ -489,49 +489,84 @@ const buildBuyerListBuyBoxAttributes = (lead) => {
   return attributes;
 };
 
+// Upsert one buy-box contact: full attributes first, then core-only on a 400.
+const upsertBuyBoxContact = async (lead, { listId, label, extra = {} }) => {
+  if (!BREVO_API_KEY || !listId) {
+    console.warn(`⚠️  Brevo ${label} list not configured — skipping contact sync.`);
+    return { success: false, skipped: true, error: `${label} list id not configured` };
+  }
+  if (!lead.email) return { success: false, skipped: true, error: "missing email" };
+
+  const core = buildBuyerListCoreAttributes(lead);
+  const listIds = [listId];
+
+  try {
+    const { smsConflict } = await upsertContact(
+      { email: lead.email, attributes: { ...core, ...buildBuyerListBuyBoxAttributes(lead), ...extra }, listIds },
+      label
+    );
+    console.log(`✅ Brevo ${label} synced: ${lead.email}`);
+    return { success: true, smsConflict };
+  } catch (err) {
+    const reason = err.response?.data?.message || err.message;
+    if (err.response?.status !== 400) {
+      console.error(`❌ Brevo ${label} sync failed: ${lead.email}:`, reason);
+      return { success: false, error: String(reason) };
+    }
+    console.warn(`⚠️  Brevo ${label} rejected buy-box attributes for ${lead.email} (${reason}) — retrying with core attributes.`);
+  }
+
+  try {
+    const { smsConflict } = await upsertContact({ email: lead.email, attributes: core, listIds }, `${label} (core)`);
+    console.log(`✅ Brevo ${label} synced (core attributes only): ${lead.email}`);
+    return { success: true, partial: true, smsConflict };
+  } catch (err) {
+    const reason = err.response?.data?.message || err.message;
+    console.error(`❌ Brevo ${label} sync failed: ${lead.email}:`, reason);
+    return { success: false, error: String(reason) };
+  }
+};
+
 /**
  * Upsert a Buyer List lead into the Buyer List Brevo list. Idempotent via
  * updateEnabled:true. Non-throwing.
  *
  * @param {object} lead  the buyerListLeadModel doc (plain object) + smsOptInUrl
- * @returns {Promise<{ success: boolean, partial?: boolean, smsConflict?: boolean, error?: string, skipped?: boolean }>}
  */
-const syncBuyerListLead = async (lead) => {
-  if (!BREVO_API_KEY || !BREVO_BUYER_LIST_ID) {
-    console.warn("⚠️  Brevo Buyer List not configured — skipping contact sync.");
-    return { success: false, skipped: true, error: "BREVO_BUYER_LIST_ID not configured" };
-  }
-  if (!lead.email) return { success: false, skipped: true, error: "missing email" };
+const syncBuyerListLead = (lead) =>
+  upsertBuyBoxContact(lead, { listId: BREVO_BUYER_LIST_ID, label: "Buyer List" });
 
-  const core = buildBuyerListCoreAttributes(lead);
-  const listIds = [BREVO_BUYER_LIST_ID];
+// New Deals (/new-deals) → its own list (BREVO_NEW_DEALS_LIST_ID). Same
+// attributes as the Buyer List plus four text attributes to pre-create:
+//   LANDING_PAGE ("new-deals"), CONTACT_PREFERENCE (email|text|call),
+//   ADVISOR_CALL (Yes|No), DEAL_INTEREST (spotlight deal id, e.g. "bal-01").
+// SMS_CONSENT here reflects the page's single call + text consent box. Also
+// add "mixed_use" as an option on the PROPERTY_TYPE multi-choice attribute.
+const BREVO_NEW_DEALS_LIST_ID = parseInt(
+  String(process.env.BREVO_NEW_DEALS_LIST_ID || "").replace(/[^0-9]/g, ""),
+  10
+);
 
-  try {
-    const { smsConflict } = await upsertContact(
-      { email: lead.email, attributes: { ...core, ...buildBuyerListBuyBoxAttributes(lead) }, listIds },
-      "Buyer List"
-    );
-    console.log(`✅ Brevo Buyer List synced: ${lead.email}`);
-    return { success: true, smsConflict };
-  } catch (err) {
-    const reason = err.response?.data?.message || err.message;
-    if (err.response?.status !== 400) {
-      console.error(`❌ Brevo Buyer List sync failed: ${lead.email}:`, reason);
-      return { success: false, error: String(reason) };
+/** @param {object} lead  newDealsLeadModel doc (plain object) + smsOptInUrl */
+const syncNewDealsLead = (lead) =>
+  upsertBuyBoxContact(
+    {
+      ...lead,
+      smsConsent: lead.consent === true,
+      smsConsentAt: lead.consentTimestamp,
+      smsConsentVersion: lead.consentVersion,
+    },
+    {
+      listId: BREVO_NEW_DEALS_LIST_ID,
+      label: "New Deals",
+      extra: {
+        LANDING_PAGE: "new-deals",
+        CONTACT_PREFERENCE: lead.contactPreference || "",
+        ADVISOR_CALL: lead.advisorCallRequested ? "Yes" : "No",
+        DEAL_INTEREST: lead.dealInterest || "",
+      },
     }
-    console.warn(`⚠️  Brevo Buyer List rejected buy-box attributes for ${lead.email} (${reason}) — retrying with core attributes.`);
-  }
-
-  try {
-    const { smsConflict } = await upsertContact({ email: lead.email, attributes: core, listIds }, "Buyer List (core)");
-    console.log(`✅ Brevo Buyer List synced (core attributes only): ${lead.email}`);
-    return { success: true, partial: true, smsConflict };
-  } catch (err) {
-    const reason = err.response?.data?.message || err.message;
-    console.error(`❌ Brevo Buyer List sync failed: ${lead.email}:`, reason);
-    return { success: false, error: String(reason) };
-  }
-};
+  );
 
 // ============================================================================
 // OUTBOUND SMS  (admin-triggered — see outboundplan.md §4/§5.2)
@@ -658,6 +693,7 @@ module.exports = {
   syncPartnerLead,
   syncNorCalLead,
   syncBuyerListLead,
+  syncNewDealsLead,
   syncOutboundSmsContact,
   trackEvent,
 };

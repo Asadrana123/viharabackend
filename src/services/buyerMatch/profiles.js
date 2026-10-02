@@ -13,6 +13,8 @@ const PartnerLead = require("../../model/leads/partnerLeadModel");
 const PersonaLead = require("../../model/leads/personaLeadModel");
 const PropertyLead = require("../../model/leads/propertyLeadModel");
 const NorCalLead = require("../../model/leads/norCalLeadModel");
+const BuyerListLead = require("../../model/leads/buyerListLeadModel");
+const NewDealsLead = require("../../model/leads/newDealsLeadModel");
 const Product = require("../../model/property/productModel");
 const { toStateAbbr, normCounty, normCity, parseLocationText, targetLabel, regionsForProperty } = require("./geo");
 
@@ -157,11 +159,52 @@ function locationFromProperty(prop) {
   return [{ kind: "city", city: prop.cityKey, state: prop.state }];
 }
 
+// ─── Buy-box pages (/buyer-list, /new-deals) ───────────────────────────────
+
+const STRATEGY_TEXT = {
+  flip: "Fix & flip", rent: "Rental / hold", brrrr: "BRRRR", wholesale: "Wholesale", home: "Home to live in",
+};
+
+const kText = (n) => (n >= 1e6 ? `$${+(n / 1e6).toFixed(2)}M` : `$${Math.round(n / 1e3)}K`);
+
+/**
+ * Structured buy box → the common profile fields. Budget uses the stored
+ * MATCH range (tolerance already applied), per the tracking spec; a null
+ * max means no upper limit ($3M+).
+ */
+function adaptBuyBox(box = {}) {
+  const states = (box.states || []).map((st) => ({ kind: "state", state: toStateAbbr(st) || st }));
+  const cities = (box.cities || []).flatMap(parseLocationText);
+  const hasMin = Number.isFinite(box.match_min) && box.match_min > 0;
+  const hasMax = Number.isFinite(box.match_max);
+  const strategy = (box.strategy || []).map((v) => STRATEGY_TEXT[v] || v);
+  return {
+    locations: [...states, ...cities],
+    budget: hasMin || hasMax ? { min: hasMin ? box.match_min : null, max: hasMax ? box.match_max : null } : null,
+    budgetText: Number.isFinite(box.price_min)
+      ? `${kText(box.price_min)} – ${box.price_max == null ? "$3M+" : kText(box.price_max)}`
+      : "",
+    buyerTypeText: strategy.join(", "),
+  };
+}
+
 /**
  * Per-source adapters. Each returns the source-specific part of the profile;
  * the shared fields (identity, engagement) are filled in by buildLead().
  */
 const SOURCES = [
+  {
+    leadType: "buyerList",
+    label: "Buyer List (/buyer-list)",
+    model: BuyerListLead,
+    adapt: (l) => adaptBuyBox(l.buyBox),
+  },
+  {
+    leadType: "newDeals",
+    label: "New Deals (/new-deals)",
+    model: NewDealsLead,
+    adapt: (l) => adaptBuyBox(l.buyBox),
+  },
   {
     leadType: "norcal",
     label: "NorCal Early Access",

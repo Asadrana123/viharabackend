@@ -8,6 +8,7 @@ const { startGeorgiaStCallScheduler } = require('./services/calling/georgiaStCal
 const { startRensselaerAveCallScheduler } = require('./services/calling/rensselaerAveCallScheduler');
 const { startPartnerCallScheduler } = require('./services/calling/partnerCallScheduler');
 const { startNorCalCallScheduler } = require('./services/calling/norCalCallScheduler');
+const { startNewDealsCallScheduler } = require('./services/calling/newDealsCallScheduler');
 const { startVoiceCallbackScheduler } = require('./services/calling/voiceCallbackScheduler'); // ← ADD
 const { startPropertyCallScheduler } = require('./services/calling/propertyCallScheduler'); // unified /auction/:slug scheduler
 const { startMatchCallScheduler } = require('./services/buyerMatch/matchCallService'); // admin-started Buyer Match calls
@@ -45,6 +46,7 @@ server.listen(PORT, () => {
   // Northern California early-access daily local callback scheduler
   // (11:00 AM / 2:30 PM / 6:00 PM in the lead's timezone).
   startNorCalCallScheduler();
+  startNewDealsCallScheduler();
 
   // Human-requested callbacks ("call me back in 10 minutes"). Dials at the exact
   // time asked, then falls into the daily 1:32 PM retry loop on no-answer.

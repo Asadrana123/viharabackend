@@ -7,9 +7,10 @@ const {
   exportGoogleOfflineConversions,
 } = require("../../controller/leads/buyerListLeadController");
 const { isAuthenticated, authorizeRoles } = require("../../middleware/auth");
+const formRateLimit = require("../../middleware/formRateLimit");
 
 // Public — /buyer-list buy-box sign-up (Mongo + Brevo + Meta CAPI + Slack).
-router.post("/register", registerBuyerListLead);
+router.post("/register", formRateLimit(), registerBuyerListLead);
 
 // Admin — weekly Google Ads offline upload (Tier A by gclid), CSV.
 router.get("/google-offline", isAuthenticated, authorizeRoles("admin"), exportGoogleOfflineConversions);

@@ -44,6 +44,7 @@ const rensselaerAveLeadRoutes = require("./routes/leads/rensselaerAveLeadRoutes"
 const partnerLeadRoutes = require("./routes/leads/partnerLeadRoutes");
 const norCalLeadRoutes = require("./routes/leads/norCalLeadRoutes");
 const buyerListLeadRoutes = require("./routes/leads/buyerListLeadRoutes");
+const newDealsLeadRoutes = require("./routes/leads/newDealsLeadRoutes");
 const rb2bRoutes = require("./routes/leads/rb2bRoutes");
 const brevoWebhookRoutes = require("./routes/integrations/brevoWebhookRoutes");
 const leadNoteRoutes = require("./routes/leads/leadNoteRoutes");
@@ -123,6 +124,7 @@ app.use("/api/v1/rensselaer-ave", rensselaerAveLeadRoutes);
 app.use("/api/v1/partner", partnerLeadRoutes);
 app.use("/api/v1/nor-cal", norCalLeadRoutes);
 app.use("/api/v1/buyer-list", buyerListLeadRoutes);
+app.use("/api/v1/new-deals", newDealsLeadRoutes);
 app.use("/api/v1/rb2b", rb2bRoutes);
 app.use("/api/webhooks/brevo", brevoWebhookRoutes);
 app.use("/api/v1/lead-notes", leadNoteRoutes);

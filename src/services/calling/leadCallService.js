@@ -36,6 +36,19 @@ const dispatchRegistrationCall = async (lead = {}) => {
     market: (lead.market || "").toString().trim(),
     buyerType: (lead.buyerType || "").toString().trim(),
     dealSize: (lead.dealSize || "").toString().trim(),
+    // Buy-box answers the funnel schedulers put on the payload (NorCal,
+    // New Deals). buildVariableValues turns them into {{prospect_*}} vars.
+    where: (lead.where || "").toString().trim(),
+    budget: (lead.budget || "").toString().trim(),
+    bedrooms: (lead.bedrooms || "").toString().trim(),
+    timeline: (lead.timeline || "").toString().trim(),
+    strategy: (lead.strategy || "").toString().trim(),
+    propertyTypes: (lead.propertyTypes || "").toString().trim(),
+    financing: (lead.financing || "").toString().trim(),
+    condition: (lead.condition || "").toString().trim(),
+    dealVolume: (lead.dealVolume || "").toString().trim(),
+    dealInterest: (lead.dealInterest || "").toString().trim(),
+    advisorRequested: (lead.advisorRequested || "").toString().trim(),
     // Caller's IANA timezone — lets Maya resolve "call me back at 5" in THEIR
     // time and lets the callback be stored in the right zone.
     timezone: (lead.timezone || "").toString().trim(),

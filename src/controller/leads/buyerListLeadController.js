@@ -11,57 +11,31 @@ const { syncBuyerListLead } = require("../../services/integrations/brevoService"
 const { sendEvent } = require("../../services/integrations/metaCapiService");
 const { notifyNewLead } = require("../../services/shared/slackService");
 const { buyerListPageUrl } = require("../../config/siteUrls");
+const { getCallsForPhones } = require("../../services/calling/vapiCallsService");
+const { getEmailEventsForEmails } = require("../../services/integrations/emailEventsService");
+const { getNotesForLeads } = require("../../services/leads/leadNotesService");
+const {
+  str,
+  isValidEmail,
+  marketList,
+  touchesFrom,
+  buildBuyBox,
+  attributionFrom,
+  clientIp,
+  isProductionPageUrl,
+  withTimeout,
+} = require("../../services/leads/buyBox");
 
-// ── Allowed buy-box values (must match OPTIONS in the page's landing.config) ──
-const STRATEGIES = ["flip", "rent", "brrrr", "wholesale", "home"];
+// /buyer-list property types (the /new-deals page swaps land for mixed-use).
 const PROPERTY_TYPES = ["sfr", "condo", "mf_2_4", "mf_5_plus", "land"];
-const CONDITIONS = ["turnkey", "light_rehab", "heavy_rehab", "any"];
-const FINANCING = ["cash", "hard_money", "mortgage", "not_sure"];
-const DEALS_12MO = ["1", "2_5", "6_plus"];
-const US_STATES = [
-  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID", "IL", "IN", "IA",
-  "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM",
-  "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA",
-  "WV", "WI", "WY",
-];
 
 // States with current inventory (drives the tier). ENV: BUYER_LIST_ACTIVE_MARKETS="CA,NY"
-const activeMarkets = () =>
-  String(process.env.BUYER_LIST_ACTIVE_MARKETS || "CA,NY")
-    .split(",")
-    .map((s) => s.trim().toUpperCase())
-    .filter(Boolean);
+const activeMarkets = () => marketList(process.env.BUYER_LIST_ACTIVE_MARKETS, "CA,NY");
 
-const TOUCH_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "gclid", "fbclid"];
-const MAX_PRICE = 3000000;
 const BREVO_TIMEOUT_MS = 8000;
-const TEST_NAME_REGEX = /\btest\b/i;
-
-// ── sanitizers ──────────────────────────────────────────────────────────────
-const str = (v, max = 300) => (typeof v === "string" ? v.trim().slice(0, max) : "");
-const pickList = (v, allowed) =>
-  Array.isArray(v) ? [...new Set(v.map((x) => String(x)).filter((x) => allowed.includes(x)))] : [];
-const pickOne = (v, allowed) => (allowed.includes(String(v)) ? String(v) : "");
-const toPrice = (v) => {
-  const n = Number(v);
-  return v !== null && v !== "" && Number.isFinite(n) && n >= 0 ? Math.min(Math.round(n), MAX_PRICE) : null;
-};
-
-const isValidEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
-
-// Same tolerance rule the page shows: +/-$10K under $100K, +/-$20K at $100K+.
-const tolerance = (n) => (n < 100000 ? 10000 : 20000);
-
-const cleanTouch = (t) => {
-  if (!t || typeof t !== "object") return null;
-  const out = {};
-  TOUCH_KEYS.forEach((k) => {
-    out[k] = str(t[k], 500);
-  });
-  const ts = t.ts ? new Date(t.ts) : null;
-  out.ts = ts && !Number.isNaN(ts.getTime()) ? ts : null;
-  return out;
-};
+const TEST_NAME_REGEX = /test/i;
+// Note discriminator (matches leadNoteModel.LEAD_TYPES).
+const LEAD_NOTE_TYPE = "buyerList";
 
 // Tier is recomputed here from what the buyer told us (never who they are),
 // so a tampered client value can't change it. Mirrors tier() on the page.
@@ -74,53 +48,6 @@ const computeTier = (box) => {
   if (inMarket && box.strategy.length && box.property_type.length) return "B";
   return "C";
 };
-
-const buildBuyBox = (raw = {}) => {
-  let priceMin = toPrice(raw.price_min);
-  let priceMax = toPrice(raw.price_max); // null = no upper limit ($3M+)
-  if (priceMin === null) priceMin = 0;
-  if (priceMax !== null && priceMax < priceMin) [priceMin, priceMax] = [priceMax, priceMin];
-  if (priceMax !== null && priceMax >= MAX_PRICE) priceMax = null;
-
-  return {
-    strategy: pickList(raw.strategy, STRATEGIES),
-    property_type: pickList(raw.property_type, PROPERTY_TYPES),
-    states: pickList(Array.isArray(raw.states) ? raw.states.map((s) => String(s).toUpperCase()) : [], US_STATES),
-    cities: Array.isArray(raw.cities)
-      ? [...new Set(raw.cities.map((c) => str(c, 80)).filter(Boolean))].slice(0, 25)
-      : [],
-    price_min: priceMin,
-    price_max: priceMax,
-    match_min: Math.max(0, priceMin - tolerance(priceMin)),
-    match_max: priceMax === null ? null : priceMax + tolerance(priceMax),
-    condition: pickOne(raw.condition, CONDITIONS),
-    financing: pickOne(raw.financing, FINANCING),
-    deals_12mo: pickOne(raw.deals_12mo, DEALS_12MO),
-  };
-};
-
-// Real client IP behind the proxy (first X-Forwarded-For hop), for Meta CAPI.
-const clientIp = (req) => {
-  const fwd = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
-  return fwd || req.ip || undefined;
-};
-
-// Only production page URLs reach Meta (mirrors capi.service.js on the client),
-// so localhost / preview test sign-ups never pollute the pixel.
-const isProductionPageUrl = (url) => {
-  try {
-    return ["vihara.ai", "www.vihara.ai"].includes(new URL(url).hostname);
-  } catch {
-    return false;
-  }
-};
-
-// Resolve within `ms`, never rejecting — the 200 must not hang on Brevo.
-const withTimeout = (promise, ms) =>
-  Promise.race([
-    promise,
-    new Promise((resolve) => setTimeout(() => resolve({ success: false, error: "Brevo timeout" }), ms)),
-  ]);
 
 /**
  * POST /api/v1/buyer-list/register   (public)
@@ -149,24 +76,15 @@ const registerBuyerListLead = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler("Enter a valid phone number", 400));
   if (!eventId) return next(new ErrorHandler("event_id is required", 400));
 
-  const buyBox = buildBuyBox(body.buy_box);
+  const buyBox = buildBuyBox(body.buy_box, PROPERTY_TYPES);
   const tier = computeTier(buyBox);
 
   const submittedAt = body.submitted_at ? new Date(body.submitted_at) : new Date();
   const now = new Date();
   const smsConsent = body.sms_consent === true;
 
-  // Touches. Storage-blocked browsers send no first_touch → fall back to last.
-  const lastTouch = cleanTouch(body.last_touch) || { utm_source: "direct", ts: now };
-  if (!lastTouch.utm_source) lastTouch.utm_source = "direct";
-  const firstTouch = cleanTouch(body.first_touch) || lastTouch;
-  if (!firstTouch.utm_source) firstTouch.utm_source = "direct";
-
-  const rawAttribution = body.attribution && typeof body.attribution === "object" ? body.attribution : {};
-  const attribution = {};
-  [...TOUCH_KEYS, "variant", "type"].forEach((k) => {
-    attribution[k] = str(rawAttribution[k], 500);
-  });
+  const { firstTouch, lastTouch } = touchesFrom(body, now);
+  const attribution = attributionFrom(body.attribution, ["variant", "type"]);
 
   const pageUrl = str(body.page_url, 2000);
 
@@ -231,7 +149,8 @@ const registerBuyerListLead = catchAsyncError(async (req, res, next) => {
   // ── 3. CRM write (Brevo) before the 200 ────────────────────────────────────
   const brevo = await withTimeout(
     syncBuyerListLead({ ...lead.toObject(), smsOptInUrl: buyerListPageUrl() }),
-    BREVO_TIMEOUT_MS
+    BREVO_TIMEOUT_MS,
+    { success: false, error: "Brevo timeout" }
   ).catch((e) => ({ success: false, error: e.message }));
 
   await BuyerListLead.updateOne(
@@ -307,9 +226,23 @@ const getAllBuyerListLeads = catchAsyncError(async (req, res) => {
     BuyerListLead.countDocuments(query),
   ]);
 
+  // Same per-lead extras as the other Leads tabs (calls by phone, email events,
+  // advisor notes) so the shared admin list/detail renders identically.
+  const [callsByPhone, eventsByEmail, notesByLead] = await Promise.all([
+    getCallsForPhones(leads.map((l) => l.phone).filter(Boolean)),
+    getEmailEventsForEmails(leads.map((l) => l.email).filter(Boolean)),
+    getNotesForLeads(LEAD_NOTE_TYPE, leads.map((l) => l._id)),
+  ]);
+
   res.status(200).json({
     success: true,
-    leads,
+    leads: leads.map((lead) => ({
+      ...lead,
+      fullName: lead.firstName,
+      calls: callsByPhone[normalisePhone(lead.phone)] || [],
+      emails: eventsByEmail[String(lead.email || "").toLowerCase()] || [],
+      notes: notesByLead[String(lead._id)] || [],
+    })),
     pagination: { page, limit, total, pages: Math.ceil(total / limit) },
   });
 });
