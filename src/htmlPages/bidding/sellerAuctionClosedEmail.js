@@ -65,13 +65,13 @@ const getSellerAuctionClosedEmailTemplate = ({ name, report }) => {
           <td class="value">${c.approved ?? 0}</td>
         </tr>
       </table>
-      ${hasBids ? `<div class="attach-note">
+      <div class="attach-note">
         <strong>Attached to this email:</strong><br/>
-        • Full auction report (PDF)<br/>
-        • Full auction report (Excel)<br/>
-        Both include every bid and registration for this property.
+        ${hasBids ? `• Full auction report (PDF)<br/>
+        • Full auction report (Excel)<br/>` : ""}• Terms and Conditions for this property (PDF)<br/>
+        ${hasBids ? "The reports include every bid and registration for this property." : ""}
       </div>
-      <p>All times in the report are shown in the property's local timezone.</p>` : ""}
+      ${hasBids ? `<p>All times in the report are shown in the property's local timezone.</p>` : ""}
     </div>
     <div class="footer">
       <p>© ${new Date().getFullYear()} Vihara. All rights reserved.</p>

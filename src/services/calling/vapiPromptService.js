@@ -1,3 +1,4 @@
+const { DateTime } = require("luxon");
 const voicePromptModel = require("../../model/calling/voicePromptModel");
 
 /**
@@ -98,6 +99,72 @@ const PROMPT_VARIABLES = [
     example: "1 to 3 months",
   },
   {
+    key: "prospect_strategy",
+    label: "Prospect strategy (New Deals buy-box, spoken)",
+    scope: "contact",
+    example: "fix and flip, rental or buy-and-hold",
+  },
+  {
+    key: "prospect_property_types",
+    label: "Prospect property types (New Deals buy-box, spoken)",
+    scope: "contact",
+    example: "single-family, two to four units",
+  },
+  {
+    key: "prospect_financing",
+    label: "How the prospect pays (New Deals buy-box, spoken)",
+    scope: "contact",
+    example: "cash",
+  },
+  {
+    key: "prospect_condition",
+    label: "Condition the prospect will take on (New Deals buy-box, spoken)",
+    scope: "contact",
+    example: "light rehab",
+  },
+  {
+    key: "prospect_deal_volume",
+    label: "Deals planned in the next 12 months (New Deals buy-box, spoken)",
+    scope: "contact",
+    example: "two to five deals",
+  },
+  {
+    key: "prospect_deal_interest",
+    label: "Spotlight deal the prospect tapped (New Deals)",
+    scope: "contact",
+    example: "the Baltimore deal listed at $65,900",
+  },
+  {
+    key: "prospect_advisor_requested",
+    label: "Asked for an advisor call on the form (New Deals): yes / no",
+    scope: "contact",
+    example: "yes",
+  },
+  {
+    key: "current_time_local",
+    label: "Caller's local date & time (for booking callbacks)",
+    scope: "contact",
+    example: "Thursday, October 1, 2026, 2:15 PM (2026-10-01T14:15:00-07:00)",
+  },
+  {
+    key: "caller_timezone",
+    label: "Caller's timezone",
+    scope: "contact",
+    example: "America/Los_Angeles",
+  },
+  {
+    key: "auction_start_local",
+    label: "Auction opens (caller's timezone)",
+    scope: "property",
+    example: "Saturday, October 17 at 11:00 AM their time",
+  },
+  {
+    key: "auction_end_local",
+    label: "Auction closes (caller's timezone)",
+    scope: "property",
+    example: "Saturday, October 17 at 3:15 PM their time",
+  },
+  {
     key: "property_name",
     label: "Property name",
     scope: "property",
@@ -142,11 +209,55 @@ const PROMPT_VARIABLES = [
 ];
 
 /**
+ * The caller's local clock, so Maya can turn "call me at five" into a real
+ * time. Unknown / invalid timezone → Eastern, labelled as an assumption.
+ */
+const callerClock = (timezone) => {
+  const zone = String(timezone || "").trim();
+  let now = zone ? DateTime.now().setZone(zone) : null;
+  const assumed = !now || !now.isValid;
+  if (assumed) now = DateTime.now().setZone("America/New_York");
+  return {
+    current_time_local: `${now.toFormat("cccc, LLLL d, yyyy, h:mm a")} (${now.toISO({ suppressMilliseconds: true })})`,
+    caller_timezone: assumed ? "America/New_York (assumed — confirm with the caller if they name a time)" : zone,
+  };
+};
+
+/**
+ * Auction open / close, spoken in the CALLER's timezone. The property scripts
+ * are shared by every caller, so the date is a {{placeholder}} filled per call.
+ * `window` = { start, end, propertyZone } from the live listing. Unknown caller
+ * timezone → the property's own zone, named out loud so it's never ambiguous.
+ */
+const auctionTimes = (window, callerTz) => {
+  if (!window || (!window.start && !window.end)) return { auction_start_local: "", auction_end_local: "" };
+  const caller = String(callerTz || "").trim();
+  const useCaller = caller && DateTime.now().setZone(caller).isValid;
+  const zone = useCaller ? caller : window.propertyZone || "America/New_York";
+  const say = (d) => {
+    if (!d) return "";
+    const dt = DateTime.fromJSDate(new Date(d)).setZone(zone);
+    if (!dt.isValid) return "";
+    const when = dt.toFormat("cccc, LLLL d 'at' h:mm a");
+    return useCaller ? `${when} their time` : `${when} ${dt.toFormat("ZZZZZ")}`;
+  };
+  const now = Date.now();
+  const start = window.start ? new Date(window.start).getTime() : null;
+  const end = window.end ? new Date(window.end).getTime() : null;
+  if (end && end <= now) return { auction_start_local: "", auction_end_local: "the auction has already closed" };
+  return {
+    auction_start_local: start && start <= now ? "bidding is already open right now" : say(window.start),
+    auction_end_local: say(window.end),
+  };
+};
+
+/**
  * Build the variableValues payload VAPI substitutes into {{placeholders}}.
  * Every key in PROMPT_VARIABLES must be produced here, even when empty —
  * an absent key leaves a literal "{{var}}" in the spoken output.
  */
-const buildVariableValues = (contact = {}, researchSummary = "", property = {}) => ({
+const buildVariableValues = (contact = {}, researchSummary = "", property = {}, auctionWindow = null) => ({
+  ...auctionTimes(auctionWindow || property.auctionWindow, contact.timezone),
   prospect_state: contact.state || "",
   flips_per_year: contact.flipsPerYear || "",   // ← add this lineX
   prospect_name: (contact.fullName || "").split(" ")[0] || "",
@@ -163,6 +274,14 @@ const buildVariableValues = (contact = {}, researchSummary = "", property = {}) 
   prospect_budget: contact.budget || "",
   prospect_bedrooms: contact.bedrooms || "",
   prospect_timeline: contact.timeline || "",
+  prospect_strategy: contact.strategy || "",
+  prospect_property_types: contact.propertyTypes || "",
+  prospect_financing: contact.financing || "",
+  prospect_condition: contact.condition || "",
+  prospect_deal_volume: contact.dealVolume || "",
+  prospect_deal_interest: contact.dealInterest || "",
+  prospect_advisor_requested: contact.advisorRequested || "",
+  ...callerClock(contact.timezone),
 
   property_name: property.name || "",
   property_address: property.address || "",

@@ -4,6 +4,8 @@ const {
     getAllProducts,
     getProductById,
     getProductBySlug,
+    getDefaultTerms,
+    getProductTermsBySlug,
     getAllProductsAdmin,
     updateListingSettings,
     createProductsBulk,
@@ -23,6 +25,10 @@ router.put('/admin/:id/basic-details', isAuthenticated, authorizeRoles("admin"),
 
 // Public slug fetch (detail + landing pages)
 router.get('/slug/:slug', getProductBySlug);
+
+// Public Terms & Conditions (general, and per property)
+router.get('/terms', getDefaultTerms);
+router.get('/terms/:slug', getProductTermsBySlug);
 
 // Keep the id catch-all LAST
 router.get("/:id", getProductById);

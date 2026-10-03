@@ -8,13 +8,16 @@ const { startGeorgiaStCallScheduler } = require('./services/calling/georgiaStCal
 const { startRensselaerAveCallScheduler } = require('./services/calling/rensselaerAveCallScheduler');
 const { startPartnerCallScheduler } = require('./services/calling/partnerCallScheduler');
 const { startNorCalCallScheduler } = require('./services/calling/norCalCallScheduler');
+const { startNewDealsCallScheduler } = require('./services/calling/newDealsCallScheduler');
 const { startVoiceCallbackScheduler } = require('./services/calling/voiceCallbackScheduler'); // ← ADD
 const { startPropertyCallScheduler } = require('./services/calling/propertyCallScheduler'); // unified /auction/:slug scheduler
+const { startMatchCallScheduler } = require('./services/buyerMatch/matchCallService'); // admin-started Buyer Match calls
 const { startBrevoBackfillJob } = require('./jobs/brevoBackfillJob'); // ← ADD
 const { startAuctionCloseJob } = require('./jobs/auctionCloseJob');
 const { startZillowSyncJob } = require('./jobs/zillowSyncJob');
 const { startVtextWorkersInProcess } = require('./workers/vtextWorker');
 const { startVtextSocketBridge } = require('./socket/vtextSocketBridge');
+const { startMetaAdsReportJob } = require('./jobs/metaAdsReportJob');
 require('./passport');
 
 const PORT = process.env.PORT || 8000;
@@ -46,6 +49,7 @@ server.listen(PORT, () => {
   // Northern California early-access daily local callback scheduler
   // (11:00 AM / 2:30 PM / 6:00 PM in the lead's timezone).
   startNorCalCallScheduler();
+  startNewDealsCallScheduler();
 
   // Human-requested callbacks ("call me back in 10 minutes"). Dials at the exact
   // time asked, then falls into the daily 1:32 PM retry loop on no-answer.
@@ -54,6 +58,9 @@ server.listen(PORT, () => {
   // Unified scheduler for every /auction/:slug landing page. New properties need
   // no new scheduler — this one sweeps the shared propertyLeadModel collection.
   startPropertyCallScheduler();
+
+  // Buyer Match calls an admin started: 12:30 PM + 6:00 PM buyer-local, up to 7 days.
+  startMatchCallScheduler();
 
   // Weekly Zillow refresh of every linked property the admin hasn't paused.
   startZillowSyncJob();
@@ -73,4 +80,7 @@ server.listen(PORT, () => {
   if (process.env.VTEXT_ENABLED === 'true') {
     startVtextSocketBridge(io);
   }
+
+  // Daily 9:00 AM IST Meta Ads performance report + AI suggestions to Slack.
+  startMetaAdsReportJob();
 });

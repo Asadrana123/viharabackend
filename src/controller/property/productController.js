@@ -4,6 +4,11 @@ const Errorhandler = require("../../utils/errorhandler");
 const { resolvePropertyTimezone, utcToWallClock } = require("../../utils/resolveTimezone");
 const { normalizeZillowUrl } = require("../../utils/zillowUrl");
 const { createTweakPercent, isValidTweakPercent } = require("../../services/property/priceTweakService");
+const {
+    bulletDisclaimers,
+    legalSections,
+    getPropertyDisclaimers
+} = require("../../config/property/termsAndConditions");
 
 // Admin — bulk-create from uploaded JSON. Each file may be one object or an array;
 // the frontend flattens them into a single array before sending.
@@ -85,6 +90,24 @@ exports.getProductBySlug = catchAsyncError(async (req, res, next) => {
     // property's local time. Computed on read; nothing stored.
     const auctionTimezone = resolvePropertyTimezone(product);
     return res.json({ success: true, product: { ...product.toObject(), auctionTimezone } });
+});
+
+// Public — state-neutral Terms & Conditions (no property-specific section).
+exports.getDefaultTerms = (req, res) => {
+    return res.json({ success: true, bulletDisclaimers, legalSections });
+};
+
+// Public — Terms & Conditions for one property, including its state compliance
+// section. Same content the seller receives as a PDF when the auction closes.
+exports.getProductTermsBySlug = catchAsyncError(async (req, res, next) => {
+    const product = await productModel
+        .findOne({ slug: req.params.slug })
+        .select("slug city county state yearBuilt")
+        .lean();
+    if (!product) {
+        return next(new Errorhandler("Property not found", 404));
+    }
+    return res.json({ success: true, ...getPropertyDisclaimers(product) });
 });
 
 // Admin — every property, unfiltered, for the Manage Listings tab.

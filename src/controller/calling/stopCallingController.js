@@ -20,7 +20,8 @@ const ErrorHandler = require("../../utils/errorhandler");
 // leadType → Mongoose model. Keys MUST match leadNoteModel.LEAD_TYPES so the
 // admin UI can reuse the same leadType it already passes for notes. Shared
 // with Vtext's inbound lead-linking (sendify-infra.md §6.2) — extracted to
-// services/leads/leadModelsByType.js so both call sites stay in sync.
+// services/leads/leadModelsByType.js so both call sites stay in sync. That
+// map also carries the "newDeals" entry added on main during this merge.
 const { MODEL_BY_TYPE } = require("../../services/leads/leadModelsByType");
 
 /**

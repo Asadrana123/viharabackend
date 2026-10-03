@@ -6,6 +6,7 @@
   "worker:sendify": "node src/workers/sendifyWorker.js"
  },
  "dependencies": {
+  "@anthropic-ai/sdk": "^0.131.0",
   "@google/genai": "^2.8.0",
   "@google/generative-ai": "^0.24.1",
   "@higgsfield/client": "^0.2.1",

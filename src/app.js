@@ -43,6 +43,8 @@ const georgiaStLeadRoutes = require("./routes/leads/georgiaStLeadRoutes");
 const rensselaerAveLeadRoutes = require("./routes/leads/rensselaerAveLeadRoutes");
 const partnerLeadRoutes = require("./routes/leads/partnerLeadRoutes");
 const norCalLeadRoutes = require("./routes/leads/norCalLeadRoutes");
+const buyerListLeadRoutes = require("./routes/leads/buyerListLeadRoutes");
+const newDealsLeadRoutes = require("./routes/leads/newDealsLeadRoutes");
 const rb2bRoutes = require("./routes/leads/rb2bRoutes");
 const brevoWebhookRoutes = require("./routes/integrations/brevoWebhookRoutes");
 const leadNoteRoutes = require("./routes/leads/leadNoteRoutes");
@@ -63,7 +65,7 @@ const outboundRoutes = require("./routes/outbound/outboundRoutes");
 const enrichmentRoutes = require("./routes/enrichment/enrichmentRoutes");
 // Property Marketing Engine (admin-only): brief, copy, compliance, approval.
 const marketingEngineRoutes = require("./routes/marketing/marketingEngineRoutes");
-const leadMatchRoutes = require("./routes/leads/leadMatchRoutes");
+const buyerMatchRoutes = require("./routes/leads/buyerMatchRoutes");
 // Vtext — in-house two-way iMessage (later: +SMS) infra, replacing Brevo's
 // 10DLC-registered SMS. Inert unless VTEXT_ENABLED=true (see
 // controller/vtext/vtextAdminController.js). Does not touch/import
@@ -128,6 +130,8 @@ app.use("/api/v1/georgia-st", georgiaStLeadRoutes);
 app.use("/api/v1/rensselaer-ave", rensselaerAveLeadRoutes);
 app.use("/api/v1/partner", partnerLeadRoutes);
 app.use("/api/v1/nor-cal", norCalLeadRoutes);
+app.use("/api/v1/buyer-list", buyerListLeadRoutes);
+app.use("/api/v1/new-deals", newDealsLeadRoutes);
 app.use("/api/v1/rb2b", rb2bRoutes);
 app.use("/api/webhooks/brevo", brevoWebhookRoutes);
 app.use("/api/v1/lead-notes", leadNoteRoutes);
@@ -142,7 +146,7 @@ app.use("/api/v1/realtor", realtorRoutes);
 app.use("/api/v1/outbound", outboundRoutes);
 app.use("/api/v1/enrichment", enrichmentRoutes);
 app.use("/api/v1/marketing-engine", marketingEngineRoutes);
-app.use("/api/v1/lead-match", leadMatchRoutes);
+app.use("/api/v1/buyer-match", buyerMatchRoutes);
 app.use("/api/v1/vtext", vtextAdminRoutes);
 app.use("/api/webhooks/vtext", vtextWebhookRoutes);
 

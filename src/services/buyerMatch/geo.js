@@ -1,4 +1,4 @@
-// services/leadMatch/geo.js
+// services/buyerMatch/geo.js
 //
 // Location helpers for lead ↔ property matching. Leads describe where they want
 // to buy in free text ("New York, California, nationwide", "Austin, TX",
@@ -69,6 +69,41 @@ const REGIONS = {
   },
   soCal: { label: "Southern California", state: "CA", counties: SOCAL },
 };
+
+// California regions by the first 3 ZIP digits — used when a property has no
+// county (uploaded sheets usually don't). Ranges follow USPS sectional centers.
+const CA_ZIP3_REGIONS = (() => {
+  const map = {};
+  const add = (from, to, ...regions) => {
+    for (let z = from; z <= to; z++) map[String(z)] = regions;
+  };
+  add(900, 935, "soCal");                                  // LA → Santa Barbara / Mojave
+  add(932, 933, "centralValley", "norCal");                // Bakersfield (Kern)
+  add(936, 938, "centralValley", "norCal");                // Fresno / Madera / Kings / Tulare
+  add(939, 939, "norCal");                                 // Salinas / Monterey
+  add(940, 941, "bayArea", "norCal");                      // San Francisco / Peninsula
+  add(943, 951, "bayArea", "norCal");                      // Peninsula, East Bay, Marin, South Bay
+  add(952, 953, "centralValley", "norCal");                // Stockton / Modesto / Merced
+  add(954, 954, "bayArea", "norCal");                      // Santa Rosa / Napa
+  add(955, 955, "norCal");                                 // Eureka
+  add(956, 956, "centralValley", "sierraFoothills", "norCal"); // Sacramento suburbs, Placer, El Dorado
+  add(957, 958, "centralValley", "norCal");                // Sacramento
+  add(959, 959, "centralValley", "sierraFoothills", "norCal"); // Marysville / Chico / Grass Valley
+  add(960, 961, "norCal");                                 // Redding / Truckee
+  map["960"] = ["centralValley", "norCal"];               // Redding is Shasta County
+  return map;
+})();
+
+/** Every region a property sits in, from its county and/or ZIP. */
+function regionsForProperty({ state, countyKey, zip }) {
+  const out = new Set();
+  if (state !== "CA") return out;
+  for (const [key, region] of Object.entries(REGIONS)) {
+    if (countyKey && region.counties.includes(countyKey)) out.add(key);
+  }
+  for (const key of CA_ZIP3_REGIONS[String(zip || "").slice(0, 3)] || []) out.add(key);
+  return out;
+}
 
 // Phrases (lower-case, exact token) that name a region.
 const REGION_ALIASES = {
@@ -243,6 +278,7 @@ const titleCase = (s) => String(s).replace(/\b\w/g, (c) => c.toUpperCase());
 
 module.exports = {
   REGIONS,
+  regionsForProperty,
   toStateAbbr,
   normCounty,
   normCity,

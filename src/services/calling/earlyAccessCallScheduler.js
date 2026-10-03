@@ -83,6 +83,7 @@ function callPayload(lead) {
     fullName: lead.fullName,
     email: lead.email,
     phone: lead.phoneNormalized || lead.phone, // dial the canonical E.164 form
+    timezone: lead.timezone || "", // caller's tz: Maya's clock + callback times
     market: lead.markets,
     buyerType: lead.buyerType,
     dealSize: lead.dealSize,

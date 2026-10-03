@@ -10,12 +10,18 @@
 // either, since renovation contractor requests were never part of the daily
 // calling sweep this map was built for). Not expanded here — extraction,
 // not a scope change.
+//
+// "newDeals" added during the main-branch merge (sendify-infra rename vs.
+// the New Deals/buyer-match feature landing on main around the same time) —
+// origin/main had added it directly into stopCallingController.js's inline
+// map, which this file replaced; carried over here so it isn't lost.
 const EarlyAccessLead = require("../../model/leads/earlyAccessLeadModel");
 const GeorgiaStLead = require("../../model/leads/georgiaStLeadModel");
 const RensselaerAveLead = require("../../model/leads/rensselaerAveLeadModel");
 const PartnerLead = require("../../model/leads/partnerLeadModel");
 const PropertyLead = require("../../model/leads/propertyLeadModel");
 const NorCalLead = require("../../model/leads/norCalLeadModel");
+const NewDealsLead = require("../../model/leads/newDealsLeadModel");
 
 const MODEL_BY_TYPE = {
   earlyAccess: EarlyAccessLead,
@@ -24,6 +30,7 @@ const MODEL_BY_TYPE = {
   partner: PartnerLead,
   property: PropertyLead, // unified /auction/:slug leads
   norcal: NorCalLead,     // Northern California early-access leads
+  newDeals: NewDealsLead, // /new-deals buy-box leads
 };
 
 module.exports = { MODEL_BY_TYPE };

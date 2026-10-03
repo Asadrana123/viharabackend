@@ -97,6 +97,7 @@ function callPayload(lead) {
     fullName: fullNameOf(lead),
     email: lead.email,
     phone: lead.phoneNormalized || lead.phone, // dial the canonical E.164 form
+    timezone: lead.timezone || "", // caller's tz: Maya's clock + callback times
     promptConfig: partnerProgramVoicePrompt,   // { systemPrompt, firstMessage, voicemailMessage, endCallMessage }
     source: "partner-program",
   };

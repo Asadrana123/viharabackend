@@ -4,6 +4,8 @@ const EarlyAccessLead = require("../../model/leads/earlyAccessLeadModel");
 const GeorgiaStLead = require("../../model/leads/georgiaStLeadModel");
 const RensselaerAveLead = require("../../model/leads/rensselaerAveLeadModel");
 const PartnerLead = require("../../model/leads/partnerLeadModel");
+const BuyerListLead = require("../../model/leads/buyerListLeadModel");
+const NewDealsLead = require("../../model/leads/newDealsLeadModel");
 const RenovationContractorRequest = require("../../model/property/renovationContractorRequestModel");
 const { getCallsForPhones, normalisePhone } = require("../../services/calling/vapiCallsService");
 const { getEmailEventsForEmails } = require("../../services/integrations/emailEventsService");
@@ -23,6 +25,8 @@ const SOURCES = [
   { model: GeorgiaStLead,               leadType: "georgiaSt",           label: "449 Georgia St" },
   { model: RensselaerAveLead,           leadType: "rensselaerAve",       label: "401 Rensselaer Ave" },
   { model: PartnerLead,                 leadType: "partner",             label: "Partner Program" },
+  { model: BuyerListLead,    leadType: "buyerList",     label: "Buyer List" },
+  { model: NewDealsLead,     leadType: "newDeals",      label: "New Deals" },
   { model: RenovationContractorRequest, leadType: "renovationContractor", label: "Renovation Contractors/Vendors" },
 ];
 

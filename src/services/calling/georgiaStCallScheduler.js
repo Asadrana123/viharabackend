@@ -2,7 +2,7 @@
 //
 // Auction-registration call flow for 449 Georgia St — a faithful clone of
 // earlyAccessCallScheduler.js, pointed at georgiaStLeadModel and using this
-// property's prompt (config/georgiaStVoicePrompt.js). Same behaviour:
+// property's call script, built from its LIVE listing (see below). Same behaviour:
 //
 //   Signup (with consent):
 //     → 2-in-60s burst (60s initial wait to honour the "we'll call you" promise)
@@ -24,15 +24,19 @@
 // schedulers) and staggers their starts so a 6:00 PM batch cannot blow past
 // VAPI's concurrency limit. Signup bursts use the high-priority lane.
 //
-// PROMPT: every call for this page must use the Georgia St prompt. The shared
-// dispatcher (registrationCallService.runCallBurst) currently selects the prompt
-// internally, so we pass it through the payload as `promptConfig`. See the note
-// in INTEGRATION.md — runCallBurst must use payload.promptConfig when present.
+// PROMPT: built from the property's LIVE listing at dial time via
+// propertyCallScheduler.loadPropertyBundle — never a hard-coded script, because
+// price, auction dates and financing change. If the property can't be found
+// the call is skipped rather than read out stale facts.
 
 const cron = require("node-cron");
 const { DateTime } = require("luxon");
 const GeorgiaStLead = require("../../model/leads/georgiaStLeadModel");
-const georgiaStVoicePrompt = require("../../config/georgiaStVoicePrompt");
+const { loadPropertyBundle } = require("./propertyCallScheduler");
+
+// Slug this page's leads were stamped with (resolved to the real product,
+// including the old short / mistyped slugs, by loadPropertyBundle).
+const PROPERTY_SLUG = "449-georgia-st";
 const { DID_NOT_CONNECT_REASONS, WAIT_MS } = require("./registrationCallService");
 const { enqueueBurst, PRIORITY } = require("./callDispatchQueue");
 
@@ -81,14 +85,15 @@ function nextDailyCallAt(timezone) {
  * Payload the dispatcher expects (canonical phone + prompt vars).
  * `promptConfig` pins THIS property's prompt for every dial; `source` tags it.
  */
-function callPayload(lead) {
+function callPayload(lead, promptConfig) {
   return {
     leadId: lead._id,
     fullName: lead.fullName,
     email: lead.email,
     phone: lead.phoneNormalized || lead.phone, // dial the canonical E.164 form
+    timezone: lead.timezone || "", // caller's tz: Maya's clock + callback times
     buyerType: lead.buyerType,
-    promptConfig: georgiaStVoicePrompt,        // { systemPrompt, firstMessage, voicemailMessage, endCallMessage }
+    promptConfig, // built from the live listing (loadPropertyBundle)
     source: "auction-449-georgia-st",
   };
 }
@@ -128,13 +133,19 @@ async function applyOutcome(lead, connected) {
 async function scheduleGeorgiaStSignupCall(lead = {}) {
   if (!lead || !lead.leadId) return;
 
+  const { promptConfig } = await loadPropertyBundle(PROPERTY_SLUG);
+  if (!promptConfig) {
+    console.error(`[${PROPERTY_SLUG}] property not found — signup call skipped (no hard-coded fallback)`);
+    return;
+  }
+
   await GeorgiaStLead.updateOne(
     { _id: lead.leadId },
     { $set: { lastCallAt: new Date() }, $inc: { callAttempts: 1 } }
   );
 
   const { connected } = await enqueueBurst(
-    callPayload({ _id: lead.leadId, ...lead }),
+    callPayload({ _id: lead.leadId, ...lead }, promptConfig),
     { initialDelayMs: WAIT_MS, ...BURST_OPTS },
     PRIORITY.SIGNUP
   );
@@ -148,6 +159,7 @@ async function scheduleGeorgiaStSignupCall(lead = {}) {
 // ─── Daily sweep ──────────────────────────────────────────────────────────────
 
 let sweeping = false; // prevent overlapping sweeps
+let lastMissingWarnAt = 0; // throttle the "property not found" log
 
 async function sweepDueCalls() {
   if (sweeping) return;
@@ -164,6 +176,16 @@ async function sweepDueCalls() {
       .lean();
 
     if (due.length === 0) return;
+
+    // One live-listing script for the whole sweep.
+    const { promptConfig } = await loadPropertyBundle(PROPERTY_SLUG);
+    if (!promptConfig) {
+      if (Date.now() - lastMissingWarnAt > 60 * 60 * 1000) {
+        lastMissingWarnAt = Date.now();
+        console.error(`[${PROPERTY_SLUG}] property not found — follow-up calls skipped (no hard-coded fallback)`);
+      }
+      return;
+    }
 
     const dialedNumbers = new Set(); // per-sweep same-number dedup
 
@@ -196,7 +218,7 @@ async function sweepDueCalls() {
 
       // Hand the burst to the shared queue (scheduled lane — paced behind any
       // signup bursts, no initial delay since it's already a call slot in their time).
-      enqueueBurst({ ...callPayload(claimed), isFollowUp: true }, BURST_OPTS, PRIORITY.SCHEDULED)
+      enqueueBurst({ ...callPayload(claimed, promptConfig), isFollowUp: true }, BURST_OPTS, PRIORITY.SCHEDULED)
         .then(({ connected }) => applyOutcome(claimed, connected))
         .catch((e) => console.error("[gsa-daily] burst failed:", e.message));
     }

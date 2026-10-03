@@ -85,7 +85,7 @@ async function pollCallOutcome(callId, noPickupReasons, treatErrorsAsNoPickup) {
     if (String(call.status).toLowerCase() === "ended") {
       const connected = isPickup(call, noPickupReasons, treatErrorsAsNoPickup);
       console.log(`[reg-call] ended reason="${call.endedReason}" → connected=${connected}`);
-      return { connected };
+      return { connected, endedReason: call.endedReason || "" };
     }
   }
 
@@ -150,6 +150,7 @@ const scheduleRegistrationCall = async (lead = {}) => {
 module.exports = {
   scheduleRegistrationCall,
   runCallBurst,
+  pollCallOutcome,
   RETRY_REASONS,
   DID_NOT_CONNECT_REASONS,
   WAIT_MS,

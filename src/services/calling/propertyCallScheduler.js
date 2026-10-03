@@ -46,11 +46,32 @@ const BURST_OPTS = {
 const PROMPT_TTL_MS = 5 * 60 * 1000;
 const promptCache = new Map(); // slug → { at, product, promptConfig }
 
+// The old per-property pages stamped short slugs that aren't the product's real
+// slug ("449-georgia-st" vs "449-georgia-st-big-bear-lake"); Rensselaer's even
+// has the wrong house number.
+const LEGACY_SLUG_ALIASES = { "449-rensselaer-ave": "401-rensselaer-ave" };
+const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+async function findProductBySlug(slug) {
+  const exact = await productModel.findOne({ slug }).lean();
+  if (exact) return exact;
+  const short = LEGACY_SLUG_ALIASES[slug] || slug;
+  const hits = await productModel.find({ slug: new RegExp(`^${escapeRegex(short)}-`) }).limit(2).lean();
+  return hits.length === 1 ? hits[0] : null;
+}
+
+/**
+ * The property + its call script, BUILT FROM THE LIVE LISTING (price, auction
+ * dates, financing…) — never a hard-coded prompt, because those facts change.
+ * Cached for PROMPT_TTL_MS so a sweep doesn't rebuild per lead; an edited
+ * listing is picked up within that window. Shared by every property call path
+ * (signup, daily follow-up, callbacks, the legacy Georgia St / Rensselaer pages).
+ */
 async function loadPropertyBundle(slug) {
   const cached = promptCache.get(slug);
   if (cached && Date.now() - cached.at < PROMPT_TTL_MS) return cached;
 
-  const product = await productModel.findOne({ slug }).lean();
+  const product = await findProductBySlug(slug);
   if (!product) {
     const bundle = { at: Date.now(), product: null, promptConfig: null };
     promptCache.set(slug, bundle);
@@ -58,7 +79,7 @@ async function loadPropertyBundle(slug) {
   }
 
   const others = await productModel
-    .find({ isLandingPage: true, slug: { $ne: slug }, status: "active" })
+    .find({ isLandingPage: true, slug: { $ne: product.slug }, status: "active" })
     .select(
       "productName street city county state zipCode beds baths squareFootage lotSize yearBuilt monthlyHOADues occupancyStatus propertyType startBid investmentData auctionStartDate auctionEndDate"
     )
@@ -98,6 +119,7 @@ function callPayload(lead, promptConfig) {
     fullName: lead.fullName,
     email: lead.email,
     phone: lead.phoneNormalized || lead.phone,
+    timezone: lead.timezone || "", // caller's tz: Maya's clock + callback times
     buyerType: lead.buyerType,
     // Buyer's price quote, spelled out for TTS ("" when the lead did not quote).
     quote: dollarsToWords(lead.quotePrice),
@@ -266,6 +288,7 @@ function startPropertyCallScheduler() {
 
 module.exports = {
   scheduleSignupCall,
+  loadPropertyBundle,
   startPropertyCallScheduler,
   nextDailyCallAt,
 };

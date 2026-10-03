@@ -77,7 +77,8 @@ async function sweepDueCallbacks() {
       // Hand the burst to the shared queue. Signup lane — a caller who asked to
       // be rung back at a set time is time-critical, so it jumps ahead of the
       // routine daily lead retries rather than queuing behind them.
-      enqueueBurst(buildBurstPayload(claimed), BURST_OPTS, PRIORITY.SIGNUP)
+      buildBurstPayload(claimed) // script rebuilt now from the live listing
+        .then((payload) => enqueueBurst(payload, BURST_OPTS, PRIORITY.SIGNUP))
         .then(({ connected }) => applyOutcome(claimed, connected))
         .catch((e) => console.error("[callback] burst failed:", e.message));
     }

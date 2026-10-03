@@ -233,4 +233,4 @@ async function notifyVtextAlert({ level = "info", title, fields = [] } = {}) {
   }
 }
 
-module.exports = { notifyNewLead, notifyVtextAlert };
+module.exports = { notifyNewLead, notifyVtextAlert, postToSlack };
