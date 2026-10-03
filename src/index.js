@@ -15,6 +15,8 @@ const { startMatchCallScheduler } = require('./services/buyerMatch/matchCallServ
 const { startBrevoBackfillJob } = require('./jobs/brevoBackfillJob'); // ← ADD
 const { startAuctionCloseJob } = require('./jobs/auctionCloseJob');
 const { startZillowSyncJob } = require('./jobs/zillowSyncJob');
+const { startVtextWorkersInProcess } = require('./workers/vtextWorker');
+const { startVtextSocketBridge } = require('./socket/vtextSocketBridge');
 const { startMetaAdsReportJob } = require('./jobs/metaAdsReportJob');
 require('./passport');
 
@@ -62,6 +64,22 @@ server.listen(PORT, () => {
 
   // Weekly Zillow refresh of every linked property the admin hasn't paused.
   startZillowSyncJob();
+
+  // Vtext (in-house iMessage/SMS infra): fully inert unless VTEXT_ENABLED=true.
+  // In production the worker runs as a separate Render process
+  // (src/workers/vtextWorker.js); set VTEXT_RUN_WORKERS_IN_PROCESS=true
+  // for local dev / a tiny pilot to boot it inside this same process instead.
+  if (process.env.VTEXT_ENABLED === 'true' && process.env.VTEXT_RUN_WORKERS_IN_PROCESS === 'true') {
+    startVtextWorkersInProcess().catch((err) => {
+      console.error('[vtext] failed to start in-process workers:', err);
+    });
+  }
+  // The socket bridge always belongs to the WEB process (it owns the live
+  // socket.io connections) regardless of where the workers themselves run —
+  // unlike the workers-in-process flag above, this doesn't depend on it.
+  if (process.env.VTEXT_ENABLED === 'true') {
+    startVtextSocketBridge(io);
+  }
 
   // Daily 9:00 AM IST Meta Ads performance report + AI suggestions to Slack.
   startMetaAdsReportJob();

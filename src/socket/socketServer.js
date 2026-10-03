@@ -5,6 +5,9 @@ const { socketIOCorsOptions } = require('../config/corsConfig');
 const User = require('../model/users/userModel');
 const { initializeHandlers, registerSocketHandlers } = require('./socketHandlers');
 const rateLimiter = require('../middleware/socketRateLimitMiddleware');
+// Vtext's own, separate socket handlers (join/leave the admin room) — kept
+// out of socketHandlers.js on purpose, see vtextSocketBridge.js's header.
+const { registerVtextSocketHandlers } = require('./vtextSocketBridge');
 
 // Store active auctions in memory
 const activeAuctions = new Map();
@@ -80,6 +83,7 @@ function initSocketServer(server) {
     });
 
     registerSocketHandlers(socket);
+    registerVtextSocketHandlers(socket);
   });
 
   setInterval(() => {

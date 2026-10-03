@@ -17,25 +17,12 @@
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const ErrorHandler = require("../../utils/errorhandler");
 
-const EarlyAccessLead = require("../../model/leads/earlyAccessLeadModel");
-const GeorgiaStLead = require("../../model/leads/georgiaStLeadModel");
-const RensselaerAveLead = require("../../model/leads/rensselaerAveLeadModel");
-const PartnerLead = require("../../model/leads/partnerLeadModel");
-const PropertyLead = require("../../model/leads/propertyLeadModel");
-const NorCalLead = require("../../model/leads/norCalLeadModel");
-const NewDealsLead = require("../../model/leads/newDealsLeadModel");
-
 // leadType → Mongoose model. Keys MUST match leadNoteModel.LEAD_TYPES so the
-// admin UI can reuse the same leadType it already passes for notes.
-const MODEL_BY_TYPE = {
-  earlyAccess: EarlyAccessLead,
-  georgiaSt: GeorgiaStLead,
-  rensselaerAve: RensselaerAveLead,
-  partner: PartnerLead,
-  property: PropertyLead, // unified /auction/:slug leads
-  norcal: NorCalLead,     // Northern California early-access leads
-  newDeals: NewDealsLead, // /new-deals buy-box leads
-};
+// admin UI can reuse the same leadType it already passes for notes. Shared
+// with Vtext's inbound lead-linking (sendify-infra.md §6.2) — extracted to
+// services/leads/leadModelsByType.js so both call sites stay in sync. That
+// map also carries the "newDeals" entry added on main during this merge.
+const { MODEL_BY_TYPE } = require("../../services/leads/leadModelsByType");
 
 /**
  * PATCH /api/v1/lead-calling   { leadType, leadId, stopped }
