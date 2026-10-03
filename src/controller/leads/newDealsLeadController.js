@@ -5,11 +5,13 @@
 // browser pixels only after it, Meta CAPI with the same event_id) plus the
 // NorCal-style call flow: with consent, Maya calls within a minute and retries
 // daily until pickup; asking for an advisor transfers the call live.
+// After the Brevo contact is saved, the welcome email (template 189) goes out
+// once per person — see "New Deals page: welcome email (dev doc)".
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const ErrorHandler = require("../../utils/errorhandler");
 const NewDealsLead = require("../../model/leads/newDealsLeadModel");
 const { normalisePhone, getCallsForPhones } = require("../../services/calling/vapiCallsService");
-const { syncNewDealsLead } = require("../../services/integrations/brevoService");
+const { syncNewDealsLead, sendNewDealsWelcomeEmail } = require("../../services/integrations/brevoService");
 const { sendEvent } = require("../../services/integrations/metaCapiService");
 const { notifyNewLead } = require("../../services/shared/slackService");
 const { getEmailEventsForEmails } = require("../../services/integrations/emailEventsService");
@@ -17,6 +19,7 @@ const { getNotesForLeads } = require("../../services/leads/leadNotesService");
 const { scheduleNewDealsSignupCall } = require("../../services/calling/newDealsCallScheduler");
 const { newDealsPageUrl } = require("../../config/siteUrls");
 const { findDeal, dealLabel } = require("../../config/newDeals");
+const TEST_NAME_FIELDS = ["fullName", "firstName"];
 const {
   str,
   isValidEmail,
@@ -27,6 +30,10 @@ const {
   clientIp,
   isProductionPageUrl,
   withTimeout,
+  stateName,
+  labelList,
+  priceRangeText,
+  splitName,
 } = require("../../services/leads/buyBox");
 
 // /new-deals property types (mixed-use instead of land).
@@ -42,6 +49,56 @@ const LEAD_NOTE_TYPE = "newDeals"; // matches leadNoteModel.LEAD_TYPES
 
 // This page's tier rule (from the designer handoff): an advisor request in an
 // active market counts as Tier A; Tier B only needs a strategy.
+// "Maryland, Michigan, Baltimore" — states then cities, as the buyer picked them.
+const marketsText = (box = {}) => [...(box.states || []).map(stateName), ...(box.cities || [])].join(", ");
+
+// "Baltimore, MD" / "$65,900" for a spotlight deal id.
+const dealParts = (id) => {
+  const d = findDeal(id);
+  return d ? { market: `${d.city}, ${d.state}`, price: `$${d.price.toLocaleString("en-US")}` } : null;
+};
+
+/**
+ * Welcome email (template 189) — once per person. Claims the lead atomically
+ * (welcomeEmailSentAt null → now) so two quick submits can't both send; if
+ * Brevo still fails after its 3 attempts the claim is released, so the next
+ * sign-up from the same person tries again.
+ */
+async function sendWelcomeOnce(lead) {
+  const claimed = await NewDealsLead.findOneAndUpdate(
+    { _id: lead._id, welcomeEmailSentAt: null },
+    { $set: { welcomeEmailSentAt: new Date() } },
+    { new: true }
+  ).lean();
+  if (!claimed) return; // already sent (or being sent) for this person
+
+  const box = claimed.buyBox || {};
+  const deal = dealParts(claimed.dealInterest);
+  const result = await sendNewDealsWelcomeEmail({
+    email: claimed.email,
+    name: claimed.fullName || claimed.firstName,
+    params: {
+      FIRSTNAME: claimed.firstName,
+      STRATEGY: labelList("strategy", box.strategy),
+      MARKETS: marketsText(box),
+      PRICE_RANGE: priceRangeText(box),
+      CONDITION: labelList("condition", box.condition),
+      FINANCING: labelList("financing", box.financing),
+      CONTACT_PREF: claimed.contactPreference || "",
+      ADVISOR_CALL: claimed.advisorCallRequested === true,
+      DEAL_MARKET: deal ? deal.market : "",
+      DEAL_PRICE: deal ? deal.price : "",
+    },
+  });
+
+  await NewDealsLead.updateOne(
+    { _id: claimed._id },
+    result.success
+      ? { $set: { welcomeEmailMessageId: result.messageId || "", welcomeEmailError: "" } }
+      : { $set: { welcomeEmailSentAt: null, welcomeEmailError: result.error || "send failed" } }
+  );
+}
+
 const computeTier = (box, advisor) => {
   const markets = activeMarkets();
   const inMarket = box.states.some((s) => markets.includes(s));
@@ -70,12 +127,14 @@ const registerNewDealsLead = catchAsyncError(async (req, res, next) => {
     return res.status(200).json({ success: true });
   }
 
-  const firstName = str(body.first_name, 80);
+  // The form sends a full name; first_name is still accepted from older pages.
+  const fullName = (str(body.full_name, 120) || str(body.first_name, 80)).replace(/\s+/g, " ");
+  const { firstName, lastName } = splitName(fullName);
   const email = str(body.email, 200).toLowerCase();
   const phone = str(body.phone, 40);
   const eventId = str(body.event_id, 100);
 
-  if (!firstName) return next(new ErrorHandler("first_name is required", 400));
+  if (!firstName) return next(new ErrorHandler("full_name is required", 400));
   if (!isValidEmail(email)) return next(new ErrorHandler("Enter a valid email address", 400));
   const phoneNormalized = normalisePhone(phone);
   if (!phoneNormalized || phoneNormalized.replace(/\D/g, "").length < 10)
@@ -96,7 +155,9 @@ const registerNewDealsLead = catchAsyncError(async (req, res, next) => {
   const submittedAt = body.submitted_at ? new Date(body.submitted_at) : now;
 
   const fields = {
+    fullName,
     firstName,
+    lastName,
     email,
     phone,
     phoneNormalized,
@@ -152,7 +213,12 @@ const registerNewDealsLead = catchAsyncError(async (req, res, next) => {
 
   // ── CRM write (Brevo) before the 200 ──────────────────────────────────────
   const brevo = await withTimeout(
-    syncNewDealsLead({ ...lead.toObject(), smsOptInUrl: newDealsPageUrl() }),
+    syncNewDealsLead({
+      ...lead.toObject(),
+      smsOptInUrl: newDealsPageUrl(),
+      marketsText: marketsText(lead.buyBox),
+      dealText: dealParts(lead.dealInterest)?.market || "",
+    }),
     BREVO_TIMEOUT_MS,
     { success: false, error: "Brevo timeout" }
   ).catch((e) => ({ success: false, error: e.message }));
@@ -166,6 +232,9 @@ const registerNewDealsLead = catchAsyncError(async (req, res, next) => {
 
   // ── After the 200 ─────────────────────────────────────────────────────────
   const plain = lead.toObject();
+
+  // Welcome email — after the contact save above, once per person.
+  sendWelcomeOnce(plain).catch((e) => console.error("[new-deals] welcome email failed:", e.message));
 
   // Maya's signup call (+ daily retries) — only with consent.
   if (consent) {
@@ -195,14 +264,13 @@ const registerNewDealsLead = catchAsyncError(async (req, res, next) => {
   // Same Slack channel as the NorCal sign-ups (SLACK_LEADS_WEBHOOK_URL).
   notifyNewLead({
     leadType: updated ? "New Deals (updated)" : "New Deals",
-    name: lead.firstName,
+    name: lead.fullName || lead.firstName,
     email: lead.email,
     phone: lead.phone,
     consent: lead.consent,
     source: `new-deals · ${lead.firstTouch?.utm_source || "direct"}`,
     extraFields: [
       { label: "Tier", value: lead.tier },
-      { label: "Advisor Call", value: lead.advisorCallRequested ? "✅ Requested" : "No" },
       { label: "Deal", value: dealLabel(lead.dealInterest) || "—" },
       { label: "States", value: buyBox.states.join(", ") || "—" },
       { label: "Price", value: `${buyBox.price_min} – ${buyBox.price_max === null ? "3M+" : buyBox.price_max}` },
@@ -220,7 +288,7 @@ const getAllNewDealsLeads = catchAsyncError(async (req, res) => {
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
   const skip = (page - 1) * limit;
 
-  const query = { firstName: { $not: TEST_NAME_REGEX } };
+  const query = { $and: TEST_NAME_FIELDS.map((f) => ({ [f]: { $not: TEST_NAME_REGEX } })) };
   if (["A", "B", "C"].includes(req.query.tier)) query.tier = req.query.tier;
 
   const [leads, total] = await Promise.all([
@@ -238,7 +306,7 @@ const getAllNewDealsLeads = catchAsyncError(async (req, res) => {
     success: true,
     leads: leads.map((lead) => ({
       ...lead,
-      fullName: lead.firstName,
+      fullName: lead.fullName || lead.firstName,
       dealInterestLabel: dealLabel(lead.dealInterest),
       calls: callsByPhone[normalisePhone(lead.phone)] || [],
       emails: eventsByEmail[String(lead.email || "").toLowerCase()] || [],

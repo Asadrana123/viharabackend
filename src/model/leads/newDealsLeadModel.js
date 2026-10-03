@@ -45,7 +45,11 @@ const buyBoxSchema = new mongoose.Schema(
 
 const newDealsLeadSchema = new mongoose.Schema(
   {
+    // The form asks for a full name; first/last are split from it (Brevo
+    // FIRSTNAME / LASTNAME, Maya's greeting).
+    fullName: { type: String, default: "", trim: true },
     firstName: { type: String, required: true, trim: true },
+    lastName: { type: String, default: "", trim: true },
     email: { type: String, required: true, trim: true, lowercase: true },
     phone: { type: String, required: true, trim: true },
     phoneNormalized: { type: String, default: "", trim: true },
@@ -56,7 +60,8 @@ const newDealsLeadSchema = new mongoose.Schema(
     // Spotlight deal they tapped ("bal-01" …) — see NEW_DEALS in landing.config.
     dealInterest: { type: String, default: "", trim: true },
     contactPreference: { type: String, enum: ["", "email", "text", "call"], default: "" },
-    // "I'd like a Vihara advisor to call me" — Maya offers the live transfer first thing.
+    // Legacy: the "advisor call" checkbox was removed from the form (Maya
+    // connects to an advisor on request). Kept so older records still read.
     advisorCallRequested: { type: Boolean, default: false },
 
     // ── Contact consent (calls incl. Maya + texts). Optional on the form. ────
@@ -91,6 +96,12 @@ const newDealsLeadSchema = new mongoose.Schema(
 
     brevoSynced: { type: Boolean, default: false },
     brevoError: { type: String, default: "" },
+
+    // Welcome email (Brevo template 189) — sent ONCE per person, after the
+    // contact is saved. A repeat sign-up never re-sends it.
+    welcomeEmailSentAt: { type: Date, default: null },
+    welcomeEmailMessageId: { type: String, default: "" },
+    welcomeEmailError: { type: String, default: "" },
 
     source: { type: String, default: "new-deals" },
   },

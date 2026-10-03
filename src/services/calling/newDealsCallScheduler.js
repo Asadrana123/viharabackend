@@ -64,7 +64,7 @@ function callPayload(lead) {
 
   return {
     leadId: lead._id,
-    fullName: lead.firstName,
+    fullName: lead.fullName || lead.firstName,
     email: lead.email,
     phone: lead.phoneNormalized || lead.phone,
     timezone: lead.timezone || "",

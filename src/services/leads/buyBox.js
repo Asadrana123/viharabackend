@@ -141,6 +141,39 @@ const STATE_NAMES = {
   VT: "Vermont", VA: "Virginia", WA: "Washington", WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
 };
 
+// Form labels exactly as the buyer saw them (welcome email, admin text).
+const FORM_LABELS = {
+  strategy: { flip: "Fix & flip", rent: "Rental / hold", brrrr: "BRRRR", wholesale: "Wholesale", home: "Home to live in" },
+  property_type: {
+    sfr: "Single-family", condo: "Condo / townhome", mf_2_4: "2–4 units",
+    mf_5_plus: "5+ units", land: "Land", mixed_use: "Mixed-use",
+  },
+  condition: { turnkey: "Turnkey", light_rehab: "Light rehab", heavy_rehab: "Heavy rehab", any: "Any condition" },
+  financing: { cash: "Cash", hard_money: "Hard / private money", mortgage: "Mortgage", not_sure: "Not sure yet" },
+  deals_12mo: { 1: "1", "2_5": "2–5", "6_plus": "6+" },
+};
+const labelList = (group, values = []) =>
+  (Array.isArray(values) ? values : [values])
+    .filter(Boolean)
+    .map((v) => (FORM_LABELS[group] && FORM_LABELS[group][v]) || v)
+    .join(", ");
+
+// "$70K – $400K" / "$130K – $3M+" — the page's own price wording.
+const kText = (n) => (n >= 1e6 ? `$${+(n / 1e6).toFixed(2)}M` : `$${Math.round(n / 1e3)}K`);
+const priceRangeText = (box = {}) => {
+  if (!Number.isFinite(box.price_min)) return "";
+  // Nothing picked (no floor, no ceiling) → leave the line out.
+  if (!box.price_min && (box.price_max === null || box.price_max === undefined)) return "";
+  if (box.price_max === null || box.price_max === undefined) return `${kText(box.price_min)} – $3M+`;
+  return box.price_min === box.price_max ? kText(box.price_min) : `${kText(box.price_min)} – ${kText(box.price_max)}`;
+};
+
+/** "Jack van der Berg" → { firstName: "Jack", lastName: "van der Berg" } */
+const splitName = (full = "") => {
+  const parts = String(full).trim().split(/\s+/).filter(Boolean);
+  return { firstName: parts[0] || "", lastName: parts.slice(1).join(" ") };
+};
+
 const spokenList = (group, values = []) =>
   (Array.isArray(values) ? values : [values])
     .filter(Boolean)
@@ -175,4 +208,7 @@ module.exports = {
   spokenList,
   spokenBudget,
   stateName,
+  labelList,
+  priceRangeText,
+  splitName,
 };
