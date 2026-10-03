@@ -90,8 +90,12 @@ const outboundCampaignSchema = new mongoose.Schema(
     // SMS-only fields (required only when channel === "sms"). Two providers
     // as of Phase 7b (sendify-infra.md): "brevo" (default, unchanged v1
     // behavior — our backend never sends, it adds the contact to a Brevo
-    // list and a Brevo-side automation texts them) or "sendify" (sends for
-    // real through Sendify's own pipeline, enqueueOutbound). Existing
+    // list and a Brevo-side automation texts them) or "vtext" (sends for
+    // real through Vtext's own pipeline, enqueueOutbound — the in-house
+    // system formerly called "Sendify"; the stored enum value below is
+    // intentionally kept as the literal string "sendify" even though the
+    // feature is now called Vtext everywhere else, so already-existing
+    // local campaign documents aren't orphaned by the rename). Existing
     // campaigns in the DB have no `provider` field and read as "brevo" via
     // the default below — no migration needed.
     sms: {
@@ -108,8 +112,8 @@ const outboundCampaignSchema = new mongoose.Schema(
         },
       },
       // The admin's "these contacts have given consent" attestation. Brevo
-      // only — Sendify enforces real per-contact consent instead (see
-      // sendifyComplianceService.canSend), an attestation doesn't apply to it.
+      // only — Vtext enforces real per-contact consent instead (see
+      // vtextComplianceService.canSend), an attestation doesn't apply to it.
       consentAttested: {
         type: Boolean,
         required: function () {
@@ -117,12 +121,12 @@ const outboundCampaignSchema = new mongoose.Schema(
         },
       },
 
-      // Sendify only — which sendifyTemplateModel doc was rendered per
+      // Vtext only — which vtextTemplateModel doc was rendered per
       // recipient. templateName is a launch-time snapshot so history still
       // reads right if the template is later renamed or deleted.
       templateId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "sendifyTemplateModel",
+        ref: "vtextTemplateModel",
         required: function () {
           return this.channel === "sms" && this.sms?.provider === "sendify";
         },

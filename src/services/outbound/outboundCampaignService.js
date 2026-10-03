@@ -87,7 +87,7 @@ const createCampaign = async ({
   if (channel === "sms") {
     // Caller (launchSmsCampaign) builds the right shape per provider —
     // {provider,listId,consentAttested} for Brevo or {provider,templateId,
-    // templateName} for Sendify — this just passes it through.
+    // templateName} for Vtext — this just passes it through.
     doc.sms = sms;
   } else {
     doc.email = {
@@ -113,8 +113,8 @@ const startCampaign = async (id) => {
   try {
     if (campaign.channel === "sms") {
       if (campaign.sms?.provider === "sendify") {
-        const { runSendifyCampaign } = require("./outboundSendifyService");
-        await runSendifyCampaign(id);
+        const { runVtextCampaign } = require("./outboundVtextService");
+        await runVtextCampaign(id);
       } else {
         const { runSmsCampaign } = require("./outboundSmsService");
         await runSmsCampaign(id);

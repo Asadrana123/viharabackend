@@ -1,9 +1,9 @@
 // utils/secretBox.js
 //
-// AES-256-GCM encrypt/decrypt for line credentials (sendifyLineModel.credentials).
+// AES-256-GCM encrypt/decrypt for line credentials (vtextLineModel.credentials).
 // Lines get added through the admin UI, not env vars, so there's no static
 // config file to keep secrets out of — this is what keeps them out of Mongo
-// in plaintext instead. Key comes from SENDIFY_SECRETS_KEY (32 bytes, base64
+// in plaintext instead. Key comes from VTEXT_SECRETS_KEY (32 bytes, base64
 // or hex — see deriveKey below for the exact format expected).
 const crypto = require("crypto");
 
@@ -11,9 +11,9 @@ const ALGO = "aes-256-gcm";
 const IV_LENGTH = 12; // GCM's recommended IV length
 
 function deriveKey() {
-  const raw = process.env.SENDIFY_SECRETS_KEY;
+  const raw = process.env.VTEXT_SECRETS_KEY;
   if (!raw) {
-    throw new Error("SENDIFY_SECRETS_KEY is not set — cannot encrypt/decrypt Sendify line credentials");
+    throw new Error("VTEXT_SECRETS_KEY is not set — cannot encrypt/decrypt Vtext line credentials");
   }
   // Accept either a 64-char hex string or a base64 string that decodes to 32 bytes.
   let key;
@@ -23,14 +23,14 @@ function deriveKey() {
     key = Buffer.from(raw, "base64");
   }
   if (key.length !== 32) {
-    throw new Error("SENDIFY_SECRETS_KEY must decode to exactly 32 bytes (64 hex chars, or base64 of 32 bytes)");
+    throw new Error("VTEXT_SECRETS_KEY must decode to exactly 32 bytes (64 hex chars, or base64 of 32 bytes)");
   }
   return key;
 }
 
 /**
  * @param {object} plainObject - arbitrary JSON-serializable credentials, e.g. { username, password, webhookSigningKey }
- * @returns {{ iv: string, tag: string, ciphertext: string }} all base64, ready to store on sendifyLineModel.credentials
+ * @returns {{ iv: string, tag: string, ciphertext: string }} all base64, ready to store on vtextLineModel.credentials
  */
 function encryptCredentials(plainObject) {
   const key = deriveKey();

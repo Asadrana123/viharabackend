@@ -13,8 +13,8 @@ const { startPropertyCallScheduler } = require('./services/calling/propertyCallS
 const { startBrevoBackfillJob } = require('./jobs/brevoBackfillJob'); // ← ADD
 const { startAuctionCloseJob } = require('./jobs/auctionCloseJob');
 const { startZillowSyncJob } = require('./jobs/zillowSyncJob');
-const { startSendifyWorkersInProcess } = require('./workers/sendifyWorker');
-const { startSendifySocketBridge } = require('./socket/sendifySocketBridge');
+const { startVtextWorkersInProcess } = require('./workers/vtextWorker');
+const { startVtextSocketBridge } = require('./socket/vtextSocketBridge');
 require('./passport');
 
 const PORT = process.env.PORT || 8000;
@@ -58,19 +58,19 @@ server.listen(PORT, () => {
   // Weekly Zillow refresh of every linked property the admin hasn't paused.
   startZillowSyncJob();
 
-  // Sendify (in-house iMessage/SMS infra): fully inert unless SENDIFY_ENABLED=true.
+  // Vtext (in-house iMessage/SMS infra): fully inert unless VTEXT_ENABLED=true.
   // In production the worker runs as a separate Render process
-  // (src/workers/sendifyWorker.js); set SENDIFY_RUN_WORKERS_IN_PROCESS=true
+  // (src/workers/vtextWorker.js); set VTEXT_RUN_WORKERS_IN_PROCESS=true
   // for local dev / a tiny pilot to boot it inside this same process instead.
-  if (process.env.SENDIFY_ENABLED === 'true' && process.env.SENDIFY_RUN_WORKERS_IN_PROCESS === 'true') {
-    startSendifyWorkersInProcess().catch((err) => {
-      console.error('[sendify] failed to start in-process workers:', err);
+  if (process.env.VTEXT_ENABLED === 'true' && process.env.VTEXT_RUN_WORKERS_IN_PROCESS === 'true') {
+    startVtextWorkersInProcess().catch((err) => {
+      console.error('[vtext] failed to start in-process workers:', err);
     });
   }
   // The socket bridge always belongs to the WEB process (it owns the live
   // socket.io connections) regardless of where the workers themselves run —
   // unlike the workers-in-process flag above, this doesn't depend on it.
-  if (process.env.SENDIFY_ENABLED === 'true') {
-    startSendifySocketBridge(io);
+  if (process.env.VTEXT_ENABLED === 'true') {
+    startVtextSocketBridge(io);
   }
 });

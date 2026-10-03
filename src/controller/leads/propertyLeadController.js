@@ -14,8 +14,8 @@ const { enrichPerson } = require("../../services/shared/fullenrichService");
 const { getCallsForPhones, normalisePhone } = require("../../services/calling/vapiCallsService");
 const { getEmailEventsForEmails } = require("../../services/integrations/emailEventsService");
 const { getNotesForLeads } = require("../../services/leads/leadNotesService");
-const { getSendifyMessagesForPhones } = require("../../services/sendify/sendifyLeadMessagesService");
-const { maybeSendSignupWelcomeText } = require("../../services/sendify/sendifyAutoSignupService");
+const { getVtextMessagesForPhones } = require("../../services/vtext/vtextLeadMessagesService");
+const { maybeSendSignupWelcomeText } = require("../../services/vtext/vtextAutoSignupService");
 const { syncPropertyLead } = require("../../services/integrations/brevoService");
 const { notifyNewLead } = require("../../services/shared/slackService");
 const { auctionPageUrl, listingPageUrl } = require("../../config/siteUrls");
@@ -194,9 +194,9 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       smsOptInUrl: auctionPageUrl(slug),
     }).catch((e) => console.error(`[brevo-sync:${slug}] failed:`, e.message));
 
-    // Sendify's own automated signup text — independent of and in addition to
-    // the Brevo sync above, off by default (SENDIFY_AUTO_SIGNUP_TEXT_ENABLED).
-    // See sendifyAutoSignupService.js's header for the full design.
+    // Vtext's own automated signup text — independent of and in addition to
+    // the Brevo sync above, off by default (VTEXT_AUTO_SIGNUP_TEXT_ENABLED).
+    // See vtextAutoSignupService.js's header for the full design.
     maybeSendSignupWelcomeText({ lead, property });
   })();
 });
@@ -225,7 +225,7 @@ const getLeadsByProperty = catchAsyncError(async (req, res, next) => {
   const leadIds = leads.map((l) => l._id);
 
   const [messagesByPhone, callsByPhone, eventsByEmail, notesByLead] = await Promise.all([
-    getSendifyMessagesForPhones(phones),
+    getVtextMessagesForPhones(phones),
     getCallsForPhones(phones),
     getEmailEventsForEmails(emailAddresses),
     getNotesForLeads(LEAD_NOTE_TYPE, leadIds),

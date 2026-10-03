@@ -7,7 +7,7 @@ const { enrichPerson } = require("../../services/shared/fullenrichService");
 const { getCallsForPhones, normalisePhone } = require("../../services/calling/vapiCallsService");
 const { getEmailEventsForEmails } = require("../../services/integrations/emailEventsService");
 const { getNotesForLeads } = require("../../services/leads/leadNotesService");
-const { getSendifyMessagesForPhones } = require("../../services/sendify/sendifyLeadMessagesService");
+const { getVtextMessagesForPhones } = require("../../services/vtext/vtextLeadMessagesService");
 const { notifyNewLead } = require("../../services/shared/slackService");
 
 // Discriminator stamped on each note so notes never bleed across lead types.
@@ -185,7 +185,7 @@ const getAllPartnerLeads = catchAsyncError(async (req, res) => {
   const leadIds = leads.map((l) => l._id);
 
   const [messagesByPhone, callsByPhone, eventsByEmail, notesByLead] = await Promise.all([
-    getSendifyMessagesForPhones(phones),
+    getVtextMessagesForPhones(phones),
     getCallsForPhones(phones),
     getEmailEventsForEmails(emailAddresses),
     getNotesForLeads(LEAD_NOTE_TYPE, leadIds),

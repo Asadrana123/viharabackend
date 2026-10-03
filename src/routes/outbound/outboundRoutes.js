@@ -10,7 +10,7 @@ const {
   getConfig,
   parseContacts,
   launchSmsCampaign,
-  listSendifyTemplatesForOutbound,
+  listVtextTemplatesForOutbound,
   previewEmail,
   sendTestEmail,
   launchEmailCampaign,
@@ -33,7 +33,7 @@ router.use(isAuthenticated, authorizeRoles("admin"));
 router.get("/config", getConfig);
 router.post("/contacts/parse", parseContacts);
 router.post("/sms/campaigns", launchSmsCampaign);
-router.get("/sms/sendify-templates", listSendifyTemplatesForOutbound);
+router.get("/sms/vtext-templates", listVtextTemplatesForOutbound);
 router.post("/email/preview", previewEmail);
 router.post("/email/test", sendTestEmail);
 router.post("/email/campaigns", launchEmailCampaign);

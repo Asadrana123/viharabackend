@@ -1,7 +1,7 @@
 // services/leads/leadModelsByType.js
 //
 // Extracted from controller/calling/stopCallingController.js (sendify-infra.md
-// §6.2 step 3 / §0 item 6) so Sendify's inbound lead-linking can reuse the
+// §6.2 step 3 / §0 item 6) so Vtext's inbound lead-linking can reuse the
 // same leadType -> Model map without duplicating it. Keys MUST match
 // leadNoteModel.LEAD_TYPES so both systems agree on what a "leadType" is.
 //

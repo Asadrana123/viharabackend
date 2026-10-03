@@ -10,7 +10,7 @@
 // This covers the large/common codes across every US timezone (including
 // Arizona's no-DST Mountain quirk) so the quiet-hours mechanism works
 // correctly end to end; unknown codes fall back to America/New_York,
-// matching this repo's existing SENDIFY_DAY_TZ default. Worth replacing with
+// matching this repo's existing VTEXT_DAY_TZ default. Worth replacing with
 // a licensed/verified dataset if real volume ever depends on precision here.
 const AREA_CODE_TIMEZONES = {
   // Eastern

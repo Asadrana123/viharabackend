@@ -8,7 +8,7 @@ const RenovationContractorRequest = require("../../model/property/renovationCont
 const { getCallsForPhones, normalisePhone } = require("../../services/calling/vapiCallsService");
 const { getEmailEventsForEmails } = require("../../services/integrations/emailEventsService");
 const { getNotesForLeads } = require("../../services/leads/leadNotesService");
-const { getSendifyMessagesForPhones } = require("../../services/sendify/sendifyLeadMessagesService");
+const { getVtextMessagesForPhones } = require("../../services/vtext/vtextLeadMessagesService");
 
 // Whole-word "test" (case-insensitive): matches "test", "Test User", "John Test",
 // but NOT "Testerson" or "contest". Kept identical to the exclusion regex used by
@@ -55,7 +55,7 @@ const getTestLeads = catchAsyncError(async (req, res) => {
       const leadIds = leads.map((l) => l._id);
 
       const [messagesByPhone, callsByPhone, eventsByEmail, notesByLead] = await Promise.all([
-        getSendifyMessagesForPhones(phones),
+        getVtextMessagesForPhones(phones),
         getCallsForPhones(phones),
         getEmailEventsForEmails(emailAddresses),
         getNotesForLeads(leadType, leadIds),

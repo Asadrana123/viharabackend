@@ -7,7 +7,7 @@ const PartnerLead = require("../../model/leads/partnerLeadModel");
 const { getCallsForPhones, normalisePhone } = require("../../services/calling/vapiCallsService");
 const { getEmailEventsForEmails } = require("../../services/integrations/emailEventsService");
 const { getNotesForLeads } = require("../../services/leads/leadNotesService");
-const { getSendifyMessagesForPhones } = require("../../services/sendify/sendifyLeadMessagesService");
+const { getVtextMessagesForPhones } = require("../../services/vtext/vtextLeadMessagesService");
 
 // A "pickup" = a human actually answered. Same set the per-tab UI uses for its
 // "Pickup" filter (positive / negative / callback). Voicemail + missed are NOT
@@ -59,7 +59,7 @@ const getInterestedLeads = catchAsyncError(async (req, res) => {
       const leadIds = leads.map((l) => l._id);
 
       const [messagesByPhone, callsByPhone, eventsByEmail, notesByLead] = await Promise.all([
-        getSendifyMessagesForPhones(phones),
+        getVtextMessagesForPhones(phones),
         getCallsForPhones(phones),
         getEmailEventsForEmails(emailAddresses),
         getNotesForLeads(leadType, leadIds),

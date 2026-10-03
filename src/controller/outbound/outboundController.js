@@ -73,7 +73,9 @@ exports.parseContacts = catchAsyncError(async (req, res) => {
  * POST /sms/campaigns
  * Body: { propertyId, maxContacts, csvData?, contact?, source, csvFileName?, provider? }
  *   provider "brevo" (default): consentAttested required, property needs brevoOutboundSmsListId.
- *   provider "sendify": templateId required instead — Sendify enforces its own
+ *   provider "sendify" (the launcher's "Vtext" option; the stored/internal
+ *     value stays the literal string "sendify" — see outboundCampaignModel.js
+ *     for why): templateId required instead — Vtext enforces its own
  *     real per-contact consent at send time, no attestation needed/accepted.
  */
 exports.launchSmsCampaign = catchAsyncError(async (req, res, next) => {
@@ -89,10 +91,10 @@ exports.launchSmsCampaign = catchAsyncError(async (req, res, next) => {
   let smsFields;
   if (smsProvider === "sendify") {
     if (!templateId) {
-      return next(new Errorhandler("Pick a template before launching a Sendify campaign", 400));
+      return next(new Errorhandler("Pick a template before launching a Vtext campaign", 400));
     }
-    const SendifyTemplate = require("../../model/sendify/sendifyTemplateModel");
-    const template = await SendifyTemplate.findById(templateId).lean();
+    const VtextTemplate = require("../../model/vtext/vtextTemplateModel");
+    const template = await VtextTemplate.findById(templateId).lean();
     if (!template) return next(new Errorhandler("Template not found", 404));
     smsFields = { provider: "sendify", templateId, templateName: template.name };
   } else {
@@ -149,15 +151,15 @@ exports.launchSmsCampaign = catchAsyncError(async (req, res, next) => {
 });
 
 /**
- * GET /sms/sendify-templates
- * Thin proxy onto Sendify's own template collection, so SmsLauncher.jsx
+ * GET /sms/vtext-templates
+ * Thin proxy onto Vtext's own template collection, so SmsLauncher.jsx
  * (and everything else under AdminPanel/Outbound) only ever talks to
  * outbound.service.js — not a direct cross-feature frontend call into
- * Sendify's own API. Templates aren't property-scoped, so no filtering.
+ * Vtext's own API. Templates aren't property-scoped, so no filtering.
  */
-exports.listSendifyTemplatesForOutbound = catchAsyncError(async (req, res) => {
-  const SendifyTemplate = require("../../model/sendify/sendifyTemplateModel");
-  const templates = await SendifyTemplate.find().sort({ updatedAt: -1 }).select("name body updatedAt");
+exports.listVtextTemplatesForOutbound = catchAsyncError(async (req, res) => {
+  const VtextTemplate = require("../../model/vtext/vtextTemplateModel");
+  const templates = await VtextTemplate.find().sort({ updatedAt: -1 }).select("name body updatedAt");
   return res.json({ success: true, templates });
 });
 
