@@ -26,37 +26,47 @@ const AUTO_ENABLED = () => process.env.VTEXT_ENABLED === "true" && process.env.V
  * @param {object} params.property - the resolved property (productModel doc)
  */
 async function maybeSendSignupWelcomeText({ lead, property }) {
+  // Unconditional — proves this function actually ran at all. Every branch
+  // below also logs its own outcome, so "nothing in the logs" should never
+  // happen again for this path: either this line plus a skip/error reason,
+  // or this line plus a final outcome line.
+  console.log(`[vtext auto-signup] called for lead ${lead?._id} (${lead?.phone || "no phone"})`);
   try {
     if (!AUTO_ENABLED()) {
-      console.log("[vtext auto-signup] VTEXT_ENABLED/VTEXT_AUTO_SIGNUP_TEXT_ENABLED not both true — skipping");
+      console.error("[vtext auto-signup] SKIPPED — VTEXT_ENABLED/VTEXT_AUTO_SIGNUP_TEXT_ENABLED not both true");
       return;
     }
     if (lead.smsConsent !== true) {
       // Same gate Brevo's own automation uses. Expected/normal when the
-      // form's separate SMS opt-in checkbox wasn't ticked — not an error,
-      // but logged so a silent skip is visible while testing instead of
-      // looking identical to "nothing happened."
-      console.log(`[vtext auto-signup] skipping lead ${lead._id} — smsConsent not true`);
+      // form's separate SMS opt-in checkbox wasn't ticked — not a bug, but
+      // still logged at error level so it's never missed while scanning logs.
+      console.error(`[vtext auto-signup] SKIPPED lead ${lead._id} — smsConsent is not true`);
       return;
     }
 
     const template = await VtextTemplate.findOne({ isAutoSignupTemplate: true }).lean();
     if (!template) {
-      console.warn("[vtext auto-signup] no template marked isAutoSignupTemplate — skipping");
+      console.error("[vtext auto-signup] SKIPPED — no template is marked isAutoSignupTemplate. Set one in the Vtext admin dashboard (Send tab -> Templates -> Edit -> \"Use as the auto-signup text\").");
       return;
     }
 
     const { body } = await renderTemplateForProperty(template._id, property._id, lead.fullName);
 
-    await enqueueOutbound({
+    const { message, blocked, reason } = await enqueueOutbound({
       to: lead.phone,
       body,
       origin: { kind: "automation", templateKey: "property-signup", campaignId: template._id },
       contactName: lead.fullName,
       isReplyToInbound: false,
     });
+
+    if (blocked) {
+      console.error(`[vtext auto-signup] BLOCKED for lead ${lead._id} — reason: ${reason}`);
+    } else {
+      console.log(`[vtext auto-signup] QUEUED for lead ${lead._id} — messageId ${message._id}, status ${message.status}`);
+    }
   } catch (err) {
-    console.error("[vtext auto-signup] failed:", err.message);
+    console.error(`[vtext auto-signup] FAILED for lead ${lead?._id}:`, err.message);
   }
 }
 
