@@ -27,8 +27,18 @@ const AUTO_ENABLED = () => process.env.VTEXT_ENABLED === "true" && process.env.V
  */
 async function maybeSendSignupWelcomeText({ lead, property }) {
   try {
-    if (!AUTO_ENABLED()) return;
-    if (lead.smsConsent !== true) return; // same gate Brevo's own automation uses
+    if (!AUTO_ENABLED()) {
+      console.log("[vtext auto-signup] VTEXT_ENABLED/VTEXT_AUTO_SIGNUP_TEXT_ENABLED not both true — skipping");
+      return;
+    }
+    if (lead.smsConsent !== true) {
+      // Same gate Brevo's own automation uses. Expected/normal when the
+      // form's separate SMS opt-in checkbox wasn't ticked — not an error,
+      // but logged so a silent skip is visible while testing instead of
+      // looking identical to "nothing happened."
+      console.log(`[vtext auto-signup] skipping lead ${lead._id} — smsConsent not true`);
+      return;
+    }
 
     const template = await VtextTemplate.findOne({ isAutoSignupTemplate: true }).lean();
     if (!template) {
