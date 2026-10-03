@@ -219,24 +219,29 @@ async function ensureMaintenanceSchedulers() {
     { every: 30_000 },
     { name: "noop-heartbeat" },
   );
+  // These were originally run far faster than the plan's stated cadence on
+  // the assumption that a no-op tick (nothing actually stuck/unhealthy) is
+  // free. It isn't: BullMQ does real Redis bookkeeping on every scheduled
+  // tick regardless of whether the job's own logic finds anything to do
+  // (scheduling the next run, lock acquire/release, marking active then
+  // completed). At 60s/60s/5min across three jobs that added up fast enough
+  // to burn through a big chunk of Upstash's free monthly command quota in
+  // under a day. Defaults now match the plan's intended production cadence;
+  // set the env var below to something faster ONLY for local dev/testing
+  // responsiveness, never leave it unset-fast in a deployed environment.
   await queue.upsertJobScheduler(
     "stuck-message-sweep",
-    { every: 60_000 }, // the plan says "every 10 min" — running it every 60s is harmless (it's a no-op when nothing's actually stuck) and makes the sweep far more responsive for testing/real recovery alike
+    { every: Number(process.env.VTEXT_STUCK_MESSAGE_SWEEP_INTERVAL_MS || 10 * 60_000) },
     { name: "stuck-message-sweep" },
   );
-  // Same reasoning as stuck-message-sweep: these are all no-ops when nothing
-  // needs attention, so running them faster than the plan's stated cadence
-  // (5min/daily/15min) costs nothing and makes real recovery — and testing —
-  // far more responsive. VTEXT_*_INTERVAL_MS env overrides exist for
-  // anyone who wants the slower, plan-literal cadence in production later.
   await queue.upsertJobScheduler(
     "line-health-sweep",
-    { every: Number(process.env.VTEXT_LINE_HEALTH_SWEEP_INTERVAL_MS || 60_000) },
+    { every: Number(process.env.VTEXT_LINE_HEALTH_SWEEP_INTERVAL_MS || 15 * 60_000) },
     { name: "line-health-sweep" },
   );
   await queue.upsertJobScheduler(
     "daily-rollover",
-    { every: Number(process.env.VTEXT_DAILY_ROLLOVER_INTERVAL_MS || 5 * 60_000) },
+    { every: Number(process.env.VTEXT_DAILY_ROLLOVER_INTERVAL_MS || 24 * 60 * 60_000) },
     { name: "daily-rollover" },
   );
   await queue.upsertJobScheduler(
