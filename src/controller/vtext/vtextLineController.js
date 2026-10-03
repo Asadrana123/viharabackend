@@ -10,6 +10,30 @@ const VtextLineUsage = require("../../model/vtext/vtextLineUsageModel");
 const { getAdapter } = require("../../services/vtext/channels/registry");
 const { encryptCredentials, decryptCredentials } = require("../../utils/secretBox");
 const { drainLine } = require("../../services/vtext/vtextLineDrainService");
+const { normalizeInternationalPhone } = require("../../utils/internationalPhone");
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * The real send path (lineSendWorker.js) always uses contact.phoneE164, which
+ * is normalized long before it gets here — this box is the one place a human
+ * free-types a recipient, so it's the one place that needs its own
+ * normalization. A stray space (e.g. "+91 97160 63723" typed straight out of
+ * a phone's contacts app) was passing straight through into BlueBubbles'
+ * chatGuid unnormalized, which doesn't fail fast — it makes Messages.app
+ * struggle to resolve a malformed address and the request hangs for the
+ * full client timeout instead of erroring immediately. Reject it here
+ * before it ever reaches BlueBubbles.
+ */
+function normalizeTestRecipient(raw) {
+  const trimmed = String(raw || "").trim();
+  if (!trimmed) return { ok: false };
+  if (trimmed.includes("@")) {
+    return EMAIL_RE.test(trimmed) ? { ok: true, value: trimmed } : { ok: false };
+  }
+  const normalized = normalizeInternationalPhone(trimmed);
+  return normalized ? { ok: true, value: normalized } : { ok: false };
+}
 
 /**
  * The URL a provider (BlueBubbles, android-sms-gateway) POSTs inbound events to
@@ -263,8 +287,16 @@ const startWarmup = catchAsyncError(async (req, res) => {
 
 /** POST /api/v1/vtext/lines/:id/test-send — §7.1 step 5, a real send bypassing the queue/compliance gate entirely (admin-to-self verification only, never a real contact). */
 const testSend = catchAsyncError(async (req, res) => {
-  const { to, body } = req.body;
-  if (!to || !body) return res.status(400).json({ success: false, message: "to and body are required" });
+  const { to: rawTo, body } = req.body;
+  if (!rawTo || !body) return res.status(400).json({ success: false, message: "to and body are required" });
+
+  const recipient = normalizeTestRecipient(rawTo);
+  if (!recipient.ok) {
+    return res.status(400).json({
+      success: false,
+      message: `"${rawTo}" isn't a valid phone number or Apple ID. Use E.164 format with no spaces or dashes (e.g. +919716063723), or a full email address.`,
+    });
+  }
 
   const line = await VtextLine.findById(req.params.id).select("+credentials.iv +credentials.tag +credentials.ciphertext");
   if (!line) return res.status(404).json({ success: false, message: "Line not found" });
@@ -272,7 +304,7 @@ const testSend = catchAsyncError(async (req, res) => {
   const adapter = getAdapter(line.channelType);
   try {
     const credentials = line.credentials?.ciphertext ? decryptCredentials(line.credentials) : undefined;
-    const result = await adapter.send({ line, credentials, to, body, clientMessageId: `test-${Date.now()}` });
+    const result = await adapter.send({ line, credentials, to: recipient.value, body, clientMessageId: `test-${Date.now()}` });
     return res.status(200).json({ success: true, result });
   } catch (err) {
     return res.status(502).json({ success: false, message: err.message, kind: err.kind });

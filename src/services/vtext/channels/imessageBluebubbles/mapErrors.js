@@ -10,8 +10,32 @@ const { ChannelError } = require("../channelError");
 function mapSendError(err) {
   if (err instanceof ChannelError) return err;
 
-  // Network-level failure: tunnel down, Mac asleep/offline, DNS, etc.
+  // No HTTP response at all — distinguish the specific failure instead of one
+  // generic "network error" message, since each of these points the operator
+  // at a different fix.
   if (!err.response) {
+    if (err.code === "ECONNABORTED") {
+      return new ChannelError(
+        "transient",
+        "TIMEOUT",
+        "BlueBubbles didn't respond in time. The message may have actually sent anyway — check Messages.app or the line's Inbox before retrying. " +
+          "If this keeps happening, check that the Mac is awake, BlueBubbles Server is running, and the ngrok tunnel is up."
+      );
+    }
+    if (err.code === "ECONNREFUSED") {
+      return new ChannelError(
+        "transient",
+        "CONNECTION_REFUSED",
+        "Could not connect to BlueBubbles — the Mac is likely asleep, BlueBubbles Server isn't running, or the tunnel is down."
+      );
+    }
+    if (err.code === "ENOTFOUND" || err.code === "EAI_AGAIN") {
+      return new ChannelError(
+        "config",
+        "DNS_ERROR",
+        "Could not resolve the BlueBubbles server URL — check the line's config.serverUrl is correct and the tunnel is actually running."
+      );
+    }
     return new ChannelError("transient", "NETWORK_ERROR", err.message || "BlueBubbles request failed with no response");
   }
 
