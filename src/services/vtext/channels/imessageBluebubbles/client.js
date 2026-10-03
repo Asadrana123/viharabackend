@@ -17,7 +17,11 @@ function buildClient({ serverUrl, password }) {
 
   const http = axios.create({
     baseURL: `${serverUrl.replace(/\/$/, "")}/api/v1`,
-    timeout: 15000,
+    // 30s — a plain 15s wasn't enough margin for a real round trip through
+    // the free ngrok tunnel to the pilot Mac; sends were completing and
+    // delivering fine on BlueBubbles' side, but the confirmation response
+    // kept missing the old 15s window and surfacing as a false timeout error.
+    timeout: 30000,
   });
 
   const withAuth = (params = {}) => ({ ...params, password });
