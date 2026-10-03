@@ -180,4 +180,57 @@ async function notifyNewLead(lead = {}) {
   }
 }
 
-module.exports = { notifyNewLead, postToSlack };
+/**
+ * Post a generic Vtext alert (line quarantined/offline/restored, a final
+ * send failure, backlog over threshold, etc. — sendify-infra.md §8.4).
+ * Same fire-and-forget contract as notifyNewLead: never throws, resolves
+ * false if unconfigured, disabled, or the post fails.
+ *
+ * Off by default (VTEXT_ENABLE_SLACK_ALERTS must be exactly "true") —
+ * separate from whether a webhook URL happens to be configured. Also never
+ * falls back to SLACK_LEADS_WEBHOOK_URL (the real lead-notification
+ * channel): a first version did, and during Vtext dev/testing that meant
+ * every test opt-out/alert posted straight into the real leads Slack
+ * channel the team actually watches, since that var is set in this repo's
+ * local .env for its real purpose. Needs its OWN SLACK_VTEXT_WEBHOOK_URL,
+ * never borrows another feature's.
+ *
+ * @param {object} params
+ * @param {"info"|"warning"|"error"} [params.level]
+ * @param {string} params.title
+ * @param {Array<{label:string,value:*}>} [params.fields]
+ */
+async function notifyVtextAlert({ level = "info", title, fields = [] } = {}) {
+  if (process.env.VTEXT_ENABLE_SLACK_ALERTS !== "true") {
+    return false; // silent, deliberately — this is the expected state during dev/testing, not worth a log line every time
+  }
+
+  const webhookUrl = process.env.SLACK_VTEXT_WEBHOOK_URL;
+  if (!webhookUrl) {
+    console.warn("[slack] VTEXT_ENABLE_SLACK_ALERTS is true but SLACK_VTEXT_WEBHOOK_URL is unset — skipping alert:", title);
+    return false;
+  }
+
+  const emoji = { info: "ℹ️", warning: "⚠️", error: "🔴" }[level] || "ℹ️";
+  const blocks = [
+    { type: "header", text: { type: "plain_text", text: `${emoji} Vtext: ${title}`, emoji: true } },
+  ];
+  const sectionFields = fields
+    .filter((f) => f && f.value !== undefined && f.value !== null && String(f.value).trim() !== "")
+    .slice(0, 10)
+    .map((f) => ({ type: "mrkdwn", text: `*${f.label}:*\n${f.value}` }));
+  if (sectionFields.length) {
+    blocks.push({ type: "section", fields: sectionFields });
+  }
+  blocks.push({ type: "context", elements: [{ type: "mrkdwn", text: `📅 ${formatTimestamp(new Date())}` }] });
+
+  try {
+    await postToSlack(webhookUrl, { text: `Vtext: ${title}`, blocks });
+    return true;
+  } catch (e) {
+    console.error("[slack] Vtext alert failed:", e.message);
+    return false;
+  }
+}
+
+module.exports = { notifyNewLead, notifyVtextAlert, postToSlack };

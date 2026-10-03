@@ -66,6 +66,13 @@ const enrichmentRoutes = require("./routes/enrichment/enrichmentRoutes");
 // Property Marketing Engine (admin-only): brief, copy, compliance, approval.
 const marketingEngineRoutes = require("./routes/marketing/marketingEngineRoutes");
 const buyerMatchRoutes = require("./routes/leads/buyerMatchRoutes");
+// Vtext — in-house two-way iMessage (later: +SMS) infra, replacing Brevo's
+// 10DLC-registered SMS. Inert unless VTEXT_ENABLED=true (see
+// controller/vtext/vtextAdminController.js). Does not touch/import
+// anything under routes/outbound or routes/calling. See sendify-infra.md
+// (the planning doc itself kept its original filename — not part of this rename).
+const vtextAdminRoutes = require("./routes/vtext/vtextAdminRoutes");
+const vtextWebhookRoutes = require("./routes/vtext/vtextWebhookRoutes");
 // Middleware
 app.use(cookieParser());
 app.use(cors(expressCorsOptions));
@@ -140,6 +147,16 @@ app.use("/api/v1/outbound", outboundRoutes);
 app.use("/api/v1/enrichment", enrichmentRoutes);
 app.use("/api/v1/marketing-engine", marketingEngineRoutes);
 app.use("/api/v1/buyer-match", buyerMatchRoutes);
+app.use("/api/v1/vtext", vtextAdminRoutes);
+app.use("/api/webhooks/vtext", vtextWebhookRoutes);
+
+// D7 (sendify-infra.md §2): fail loudly at boot if CHANNEL_TYPES has an enum
+// entry with no registered adapter, rather than discovering it the first
+// time someone tries to use that channel. Gated behind VTEXT_ENABLED so
+// the feature stays fully inert (no extra startup work at all) when off.
+if (process.env.VTEXT_ENABLED === 'true') {
+  require('./services/vtext/channels/registry').assertRegistryMatchesEnum();
+}
 // Error Middleware
 app.use(errorMiddleware);
 
