@@ -35,7 +35,10 @@ const DEFAULT_QUEUE_OPTS = {
 // defaultJobOptions at all, so every job silently got BullMQ's default of
 // zero retries — "5, exponential 10s" / "4, exponential 30s" from the plan
 // were never actually in effect until this fix.
-const RETENTION = { removeOnComplete: { age: 86400, count: 5000 }, removeOnFail: { age: 7 * 86400 } };
+// removeOnFail shortened from 7 days to 2 days — failed jobs were
+// accumulating real Upstash storage (observed ~3MB/day) for a full week
+// before cleanup; 2 days is still enough window to debug a recent failure.
+const RETENTION = { removeOnComplete: { age: 86400, count: 5000 }, removeOnFail: { age: 2 * 86400 } };
 const ROUTE_JOB_OPTS = { attempts: 5, backoff: { type: "exponential", delay: 10_000 }, ...RETENTION };
 const LINE_JOB_OPTS = { attempts: 4, backoff: { type: "exponential", delay: 30_000 }, ...RETENTION };
 const INBOUND_JOB_OPTS = { attempts: 5, backoff: { type: "exponential", delay: 5_000 }, ...RETENTION };
@@ -105,6 +108,7 @@ module.exports = {
   QUEUE_PREFIX,
   QUEUE_NAMES,
   DEFAULT_QUEUE_OPTS,
+  LINE_JOB_OPTS,
   lineQueueName,
   getMaintenanceQueue,
   getRouteQueue,

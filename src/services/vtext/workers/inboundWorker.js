@@ -344,6 +344,9 @@ function startInboundWorker() {
     connection: bullmqConnection(),
     prefix: QUEUE_PREFIX,
     concurrency: 10,
+    // BullMQ's 30s default stalled-check runs continuously regardless of
+    // traffic — a real, measured contributor to Upstash command usage.
+    stalledInterval: 90_000,
   });
   worker.on("failed", (job, err) => {
     console.error(`[vtext inbound] job ${job?.id} failed:`, err.message);

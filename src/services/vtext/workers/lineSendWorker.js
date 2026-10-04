@@ -37,9 +37,13 @@ async function processSendJob(lineId, job) {
     console.warn(`[vtext line-send] message ${messageId} not found, dropping job`);
     return;
   }
-  if (message.status !== "assigned") {
-    // Already handled (e.g. a retried job after a prior attempt already
-    // terminal-failed/succeeded) — don't double-send.
+  if (!["assigned", "sending"].includes(message.status)) {
+    // Already handled by a terminal path elsewhere (failed/cancelled/
+    // accepted/rerouted-to-queued) — don't double-send. "sending" IS allowed
+    // through: that's this exact job retrying its own prior incomplete
+    // attempt (set unconditionally below on every attempt, including
+    // retries) — excluding it here was a real bug that silently turned every
+    // "transient" error into a single, un-retried attempt (see plan).
     return;
   }
 

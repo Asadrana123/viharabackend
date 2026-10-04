@@ -259,6 +259,9 @@ function startMaintenanceWorker() {
     connection: bullmqConnection(),
     prefix: QUEUE_PREFIX,
     concurrency: 1,
+    // BullMQ's 30s default stalled-check runs continuously regardless of
+    // traffic — a real, measured contributor to Upstash command usage.
+    stalledInterval: 90_000,
   });
   worker.on("failed", (job, err) => {
     console.error(`[vtext maintenance] job "${job?.name}" failed:`, err.message);
