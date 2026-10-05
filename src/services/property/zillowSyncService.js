@@ -140,8 +140,13 @@ async function syncAllProducts() {
 
     // Ids only — each property is loaded fresh right before its own sync, so
     // an admin edit made during a long run is never overwritten by stale data.
+    // Only properties live on the /auctions page (showOnAuctions) are synced.
     const ids = await productModel
-        .find({ "zillowSync.url": { $nin: [null, ""] }, "zillowSync.enabled": { $ne: false } })
+        .find({
+            showOnAuctions: true,
+            "zillowSync.url": { $nin: [null, ""] },
+            "zillowSync.enabled": { $ne: false },
+        })
         .select("_id")
         .lean();
     summary.total = ids.length;
@@ -150,8 +155,13 @@ async function syncAllProducts() {
         const { _id } = ids[i];
         try {
             const product = await productModel.findById(_id);
-            // Re-check: the admin may have paused or unlinked it since the run began.
-            if (!product || !product.zillowSync?.url || product.zillowSync.enabled === false) {
+            // Re-check: the admin may have paused, unlinked or hidden it since the run began.
+            if (
+                !product ||
+                !product.showOnAuctions ||
+                !product.zillowSync?.url ||
+                product.zillowSync.enabled === false
+            ) {
                 summary.total -= 1;
                 continue;
             }
