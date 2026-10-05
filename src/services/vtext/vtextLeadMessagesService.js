@@ -29,6 +29,9 @@ function mapMessage(m) {
     content: m.body || "",
     sentAt: isOut ? m.sentAt || m.createdAt : m.receivedAt || m.createdAt,
     service: CHANNEL_LABEL[m.channelType] || m.channelType || "text",
+    // Delivery info is only meaningful for our own texts. readAt is set only
+    // when the recipient has read receipts on, so a missing readAt is not "unread".
+    ...(isOut ? { status: m.status, deliveredAt: m.deliveredAt || null, readAt: m.readAt || null } : {}),
   };
 }
 
@@ -55,7 +58,7 @@ async function getVtextMessagesForPhones(phones = []) {
   let messages = [];
   try {
     messages = await VtextMessage.find({ contactId: { $in: contacts.map((c) => c._id) } })
-      .select("contactId direction body channelType sentAt receivedAt createdAt")
+      .select("contactId direction body channelType status sentAt deliveredAt readAt receivedAt createdAt")
       .sort({ createdAt: 1 }) // oldest -> newest, same order LeadTextActivity.jsx's own header comment expects
       .lean();
   } catch (err) {

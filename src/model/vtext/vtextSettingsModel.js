@@ -2,24 +2,40 @@
 //
 // Global Vtext settings — a single document (vtextSettingsService.js
 // always queries/updates with an empty filter, upserting on first use), not
-// one row per admin or per property. Starts with just quiet-hours on/off;
-// more global toggles can land here later without a new collection.
+// one row per admin or per property. More global toggles can land here
+// later without a new collection.
 const mongoose = require("mongoose");
 
 const vtextSettingsSchema = new mongoose.Schema(
   {
-    // Default hours of the day quiet-hours policy are enforced in. When false,
-    // vtextQuietHoursService.checkQuietHours lets every message through
-    // immediately — an admin override for testing or an urgent send, not a
-    // replacement for the policy.
-    quietHoursEnabled: { type: Boolean, default: true },
-
     // Phase 7c — once an AI reply is drafted (VTEXT_AI_DRAFT_REPLY_ENABLED
     // gates whether drafting happens at all), this decides whether it
     // auto-sends immediately (true) or waits in the Inbox for an admin to
     // approve/edit/reject (false, the default — no AI-generated text goes
     // out to a real contact without a human looking at it first).
     aiAutoReplyEnabled: { type: Boolean, default: false },
+
+    // Daily follow-up texts after a property signup (vtextFollowUpService.js).
+    // Off by default. Turning it off pauses running sequences and stops new
+    // enrollments; it does not cancel them.
+    followUpsEnabled: { type: Boolean, default: false },
+
+    // Whether an outbound text needs recorded consent (vtextComplianceService.canSend).
+    // ON by default. Turning it OFF lets texts reach contacts with no consent on
+    // file; opt-outs (STOP), invalid numbers and landlines stay blocked either way.
+    // A settings document from before this field existed has no value: always
+    // read it through isConsentRequired(), where missing means "required".
+    requireConsent: { type: Boolean, default: true },
+    consentChangedAt: { type: Date },
+
+    // Bookkeeping for Slack alerts (vtextAlertService.js): when each alert key last
+    // fired, and watermarks such as "failed sends reported up to here". Keys are
+    // free-form, so it is Mixed. Documents from before this field existed work as-is.
+    alertState: { type: mongoose.Schema.Types.Mixed, default: {} },
+    consentChangedBy: {
+      adminId: { type: mongoose.Schema.Types.ObjectId },
+      adminName: { type: String },
+    },
   },
   { timestamps: true }
 );

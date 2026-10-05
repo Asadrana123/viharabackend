@@ -65,12 +65,32 @@ const vtextContactSchema = new mongoose.Schema(
       },
     ],
     tags: [{ type: String }],
+
+    // Daily follow-up texts after a property signup (vtextFollowUpService.js).
+    // "no-response" means all follow-ups went out and the contact never replied.
+    followUp: {
+      status: { type: String, enum: ["active", "replied", "opted-out", "no-response", "cancelled"] },
+      leadId: { type: mongoose.Schema.Types.ObjectId },
+      propertyId: { type: mongoose.Schema.Types.ObjectId },
+      timezone: { type: String },
+      step: { type: Number }, // follow-ups sent so far (set to 0 at enrollment)
+      startedAt: { type: Date },
+      nextAt: { type: Date }, // null while no send is scheduled
+      lastSentAt: { type: Date },
+      lastMessageId: { type: mongoose.Schema.Types.ObjectId },
+      finalCheckAt: { type: Date }, // after the last follow-up: when to give up waiting for a reply
+      endedAt: { type: Date },
+      endedReason: { type: String },
+    },
     lastInboundAt: { type: Date },
     lastOutboundAt: { type: Date },
     source: { type: String, enum: ["lead", "inbound-unknown", "admin", "import"], default: "admin" },
   },
   { timestamps: true }
 );
+
+// The follow-up sweep looks up active sequences that are due.
+vtextContactSchema.index({ "followUp.status": 1, "followUp.nextAt": 1 });
 
 // Collection name pinned to its pre-rename value so the Sendify->Vtext
 // rename does not orphan any data already stored in Mongo.

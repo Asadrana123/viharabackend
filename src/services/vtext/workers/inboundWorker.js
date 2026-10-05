@@ -3,6 +3,7 @@
 // Processes the vtext-inbound queue (sendify-infra.md §6.2). Each job
 // points at a persisted vtextWebhookEvent; this re-parses it through the
 // line's channel adapter and handles every NormalizedEvent it yields.
+const mongoose = require("mongoose");
 const { Worker } = require("bullmq");
 const { normalizeInternationalPhone } = require("../../../utils/internationalPhone");
 const { timezoneForPhone } = require("../../../utils/areaCodeTimezone");
@@ -18,6 +19,7 @@ const capacity = require("../vtextCapacityService");
 const { detectKeyword } = require("../vtextComplianceService");
 const { publishEvent } = require("../vtextEventsBus");
 const { findLeadRefs } = require("../vtextLeadLookupService");
+const { endFollowUp } = require("../vtextFollowUpService");
 const { notifyVtextAlert } = require("../../shared/slackService");
 
 const HELP_TEXT = process.env.VTEXT_HELP_TEXT || "This is Vihara. Reply STOP to opt out, or visit vihara.ai for more info.";
@@ -65,11 +67,12 @@ async function lastAutoReplyAt(contactId, templateKey) {
   return last?.createdAt || null;
 }
 
-async function cancelPendingOutbound(contactId) {
+async function cancelPendingOutbound(contactId, { onlyFollowUps = false } = {}) {
   const pending = await VtextMessage.find({
     contactId,
     direction: "out",
     status: { $in: ["queued", "waiting-window", "waiting-capacity", "assigned", "pending-approval"] },
+    ...(onlyFollowUps ? { "origin.templateKey": /^followup-/ } : {}),
   });
 
   for (const message of pending) {
@@ -172,6 +175,19 @@ async function handleMessageReceived(event, line) {
 
   const keyword = detectKeyword(event.body);
 
+  // Any reply ends the follow-up sequence. A STOP also cancels everything
+  // pending below, so only a plain reply needs the follow-up-only cancel here.
+  try {
+    const ended = await endFollowUp(
+      contact._id,
+      keyword.type === "stop" ? "opted-out" : "replied",
+      keyword.type === "stop" ? "contact opted out" : "contact replied"
+    );
+    if (ended && keyword.type !== "stop") await cancelPendingOutbound(contact._id, { onlyFollowUps: true });
+  } catch (err) {
+    console.error(`[vtext inbound] couldn't end follow-up sequence for contact ${contact._id}:`, err.message);
+  }
+
   const message = await VtextMessage.create({
     direction: "in",
     contactId: contact._id,
@@ -266,24 +282,33 @@ async function handleMessageReceived(event, line) {
 }
 
 async function handleMessageStatus(event) {
-  const message = await VtextMessage.findOne({ "provider.messageId": event.providerMessageId });
+  let message = await VtextMessage.findOne({ "provider.messageId": event.providerMessageId });
+  // BlueBubbles can report the receipt under a different guid than the one we
+  // stored at send time. We send our message _id as the tempGuid, so fall back to it.
+  if (!message && event.tempGuid && mongoose.isValidObjectId(event.tempGuid)) {
+    message = await VtextMessage.findOne({ _id: event.tempGuid, direction: "out" });
+  }
   if (!message) {
     console.warn(`[vtext inbound] status update for unknown provider message id ${event.providerMessageId}`);
     return;
   }
 
   // Monotonic: never regress a later status to an earlier one if webhooks arrive out of order.
-  const ORDER = ["accepted", "sent", "delivered"];
+  const ORDER = ["accepted", "sent", "delivered", "read"];
   const currentIdx = ORDER.indexOf(message.status);
   const incomingIdx = ORDER.indexOf(event.status);
   if (event.status === "failed") {
     message.status = "failed";
-    message.error = { kind: "line", code: event.errorCode, message: event.errorMessage };
+    message.error = { kind: event.errorKind || "line", code: event.errorCode, message: event.errorMessage };
     message.failedAt = event.at || new Date();
   } else if (incomingIdx > currentIdx) {
     message.status = event.status;
     if (event.status === "sent") message.sentAt = event.at || new Date();
     if (event.status === "delivered") message.deliveredAt = event.at || new Date();
+    if (event.status === "read") {
+      message.readAt = event.at || new Date();
+      if (!message.deliveredAt) message.deliveredAt = message.readAt; // a read implies delivery
+    }
   }
   await message.save();
   publishEvent({ type: "message.updated", messageId: String(message._id), conversationId: message.conversationId ? String(message.conversationId) : null, status: message.status });

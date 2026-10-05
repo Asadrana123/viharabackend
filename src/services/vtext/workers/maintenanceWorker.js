@@ -14,11 +14,14 @@ const { bullmqConnection } = require("../queue/connection");
 const { QUEUE_NAMES, QUEUE_PREFIX, getMaintenanceQueue, getRouteQueue } = require("../queue/queues");
 const { getRedisClient } = require("../queue/connection");
 const VtextMessage = require("../../../model/vtext/vtextMessageModel");
+const VtextContact = require("../../../model/vtext/vtextContactModel");
 const VtextLine = require("../../../model/vtext/vtextLineModel");
 const VtextLineUsage = require("../../../model/vtext/vtextLineUsageModel");
 const VtextLineEvent = require("../../../model/vtext/vtextLineEventModel");
 const { getAdapter } = require("../channels/registry");
-const { evaluateAndMaybeQuarantine } = require("../vtextLineHealthService");
+const { evaluateAndMaybeQuarantine, statusBeforeOffline } = require("../vtextLineHealthService");
+const { runFollowUpSweep } = require("../vtextFollowUpService");
+const { sendAlertWithCooldown, getAlertWatermark, setAlertWatermark, isAlertingConfigured } = require("../vtextAlertService");
 const { dayKey } = require("../vtextCapacityService");
 const { notifyVtextAlert } = require("../../shared/slackService");
 const { publishEvent } = require("../vtextEventsBus");
@@ -102,7 +105,17 @@ async function runLineHealthSweep() {
     } catch {
       healthy = false;
     }
-    if (healthy) continue;
+    if (healthy) {
+      // Channels with no heartbeat event (BlueBubbles) never get a lastHeartbeatAt,
+      // so a passing health check is recorded as one. That makes "Last heartbeat"
+      // in the admin UI meaningful and lets an offline line come back on its own.
+      if (!adapter.capabilities?.heartbeat) {
+        line.health = line.health || {};
+        line.health.lastHeartbeatAt = new Date();
+        await line.save();
+      }
+      continue;
+    }
 
     const fromStatus = line.status;
     line.status = "offline";
@@ -118,16 +131,35 @@ async function runLineHealthSweep() {
   // Restoration: an offline line whose heartbeat is fresh again goes back to
   // whatever status it was in right before going offline (read from its own
   // most recent heartbeat-lost event, rather than a new schema field).
-  const offlineLines = await VtextLine.find({ status: "offline" });
+  const offlineLines = await VtextLine.find({ status: "offline" })
+    .select("+credentials.iv +credentials.tag +credentials.ciphertext");
   for (const line of offlineLines) {
-    const fresh = line.health?.lastHeartbeatAt && new Date(line.health.lastHeartbeatAt) >= staleCutoff;
+    let fresh = line.health?.lastHeartbeatAt && new Date(line.health.lastHeartbeatAt) >= staleCutoff;
+    let restoredBy = "heartbeat restored";
+
+    // A line whose channel has no heartbeat can never prove it is back through one.
+    // Before this, a BlueBubbles line that went offline (say the Mac lost its
+    // network for an hour) stayed offline forever. Use the health check instead.
+    if (!fresh && !getAdapter(line.channelType).capabilities?.heartbeat) {
+      let healthy = false;
+      try {
+        healthy = !!(await getAdapter(line.channelType).healthCheck({ line }))?.ok;
+      } catch {
+        healthy = false;
+      }
+      if (healthy) {
+        line.health = line.health || {};
+        line.health.lastHeartbeatAt = new Date();
+        fresh = true;
+        restoredBy = "health check passing again";
+      }
+    }
     if (!fresh) continue;
 
-    const lastLostEvent = await VtextLineEvent.findOne({ lineId: line._id, type: "heartbeat-lost" }).sort({ createdAt: -1 });
-    const restoreTo = lastLostEvent?.from && ["warming", "active"].includes(lastLostEvent.from) ? lastLostEvent.from : "active";
+    const restoreTo = await statusBeforeOffline(line._id);
 
     line.status = restoreTo;
-    line.statusReason = "heartbeat restored";
+    line.statusReason = restoredBy;
     line.statusChangedAt = new Date();
     line.statusChangedBy = { kind: "system" };
     await line.save();
@@ -179,15 +211,94 @@ async function runDailyRollover() {
 }
 
 const BACKLOG_ALERT_THRESHOLD = Number(process.env.VTEXT_BACKLOG_ALERT || 200);
+// This job runs every 5 minutes, and a backlog can last for hours. Without a cooldown the
+// same alert posted every 5 minutes for as long as the backlog stood.
+const BACKLOG_ALERT_COOLDOWN_MS = Number(process.env.VTEXT_BACKLOG_ALERT_COOLDOWN_MIN || 120) * 60_000;
 
 async function runBacklogAlert() {
   const count = await VtextMessage.countDocuments({ status: "waiting-capacity" });
   if (count > BACKLOG_ALERT_THRESHOLD) {
-    notifyVtextAlert({
+    await sendAlertWithCooldown("backlog", BACKLOG_ALERT_COOLDOWN_MS, {
       level: "warning",
       title: "Outbound backlog over threshold",
       fields: [{ label: "Messages waiting on capacity", value: count }, { label: "Threshold", value: BACKLOG_ALERT_THRESHOLD }],
-    }).catch(() => {});
+    }).catch((err) => console.error("[vtext backlog-alert] could not send:", err.message));
+  }
+}
+
+// One Slack message summarising the texts that failed since the last one, instead of one per
+// failure. Individual failures were silent before: they only showed in the admin's Failed tab.
+// Recipient failures (not on iMessage, bad number) are expected and reported as such; any
+// other kind (line, config, transient) is what the team needs to look at.
+const FAILED_DIGEST_KEY = "failedDigestAt";
+const FAILED_DIGEST_MAX_LOOKBACK_MS = 6 * 60 * 60_000; // never report further back than this, after a long Slack outage
+const failedDigestIntervalMs = () => Number(process.env.VTEXT_FAILED_DIGEST_INTERVAL_MS || 15 * 60_000);
+
+async function runFailedSendDigest() {
+  const runStartedAt = new Date();
+
+  // With Slack off there is nobody to tell. Keep the watermark current anyway, so that switching
+  // alerts on later does not announce hours of old failures at once.
+  if (!isAlertingConfigured()) {
+    await setAlertWatermark(FAILED_DIGEST_KEY, runStartedAt);
+    return;
+  }
+
+  const watermark = await getAlertWatermark(FAILED_DIGEST_KEY);
+  const since = new Date(Math.max(
+    runStartedAt.getTime() - FAILED_DIGEST_MAX_LOOKBACK_MS,
+    (watermark || new Date(runStartedAt.getTime() - failedDigestIntervalMs())).getTime()
+  ));
+
+  const window = { $gt: since, $lte: runStartedAt };
+  const failed = await VtextMessage.find({
+    direction: "out",
+    status: "failed",
+    // every path that fails a message sets failedAt; updatedAt covers a path that ever forgets
+    $or: [{ failedAt: window }, { failedAt: { $exists: false }, updatedAt: window }],
+  })
+    .select("contactId error")
+    .lean();
+
+  if (!failed.length) {
+    await setAlertWatermark(FAILED_DIGEST_KEY, runStartedAt);
+    return;
+  }
+
+  const kindOf = (m) => m.error?.kind || "unknown";
+  const expected = failed.filter((m) => kindOf(m) === "recipient").length;
+  const attention = failed.length - expected;
+  const breakdown = {};
+  for (const m of failed) if (kindOf(m) !== "recipient") breakdown[kindOf(m)] = (breakdown[kindOf(m)] || 0) + 1;
+
+  // up to five examples, the ones that need attention first, numbers masked to the last four digits
+  const examples = [...failed.filter((m) => kindOf(m) !== "recipient"), ...failed.filter((m) => kindOf(m) === "recipient")].slice(0, 5);
+  const contacts = await VtextContact.find({ _id: { $in: examples.map((m) => m.contactId) } }).select("phoneE164").lean();
+  const phoneById = new Map(contacts.map((c) => [String(c._id), c.phoneE164]));
+  const exampleLines = examples.map((m) => {
+    const phone = String(phoneById.get(String(m.contactId)) || "");
+    // "…0404", not "***0404": Slack reads asterisks as bold markup and would mangle the list
+    const who = phone ? `…${phone.slice(-4)}` : "unknown contact";
+    return `${who} (${kindOf(m)}): ${String(m.error?.message || "no reason recorded").slice(0, 80)}`;
+  });
+
+  const minutes = Math.max(1, Math.round((runStartedAt.getTime() - since.getTime()) / 60_000));
+  const fields = [{ label: "Failed", value: `${failed.length} in the last ${minutes} minutes` }];
+  if (expected) fields.push({ label: "Not deliverable (expected)", value: `${expected}: not on iMessage, or a bad number` });
+  if (attention) {
+    fields.push({ label: "Need attention", value: `${attention} (${Object.entries(breakdown).map(([k, n]) => `${k} ${n}`).join(", ")})` });
+  }
+  fields.push({ label: "Examples", value: exampleLines.join("\n") });
+
+  const posted = await notifyVtextAlert({
+    level: attention ? "warning" : "info",
+    title: `${failed.length} text${failed.length === 1 ? "" : "s"} failed`,
+    fields,
+  });
+  if (posted) {
+    await setAlertWatermark(FAILED_DIGEST_KEY, runStartedAt);
+  } else {
+    console.error("[vtext failed-digest] Slack post did not go through; these failures will be included in the next digest");
   }
 }
 
@@ -197,6 +308,8 @@ const JOB_HANDLERS = {
   "line-health-sweep": runLineHealthSweep,
   "daily-rollover": runDailyRollover,
   "backlog-alert": runBacklogAlert,
+  "followup-sweep": runFollowUpSweep,
+  "failed-send-digest": runFailedSendDigest,
 };
 
 async function processMaintenanceJob(job) {
@@ -249,6 +362,17 @@ async function ensureMaintenanceSchedulers() {
     { every: Number(process.env.VTEXT_BACKLOG_ALERT_INTERVAL_MS || 5 * 60_000) },
     { name: "backlog-alert" },
   );
+  // One Redis tick per 15 min is cheap; the sweep itself is a single indexed Mongo query when nothing is due.
+  await queue.upsertJobScheduler(
+    "followup-sweep",
+    { every: Number(process.env.VTEXT_FOLLOWUP_SWEEP_INTERVAL_MS || 15 * 60_000) },
+    { name: "followup-sweep" },
+  );
+  await queue.upsertJobScheduler(
+    "failed-send-digest",
+    { every: failedDigestIntervalMs() },
+    { name: "failed-send-digest" },
+  );
 }
 
 let worker = null;
@@ -278,6 +402,9 @@ async function stopMaintenanceWorker() {
 
 module.exports = {
   HEARTBEAT_KEY,
+  runLineHealthSweep,
+  runBacklogAlert,
+  runFailedSendDigest,
   ensureMaintenanceSchedulers,
   startMaintenanceWorker,
   stopMaintenanceWorker,
