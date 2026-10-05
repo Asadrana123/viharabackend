@@ -58,22 +58,38 @@ exports.createProduct = catchAsyncError(async (req, res) => {
     return res.json({ success: true, addedProduct: product });
 });
 
+// Fields the public list needs: the auction card, the /auctions filters and map,
+// the user dashboard, the home carousel and the landing-page deal carousels.
+// Everything else (description, documents, full investmentData, reservePrice,
+// bidderEmails, ...) is served only by the per-property detail endpoints.
+const LISTING_PROJECTION = {
+    slug: 1, productName: 1, street: 1, city: 1, county: 1, state: 1, zipCode: 1,
+    image: 1, otherImages: { $slice: 5 },
+    beds: 1, baths: 1, squareFootage: 1, lotSize: 1, yearBuilt: 1,
+    propertyType: 1, assetType: 1, onlineOrInPerson: 1, buyingType: 1, condition: 1,
+    occupancyStatus: 1, isVacant: 1, reportedVacant: 1,
+    startBid: 1, currentBid: 1, auctionStartDate: 1, auctionEndDate: 1, status: 1,
+    "investmentData.valuation.ViharaValue": 1,
+    "coordinates.parcel.lat": 1, "coordinates.parcel.lng": 1,
+    "coordinates.block.lat": 1, "coordinates.block.lng": 1,
+};
+
 // Public auctions page — only properties the admin flagged as visible.
 exports.getAllProducts = catchAsyncError(async (req, res) => {
     const userEmail = req.user?.email || null;
 
-    const publicProducts = await productModel.find({
-        showOnAuctions: true,
-        isTestProperty: { $ne: true }
-    });
+    const publicProducts = await productModel
+        .find({ showOnAuctions: true, isTestProperty: { $ne: true } })
+        .select(LISTING_PROJECTION)
+        .lean();
 
     // Authenticated users also get test properties whitelisted for their email
     let testProducts = [];
     if (userEmail) {
-        testProducts = await productModel.find({
-            isTestProperty: true,
-            allowedTestUsers: userEmail
-        });
+        testProducts = await productModel
+            .find({ isTestProperty: true, allowedTestUsers: userEmail })
+            .select(LISTING_PROJECTION)
+            .lean();
     }
 
     const allProducts = [...publicProducts, ...testProducts];
@@ -117,7 +133,8 @@ exports.getProductTermsBySlug = catchAsyncError(async (req, res, next) => {
 exports.getAllProductsAdmin = catchAsyncError(async (req, res) => {
     const products = await productModel
         .find({})
-        .select('productName street city state zipCode slug image showOnAuctions isLandingPage auctionEventLabel brevoListId brevoOutboundSmsListId isTestProperty status availableAreas startBid auctionStartDate auctionEndDate zillowSync')
+        // zipCode is not displayed, but resolvePropertyTimezone needs it for split-zone states
+        .select('productName street city state zipCode slug showOnAuctions isLandingPage auctionEventLabel brevoListId brevoOutboundSmsListId isTestProperty status availableAreas startBid reservePrice minIncrement auctionStartDate auctionEndDate zillowSync')
         .sort({ createdAt: -1 })
         .lean();
 

@@ -104,11 +104,12 @@ async function pollCallOutcome(callId, noPickupReasons, treatErrorsAsNoPickup) {
  * @param {Set<string>} [opts.noPickupReasons]    reasons meaning "no pickup"
  *                                                 (defaults to persona RETRY_REASONS)
  * @param {boolean} [opts.treatErrorsAsNoPickup=false]
+ * @param {number} [opts.maxCalls=2]               1 = single call, no 60s retry
  * @returns {{ connected: boolean }}
  */
 async function runCallBurst(
   lead = {},
-  { initialDelayMs = 0, noPickupReasons = RETRY_REASONS, treatErrorsAsNoPickup = false } = {}
+  { initialDelayMs = 0, noPickupReasons = RETRY_REASONS, treatErrorsAsNoPickup = false, maxCalls = 2 } = {}
 ) {
   const who = lead.fullName || lead.phone || "lead";
   if (initialDelayMs > 0) await delay(initialDelayMs);
@@ -123,6 +124,7 @@ async function runCallBurst(
     console.log(`[reg-call] ${who}: connected on attempt 1.`);
     return { connected: true };
   }
+  if (maxCalls < 2) return { connected: false };
 
   // ── Attempt 2 (no pickup) — final call of this burst ───────────────────
   await delay(WAIT_MS);

@@ -75,10 +75,12 @@ const newDealsLeadSchema = new mongoose.Schema(
     timezone: { type: String, default: "", trim: true },
 
     // ── Call retry state (driven by newDealsCallScheduler) ───────────────────
-    callStatus: { type: String, enum: ["pending", "no-answer", "connected"], default: "pending" },
+    callStatus: { type: String, enum: ["pending", "no-answer", "connected", "not-reached"], default: "pending" },
     callAttempts: { type: Number, default: 0 },
     lastCallAt: { type: Date, default: null },
     nextCallAt: { type: Date, default: null },
+    // Start of the 7-day follow-up window (admin "Restart calling"); else createdAt.
+    followUpStartedAt: { type: Date, default: null },
     // Admin kill-switch for the daily sweep (reversible).
     callingStopped: { type: Boolean, default: false },
 

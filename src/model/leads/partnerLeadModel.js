@@ -70,12 +70,15 @@ const partnerLeadSchema = new mongoose.Schema(
     // pending   → created, no call outcome yet (also: no-consent leads stay here)
     // no-answer → burst didn't connect; nextCallAt holds the next 1:32 PM local
     // connected → a human picked up; loop STOPS for this number
+    // not-reached → 7 follow-up days with no pickup; calling stopped (admin decides)
     callStatus: {
       type: String,
-      enum: ["pending", "no-answer", "connected"],
+      enum: ["pending", "no-answer", "connected", "not-reached"],
       default: "pending",
     },
     nextCallAt:   { type: Date, default: null },
+    // Start of the 7-day follow-up window (admin "Restart calling"); else createdAt.
+    followUpStartedAt: { type: Date, default: null },
     callAttempts: { type: Number, default: 0 },
     lastCallAt:   { type: Date, default: null },
 
