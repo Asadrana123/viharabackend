@@ -49,6 +49,11 @@ async function sendAlertWithCooldown(key, cooldownMs, alert) {
   return true;
 }
 
+/** True only when both settings that switch Vtext Slack alerts on are present. */
+function isAlertingConfigured() {
+  return process.env.VTEXT_ENABLE_SLACK_ALERTS === "true" && Boolean(process.env.SLACK_VTEXT_WEBHOOK_URL);
+}
+
 /** The time a watermark was last moved to, or null if it never was. */
 async function getAlertWatermark(key) {
   assertKey(key);
@@ -63,4 +68,4 @@ async function setAlertWatermark(key, date) {
   await VtextSettings.updateOne({}, { $set: { [`alertState.${key}`]: date } }, { upsert: true });
 }
 
-module.exports = { sendAlertWithCooldown, getAlertWatermark, setAlertWatermark };
+module.exports = { sendAlertWithCooldown, getAlertWatermark, setAlertWatermark, isAlertingConfigured };

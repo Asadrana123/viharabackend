@@ -14,13 +14,14 @@ const { bullmqConnection } = require("../queue/connection");
 const { QUEUE_NAMES, QUEUE_PREFIX, getMaintenanceQueue, getRouteQueue } = require("../queue/queues");
 const { getRedisClient } = require("../queue/connection");
 const VtextMessage = require("../../../model/vtext/vtextMessageModel");
+const VtextContact = require("../../../model/vtext/vtextContactModel");
 const VtextLine = require("../../../model/vtext/vtextLineModel");
 const VtextLineUsage = require("../../../model/vtext/vtextLineUsageModel");
 const VtextLineEvent = require("../../../model/vtext/vtextLineEventModel");
 const { getAdapter } = require("../channels/registry");
 const { evaluateAndMaybeQuarantine, statusBeforeOffline } = require("../vtextLineHealthService");
 const { runFollowUpSweep } = require("../vtextFollowUpService");
-const { sendAlertWithCooldown } = require("../vtextAlertService");
+const { sendAlertWithCooldown, getAlertWatermark, setAlertWatermark, isAlertingConfigured } = require("../vtextAlertService");
 const { dayKey } = require("../vtextCapacityService");
 const { notifyVtextAlert } = require("../../shared/slackService");
 const { publishEvent } = require("../vtextEventsBus");
@@ -225,6 +226,82 @@ async function runBacklogAlert() {
   }
 }
 
+// One Slack message summarising the texts that failed since the last one, instead of one per
+// failure. Individual failures were silent before: they only showed in the admin's Failed tab.
+// Recipient failures (not on iMessage, bad number) are expected and reported as such; any
+// other kind (line, config, transient) is what the team needs to look at.
+const FAILED_DIGEST_KEY = "failedDigestAt";
+const FAILED_DIGEST_MAX_LOOKBACK_MS = 6 * 60 * 60_000; // never report further back than this, after a long Slack outage
+const failedDigestIntervalMs = () => Number(process.env.VTEXT_FAILED_DIGEST_INTERVAL_MS || 15 * 60_000);
+
+async function runFailedSendDigest() {
+  const runStartedAt = new Date();
+
+  // With Slack off there is nobody to tell. Keep the watermark current anyway, so that switching
+  // alerts on later does not announce hours of old failures at once.
+  if (!isAlertingConfigured()) {
+    await setAlertWatermark(FAILED_DIGEST_KEY, runStartedAt);
+    return;
+  }
+
+  const watermark = await getAlertWatermark(FAILED_DIGEST_KEY);
+  const since = new Date(Math.max(
+    runStartedAt.getTime() - FAILED_DIGEST_MAX_LOOKBACK_MS,
+    (watermark || new Date(runStartedAt.getTime() - failedDigestIntervalMs())).getTime()
+  ));
+
+  const window = { $gt: since, $lte: runStartedAt };
+  const failed = await VtextMessage.find({
+    direction: "out",
+    status: "failed",
+    // every path that fails a message sets failedAt; updatedAt covers a path that ever forgets
+    $or: [{ failedAt: window }, { failedAt: { $exists: false }, updatedAt: window }],
+  })
+    .select("contactId error")
+    .lean();
+
+  if (!failed.length) {
+    await setAlertWatermark(FAILED_DIGEST_KEY, runStartedAt);
+    return;
+  }
+
+  const kindOf = (m) => m.error?.kind || "unknown";
+  const expected = failed.filter((m) => kindOf(m) === "recipient").length;
+  const attention = failed.length - expected;
+  const breakdown = {};
+  for (const m of failed) if (kindOf(m) !== "recipient") breakdown[kindOf(m)] = (breakdown[kindOf(m)] || 0) + 1;
+
+  // up to five examples, the ones that need attention first, numbers masked to the last four digits
+  const examples = [...failed.filter((m) => kindOf(m) !== "recipient"), ...failed.filter((m) => kindOf(m) === "recipient")].slice(0, 5);
+  const contacts = await VtextContact.find({ _id: { $in: examples.map((m) => m.contactId) } }).select("phoneE164").lean();
+  const phoneById = new Map(contacts.map((c) => [String(c._id), c.phoneE164]));
+  const exampleLines = examples.map((m) => {
+    const phone = String(phoneById.get(String(m.contactId)) || "");
+    // "…0404", not "***0404": Slack reads asterisks as bold markup and would mangle the list
+    const who = phone ? `…${phone.slice(-4)}` : "unknown contact";
+    return `${who} (${kindOf(m)}): ${String(m.error?.message || "no reason recorded").slice(0, 80)}`;
+  });
+
+  const minutes = Math.max(1, Math.round((runStartedAt.getTime() - since.getTime()) / 60_000));
+  const fields = [{ label: "Failed", value: `${failed.length} in the last ${minutes} minutes` }];
+  if (expected) fields.push({ label: "Not deliverable (expected)", value: `${expected}: not on iMessage, or a bad number` });
+  if (attention) {
+    fields.push({ label: "Need attention", value: `${attention} (${Object.entries(breakdown).map(([k, n]) => `${k} ${n}`).join(", ")})` });
+  }
+  fields.push({ label: "Examples", value: exampleLines.join("\n") });
+
+  const posted = await notifyVtextAlert({
+    level: attention ? "warning" : "info",
+    title: `${failed.length} text${failed.length === 1 ? "" : "s"} failed`,
+    fields,
+  });
+  if (posted) {
+    await setAlertWatermark(FAILED_DIGEST_KEY, runStartedAt);
+  } else {
+    console.error("[vtext failed-digest] Slack post did not go through; these failures will be included in the next digest");
+  }
+}
+
 const JOB_HANDLERS = {
   "noop-heartbeat": runNoopHeartbeat,
   "stuck-message-sweep": runStuckMessageSweep,
@@ -232,6 +309,7 @@ const JOB_HANDLERS = {
   "daily-rollover": runDailyRollover,
   "backlog-alert": runBacklogAlert,
   "followup-sweep": runFollowUpSweep,
+  "failed-send-digest": runFailedSendDigest,
 };
 
 async function processMaintenanceJob(job) {
@@ -290,6 +368,11 @@ async function ensureMaintenanceSchedulers() {
     { every: Number(process.env.VTEXT_FOLLOWUP_SWEEP_INTERVAL_MS || 15 * 60_000) },
     { name: "followup-sweep" },
   );
+  await queue.upsertJobScheduler(
+    "failed-send-digest",
+    { every: failedDigestIntervalMs() },
+    { name: "failed-send-digest" },
+  );
 }
 
 let worker = null;
@@ -321,6 +404,7 @@ module.exports = {
   HEARTBEAT_KEY,
   runLineHealthSweep,
   runBacklogAlert,
+  runFailedSendDigest,
   ensureMaintenanceSchedulers,
   startMaintenanceWorker,
   stopMaintenanceWorker,
