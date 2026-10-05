@@ -9,6 +9,7 @@ const VtextContact = require("../../model/vtext/vtextContactModel");
 const VtextMessage = require("../../model/vtext/vtextMessageModel");
 const { getRouteQueue } = require("./queue/queues");
 const { canSend } = require("./vtextComplianceService");
+const { getSettings, isConsentRequired } = require("./vtextSettingsService");
 const { normalizeInternationalPhone } = require("../../utils/internationalPhone");
 const { findLeadRefs } = require("./vtextLeadLookupService");
 const Errorhandler = require("../../utils/errorhandler");
@@ -75,7 +76,12 @@ async function enqueueOutbound({ to: rawTo, body, origin, channelPolicy, isReply
   }
 
   // See routeWorker.js's matching call for why lastInboundAt is passed here too.
-  const complianceResult = canSend(contact, { isReplyToInbound, origin }, { lastInboundAt: contact.lastInboundAt });
+  const settings = await getSettings();
+  const complianceResult = canSend(
+    contact,
+    { isReplyToInbound, origin },
+    { lastInboundAt: contact.lastInboundAt, requireConsent: isConsentRequired(settings) }
+  );
 
   const message = await VtextMessage.create({
     direction: "out",
@@ -86,6 +92,7 @@ async function enqueueOutbound({ to: rawTo, body, origin, channelPolicy, isReply
     origin: origin || { kind: "manual" },
     channelPolicy: channelPolicy || { mode: "any" },
     isReplyToInbound: !!isReplyToInbound,
+    consentBasis: complianceResult.allowed ? complianceResult.basis : undefined,
     idempotencyKey: idempotencyKey || undefined,
     scheduledFor: scheduledFor || undefined,
     queuedAt: complianceResult.allowed ? new Date() : undefined,

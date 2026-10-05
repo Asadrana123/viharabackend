@@ -13,6 +13,7 @@ const { ROUTABLE_STATUSES } = VtextLine;
 const { getAdapter } = require("../channels/registry");
 const capacity = require("../vtextCapacityService");
 const { canSend } = require("../vtextComplianceService");
+const { getSettings, isConsentRequired } = require("../vtextSettingsService");
 const { evaluateAndMaybeQuarantine } = require("../vtextLineHealthService");
 const { publishEvent } = require("../vtextEventsBus");
 
@@ -62,7 +63,8 @@ async function processSendJob(lineId, job) {
   const complianceResult = canSend(
     contact,
     { isReplyToInbound: message.isReplyToInbound, origin: message.origin },
-    { lastInboundAt: contact?.lastInboundAt }
+    // Read live, so switching consent back ON stops a queued no-consent message right here.
+    { lastInboundAt: contact?.lastInboundAt, requireConsent: isConsentRequired(await getSettings()) }
   );
   if (!complianceResult.allowed) {
     message.status = "cancelled";

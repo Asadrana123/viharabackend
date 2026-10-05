@@ -22,10 +22,23 @@ async function getSettings() {
   return settings;
 }
 
-async function updateSettings(patch) {
+/** True unless consent has been explicitly switched off. A missing value (an older settings document) means consent IS required. */
+function isConsentRequired(settings) {
+  return settings?.requireConsent !== false;
+}
+
+/** @param {object} [actor] - the admin making the change ({ _id, name }), recorded when the consent switch moves */
+async function updateSettings(patch, actor) {
   const update = {};
   if (patch.aiAutoReplyEnabled !== undefined) update.aiAutoReplyEnabled = !!patch.aiAutoReplyEnabled;
   if (patch.followUpsEnabled !== undefined) update.followUpsEnabled = !!patch.followUpsEnabled;
+  if (patch.requireConsent !== undefined) {
+    update.requireConsent = !!patch.requireConsent;
+    update.consentChangedAt = new Date();
+    update.consentChangedBy = {};
+    if (actor?._id) update.consentChangedBy.adminId = actor._id;
+    if (actor?.name) update.consentChangedBy.adminName = actor.name;
+  }
 
   const settings = await VtextSettings.findOneAndUpdate(
     {},
@@ -37,4 +50,4 @@ async function updateSettings(patch) {
   return settings;
 }
 
-module.exports = { getSettings, updateSettings };
+module.exports = { getSettings, updateSettings, isConsentRequired };

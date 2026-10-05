@@ -62,6 +62,9 @@ const vtextMessageSchema = new mongoose.Schema(
       },
     },
     isReplyToInbound: { type: Boolean, default: false },
+    // Why the compliance gate let this message through at enqueue: "opted-in", "reply",
+    // "system", or "consent-not-required" (sent while the admin consent switch was off).
+    consentBasis: { type: String },
     idempotencyKey: { type: String, unique: true, sparse: true },
 
     provider: {

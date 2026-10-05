@@ -19,6 +19,18 @@ const vtextSettingsSchema = new mongoose.Schema(
     // Off by default. Turning it off pauses running sequences and stops new
     // enrollments; it does not cancel them.
     followUpsEnabled: { type: Boolean, default: false },
+
+    // Whether an outbound text needs recorded consent (vtextComplianceService.canSend).
+    // ON by default. Turning it OFF lets texts reach contacts with no consent on
+    // file; opt-outs (STOP), invalid numbers and landlines stay blocked either way.
+    // A settings document from before this field existed has no value: always
+    // read it through isConsentRequired(), where missing means "required".
+    requireConsent: { type: Boolean, default: true },
+    consentChangedAt: { type: Date },
+    consentChangedBy: {
+      adminId: { type: mongoose.Schema.Types.ObjectId },
+      adminName: { type: String },
+    },
   },
   { timestamps: true }
 );

@@ -11,6 +11,7 @@ const VtextConversation = require("../../../model/vtext/vtextConversationModel")
 const { bullmqConnection } = require("../queue/connection");
 const { QUEUE_NAMES, QUEUE_PREFIX, getLineQueue } = require("../queue/queues");
 const { canSend } = require("../vtextComplianceService");
+const { getSettings, isConsentRequired } = require("../vtextSettingsService");
 const { selectLine } = require("../vtextRouter");
 const capacity = require("../vtextCapacityService");
 
@@ -65,7 +66,7 @@ async function processRouteJob(job) {
   const complianceResult = canSend(
     contact,
     { isReplyToInbound: message.isReplyToInbound, origin: message.origin },
-    { lastInboundAt: contact.lastInboundAt }
+    { lastInboundAt: contact.lastInboundAt, requireConsent: isConsentRequired(await getSettings()) }
   );
   if (!complianceResult.allowed) {
     message.status = "blocked";
