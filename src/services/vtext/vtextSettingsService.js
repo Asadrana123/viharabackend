@@ -25,6 +25,7 @@ async function getSettings() {
 async function updateSettings(patch) {
   const update = {};
   if (patch.aiAutoReplyEnabled !== undefined) update.aiAutoReplyEnabled = !!patch.aiAutoReplyEnabled;
+  if (patch.followUpsEnabled !== undefined) update.followUpsEnabled = !!patch.followUpsEnabled;
 
   const settings = await VtextSettings.findOneAndUpdate(
     {},

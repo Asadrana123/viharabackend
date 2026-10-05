@@ -14,6 +14,11 @@ const vtextSettingsSchema = new mongoose.Schema(
     // approve/edit/reject (false, the default — no AI-generated text goes
     // out to a real contact without a human looking at it first).
     aiAutoReplyEnabled: { type: Boolean, default: false },
+
+    // Daily follow-up texts after a property signup (vtextFollowUpService.js).
+    // Off by default. Turning it off pauses running sequences and stops new
+    // enrollments; it does not cancel them.
+    followUpsEnabled: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

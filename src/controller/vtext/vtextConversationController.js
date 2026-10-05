@@ -25,7 +25,7 @@ const listConversations = catchAsyncError(async (req, res) => {
   const conversations = await VtextConversation.find(filter)
     .sort({ lastMessageAt: -1 })
     .limit(pageSize + 1)
-    .populate("contactId", "name phoneE164 optOut.isOptedOut")
+    .populate("contactId", "name phoneE164 optOut.isOptedOut followUp.status followUp.step")
     .lean();
 
   const hasMore = conversations.length > pageSize;

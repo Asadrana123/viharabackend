@@ -19,6 +19,7 @@ const capacity = require("../vtextCapacityService");
 const { detectKeyword } = require("../vtextComplianceService");
 const { publishEvent } = require("../vtextEventsBus");
 const { findLeadRefs } = require("../vtextLeadLookupService");
+const { endFollowUp } = require("../vtextFollowUpService");
 const { notifyVtextAlert } = require("../../shared/slackService");
 
 const HELP_TEXT = process.env.VTEXT_HELP_TEXT || "This is Vihara. Reply STOP to opt out, or visit vihara.ai for more info.";
@@ -66,11 +67,12 @@ async function lastAutoReplyAt(contactId, templateKey) {
   return last?.createdAt || null;
 }
 
-async function cancelPendingOutbound(contactId) {
+async function cancelPendingOutbound(contactId, { onlyFollowUps = false } = {}) {
   const pending = await VtextMessage.find({
     contactId,
     direction: "out",
     status: { $in: ["queued", "waiting-window", "waiting-capacity", "assigned", "pending-approval"] },
+    ...(onlyFollowUps ? { "origin.templateKey": /^followup-/ } : {}),
   });
 
   for (const message of pending) {
@@ -172,6 +174,19 @@ async function handleMessageReceived(event, line) {
   await contact.save();
 
   const keyword = detectKeyword(event.body);
+
+  // Any reply ends the follow-up sequence. A STOP also cancels everything
+  // pending below, so only a plain reply needs the follow-up-only cancel here.
+  try {
+    const ended = await endFollowUp(
+      contact._id,
+      keyword.type === "stop" ? "opted-out" : "replied",
+      keyword.type === "stop" ? "contact opted out" : "contact replied"
+    );
+    if (ended && keyword.type !== "stop") await cancelPendingOutbound(contact._id, { onlyFollowUps: true });
+  } catch (err) {
+    console.error(`[vtext inbound] couldn't end follow-up sequence for contact ${contact._id}:`, err.message);
+  }
 
   const message = await VtextMessage.create({
     direction: "in",

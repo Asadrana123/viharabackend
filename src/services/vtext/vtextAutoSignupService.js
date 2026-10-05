@@ -15,6 +15,7 @@
 const VtextTemplate = require("../../model/vtext/vtextTemplateModel");
 const { enqueueOutbound } = require("./vtextMessageService");
 const { renderTemplateForProperty } = require("./vtextTemplateService");
+const { startFollowUp } = require("./vtextFollowUpService");
 
 const AUTO_ENABLED = () => process.env.VTEXT_ENABLED === "true" && process.env.VTEXT_AUTO_SIGNUP_TEXT_ENABLED === "true";
 
@@ -64,6 +65,13 @@ async function maybeSendSignupWelcomeText({ lead, property }) {
       console.error(`[vtext auto-signup] BLOCKED for lead ${lead._id} — reason: ${reason}`);
     } else {
       console.log(`[vtext auto-signup] QUEUED for lead ${lead._id} — messageId ${message._id}, status ${message.status}`);
+      // Follow-up texts start the next day if the lead hasn't replied. Never lets a failure here affect the welcome text.
+      try {
+        const followUp = await startFollowUp({ contactId: message.contactId, lead, property });
+        console.log(`[vtext auto-signup] follow-ups for lead ${lead._id}: ${followUp.started ? "STARTED" : `not started (${followUp.reason})`}`);
+      } catch (err) {
+        console.error(`[vtext auto-signup] follow-up enrollment FAILED for lead ${lead._id}:`, err.message);
+      }
     }
   } catch (err) {
     console.error(`[vtext auto-signup] FAILED for lead ${lead?._id}:`, err.message);

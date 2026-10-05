@@ -19,6 +19,7 @@ const VtextLineUsage = require("../../../model/vtext/vtextLineUsageModel");
 const VtextLineEvent = require("../../../model/vtext/vtextLineEventModel");
 const { getAdapter } = require("../channels/registry");
 const { evaluateAndMaybeQuarantine } = require("../vtextLineHealthService");
+const { runFollowUpSweep } = require("../vtextFollowUpService");
 const { dayKey } = require("../vtextCapacityService");
 const { notifyVtextAlert } = require("../../shared/slackService");
 const { publishEvent } = require("../vtextEventsBus");
@@ -197,6 +198,7 @@ const JOB_HANDLERS = {
   "line-health-sweep": runLineHealthSweep,
   "daily-rollover": runDailyRollover,
   "backlog-alert": runBacklogAlert,
+  "followup-sweep": runFollowUpSweep,
 };
 
 async function processMaintenanceJob(job) {
@@ -248,6 +250,12 @@ async function ensureMaintenanceSchedulers() {
     "backlog-alert",
     { every: Number(process.env.VTEXT_BACKLOG_ALERT_INTERVAL_MS || 5 * 60_000) },
     { name: "backlog-alert" },
+  );
+  // One Redis tick per 15 min is cheap; the sweep itself is a single indexed Mongo query when nothing is due.
+  await queue.upsertJobScheduler(
+    "followup-sweep",
+    { every: Number(process.env.VTEXT_FOLLOWUP_SWEEP_INTERVAL_MS || 15 * 60_000) },
+    { name: "followup-sweep" },
   );
 }
 
