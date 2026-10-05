@@ -100,6 +100,9 @@ const vtextMessageSchema = new mongoose.Schema(
       approvalStatus: { type: String, enum: ["pending", "approved", "edited", "rejected"] },
       model: { type: String },
       generatedAt: { type: Date },
+      // The AI said it could not answer and a team member will follow up (see draftReplyWorker.js).
+      needsHuman: { type: Boolean },
+      topic: { type: String },
       approvedBy: {
         adminId: { type: mongoose.Schema.Types.ObjectId },
         adminName: { type: String },

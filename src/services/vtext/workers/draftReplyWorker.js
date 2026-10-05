@@ -17,8 +17,17 @@ const { getSettings } = require("../vtextSettingsService");
 const { buildPropertyContext, generateDraftReply, MODEL_NAME } = require("../vtextAiReplyService");
 const { createDraftReply, approveDraft } = require("../vtextDraftReplyService");
 const { publishEvent } = require("../vtextEventsBus");
+const { notifyVtextAlert } = require("../../shared/slackService");
+const { sendAlertWithCooldown } = require("../vtextAlertService");
 
 const HISTORY_LIMIT = 10;
+const AI_FAILURE_ALERT_COOLDOWN_MS = 30 * 60_000; // a Gemini outage must not post once per customer message
+
+const inboxUrl = () => process.env.VTEXT_ADMIN_URL || "https://vihara.ai/admin/dashboard?tab=vtext&vtextTab=inbox";
+const clip = (text, max = 300) => {
+  const t = String(text || "").trim();
+  return t.length > max ? `${t.slice(0, max - 1)}…` : t;
+};
 
 async function processDraftReplyJob(job) {
   const { conversationId, contactId, inboundMessageId, lineId, channelType } = job.data;
@@ -45,8 +54,24 @@ async function processDraftReplyJob(job) {
   history.reverse();
 
   const propertyContext = await buildPropertyContext(contact);
-  const body = await generateDraftReply({ contact, messages: history, replyToBody: inboundMessage.body, propertyContext });
-  if (!body) return; // generation unavailable/failed — conversation just stays needs-reply
+  const draft = await generateDraftReply({ contact, messages: history, replyToBody: inboundMessage.body, propertyContext });
+  if (!draft) {
+    // Generation unavailable or failed: the conversation just stays needs-reply, which used to be
+    // completely silent. Tell the team once in a while that nobody is answering this customer.
+    await sendAlertWithCooldown("ai-draft-failed", AI_FAILURE_ALERT_COOLDOWN_MS, {
+      level: "warning",
+      title: "AI could not draft a reply",
+      fields: [
+        { label: "Contact", value: contact.name || "(no name)" },
+        { label: "Phone", value: contact.phoneE164 },
+        { label: "Their message", value: clip(inboundMessage.body) },
+        { label: "Why", value: "The AI service returned nothing. It may be down, or its key may be missing." },
+        { label: "Inbox", value: inboxUrl() },
+      ],
+    }).catch((err) => console.error("[vtext draft-reply] could not send the AI-failure alert:", err.message));
+    return;
+  }
+  const { reply: body, needsHuman, topic } = draft;
 
   const message = await createDraftReply({
     contactId,
@@ -56,6 +81,8 @@ async function processDraftReplyJob(job) {
     inboundMessageId,
     body,
     model: MODEL_NAME,
+    needsHuman,
+    topic,
   });
   await publishEvent({ type: "message.updated", conversationId: String(conversationId), contactId: String(contactId) });
 
@@ -63,6 +90,25 @@ async function processDraftReplyJob(job) {
   if (settings.aiAutoReplyEnabled) {
     await approveDraft(message._id, { approvedBy: { adminId: null, adminName: "AI (auto-approved)" } });
     await publishEvent({ type: "message.updated", conversationId: String(conversationId), contactId: String(contactId) });
+  }
+
+  if (needsHuman) {
+    // The AI told the customer a team member will follow up. Nothing else in the system knows that,
+    // so say it here, whether the reply already went out or is waiting for approval.
+    notifyVtextAlert({
+      level: "warning",
+      title: "AI could not answer",
+      fields: [
+        { label: "Contact", value: contact.name || "(no name)" },
+        { label: "Phone", value: contact.phoneE164 },
+        { label: "Property", value: propertyContext?.property_name || propertyContext?.property_address },
+        { label: "Question", value: clip(inboundMessage.body) },
+        { label: "AI reply", value: clip(body) },
+        { label: "Status", value: settings.aiAutoReplyEnabled ? "Sent to the customer automatically" : "Waiting for approval in the Inbox" },
+        { label: "Topic", value: topic },
+        { label: "Inbox", value: inboxUrl() },
+      ],
+    }).catch(() => {});
   }
 }
 

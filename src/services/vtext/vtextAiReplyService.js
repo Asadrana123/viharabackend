@@ -105,7 +105,37 @@ ${facts}
 ${earlierHistory.length ? `Earlier conversation, for context only (oldest first):\n${formatHistory(earlierHistory)}\n\n` : ""}The contact's message you are replying to right now:
 ${replyToBody}
 
-Write ONLY the reply text, nothing else.`;
+Respond with a JSON object and nothing else, with exactly these fields:
+- "reply": the text message to send, as plain text.
+- "needsHuman": true only when the answer is NOT in the facts above and your reply tells them a team member will follow up. Otherwise false.
+- "topic": when needsHuman is true, two to five words naming what they asked about (for example "starting bid" or "auction date"). Otherwise an empty string.`;
+}
+
+// If the model ignores the JSON format and just writes the sentence, a deferral is still
+// recognised by its wording, because the prompt above tells it exactly what to say.
+const DEFERRAL_PATTERN = /team member (will |can |is going to )?(follow up|reach out|get back)/i;
+
+function looksLikeDeferral(text) {
+  return DEFERRAL_PATTERN.test(String(text || ""));
+}
+
+/** Turns the model's raw output into { reply, needsHuman, topic }. Never throws. */
+function parseModelOutput(raw) {
+  const cleaned = String(raw || "").replace(/```(?:json)?/g, "").trim();
+  let reply = cleaned;
+  let needsHuman = false;
+  let topic = "";
+  try {
+    const parsed = JSON.parse(cleaned);
+    if (parsed && typeof parsed.reply === "string" && parsed.reply.trim()) {
+      reply = parsed.reply.trim();
+      needsHuman = parsed.needsHuman === true;
+      topic = typeof parsed.topic === "string" ? parsed.topic.trim().slice(0, 80) : "";
+    }
+  } catch {
+    // not JSON: the whole text is the reply
+  }
+  return { reply, needsHuman: needsHuman || looksLikeDeferral(reply), topic };
 }
 
 /**
@@ -114,7 +144,7 @@ Write ONLY the reply text, nothing else.`;
  * @param {object[]} params.messages - recent VtextMessage docs for this conversation, chronological, {direction, body} — includes the message being replied to, as the last entry
  * @param {string} params.replyToBody - the specific inbound message's text to draft a reply to
  * @param {object|null} params.propertyContext - from buildPropertyContext()
- * @returns {Promise<string|null>} the drafted reply text, or null if generation isn't possible/failed
+ * @returns {Promise<{ reply: string, needsHuman: boolean, topic: string }|null>} the draft, or null if generation isn't possible/failed. needsHuman is true when the AI said a team member will follow up.
  */
 async function generateDraftReply({ contact, messages, replyToBody, propertyContext }) {
   const client = getClient();
@@ -125,14 +155,14 @@ async function generateDraftReply({ contact, messages, replyToBody, propertyCont
     const model = client.getGenerativeModel({ model: MODEL_NAME });
     const result = await model.generateContent({
       contents: [{ role: "user", parts: [{ text: buildPrompt({ contact, messages: messages || [], replyToBody, propertyContext }) }] }],
-      generationConfig: { temperature: 0.4 },
+      generationConfig: { temperature: 0.4, responseMimeType: "application/json" },
     });
-    const text = (result?.response?.text() || "").replace(/```/g, "").trim();
-    return text || null;
+    const draft = parseModelOutput(result?.response?.text());
+    return draft.reply ? draft : null;
   } catch (error) {
     console.error("[vtext ai-reply] Gemini failed, no draft:", error?.message || error);
     return null;
   }
 }
 
-module.exports = { MODEL_NAME, isAiReplyAvailable, buildPropertyContext, generateDraftReply };
+module.exports = { MODEL_NAME, isAiReplyAvailable, buildPropertyContext, generateDraftReply, parseModelOutput, looksLikeDeferral };
