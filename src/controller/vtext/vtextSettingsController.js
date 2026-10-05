@@ -29,7 +29,7 @@ const updateVtextSettings = catchAsyncError(async (req, res) => {
   if (requireConsent !== undefined && isConsentRequired(before) !== requireConsent) {
     notifyVtextAlert({
       level: requireConsent ? "info" : "warning",
-      title: requireConsent ? "Vtext consent check turned ON" : "Vtext consent check turned OFF",
+      title: requireConsent ? "Consent check turned ON" : "Consent check turned OFF", // Slack adds the "Vtext:" prefix itself
       fields: [
         { label: "By", value: req.user?.name || "unknown admin" },
         { label: "Effect", value: requireConsent ? "Only contacts with consent are texted again" : "Contacts with no consent on file can now be texted. Opt-outs are still blocked." },
