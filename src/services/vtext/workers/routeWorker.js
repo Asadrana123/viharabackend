@@ -11,11 +11,12 @@ const VtextConversation = require("../../../model/vtext/vtextConversationModel")
 const { bullmqConnection } = require("../queue/connection");
 const { QUEUE_NAMES, QUEUE_PREFIX, getLineQueue } = require("../queue/queues");
 const { canSend } = require("../vtextComplianceService");
-const { checkQuietHours } = require("../vtextQuietHoursService");
 const { selectLine } = require("../vtextRouter");
 const capacity = require("../vtextCapacityService");
 
 const WAITING_CAPACITY_RETRY_MS = 15 * 60 * 1000; // 15 min, per sendify-infra.md §4.3
+// "waiting-window" is a legacy status from the removed quiet-hours feature;
+// kept routable so any message still parked in it drains instead of sticking.
 const STATUSES_ROUTABLE = ["queued", "waiting-window", "waiting-capacity"];
 
 function uniqueRouteJobId(messageId) {
@@ -70,14 +71,6 @@ async function processRouteJob(job) {
     message.status = "blocked";
     message.error = { kind: complianceResult.errorKind, message: complianceResult.reason };
     await message.save();
-    return;
-  }
-
-  const { inWindow, nextWindowOpensAt } = await checkQuietHours(contact);
-  if (!inWindow) {
-    message.status = "waiting-window";
-    await message.save();
-    await requeueRoute(message._id, Math.max(0, nextWindowOpensAt.getTime() - Date.now()));
     return;
   }
 

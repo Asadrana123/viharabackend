@@ -1,15 +1,15 @@
 // utils/areaCodeTimezone.js
 //
 // US area code -> IANA timezone, for contacts with no lead link (so no
-// resolvePropertyTimezone(state,zip) available) — used by the quiet-hours
-// gate (sendify-infra.md §4.3/D11) to guess a reasonable local time to text.
+// resolvePropertyTimezone(state,zip) available). Stored on VtextContact.timezone
+// as a best guess at the contact's local time. Quiet hours (its original
+// consumer) has been removed, so nothing enforces a send window off this now.
 //
 // NOT exhaustive — there's no npm package for this (checked), and hand-typing
 // all ~350 real US area codes correctly without a verified data source isn't
-// worth the risk of silent wrong entries for a compliance-adjacent feature.
+// worth the risk of silent wrong entries.
 // This covers the large/common codes across every US timezone (including
-// Arizona's no-DST Mountain quirk) so the quiet-hours mechanism works
-// correctly end to end; unknown codes fall back to America/New_York,
+// Arizona's no-DST Mountain quirk); unknown codes fall back to America/New_York,
 // matching this repo's existing VTEXT_DAY_TZ default. Worth replacing with
 // a licensed/verified dataset if real volume ever depends on precision here.
 const AREA_CODE_TIMEZONES = {

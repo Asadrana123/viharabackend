@@ -1,10 +1,9 @@
 // services/vtext/vtextSettingsService.js
 //
 // Single global settings document, upserted lazily on first read so there's
-// nothing to seed/migrate. Cached briefly in memory since checkQuietHours
-// (vtextQuietHoursService.js) reads this on every routed message — a TTL
-// cache keeps that path from hitting Mongo per message while still picking
-// up an admin's toggle within a few seconds.
+// nothing to seed/migrate. Cached briefly in memory so hot paths don't hit
+// Mongo per message while still picking up an admin's toggle within a few
+// seconds.
 const VtextSettings = require("../../model/vtext/vtextSettingsModel");
 
 const CACHE_TTL_MS = 5000;
@@ -25,7 +24,6 @@ async function getSettings() {
 
 async function updateSettings(patch) {
   const update = {};
-  if (patch.quietHoursEnabled !== undefined) update.quietHoursEnabled = !!patch.quietHoursEnabled;
   if (patch.aiAutoReplyEnabled !== undefined) update.aiAutoReplyEnabled = !!patch.aiAutoReplyEnabled;
 
   const settings = await VtextSettings.findOneAndUpdate(
