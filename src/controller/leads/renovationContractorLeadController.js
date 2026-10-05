@@ -32,7 +32,7 @@ const getAllRenovationContractorLeads = catchAsyncError(async (req, res) => {
   const [leads, total] = await Promise.all([
     RenovationContractorRequest.find(query)
       .populate("propertyId", "productName street city state slug")
-      .sort({ createdAt: -1 })
+      .sort({ createdAt: -1, _id: -1 })
       .skip(skip)
       .limit(limit)
       .lean(),
