@@ -11,7 +11,7 @@ const getAllPersonaLeads = catchAsyncError(async (req, res) => {
   const skip = (page - 1) * limit;
 
   const [leads, total] = await Promise.all([
-    PersonaLead.find().sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+    PersonaLead.find().sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit).lean(),
     PersonaLead.countDocuments(),
   ]);
 

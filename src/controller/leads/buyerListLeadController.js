@@ -14,6 +14,7 @@ const { buyerListPageUrl } = require("../../config/siteUrls");
 const { getCallsForPhones } = require("../../services/calling/vapiCallsService");
 const { getEmailEventsForEmails } = require("../../services/integrations/emailEventsService");
 const { getNotesForLeads } = require("../../services/leads/leadNotesService");
+const { listView, scopeQuery, unlessSummary, shapeLeads } = require("../../services/leads/leadListView");
 const {
   str,
   isValidEmail,
@@ -222,32 +223,34 @@ const getAllBuyerListLeads = catchAsyncError(async (req, res) => {
   const page = Math.max(1, parseInt(req.query.page) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
   const skip = (page - 1) * limit;
+  const view = listView(req); // ?view=summary (light rows) / ?id= (one lead, full)
+  if (view.badId) return res.status(400).json({ success: false, message: "Invalid id" });
 
   const query = { fullName: { $not: TEST_NAME_REGEX }, firstName: { $not: TEST_NAME_REGEX } };
   if (["A", "B", "C"].includes(req.query.tier)) query.tier = req.query.tier;
 
   const [leads, total] = await Promise.all([
-    BuyerListLead.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
-    BuyerListLead.countDocuments(query),
+    BuyerListLead.find(scopeQuery(view, query)).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit).lean(),
+    BuyerListLead.countDocuments(scopeQuery(view, query)),
   ]);
 
   // Same per-lead extras as the other Leads tabs (calls by phone, email events,
   // advisor notes) so the shared admin list/detail renders identically.
   const [callsByPhone, eventsByEmail, notesByLead] = await Promise.all([
     getCallsForPhones(leads.map((l) => l.phone).filter(Boolean)),
-    getEmailEventsForEmails(leads.map((l) => l.email).filter(Boolean)),
-    getNotesForLeads(LEAD_NOTE_TYPE, leads.map((l) => l._id)),
+    getEmailEventsForEmails(unlessSummary(view, leads.map((l) => l.email).filter(Boolean))),
+    getNotesForLeads(LEAD_NOTE_TYPE, unlessSummary(view, leads.map((l) => l._id))),
   ]);
 
   res.status(200).json({
     success: true,
-    leads: leads.map((lead) => ({
+    leads: shapeLeads(view, leads.map((lead) => ({
       ...lead,
       fullName: lead.fullName || lead.firstName,
       calls: callsByPhone[normalisePhone(lead.phone)] || [],
       emails: eventsByEmail[String(lead.email || "").toLowerCase()] || [],
       notes: notesByLead[String(lead._id)] || [],
-    })),
+    }))),
     pagination: { page, limit, total, pages: Math.ceil(total / limit) },
   });
 });

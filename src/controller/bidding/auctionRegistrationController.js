@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const AuctionRegistration = require("../../model/bidding/auctionRegistration");
 const Product = require("../../model/property/productModel");
 const User = require("../../model/users/userModel");
@@ -263,36 +264,81 @@ exports.getRegistrationStatus = catchAsyncError(
 );
 
 // Admin: Get all registration requests (with pagination)
+//   ?auctionId=  → one property's registrations
+//   ?limit=all   → every match in one response (the admin view scrolls)
 exports.getAllRegistrations = catchAsyncError(
   async (req, res, next) => {
-    const { status, page = 1, limit = 10 } = req.query;
+    const { status, auctionId, page = 1, limit = 10 } = req.query;
 
     const query = {};
     if (status) {
       query.status = status;
     }
+    if (auctionId) {
+      if (!mongoose.Types.ObjectId.isValid(auctionId)) {
+        return next(new Errorhandler("Invalid auctionId", 400));
+      }
+      query.auctionId = auctionId;
+    }
 
-    const skip = (page - 1) * limit;
+    const all = limit === "all";
+    const perPage = all ? 0 : Math.max(1, parseInt(limit) || 10);
+    const pageNum = all ? 1 : Math.max(1, parseInt(page) || 1);
 
-    const registrations = await AuctionRegistration.find(query)
+    let find = AuctionRegistration.find(query)
       .populate('userId', 'name email')
-      .populate('auctionId', 'productName street city state')
+      .populate('auctionId', 'productName street city state image')
       .populate('realtorId', 'name slug')
-      .sort({ submittedAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
+      .sort({ submittedAt: -1, _id: -1 });
+    if (!all) find = find.skip((pageNum - 1) * perPage).limit(perPage);
 
-    const total = await AuctionRegistration.countDocuments(query);
+    const [registrations, total] = await Promise.all([
+      find,
+      AuctionRegistration.countDocuments(query),
+    ]);
 
     res.status(200).json({
       success: true,
       registrations,
       pagination: {
         total,
-        page: parseInt(page),
-        pages: Math.ceil(total / limit)
+        page: pageNum,
+        pages: all ? 1 : Math.ceil(total / perPage)
       }
     });
+  }
+);
+
+// Admin: every property that has registrations, with per-status counts.
+// Properties with pending requests first, then by latest registration.
+exports.getRegistrationProperties = catchAsyncError(
+  async (req, res) => {
+    const rows = await AuctionRegistration.aggregate([
+      {
+        $group: {
+          _id: "$auctionId",
+          total: { $sum: 1 },
+          pending: { $sum: { $cond: [{ $eq: ["$status", "pending"] }, 1, 0] } },
+          approved: { $sum: { $cond: [{ $eq: ["$status", "approved"] }, 1, 0] } },
+          rejected: { $sum: { $cond: [{ $eq: ["$status", "rejected"] }, 1, 0] } },
+          lastAt: { $max: "$submittedAt" },
+        },
+      },
+      { $sort: { pending: -1, lastAt: -1 } },
+    ]);
+
+    const products = await Product.find({ _id: { $in: rows.map((r) => r._id) } })
+      .select("productName street city state image status auctionStartDate auctionEndDate")
+      .lean();
+    const productById = new Map(products.map((p) => [String(p._id), p]));
+
+    const totals = { total: 0, pending: 0, approved: 0, rejected: 0 };
+    const properties = rows.map(({ _id, ...counts }) => {
+      Object.keys(totals).forEach((k) => { totals[k] += counts[k] || 0; });
+      return { auctionId: _id, property: productById.get(String(_id)) || null, ...counts };
+    });
+
+    res.status(200).json({ success: true, properties, totals });
   }
 );
 

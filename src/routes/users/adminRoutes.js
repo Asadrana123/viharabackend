@@ -16,6 +16,7 @@ const {
 } = require("../../controller/users/adminController");
 const {
   getAllRegistrations,
+  getRegistrationProperties,
   updateRegistrationStatus,
 } = require("../../controller/bidding/auctionRegistrationController");
 const {
@@ -71,6 +72,13 @@ router.delete(
 );
 
 // Auction registration routes
+router.get(
+  "/auction-registrations/properties",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  getRegistrationProperties
+);
+
 router.get(
   "/auction-registrations",
   isAuthenticated,

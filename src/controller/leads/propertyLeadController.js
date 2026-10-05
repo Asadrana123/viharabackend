@@ -14,6 +14,7 @@ const { enrichPerson } = require("../../services/shared/fullenrichService");
 const { getCallsForPhones, normalisePhone } = require("../../services/calling/vapiCallsService");
 const { getEmailEventsForEmails } = require("../../services/integrations/emailEventsService");
 const { getNotesForLeads } = require("../../services/leads/leadNotesService");
+const { listView, scopeQuery, unlessSummary, shapeLeads } = require("../../services/leads/leadListView");
 const { getVtextMessagesForPhones } = require("../../services/vtext/vtextLeadMessagesService");
 const { maybeSendSignupWelcomeText } = require("../../services/vtext/vtextAutoSignupService");
 const { syncPropertyLead } = require("../../services/integrations/brevoService");
@@ -213,11 +214,13 @@ const getLeadsByProperty = catchAsyncError(async (req, res, next) => {
   const page = Math.max(1, parseInt(req.query.page) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
   const skip = (page - 1) * limit;
+  const view = listView(req); // ?view=summary (light rows) / ?id= (one lead, full)
+  if (view.badId) return res.status(400).json({ success: false, message: "Invalid id" });
 
   const query = { propertySlug: slug, fullName: { $not: TEST_NAME_REGEX } };
   const [leads, total] = await Promise.all([
-    PropertyLead.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
-    PropertyLead.countDocuments(query),
+    PropertyLead.find(scopeQuery(view, query)).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit).lean(),
+    PropertyLead.countDocuments(scopeQuery(view, query)),
   ]);
 
   const phones = leads.map((l) => l.phone).filter(Boolean);
@@ -225,10 +228,10 @@ const getLeadsByProperty = catchAsyncError(async (req, res, next) => {
   const leadIds = leads.map((l) => l._id);
 
   const [messagesByPhone, callsByPhone, eventsByEmail, notesByLead] = await Promise.all([
-    getVtextMessagesForPhones(phones),
+    getVtextMessagesForPhones(unlessSummary(view, phones)),
     getCallsForPhones(phones),
-    getEmailEventsForEmails(emailAddresses),
-    getNotesForLeads(LEAD_NOTE_TYPE, leadIds),
+    getEmailEventsForEmails(unlessSummary(view, emailAddresses)),
+    getNotesForLeads(LEAD_NOTE_TYPE, unlessSummary(view, leadIds)),
   ]);
 
   const leadsWithCalls = leads.map((lead) => ({
@@ -241,7 +244,7 @@ const getLeadsByProperty = catchAsyncError(async (req, res, next) => {
 
   res.status(200).json({
     success: true,
-    leads: leadsWithCalls,
+    leads: shapeLeads(view, leadsWithCalls),
     pagination: { page, limit, total, pages: Math.ceil(total / limit) },
   });
 });

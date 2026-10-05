@@ -16,6 +16,7 @@ const { sendEvent } = require("../../services/integrations/metaCapiService");
 const { notifyNewLead } = require("../../services/shared/slackService");
 const { getEmailEventsForEmails } = require("../../services/integrations/emailEventsService");
 const { getNotesForLeads } = require("../../services/leads/leadNotesService");
+const { listView, scopeQuery, unlessSummary, shapeLeads } = require("../../services/leads/leadListView");
 const { scheduleNewDealsSignupCall } = require("../../services/calling/newDealsCallScheduler");
 const { newDealsPageUrl } = require("../../config/siteUrls");
 const { findDeal, dealLabel } = require("../../config/newDeals");
@@ -287,31 +288,33 @@ const getAllNewDealsLeads = catchAsyncError(async (req, res) => {
   const page = Math.max(1, parseInt(req.query.page) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
   const skip = (page - 1) * limit;
+  const view = listView(req); // ?view=summary (light rows) / ?id= (one lead, full)
+  if (view.badId) return res.status(400).json({ success: false, message: "Invalid id" });
 
   const query = { $and: TEST_NAME_FIELDS.map((f) => ({ [f]: { $not: TEST_NAME_REGEX } })) };
   if (["A", "B", "C"].includes(req.query.tier)) query.tier = req.query.tier;
 
   const [leads, total] = await Promise.all([
-    NewDealsLead.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
-    NewDealsLead.countDocuments(query),
+    NewDealsLead.find(scopeQuery(view, query)).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit).lean(),
+    NewDealsLead.countDocuments(scopeQuery(view, query)),
   ]);
 
   const [callsByPhone, eventsByEmail, notesByLead] = await Promise.all([
     getCallsForPhones(leads.map((l) => l.phone).filter(Boolean)),
-    getEmailEventsForEmails(leads.map((l) => l.email).filter(Boolean)),
-    getNotesForLeads(LEAD_NOTE_TYPE, leads.map((l) => l._id)),
+    getEmailEventsForEmails(unlessSummary(view, leads.map((l) => l.email).filter(Boolean))),
+    getNotesForLeads(LEAD_NOTE_TYPE, unlessSummary(view, leads.map((l) => l._id))),
   ]);
 
   res.status(200).json({
     success: true,
-    leads: leads.map((lead) => ({
+    leads: shapeLeads(view, leads.map((lead) => ({
       ...lead,
       fullName: lead.fullName || lead.firstName,
       dealInterestLabel: dealLabel(lead.dealInterest),
       calls: callsByPhone[normalisePhone(lead.phone)] || [],
       emails: eventsByEmail[String(lead.email || "").toLowerCase()] || [],
       notes: notesByLead[String(lead._id)] || [],
-    })),
+    }))),
     pagination: { page, limit, total, pages: Math.ceil(total / limit) },
   });
 });
