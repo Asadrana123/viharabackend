@@ -4,6 +4,9 @@ const VtextConversation = require("../../model/vtext/vtextConversationModel");
 const VtextMessage = require("../../model/vtext/vtextMessageModel");
 const VtextContact = require("../../model/vtext/vtextContactModel");
 
+// Contact fields the admin UI needs on every conversation payload (list, thread, mark-read).
+const CONTACT_FIELDS = "name phoneE164 optOut.isOptedOut followUp.status followUp.step";
+
 /** GET /api/v1/vtext/conversations?status=&lineId=&q=&cursor=&limit= */
 const listConversations = catchAsyncError(async (req, res) => {
   const { status, lineId, q, cursor, limit } = req.query;
@@ -25,7 +28,7 @@ const listConversations = catchAsyncError(async (req, res) => {
   const conversations = await VtextConversation.find(filter)
     .sort({ lastMessageAt: -1 })
     .limit(pageSize + 1)
-    .populate("contactId", "name phoneE164 optOut.isOptedOut followUp.status followUp.step")
+    .populate("contactId", CONTACT_FIELDS)
     .lean();
 
   const hasMore = conversations.length > pageSize;
@@ -37,7 +40,7 @@ const listConversations = catchAsyncError(async (req, res) => {
 
 /** GET /api/v1/vtext/conversations/:id/messages?limit= */
 const getConversationMessages = catchAsyncError(async (req, res) => {
-  const conversation = await VtextConversation.findById(req.params.id);
+  const conversation = await VtextConversation.findById(req.params.id).populate("contactId", CONTACT_FIELDS);
   if (!conversation) return res.status(404).json({ success: false, message: "Conversation not found" });
 
   const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
@@ -53,7 +56,7 @@ const updateConversation = catchAsyncError(async (req, res) => {
   if (status) update.status = status;
   if (markRead) update.unreadCount = 0;
 
-  const conversation = await VtextConversation.findByIdAndUpdate(req.params.id, update, { new: true });
+  const conversation = await VtextConversation.findByIdAndUpdate(req.params.id, update, { new: true }).populate("contactId", CONTACT_FIELDS);
   if (!conversation) return res.status(404).json({ success: false, message: "Conversation not found" });
 
   if (markRead) {
