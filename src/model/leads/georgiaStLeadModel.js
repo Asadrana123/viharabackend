@@ -39,14 +39,17 @@ const georgiaStLeadSchema = new mongoose.Schema(
     //   pending    → no call resolved yet
     //   no-answer  → last burst went unanswered; a daily callback is due
     //   connected  → lead picked up; the loop STOPS permanently
+    //   not-reached → 7 follow-up days with no pickup; calling stopped (admin decides)
     callStatus: {
       type: String,
-      enum: ["pending", "no-answer", "connected"],
+      enum: ["pending", "no-answer", "connected", "not-reached"],
       default: "pending",
     },
     callAttempts: { type: Number, default: 0 },  // total bursts placed
     lastCallAt: { type: Date, default: null },   // when the last burst was dispatched
     nextCallAt: { type: Date, default: null },   // when the next daily burst should fire (UTC)
+    // Start of the 7-day follow-up window (admin "Restart calling"); else createdAt.
+    followUpStartedAt: { type: Date, default: null },
 
     // Admin kill-switch for the daily retry sweep. When true, the scheduler skips
     // this lead entirely. It does NOT touch nextCallAt / callStatus, so flipping it

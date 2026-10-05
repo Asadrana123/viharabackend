@@ -7,26 +7,23 @@
 //         • picked up  → callStatus="connected", loop STOPS
 //         • no pickup  → callStatus="no-answer", nextCallAt = next daily slot
 //
-//   3x/day at 11:00 AM, 2:30 PM, 6:00 PM in the lead's timezone (1-minute sweep):
-//     → 2-in-60s burst again until a genuine pickup.
+//   Follow-up (followUpCadence.js): ONE call a day for 7 days in the lead's
+//   timezone, rotating 11:00 AM / 2:30 PM / 6:00 PM (per-minute sweep)
+//         • picked up  → "connected", STOP
+//         • no pickup  → next day's slot; after day 7 → "not-reached" (admin decides)
 //
 // Maya speaks newDealsVoicePrompt; asking for an advisor transfers the call to
 // the forwarding number saved on the VAPI assistant.
 
 const cron = require("node-cron");
-const { DateTime } = require("luxon");
 const NewDealsLead = require("../../model/leads/newDealsLeadModel");
 const { DID_NOT_CONNECT_REASONS, WAIT_MS } = require("./registrationCallService");
 const { enqueueBurst, PRIORITY } = require("./callDispatchQueue");
+const { FOLLOW_UP_DAYS, FOLLOW_UP_CALL_OPTS, nextFollowUpAt, noAnswerUpdate, skipUpdate } = require("./followUpCadence");
 const newDealsVoicePrompt = require("../../config/newDealsVoicePrompt");
 const { dealSpoken } = require("../../config/newDeals");
 const { spokenList, spokenBudget, stateName } = require("../leads/buyBox");
 
-const CALL_SLOTS = [
-  { hour: 11, minute: 0 },  // 11:00 AM
-  { hour: 14, minute: 30 }, // 2:30 PM
-  { hour: 18, minute: 0 },  // 6:00 PM
-];
 // MD / MI / LA markets — Eastern is the safest fallback when the browser sent no tz.
 const DEFAULT_TZ = "America/New_York";
 const SWEEP_BATCH = 200;
@@ -35,24 +32,6 @@ const BURST_OPTS = {
   noPickupReasons: DID_NOT_CONNECT_REASONS,
   treatErrorsAsNoPickup: true,
 };
-
-/** Next daily call slot in the lead's timezone, as a UTC Date. DST-correct. */
-function nextDailyCallAt(timezone) {
-  const zone = timezone || DEFAULT_TZ;
-  let now = DateTime.now().setZone(zone);
-  if (!now.isValid) now = DateTime.now().setZone(DEFAULT_TZ);
-
-  for (const slot of CALL_SLOTS) {
-    const target = now.set({ hour: slot.hour, minute: slot.minute, second: 0, millisecond: 0 });
-    if (target > now) return target.toUTC().toJSDate();
-  }
-  const first = CALL_SLOTS[0];
-  return now
-    .plus({ days: 1 })
-    .set({ hour: first.hour, minute: first.minute, second: 0, millisecond: 0 })
-    .toUTC()
-    .toJSDate();
-}
 
 /** Payload the dispatcher expects — buy-box answers in a form Maya can speak. */
 function callPayload(lead) {
@@ -97,7 +76,7 @@ async function applyOutcome(lead, connected) {
   } else {
     await NewDealsLead.updateOne(
       { _id: lead._id },
-      { $set: { callStatus: "no-answer", nextCallAt: nextDailyCallAt(lead.timezone) } }
+      { $set: noAnswerUpdate(lead, DEFAULT_TZ) }
     );
   }
 }
@@ -149,11 +128,18 @@ async function sweepDueCalls() {
 
     const dialedNumbers = new Set();
     for (const lead of due) {
+      // 7-day window over / already called today → no dial, just reschedule.
+      const skip = skipUpdate(lead, DEFAULT_TZ, now);
+      if (skip) {
+        await NewDealsLead.updateOne({ _id: lead._id, callStatus: "no-answer" }, { $set: skip });
+        continue;
+      }
+
       const num = lead.phoneNormalized || "";
       if (num && dialedNumbers.has(num)) {
         await NewDealsLead.updateOne(
           { _id: lead._id, callStatus: "no-answer" },
-          { $set: { nextCallAt: nextDailyCallAt(lead.timezone) } }
+          { $set: noAnswerUpdate(lead, DEFAULT_TZ) }
         );
         continue;
       }
@@ -163,14 +149,14 @@ async function sweepDueCalls() {
       const claimed = await NewDealsLead.findOneAndUpdate(
         { _id: lead._id, callStatus: "no-answer", nextCallAt: { $lte: now } },
         {
-          $set: { nextCallAt: nextDailyCallAt(lead.timezone), lastCallAt: now },
+          $set: { nextCallAt: nextFollowUpAt(lead, DEFAULT_TZ, now), lastCallAt: now },
           $inc: { callAttempts: 1 },
         },
         { new: true }
       ).lean();
       if (!claimed) continue;
 
-      enqueueBurst({ ...callPayload(claimed), isFollowUp: true }, BURST_OPTS, PRIORITY.SCHEDULED)
+      enqueueBurst({ ...callPayload(claimed), isFollowUp: true }, { ...BURST_OPTS, ...FOLLOW_UP_CALL_OPTS }, PRIORITY.SCHEDULED)
         .then(({ connected }) => applyOutcome(claimed, connected))
         .catch((e) => console.error("[new-deals-daily] burst failed:", e.message));
     }
@@ -187,13 +173,12 @@ let task = null;
 function startNewDealsCallScheduler() {
   if (task) return task;
   task = cron.schedule("* * * * *", sweepDueCalls);
-  console.log("[new-deals-daily] scheduler started — daily 11:00 AM / 2:30 PM / 6:00 PM local callbacks (per-minute sweep).");
+  console.log(`[new-deals-daily] scheduler started — one follow-up call a day for ${FOLLOW_UP_DAYS} days, rotating 11:00 AM / 2:30 PM / 6:00 PM local (per-minute sweep).`);
   return task;
 }
 
 module.exports = {
   scheduleNewDealsSignupCall,
   startNewDealsCallScheduler,
-  nextDailyCallAt,
   callPayload,
 };

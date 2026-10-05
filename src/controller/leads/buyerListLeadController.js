@@ -24,6 +24,7 @@ const {
   clientIp,
   isProductionPageUrl,
   withTimeout,
+  splitName,
 } = require("../../services/leads/buyBox");
 
 // /buyer-list property types (the /new-deals page swaps land for mixed-use).
@@ -64,12 +65,14 @@ const computeTier = (box) => {
 const registerBuyerListLead = catchAsyncError(async (req, res, next) => {
   const body = req.body || {};
 
-  const firstName = str(body.first_name, 80);
+  // The form sends a full name; first_name is still accepted from older pages.
+  const fullName = (str(body.full_name, 120) || str(body.first_name, 80)).replace(/\s+/g, " ");
+  const { firstName, lastName } = splitName(fullName);
   const email = str(body.email, 200).toLowerCase();
   const phone = str(body.phone, 40);
   const eventId = str(body.event_id, 100);
 
-  if (!firstName) return next(new ErrorHandler("first_name is required", 400));
+  if (!firstName) return next(new ErrorHandler("full_name is required", 400));
   if (!isValidEmail(email)) return next(new ErrorHandler("Enter a valid email address", 400));
   const phoneNormalized = normalisePhone(phone);
   if (!phoneNormalized || phoneNormalized.replace(/\D/g, "").length < 10)
@@ -89,7 +92,9 @@ const registerBuyerListLead = catchAsyncError(async (req, res, next) => {
   const pageUrl = str(body.page_url, 2000);
 
   const fields = {
+    fullName,
     firstName,
+    lastName,
     email,
     phone,
     phoneNormalized,
@@ -193,7 +198,7 @@ const registerBuyerListLead = catchAsyncError(async (req, res, next) => {
   // ── 5c. Slack ──────────────────────────────────────────────────────────────
   notifyNewLead({
     leadType: updated ? "Buyer List (updated)" : "Buyer List",
-    name: lead.firstName,
+    name: lead.fullName || lead.firstName,
     email: lead.email,
     phone: lead.phone,
     consent: lead.smsConsent,
@@ -218,7 +223,7 @@ const getAllBuyerListLeads = catchAsyncError(async (req, res) => {
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
   const skip = (page - 1) * limit;
 
-  const query = { firstName: { $not: TEST_NAME_REGEX } };
+  const query = { fullName: { $not: TEST_NAME_REGEX }, firstName: { $not: TEST_NAME_REGEX } };
   if (["A", "B", "C"].includes(req.query.tier)) query.tier = req.query.tier;
 
   const [leads, total] = await Promise.all([
@@ -238,7 +243,7 @@ const getAllBuyerListLeads = catchAsyncError(async (req, res) => {
     success: true,
     leads: leads.map((lead) => ({
       ...lead,
-      fullName: lead.firstName,
+      fullName: lead.fullName || lead.firstName,
       calls: callsByPhone[normalisePhone(lead.phone)] || [],
       emails: eventsByEmail[String(lead.email || "").toLowerCase()] || [],
       notes: notesByLead[String(lead._id)] || [],

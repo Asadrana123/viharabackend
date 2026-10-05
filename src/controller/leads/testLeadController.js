@@ -31,7 +31,7 @@ const SOURCES = [
 ];
 
 /**
- * GET /api/v1/test-leads?page=&limit=
+ * GET /api/v1/test-leads?page=&limit=   (limit=all → every lead)
  *
  * One consolidated view of every lead whose name contains the whole word "test",
  * across ALL four lead collections. These leads are excluded from every other
@@ -47,7 +47,10 @@ const SOURCES = [
  */
 const getTestLeads = catchAsyncError(async (req, res) => {
   const page = Math.max(1, parseInt(req.query.page) || 1);
-  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+  // limit=all → the whole list in one response (the admin Leads tab scrolls
+  // through everything; this list is rebuilt in full on every request anyway).
+  const all = req.query.limit === "all";
+  const limit = all ? 0 : Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
 
   // ── 1. Resolve each collection independently (calls + emails + notes) ─────────
   const perSource = await Promise.all(
@@ -103,13 +106,15 @@ const getTestLeads = catchAsyncError(async (req, res) => {
 
   // ── 4. Paginate the combined, filtered list ───────────────────────────────
   const total = testLeads.length;
-  const start = (page - 1) * limit;
-  const pageLeads = testLeads.slice(start, start + limit);
+  const start = all ? 0 : (page - 1) * limit;
+  const pageLeads = all ? testLeads : testLeads.slice(start, start + limit);
 
   res.status(200).json({
     success: true,
     leads: pageLeads,
-    pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    pagination: all
+      ? { page: 1, limit: total, total, pages: 1 }
+      : { page, limit, total, pages: Math.ceil(total / limit) },
   });
 });
 

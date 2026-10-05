@@ -59,12 +59,14 @@ const norCalLeadSchema = new mongoose.Schema(
     //   connected  -> lead picked up; the loop STOPS permanently
     callStatus: {
       type: String,
-      enum: ["pending", "no-answer", "connected"],
+      enum: ["pending", "no-answer", "connected", "not-reached"],
       default: "pending",
     },
     callAttempts: { type: Number, default: 0 },  // total bursts placed (signup + each daily)
     lastCallAt: { type: Date, default: null },   // when the last burst was dispatched
     nextCallAt: { type: Date, default: null },   // when the next daily burst should fire (UTC)
+    // Start of the 7-day follow-up window (admin "Restart calling"); else createdAt.
+    followUpStartedAt: { type: Date, default: null },
 
     // Admin kill-switch for the daily retry sweep. When true, the scheduler skips
     // this lead entirely. It does NOT touch nextCallAt / callStatus, so flipping

@@ -9,31 +9,24 @@
 // Behaviour is identical to the old per-property schedulers:
 //   Signup (with consent): 2-in-60s burst → picked up = "connected" (STOP),
 //     no pickup = "no-answer" + next daily slot.
-//   Daily 11:00 AM / 2:30 PM / 6:00 PM in the lead's timezone (per-minute sweep):
-//     2-in-60s burst again; picked up = STOP, no pickup = next slot.
+//   Then ONE call a day for 7 days (followUpCadence.js), rotating 11:00 AM /
+//     2:30 PM / 6:00 PM local; picked up = STOP, after day 7 = "not-reached".
 //
 // The prompt is generated per property (not authored), so a new property needs
 // NO new scheduler, model, or prompt file — uploading it and flagging
 // isLandingPage is enough.
 
 const cron = require("node-cron");
-const { DateTime } = require("luxon");
 const productModel = require("../../model/property/productModel");
 const PropertyLead = require("../../model/leads/propertyLeadModel");
 const { buildPropertyVoicePrompt } = require("./propertyVoicePromptBuilder");
 const { resolvePropertyTimezone } = require("../../utils/resolveTimezone");
 const { DID_NOT_CONNECT_REASONS, WAIT_MS } = require("./registrationCallService");
 const { enqueueBurst, PRIORITY } = require("./callDispatchQueue");
+const { FOLLOW_UP_DAYS, FOLLOW_UP_CALL_OPTS, nextFollowUpAt, noAnswerUpdate, skipUpdate } = require("./followUpCadence");
 // Spoken currency for the AI call ({{prospect_quote}} in the prompt).
 const { dollarsToWords } = require("./vapiPropertyService");
 
-// Three daily follow-up slots in the lead's local timezone (24h clock).
-const CALL_SLOTS = [
-  { hour: 11, minute: 0 }, // 11:00 AM
-  { hour: 14, minute: 30 }, // 2:30 PM
-  { hour: 18, minute: 0 }, // 6:00 PM
-];
-const DEFAULT_TZ = "America/New_York"; // last-resort fallback when a lead has no/invalid tz and no property tz
 const SWEEP_BATCH = 200; // max leads evaluated per minute
 
 const BURST_OPTS = {
@@ -92,26 +85,6 @@ async function loadPropertyBundle(slug) {
   return bundle;
 }
 
-/**
- * Next daily call slot in the lead's timezone, as a UTC Date. DST-correct.
- * Falls back to the property timezone, then DEFAULT_TZ.
- */
-function nextDailyCallAt(timezone, fallbackTz) {
-  const zone = timezone || fallbackTz || DEFAULT_TZ;
-  let now = DateTime.now().setZone(zone);
-  if (!now.isValid) now = DateTime.now().setZone(fallbackTz || DEFAULT_TZ);
-
-  for (const slot of CALL_SLOTS) {
-    const target = now.set({ hour: slot.hour, minute: slot.minute, second: 0, millisecond: 0 });
-    if (target > now) return target.toUTC().toJSDate();
-  }
-  const first = CALL_SLOTS[0];
-  const tomorrow = now
-    .plus({ days: 1 })
-    .set({ hour: first.hour, minute: first.minute, second: 0, millisecond: 0 });
-  return tomorrow.toUTC().toJSDate();
-}
-
 /** Payload the dispatcher expects (canonical phone + this property's prompt). */
 function callPayload(lead, promptConfig) {
   return {
@@ -153,7 +126,7 @@ async function applyOutcome(lead, connected, fallbackTz) {
   } else {
     await PropertyLead.updateOne(
       { _id: lead._id },
-      { $set: { callStatus: "no-answer", nextCallAt: nextDailyCallAt(lead.timezone, fallbackTz) } }
+      { $set: noAnswerUpdate(lead, fallbackTz) }
     );
   }
 }
@@ -225,35 +198,43 @@ async function sweepDueCalls() {
       const num = lead.phoneNormalized || "";
       const key = `${slug}|${num}`;
 
-      // Same number + same property: only the first fires this sweep; push the
-      // rest to the next slot so they don't pile up.
-      if (num && dialed.has(key)) {
-        await PropertyLead.updateOne(
-          { _id: lead._id, callStatus: "no-answer" },
-          { $set: { nextCallAt: nextDailyCallAt(lead.timezone) } }
-        );
-        continue;
-      }
-      if (num) dialed.add(key);
-
       // Resolve this property's prompt (cached for the whole sweep).
       let bundle = bundleBySlug.get(slug);
       if (!bundle) {
         bundle = await loadPropertyBundle(slug);
         bundleBySlug.set(slug, bundle);
       }
+      const fallbackTz = resolvePropertyTimezone(bundle.product || {});
+
+      // 7-day window over / already called today → no dial, just reschedule.
+      const skip = skipUpdate(lead, fallbackTz, now);
+      if (skip) {
+        await PropertyLead.updateOne({ _id: lead._id, callStatus: "no-answer" }, { $set: skip });
+        continue;
+      }
+
+      // Same number + same property: only the first fires this sweep; push the
+      // rest to the next day so they don't pile up.
+      if (num && dialed.has(key)) {
+        await PropertyLead.updateOne(
+          { _id: lead._id, callStatus: "no-answer" },
+          { $set: noAnswerUpdate(lead, fallbackTz) }
+        );
+        continue;
+      }
+      if (num) dialed.add(key);
+
       if (!bundle.promptConfig) {
         console.error(`[property-call] sweep: no property/prompt for slug=${slug} — skipping lead ${lead._id}`);
         continue;
       }
-      const fallbackTz = resolvePropertyTimezone(bundle.product);
 
       // Atomic claim: advance nextCallAt + stamp lastCallAt so an overlapping
       // tick can't re-dial the lead today.
       const claimed = await PropertyLead.findOneAndUpdate(
         { _id: lead._id, callStatus: "no-answer", nextCallAt: { $lte: now } },
         {
-          $set: { nextCallAt: nextDailyCallAt(lead.timezone, fallbackTz), lastCallAt: now },
+          $set: { nextCallAt: nextFollowUpAt(lead, fallbackTz, now), lastCallAt: now },
           $inc: { callAttempts: 1 },
         },
         { new: true }
@@ -263,7 +244,7 @@ async function sweepDueCalls() {
 
       enqueueBurst(
         { ...callPayload(claimed, bundle.promptConfig), isFollowUp: true },
-        BURST_OPTS,
+        { ...BURST_OPTS, ...FOLLOW_UP_CALL_OPTS },
         PRIORITY.SCHEDULED
       )
         .then(({ connected }) => applyOutcome(claimed, connected, fallbackTz))
@@ -282,7 +263,7 @@ let task = null;
 function startPropertyCallScheduler() {
   if (task) return task;
   task = cron.schedule("* * * * *", sweepDueCalls);
-  console.log("[property-call] scheduler started — daily 11:00 AM / 2:30 PM / 6:00 PM local callbacks (per-minute sweep, all properties).");
+  console.log(`[property-call] scheduler started — one follow-up call a day for ${FOLLOW_UP_DAYS} days, rotating 11:00 AM / 2:30 PM / 6:00 PM local (per-minute sweep, all properties).`);
   return task;
 }
 
@@ -290,5 +271,4 @@ module.exports = {
   scheduleSignupCall,
   loadPropertyBundle,
   startPropertyCallScheduler,
-  nextDailyCallAt,
 };

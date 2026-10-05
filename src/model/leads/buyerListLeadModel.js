@@ -45,7 +45,9 @@ const buyBoxSchema = new mongoose.Schema(
 
 const buyerListLeadSchema = new mongoose.Schema(
   {
+    fullName: { type: String, default: "", trim: true },
     firstName: { type: String, required: true, trim: true },
+    lastName: { type: String, default: "", trim: true },
     email: { type: String, required: true, trim: true, lowercase: true },
 
     // Raw phone as received (already E.164 via PhoneField.toE164) + canonical form.

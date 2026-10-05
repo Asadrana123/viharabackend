@@ -1,19 +1,19 @@
 // services/earlyAccessCallScheduler.js
 //
-// Early-access call flow with a daily callback loop:
+// Early-access call flow with a 7-day follow-up loop:
 //
 //   Signup (with consent):
 //     → 2-in-60s burst (same as persona "as we call now")
 //         • picked up  → callStatus="connected", loop STOPS
 //         • no pickup  → callStatus="no-answer", nextCallAt = next daily slot
 //
-//   3x/day at 11:00 AM, 2:30 PM, 6:00 PM in the lead's timezone (1-minute sweep):
-//     → 2-in-60s burst again
-//         • picked up  → "connected", STOP forever
-//         • no pickup  → reschedule for the next slot (or 11:00 AM tomorrow)
+//   Follow-up (followUpCadence.js): ONE call a day for 7 days in the lead's
+//   timezone, rotating 11:00 AM / 2:30 PM / 6:00 PM (per-minute sweep)
+//         • picked up  → "connected", STOP
+//         • no pickup  → next day's slot; after day 7 → "not-reached" (admin decides)
 //
-// "Never stop until pickup" — the loop only ends on a genuine pickup. State is
-// stored on the lead (nextCallAt + callStatus), so it survives Render restarts;
+// State is stored on the lead (nextCallAt + callStatus), so it survives Render
+// restarts;
 // a raw setTimeout would not.
 //
 // Same-number guard: at most ONE call per normalized phone per daily sweep, so
@@ -26,20 +26,12 @@
 // lead is never stuck behind a batch of routine retries.
 
 const cron = require("node-cron");
-const { DateTime } = require("luxon");
 const EarlyAccessLead = require("../../model/leads/earlyAccessLeadModel");
 const { DID_NOT_CONNECT_REASONS, WAIT_MS } = require("./registrationCallService");
 const { enqueueBurst, PRIORITY } = require("./callDispatchQueue");
+const { FOLLOW_UP_DAYS, FOLLOW_UP_CALL_OPTS, nextFollowUpAt, noAnswerUpdate, skipUpdate } = require("./followUpCadence");
 const earlyAccessVoicePrompt = require("../../config/earlyAccessVoicePrompt");
 
-// Three daily follow-up slots in the lead's local timezone (24h clock).
-// A no-answer rolls the lead to the NEXT slot; after the last slot of the day it
-// rolls to the first slot tomorrow. Keep this list sorted ascending.
-const CALL_SLOTS = [
-  { hour: 11, minute: 0 },  // 11:00 AM
-  { hour: 14, minute: 30 }, // 2:30 PM
-  { hour: 18, minute: 0 },  // 6:00 PM
-];
 const DEFAULT_TZ = "America/New_York"; // fallback when a lead has no/invalid tz
 const SWEEP_BATCH = 200;               // max leads evaluated per minute
 
@@ -49,29 +41,6 @@ const BURST_OPTS = {
   noPickupReasons: DID_NOT_CONNECT_REASONS,
   treatErrorsAsNoPickup: true,
 };
-
-/**
- * Next daily call slot in the lead's timezone, as a UTC Date.
- * Returns the earliest of today's slots still ahead of "now"; if all of today's
- * slots have already passed, returns the first slot tomorrow. DST-correct.
- */
-function nextDailyCallAt(timezone) {
-  const zone = timezone || DEFAULT_TZ;
-  let now = DateTime.now().setZone(zone);
-  if (!now.isValid) now = DateTime.now().setZone(DEFAULT_TZ);
-
-  for (const slot of CALL_SLOTS) {
-    const target = now.set({ hour: slot.hour, minute: slot.minute, second: 0, millisecond: 0 });
-    if (target > now) return target.toUTC().toJSDate();
-  }
-
-  // Every slot today has passed → first slot tomorrow.
-  const first = CALL_SLOTS[0];
-  const tomorrow = now
-    .plus({ days: 1 })
-    .set({ hour: first.hour, minute: first.minute, second: 0, millisecond: 0 });
-  return tomorrow.toUTC().toJSDate();
-}
 
 /**
  * Payload the dispatcher expects (canonical phone + prompt vars).
@@ -113,7 +82,7 @@ async function applyOutcome(lead, connected) {
   } else {
     await EarlyAccessLead.updateOne(
       { _id: lead._id },
-      { $set: { callStatus: "no-answer", nextCallAt: nextDailyCallAt(lead.timezone) } }
+      { $set: noAnswerUpdate(lead, DEFAULT_TZ) }
     );
   }
 }
@@ -169,6 +138,13 @@ async function sweepDueCalls() {
     const dialedNumbers = new Set(); // per-sweep same-number dedup
 
     for (const lead of due) {
+      // 7-day window over / already called today → no dial, just reschedule.
+      const skip = skipUpdate(lead, DEFAULT_TZ, now);
+      if (skip) {
+        await EarlyAccessLead.updateOne({ _id: lead._id, callStatus: "no-answer" }, { $set: skip });
+        continue;
+      }
+
       const num = lead.phoneNormalized || "";
 
       // Same-number dedup: only the first lead on a number fires this sweep;
@@ -176,7 +152,7 @@ async function sweepDueCalls() {
       if (num && dialedNumbers.has(num)) {
         await EarlyAccessLead.updateOne(
           { _id: lead._id, callStatus: "no-answer" },
-          { $set: { nextCallAt: nextDailyCallAt(lead.timezone) } }
+          { $set: noAnswerUpdate(lead, DEFAULT_TZ) }
         );
         continue;
       }
@@ -187,7 +163,7 @@ async function sweepDueCalls() {
       const claimed = await EarlyAccessLead.findOneAndUpdate(
         { _id: lead._id, callStatus: "no-answer", nextCallAt: { $lte: now } },
         {
-          $set: { nextCallAt: nextDailyCallAt(lead.timezone), lastCallAt: now },
+          $set: { nextCallAt: nextFollowUpAt(lead, DEFAULT_TZ, now), lastCallAt: now },
           $inc: { callAttempts: 1 },
         },
         { new: true }
@@ -197,7 +173,7 @@ async function sweepDueCalls() {
 
       // Hand the burst to the shared queue (scheduled lane — paced behind any
       // signup bursts, no initial delay since it's already a call slot in their time).
-      enqueueBurst({ ...callPayload(claimed), isFollowUp: true }, BURST_OPTS, PRIORITY.SCHEDULED)
+      enqueueBurst({ ...callPayload(claimed), isFollowUp: true }, { ...BURST_OPTS, ...FOLLOW_UP_CALL_OPTS }, PRIORITY.SCHEDULED)
         .then(({ connected }) => applyOutcome(claimed, connected))
         .catch((e) => console.error("[ea-daily] burst failed:", e.message));
     }
@@ -214,12 +190,11 @@ let task = null;
 function startEarlyAccessCallScheduler() {
   if (task) return task;
   task = cron.schedule("* * * * *", sweepDueCalls); // every minute
-  console.log("[ea-daily] scheduler started — daily 11:00 AM / 2:30 PM / 6:00 PM local callbacks (per-minute sweep).");
+  console.log(`[ea-daily] scheduler started — one follow-up call a day for ${FOLLOW_UP_DAYS} days, rotating 11:00 AM / 2:30 PM / 6:00 PM local (per-minute sweep).`);
   return task;
 }
 
 module.exports = {
   scheduleEarlyAccessSignupCall,
   startEarlyAccessCallScheduler,
-  nextDailyCallAt,
 };
