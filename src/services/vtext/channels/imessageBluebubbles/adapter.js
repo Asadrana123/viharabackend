@@ -126,8 +126,29 @@ module.exports = {
   },
 
   parseWebhook({ body }) {
-    if (!body || body.type !== "new-message") return [];
+    if (!body) return [];
     const data = body.data || {};
+
+    // Delivery/read receipts for our own outbound messages. BlueBubbles sends
+    // "updated-message" with dateDelivered/dateRead (epoch ms) once the
+    // recipient's device reports them. dateRead only appears if the recipient
+    // has read receipts turned on, so "no read event" does not mean "unread".
+    if (body.type === "updated-message") {
+      if (!data.isFromMe || !data.guid) return [];
+      const base = { type: "message.status", providerMessageId: data.guid, tempGuid: data.tempGuid };
+      if (data.error) {
+        return [{ ...base, providerEventId: `${data.guid}:failed`, status: "failed", errorCode: String(data.error), errorMessage: "BlueBubbles reported a send error", at: new Date() }];
+      }
+      if (data.dateRead) {
+        return [{ ...base, providerEventId: `${data.guid}:read`, status: "read", at: new Date(data.dateRead) }];
+      }
+      if (data.dateDelivered || data.isDelivered) {
+        return [{ ...base, providerEventId: `${data.guid}:delivered`, status: "delivered", at: data.dateDelivered ? new Date(data.dateDelivered) : new Date() }];
+      }
+      return [];
+    }
+
+    if (body.type !== "new-message") return [];
     if (data.isFromMe) return []; // our own outbound echoed back — not an inbound event
 
     return [

@@ -29,7 +29,7 @@ async function computeFailureRateRecent(lineId) {
   const recent = await VtextMessage.find({
     lineId,
     direction: "out",
-    status: { $in: ["accepted", "sent", "delivered", "failed"] },
+    status: { $in: ["accepted", "sent", "delivered", "read", "failed"] },
   })
     .sort({ updatedAt: -1 })
     .limit(FAILURE_RATE_WINDOW)

@@ -10,7 +10,7 @@ const mongoose = require("mongoose");
 
 const OUTBOUND_STATUSES = [
   "queued", "waiting-window", "waiting-capacity", "assigned", "sending",
-  "accepted", "sent", "delivered", "failed", "cancelled", "blocked", "unknown",
+  "accepted", "sent", "delivered", "read", "failed", "cancelled", "blocked", "unknown",
   // An AI-drafted reply (Phase 7c), sitting un-enqueued until an admin
   // approves it (or vtextSettingsModel's aiAutoReplyEnabled auto-approves
   // it). Deliberately excluded from routeWorker.js's STATUSES_ROUTABLE.

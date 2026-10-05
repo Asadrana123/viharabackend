@@ -3,6 +3,7 @@
 // Processes the vtext-inbound queue (sendify-infra.md §6.2). Each job
 // points at a persisted vtextWebhookEvent; this re-parses it through the
 // line's channel adapter and handles every NormalizedEvent it yields.
+const mongoose = require("mongoose");
 const { Worker } = require("bullmq");
 const { normalizeInternationalPhone } = require("../../../utils/internationalPhone");
 const { timezoneForPhone } = require("../../../utils/areaCodeTimezone");
@@ -266,14 +267,19 @@ async function handleMessageReceived(event, line) {
 }
 
 async function handleMessageStatus(event) {
-  const message = await VtextMessage.findOne({ "provider.messageId": event.providerMessageId });
+  let message = await VtextMessage.findOne({ "provider.messageId": event.providerMessageId });
+  // BlueBubbles can report the receipt under a different guid than the one we
+  // stored at send time. We send our message _id as the tempGuid, so fall back to it.
+  if (!message && event.tempGuid && mongoose.isValidObjectId(event.tempGuid)) {
+    message = await VtextMessage.findOne({ _id: event.tempGuid, direction: "out" });
+  }
   if (!message) {
     console.warn(`[vtext inbound] status update for unknown provider message id ${event.providerMessageId}`);
     return;
   }
 
   // Monotonic: never regress a later status to an earlier one if webhooks arrive out of order.
-  const ORDER = ["accepted", "sent", "delivered"];
+  const ORDER = ["accepted", "sent", "delivered", "read"];
   const currentIdx = ORDER.indexOf(message.status);
   const incomingIdx = ORDER.indexOf(event.status);
   if (event.status === "failed") {
@@ -284,6 +290,10 @@ async function handleMessageStatus(event) {
     message.status = event.status;
     if (event.status === "sent") message.sentAt = event.at || new Date();
     if (event.status === "delivered") message.deliveredAt = event.at || new Date();
+    if (event.status === "read") {
+      message.readAt = event.at || new Date();
+      if (!message.deliveredAt) message.deliveredAt = message.readAt; // a read implies delivery
+    }
   }
   await message.save();
   publishEvent({ type: "message.updated", messageId: String(message._id), conversationId: message.conversationId ? String(message.conversationId) : null, status: message.status });
