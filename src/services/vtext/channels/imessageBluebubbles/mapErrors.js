@@ -51,6 +51,14 @@ function mapSendError(err) {
     // until real testing shows this also fires for other bad-request cases.
     return new ChannelError("recipient", "INVALID_RECIPIENT", `BlueBubbles rejected the recipient/chat (${status}): ${serverMessage}`);
   }
+  // HTTP 500 "Message Send Error" is BlueBubbles reporting that Messages.app created
+  // the message and it errored (seen live: "Can't get chat id" followed by
+  // "Message sent with an error", then Code 22 on the receipt). This is what a
+  // recipient who isn't on iMessage looks like on a line with no SMS fallback.
+  // Retrying only creates more errored messages, so treat it as permanent.
+  if (status === 500 && /message send error/i.test(String(serverMessage))) {
+    return new ChannelError("recipient", "MESSAGE_SEND_ERROR", `BlueBubbles could not deliver the message (likely not an iMessage user): ${serverMessage}`);
+  }
   if (status >= 500) {
     return new ChannelError("transient", "SERVER_ERROR", `BlueBubbles server error (${status}): ${serverMessage}`);
   }

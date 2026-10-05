@@ -13,14 +13,21 @@
 //      contact is no longer opted out by the time it's sent)
 //   2. phone status invalid/landline -> blocked
 //   3. consent: opted-in -> allow; a reply to a recent inbound -> allow
-//      (conversational exemption); otherwise -> blocked
+//      (conversational exemption); otherwise -> blocked, UNLESS the admin
+//      consent switch is off (context.requireConsent === false), in which
+//      case a contact with no consent on file is allowed. That switch only
+//      ever relaxes THIS step: steps 1 and 2 (opt-outs, bad numbers) stay
+//      hard stops either way.
+//
+// An allowed result carries `basis`, why it was allowed, so a message can
+// record it: "system" | "opted-in" | "reply" | "consent-not-required".
 const CONVERSATIONAL_WINDOW_DAYS = Number(process.env.VTEXT_CONVERSATIONAL_WINDOW_DAYS || 30);
 const SYSTEM_BYPASS_TEMPLATES = new Set(["stop-confirm", "help"]);
 
 /**
  * @param {object} contact - a vtextContactModel document (or plain object with the same shape)
  * @param {object} [message] - { isReplyToInbound, origin: { kind, templateKey } }
- * @param {object} [context] - { lastInboundAt } — when was this contact's last inbound message on the thread in question
+ * @param {object} [context] - { lastInboundAt, requireConsent } — lastInboundAt: when was this contact's last inbound message; requireConsent: false only when an admin switched the consent requirement off (anything else, including missing, means required)
  * @returns {{ allowed: boolean, reason?: string, errorKind?: string }}
  */
 function canSend(contact, message = {}, context = {}) {
@@ -33,7 +40,7 @@ function canSend(contact, message = {}, context = {}) {
   // confirm. STOP/HELP must always be deliverable, full stop — that's the
   // whole point of them being on the bypass list.
   if (message.origin?.kind === "system" && SYSTEM_BYPASS_TEMPLATES.has(message.origin?.templateKey)) {
-    return { allowed: true };
+    return { allowed: true, basis: "system" };
   }
 
   if (contact?.optOut?.isOptedOut) {
@@ -45,18 +52,48 @@ function canSend(contact, message = {}, context = {}) {
   }
 
   if (contact?.consent?.status === "opted-in") {
-    return { allowed: true };
+    return { allowed: true, basis: "opted-in" };
   }
 
   if (message.isReplyToInbound && context.lastInboundAt) {
     const ageMs = Date.now() - new Date(context.lastInboundAt).getTime();
     const withinWindow = ageMs <= CONVERSATIONAL_WINDOW_DAYS * 24 * 60 * 60 * 1000;
     if (withinWindow) {
-      return { allowed: true };
+      return { allowed: true, basis: "reply" };
     }
   }
 
+  if (context.requireConsent === false) {
+    // Consent switch is off. Still never text someone whose consent is recorded as withdrawn.
+    if (contact?.consent?.status === "opted-out") {
+      return { allowed: false, reason: "contact has opted out", errorKind: "compliance" };
+    }
+    return { allowed: true, basis: "consent-not-required" };
+  }
+
   return { allowed: false, reason: "no consent on file and not a timely reply to an inbound message", errorKind: "compliance" };
+}
+
+function maskedWho(contact) {
+  const id = String(contact?.phoneE164 || contact?.email || "");
+  return id ? `***${id.slice(-4)}` : "unknown contact";
+}
+
+/**
+ * One log line per decision worth reading later, so the server log answers "why was
+ * this text held back, or sent without consent?". Ordinary allowed cases (opted-in,
+ * reply, system) stay silent. A text allowed only because the consent check is off is
+ * logged once, at enqueue, not again at the route and send gates. Numbers are masked.
+ * @param {"enqueue"|"route"|"send"} gate
+ * @param {object} result - what canSend returned
+ */
+function logGateDecision(gate, contact, result, messageId) {
+  const tag = `[vtext compliance] ${gate}${messageId ? ` message ${messageId}` : ""}`;
+  if (!result.allowed) {
+    console.log(`${tag}: BLOCKED for ${maskedWho(contact)}: ${result.reason}`);
+  } else if (result.basis === "consent-not-required" && gate === "enqueue") {
+    console.warn(`${tag}: allowed WITHOUT CONSENT for ${maskedWho(contact)} (the consent check is off)`);
+  }
 }
 
 // §6.2 step 6: keyword detection on inbound text. Err toward opting out on
@@ -108,4 +145,4 @@ function detectKeyword(body) {
   return { type: null, matched: null, method: null };
 }
 
-module.exports = { canSend, detectKeyword, CONVERSATIONAL_WINDOW_DAYS };
+module.exports = { canSend, detectKeyword, logGateDecision, CONVERSATIONAL_WINDOW_DAYS };

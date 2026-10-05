@@ -36,7 +36,7 @@ async function resolveLandingProperty(slug, next) {
   }
   const product = await productModel
     .findOne({ slug: slug.trim().toLowerCase() })
-    .select("_id slug productName street city state isLandingPage brevoListId")
+    .select("_id slug productName street city state zipCode isLandingPage brevoListId")
     .lean();
   if (!product) {
     next(new ErrorHandler("Property not found", 404));

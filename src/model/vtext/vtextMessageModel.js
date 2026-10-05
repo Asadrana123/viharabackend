@@ -10,7 +10,7 @@ const mongoose = require("mongoose");
 
 const OUTBOUND_STATUSES = [
   "queued", "waiting-window", "waiting-capacity", "assigned", "sending",
-  "accepted", "sent", "delivered", "failed", "cancelled", "blocked", "unknown",
+  "accepted", "sent", "delivered", "read", "failed", "cancelled", "blocked", "unknown",
   // An AI-drafted reply (Phase 7c), sitting un-enqueued until an admin
   // approves it (or vtextSettingsModel's aiAutoReplyEnabled auto-approves
   // it). Deliberately excluded from routeWorker.js's STATUSES_ROUTABLE.
@@ -62,6 +62,9 @@ const vtextMessageSchema = new mongoose.Schema(
       },
     },
     isReplyToInbound: { type: Boolean, default: false },
+    // Why the compliance gate let this message through at enqueue: "opted-in", "reply",
+    // "system", or "consent-not-required" (sent while the admin consent switch was off).
+    consentBasis: { type: String },
     idempotencyKey: { type: String, unique: true, sparse: true },
 
     provider: {
@@ -97,6 +100,9 @@ const vtextMessageSchema = new mongoose.Schema(
       approvalStatus: { type: String, enum: ["pending", "approved", "edited", "rejected"] },
       model: { type: String },
       generatedAt: { type: Date },
+      // The AI said it could not answer and a team member will follow up (see draftReplyWorker.js).
+      needsHuman: { type: Boolean },
+      topic: { type: String },
       approvedBy: {
         adminId: { type: mongoose.Schema.Types.ObjectId },
         adminName: { type: String },

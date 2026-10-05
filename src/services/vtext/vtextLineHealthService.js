@@ -29,7 +29,9 @@ async function computeFailureRateRecent(lineId) {
   const recent = await VtextMessage.find({
     lineId,
     direction: "out",
-    status: { $in: ["accepted", "sent", "delivered", "failed"] },
+    status: { $in: ["accepted", "sent", "delivered", "read", "failed"] },
+    // A bad or non-iMessage recipient says nothing about the line's health.
+    "error.kind": { $ne: "recipient" },
   })
     .sort({ updatedAt: -1 })
     .limit(FAILURE_RATE_WINDOW)
@@ -97,4 +99,14 @@ async function evaluateAndMaybeQuarantine(line, reason) {
   return true;
 }
 
-module.exports = { evaluateAndMaybeQuarantine, computeFailureRateRecent, CONSECUTIVE_FAILURE_THRESHOLD, FAILURE_RATE_THRESHOLD };
+/**
+ * The status an offline line should return to: whatever it was right before the
+ * system took it offline (read from its latest heartbeat-lost event), else "active".
+ */
+async function statusBeforeOffline(lineId) {
+  const VtextLineEvent = require("../../model/vtext/vtextLineEventModel");
+  const lastLost = await VtextLineEvent.findOne({ lineId, type: "heartbeat-lost" }).sort({ createdAt: -1 });
+  return lastLost?.from && ["warming", "active"].includes(lastLost.from) ? lastLost.from : "active";
+}
+
+module.exports = { evaluateAndMaybeQuarantine, computeFailureRateRecent, statusBeforeOffline, CONSECUTIVE_FAILURE_THRESHOLD, FAILURE_RATE_THRESHOLD };

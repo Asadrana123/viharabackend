@@ -48,7 +48,9 @@ module.exports = {
     readReceipts: true,
     media: false, // v1 is text-only (D15)
     reachabilityCheck: true, // interface declares it; see checkReachability() below for current honest status
-    heartbeat: true,
+    // BlueBubbles sends no heartbeat event (its only webhooks are new-message and
+    // updated-message), so the line health sweep treats a passing healthCheck() as proof of life.
+    heartbeat: false,
   },
   defaultLimits: {
     perMinute: 3,
@@ -126,8 +128,41 @@ module.exports = {
   },
 
   parseWebhook({ body }) {
-    if (!body || body.type !== "new-message") return [];
+    if (!body) return [];
     const data = body.data || {};
+
+    // Delivery/read receipts for our own outbound messages. BlueBubbles sends
+    // "updated-message" with dateDelivered/dateRead (epoch ms) once the
+    // recipient's device reports them. dateRead only appears if the recipient
+    // has read receipts turned on, so "no read event" does not mean "unread".
+    if (body.type === "updated-message") {
+      if (!data.isFromMe || !data.guid) return [];
+      const base = { type: "message.status", providerMessageId: data.guid, tempGuid: data.tempGuid };
+      if (data.error) {
+        // Code 22 is Messages.app's "not delivered", which is what a recipient
+        // who is not registered with iMessage produces (seen live in BlueBubbles'
+        // log: "Errored Msg ... Code: 22"). Other codes stay line-level.
+        const notDelivered = Number(data.error) === 22;
+        return [{
+          ...base,
+          providerEventId: `${data.guid}:failed`,
+          status: "failed",
+          errorKind: notDelivered ? "recipient" : "line",
+          errorCode: String(data.error),
+          errorMessage: notDelivered ? "Not delivered (recipient is likely not an iMessage user)" : `BlueBubbles reported send error code ${data.error}`,
+          at: new Date(),
+        }];
+      }
+      if (data.dateRead) {
+        return [{ ...base, providerEventId: `${data.guid}:read`, status: "read", at: new Date(data.dateRead) }];
+      }
+      if (data.dateDelivered || data.isDelivered) {
+        return [{ ...base, providerEventId: `${data.guid}:delivered`, status: "delivered", at: data.dateDelivered ? new Date(data.dateDelivered) : new Date() }];
+      }
+      return [];
+    }
+
+    if (body.type !== "new-message") return [];
     if (data.isFromMe) return []; // our own outbound echoed back — not an inbound event
 
     return [

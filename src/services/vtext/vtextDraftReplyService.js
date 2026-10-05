@@ -13,7 +13,7 @@ const { getRouteQueue } = require("./queue/queues");
  * deliberately does NOT touch the route queue (unlike enqueueOutbound).
  * @returns {Promise<object>} the created VtextMessage document
  */
-async function createDraftReply({ contactId, conversationId, lineId, channelType, inboundMessageId, body, model }) {
+async function createDraftReply({ contactId, conversationId, lineId, channelType, inboundMessageId, body, model, needsHuman, topic }) {
   return VtextMessage.create({
     direction: "out",
     contactId,
@@ -24,7 +24,7 @@ async function createDraftReply({ contactId, conversationId, lineId, channelType
     status: "pending-approval",
     origin: { kind: "automation", templateKey: "ai-reply-draft", replyToMessageId: inboundMessageId },
     isReplyToInbound: true,
-    aiDraft: { approvalStatus: "pending", model, generatedAt: new Date() },
+    aiDraft: { approvalStatus: "pending", model, generatedAt: new Date(), needsHuman: !!needsHuman, topic: topic || undefined },
   });
 }
 
