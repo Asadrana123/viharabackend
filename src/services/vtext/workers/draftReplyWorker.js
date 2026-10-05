@@ -11,6 +11,7 @@
 const { Worker } = require("bullmq");
 const VtextMessage = require("../../../model/vtext/vtextMessageModel");
 const VtextContact = require("../../../model/vtext/vtextContactModel");
+const VtextConversation = require("../../../model/vtext/vtextConversationModel");
 const { bullmqConnection } = require("../queue/connection");
 const { QUEUE_NAMES, QUEUE_PREFIX } = require("../queue/queues");
 const { getSettings } = require("../vtextSettingsService");
@@ -93,6 +94,9 @@ async function processDraftReplyJob(job) {
   }
 
   if (needsHuman) {
+    await VtextConversation.updateOne({ _id: conversationId }, { $set: { needsHuman: true } });
+    await publishEvent({ type: "message.updated", conversationId: String(conversationId), contactId: String(contactId) });
+
     // The AI told the customer a team member will follow up. Nothing else in the system knows that,
     // so say it here, whether the reply already went out or is waiting for approval.
     notifyVtextAlert({

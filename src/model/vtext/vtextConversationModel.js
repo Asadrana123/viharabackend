@@ -29,6 +29,10 @@ const vtextConversationSchema = new mongoose.Schema(
     firstOutboundAt: { type: Date },
     firstInboundAt: { type: Date }, // set on first inbound reply — makes the thread "warm"
 
+    // The AI told the customer "a team member will follow up" (draftReplyWorker.js). Cleared when an
+    // admin replies by hand, or with "Mark handled" in the Inbox.
+    needsHuman: { type: Boolean, default: false },
+
     lineRetired: { type: Boolean, default: false }, // set when its line gets quarantined/retired
     assignedAdminId: { type: mongoose.Schema.Types.ObjectId },
   },

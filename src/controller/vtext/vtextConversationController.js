@@ -49,12 +49,13 @@ const getConversationMessages = catchAsyncError(async (req, res) => {
   return res.status(200).json({ success: true, conversation, messages });
 });
 
-/** PATCH /api/v1/vtext/conversations/:id — body: { status?, markRead? } */
+/** PATCH /api/v1/vtext/conversations/:id — body: { status?, markRead?, needsHuman? } */
 const updateConversation = catchAsyncError(async (req, res) => {
-  const { status, markRead } = req.body;
+  const { status, markRead, needsHuman } = req.body;
   const update = {};
   if (status) update.status = status;
   if (markRead) update.unreadCount = 0;
+  if (typeof needsHuman === "boolean") update.needsHuman = needsHuman; // "Mark handled" sends false
 
   const conversation = await VtextConversation.findByIdAndUpdate(req.params.id, update, { new: true }).populate("contactId", CONTACT_FIELDS);
   if (!conversation) return res.status(404).json({ success: false, message: "Conversation not found" });

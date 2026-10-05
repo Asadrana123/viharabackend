@@ -7,6 +7,7 @@
 // routeWorker/lineSendWorker, async, off the request.
 const VtextContact = require("../../model/vtext/vtextContactModel");
 const VtextMessage = require("../../model/vtext/vtextMessageModel");
+const VtextConversation = require("../../model/vtext/vtextConversationModel");
 const { getRouteQueue } = require("./queue/queues");
 const { canSend, logGateDecision } = require("./vtextComplianceService");
 const { getSettings, isConsentRequired } = require("./vtextSettingsService");
@@ -99,6 +100,11 @@ async function enqueueOutbound({ to: rawTo, body, origin, channelPolicy, isReply
     error: complianceResult.allowed ? undefined : { kind: complianceResult.errorKind, message: complianceResult.reason },
   });
   logGateDecision("enqueue", contact, complianceResult, message._id);
+
+  // An admin answering by hand is what clears a "needs a human" flag. Automation and bulk sends do not.
+  if (complianceResult.allowed && (origin?.kind || "manual") === "manual") {
+    await VtextConversation.updateMany({ contactId: contact._id, needsHuman: true }, { $set: { needsHuman: false } });
+  }
 
   if (!complianceResult.allowed) {
     return { message, blocked: true, reason: complianceResult.reason };
