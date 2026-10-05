@@ -17,6 +17,7 @@ const { startAuctionCloseJob } = require('./jobs/auctionCloseJob');
 const { startZillowSyncJob } = require('./jobs/zillowSyncJob');
 const { startVtextWorkersInProcess } = require('./workers/vtextWorker');
 const { startVtextSocketBridge } = require('./socket/vtextSocketBridge');
+const { startVtextWatchdog } = require('./services/vtext/vtextWatchdogService');
 const { startMetaAdsReportJob } = require('./jobs/metaAdsReportJob');
 require('./passport');
 
@@ -79,6 +80,9 @@ server.listen(PORT, () => {
   // unlike the workers-in-process flag above, this doesn't depend on it.
   if (process.env.VTEXT_ENABLED === 'true') {
     startVtextSocketBridge(io);
+    // Slack alert when Redis or the workers stop. Lives here, not in the workers, so it can
+    // still speak when they are the thing that died.
+    startVtextWatchdog();
   }
 
   // Daily 9:00 AM IST Meta Ads performance report + AI suggestions to Slack.
