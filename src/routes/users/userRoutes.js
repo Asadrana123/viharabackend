@@ -3,7 +3,7 @@ const { submitForm, updateUserDetails, CreateUser, Login, LogOut,
     saveProperty, allsavedProperties, getUser, removeProperty,
     getAllEmailandPhone, forgotPassword, resetPassword, sendOTP, recaptcha,
     updatePassword,exportUserData,deleteAccount } = require("../../controller/users/userController");
-const { isAuthenticated } = require("../../middleware/auth");
+const { isAuthenticated, authorizeRoles } = require("../../middleware/auth");
 const { sendSmSOTP } = require("../../controller/users/otpController");
 const router = express.Router();
 router.post("/registerUser", CreateUser);
@@ -13,7 +13,8 @@ router.put("/save-property",isAuthenticated, saveProperty);
 router.put("/remove-property",isAuthenticated, removeProperty);
 router.get("/save-property/get", isAuthenticated,allsavedProperties);
 router.get("/get", isAuthenticated, getUser)
-router.get("/getEmails", getAllEmailandPhone);
+// Admin-only: every user's email + phone.
+router.get("/getEmails", isAuthenticated, authorizeRoles("admin"), getAllEmailandPhone);
 router.post("/forgot/password", forgotPassword);
 router.post("/password/reset/:token", resetPassword);
 router.put('/update/:userId',isAuthenticated, updateUserDetails);

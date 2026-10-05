@@ -1,5 +1,6 @@
 // routes/rensselaerAveLeadRoutes.js
 const express = require("express");
+const { isAuthenticated, authorizeRoles } = require("../../middleware/auth");
 const router = express.Router();
 const {
   registerAndCall,
@@ -9,9 +10,7 @@ const {
 // Public — auction registration from /auction/449-rensselaer-ave
 router.post("/register", registerAndCall);
 
-// Admin — Georgia St Leads tab
-// NOTE: if your other admin lead routes wrap their GET with auth middleware
-// (isAuthenticatedUser, authorizeRoles("admin")), add the same here.
-router.get("/", getAllRensselaerAveLeads);
+// Admin — Rensselaer Ave Leads tab
+router.get("/", isAuthenticated, authorizeRoles("admin"), getAllRensselaerAveLeads);
 
 module.exports = router;

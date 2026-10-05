@@ -1,9 +1,9 @@
 const express = require("express");
+const { isAuthenticated, authorizeRoles } = require("../../middleware/auth");
 const router = express.Router();
 const { getAllPersonaLeads } = require("../../controller/leads/personaLeadController");
 
-// NOTE: add your admin auth middleware here to match other admin routes,
-// e.g. router.get("/", isAuthenticatedAdmin, getAllPersonaLeads);
-router.get("/", getAllPersonaLeads);
+// Admin — Persona Leads tab
+router.get("/", isAuthenticated, authorizeRoles("admin"), getAllPersonaLeads);
 
 module.exports = router;
