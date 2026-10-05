@@ -27,6 +27,11 @@ const vtextSettingsSchema = new mongoose.Schema(
     // read it through isConsentRequired(), where missing means "required".
     requireConsent: { type: Boolean, default: true },
     consentChangedAt: { type: Date },
+
+    // Bookkeeping for Slack alerts (vtextAlertService.js): when each alert key last
+    // fired, and watermarks such as "failed sends reported up to here". Keys are
+    // free-form, so it is Mixed. Documents from before this field existed work as-is.
+    alertState: { type: mongoose.Schema.Types.Mixed, default: {} },
     consentChangedBy: {
       adminId: { type: mongoose.Schema.Types.ObjectId },
       adminName: { type: String },

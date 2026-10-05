@@ -20,6 +20,7 @@ const VtextLineEvent = require("../../../model/vtext/vtextLineEventModel");
 const { getAdapter } = require("../channels/registry");
 const { evaluateAndMaybeQuarantine, statusBeforeOffline } = require("../vtextLineHealthService");
 const { runFollowUpSweep } = require("../vtextFollowUpService");
+const { sendAlertWithCooldown } = require("../vtextAlertService");
 const { dayKey } = require("../vtextCapacityService");
 const { notifyVtextAlert } = require("../../shared/slackService");
 const { publishEvent } = require("../vtextEventsBus");
@@ -209,15 +210,18 @@ async function runDailyRollover() {
 }
 
 const BACKLOG_ALERT_THRESHOLD = Number(process.env.VTEXT_BACKLOG_ALERT || 200);
+// This job runs every 5 minutes, and a backlog can last for hours. Without a cooldown the
+// same alert posted every 5 minutes for as long as the backlog stood.
+const BACKLOG_ALERT_COOLDOWN_MS = Number(process.env.VTEXT_BACKLOG_ALERT_COOLDOWN_MIN || 120) * 60_000;
 
 async function runBacklogAlert() {
   const count = await VtextMessage.countDocuments({ status: "waiting-capacity" });
   if (count > BACKLOG_ALERT_THRESHOLD) {
-    notifyVtextAlert({
+    await sendAlertWithCooldown("backlog", BACKLOG_ALERT_COOLDOWN_MS, {
       level: "warning",
       title: "Outbound backlog over threshold",
       fields: [{ label: "Messages waiting on capacity", value: count }, { label: "Threshold", value: BACKLOG_ALERT_THRESHOLD }],
-    }).catch(() => {});
+    }).catch((err) => console.error("[vtext backlog-alert] could not send:", err.message));
   }
 }
 
@@ -316,6 +320,7 @@ async function stopMaintenanceWorker() {
 module.exports = {
   HEARTBEAT_KEY,
   runLineHealthSweep,
+  runBacklogAlert,
   ensureMaintenanceSchedulers,
   startMaintenanceWorker,
   stopMaintenanceWorker,
