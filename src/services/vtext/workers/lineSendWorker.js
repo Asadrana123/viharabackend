@@ -12,7 +12,7 @@ const VtextConversation = require("../../../model/vtext/vtextConversationModel")
 const { ROUTABLE_STATUSES } = VtextLine;
 const { getAdapter } = require("../channels/registry");
 const capacity = require("../vtextCapacityService");
-const { canSend } = require("../vtextComplianceService");
+const { canSend, logGateDecision } = require("../vtextComplianceService");
 const { getSettings, isConsentRequired } = require("../vtextSettingsService");
 const { evaluateAndMaybeQuarantine } = require("../vtextLineHealthService");
 const { publishEvent } = require("../vtextEventsBus");
@@ -66,6 +66,7 @@ async function processSendJob(lineId, job) {
     // Read live, so switching consent back ON stops a queued no-consent message right here.
     { lastInboundAt: contact?.lastInboundAt, requireConsent: isConsentRequired(await getSettings()) }
   );
+  logGateDecision("send", contact, complianceResult, message._id);
   if (!complianceResult.allowed) {
     message.status = "cancelled";
     await message.save();

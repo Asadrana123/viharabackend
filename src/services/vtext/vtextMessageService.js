@@ -8,7 +8,7 @@
 const VtextContact = require("../../model/vtext/vtextContactModel");
 const VtextMessage = require("../../model/vtext/vtextMessageModel");
 const { getRouteQueue } = require("./queue/queues");
-const { canSend } = require("./vtextComplianceService");
+const { canSend, logGateDecision } = require("./vtextComplianceService");
 const { getSettings, isConsentRequired } = require("./vtextSettingsService");
 const { normalizeInternationalPhone } = require("../../utils/internationalPhone");
 const { findLeadRefs } = require("./vtextLeadLookupService");
@@ -98,6 +98,7 @@ async function enqueueOutbound({ to: rawTo, body, origin, channelPolicy, isReply
     queuedAt: complianceResult.allowed ? new Date() : undefined,
     error: complianceResult.allowed ? undefined : { kind: complianceResult.errorKind, message: complianceResult.reason },
   });
+  logGateDecision("enqueue", contact, complianceResult, message._id);
 
   if (!complianceResult.allowed) {
     return { message, blocked: true, reason: complianceResult.reason };

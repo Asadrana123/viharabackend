@@ -74,6 +74,28 @@ function canSend(contact, message = {}, context = {}) {
   return { allowed: false, reason: "no consent on file and not a timely reply to an inbound message", errorKind: "compliance" };
 }
 
+function maskedWho(contact) {
+  const id = String(contact?.phoneE164 || contact?.email || "");
+  return id ? `***${id.slice(-4)}` : "unknown contact";
+}
+
+/**
+ * One log line per decision worth reading later, so the server log answers "why was
+ * this text held back, or sent without consent?". Ordinary allowed cases (opted-in,
+ * reply, system) stay silent. A text allowed only because the consent check is off is
+ * logged once, at enqueue, not again at the route and send gates. Numbers are masked.
+ * @param {"enqueue"|"route"|"send"} gate
+ * @param {object} result - what canSend returned
+ */
+function logGateDecision(gate, contact, result, messageId) {
+  const tag = `[vtext compliance] ${gate}${messageId ? ` message ${messageId}` : ""}`;
+  if (!result.allowed) {
+    console.log(`${tag}: BLOCKED for ${maskedWho(contact)}: ${result.reason}`);
+  } else if (result.basis === "consent-not-required" && gate === "enqueue") {
+    console.warn(`${tag}: allowed WITHOUT CONSENT for ${maskedWho(contact)} (the consent check is off)`);
+  }
+}
+
 // §6.2 step 6: keyword detection on inbound text. Err toward opting out on
 // an ambiguous phrase — the FCC's revocation rule requires honoring opt-outs
 // "by any reasonable means," so a false-positive opt-out (someone meant
@@ -123,4 +145,4 @@ function detectKeyword(body) {
   return { type: null, matched: null, method: null };
 }
 
-module.exports = { canSend, detectKeyword, CONVERSATIONAL_WINDOW_DAYS };
+module.exports = { canSend, detectKeyword, logGateDecision, CONVERSATIONAL_WINDOW_DAYS };
