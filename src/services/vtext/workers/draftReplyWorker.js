@@ -24,7 +24,11 @@ const { sendAlertWithCooldown } = require("../vtextAlertService");
 const HISTORY_LIMIT = 10;
 const AI_FAILURE_ALERT_COOLDOWN_MS = 30 * 60_000; // a Gemini outage must not post once per customer message
 
-const inboxUrl = () => process.env.VTEXT_ADMIN_URL || "https://vihara.ai/admin/dashboard?tab=vtext&vtextTab=inbox";
+// Opens the Inbox on this conversation (InboxTab reads ?conversation=).
+const inboxUrl = (conversationId) => {
+  const base = process.env.VTEXT_ADMIN_URL || "https://vihara.ai/admin/dashboard?tab=vtext&vtextTab=inbox";
+  return conversationId ? `${base}${base.includes("?") ? "&" : "?"}conversation=${conversationId}` : base;
+};
 const clip = (text, max = 300) => {
   const t = String(text || "").trim();
   return t.length > max ? `${t.slice(0, max - 1)}…` : t;
@@ -67,7 +71,7 @@ async function processDraftReplyJob(job) {
         { label: "Phone", value: contact.phoneE164 },
         { label: "Their message", value: clip(inboundMessage.body) },
         { label: "Why", value: "The AI service returned nothing. It may be down, or its key may be missing." },
-        { label: "Inbox", value: inboxUrl() },
+        { label: "Inbox", value: inboxUrl(conversationId) },
       ],
     }).catch((err) => console.error("[vtext draft-reply] could not send the AI-failure alert:", err.message));
     return;
@@ -110,7 +114,7 @@ async function processDraftReplyJob(job) {
         { label: "AI reply", value: clip(body) },
         { label: "Status", value: settings.aiAutoReplyEnabled ? "Sent to the customer automatically" : "Waiting for approval in the Inbox" },
         { label: "Topic", value: topic },
-        { label: "Inbox", value: inboxUrl() },
+        { label: "Inbox", value: inboxUrl(conversationId) },
       ],
     }).catch(() => {});
   }
