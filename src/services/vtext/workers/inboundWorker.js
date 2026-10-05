@@ -299,7 +299,7 @@ async function handleMessageStatus(event) {
   const incomingIdx = ORDER.indexOf(event.status);
   if (event.status === "failed") {
     message.status = "failed";
-    message.error = { kind: "line", code: event.errorCode, message: event.errorMessage };
+    message.error = { kind: event.errorKind || "line", code: event.errorCode, message: event.errorMessage };
     message.failedAt = event.at || new Date();
   } else if (incomingIdx > currentIdx) {
     message.status = event.status;

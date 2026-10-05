@@ -30,6 +30,8 @@ async function computeFailureRateRecent(lineId) {
     lineId,
     direction: "out",
     status: { $in: ["accepted", "sent", "delivered", "read", "failed"] },
+    // A bad or non-iMessage recipient says nothing about the line's health.
+    "error.kind": { $ne: "recipient" },
   })
     .sort({ updatedAt: -1 })
     .limit(FAILURE_RATE_WINDOW)

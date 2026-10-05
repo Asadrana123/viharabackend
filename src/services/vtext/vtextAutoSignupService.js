@@ -67,7 +67,7 @@ async function maybeSendSignupWelcomeText({ lead, property }) {
       console.log(`[vtext auto-signup] QUEUED for lead ${lead._id} — messageId ${message._id}, status ${message.status}`);
       // Follow-up texts start the next day if the lead hasn't replied. Never lets a failure here affect the welcome text.
       try {
-        const followUp = await startFollowUp({ contactId: message.contactId, lead, property });
+        const followUp = await startFollowUp({ contactId: message.contactId, lead, property, welcomeMessageId: message._id });
         console.log(`[vtext auto-signup] follow-ups for lead ${lead._id}: ${followUp.started ? "STARTED" : `not started (${followUp.reason})`}`);
       } catch (err) {
         console.error(`[vtext auto-signup] follow-up enrollment FAILED for lead ${lead._id}:`, err.message);

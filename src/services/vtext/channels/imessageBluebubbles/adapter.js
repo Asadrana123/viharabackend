@@ -137,7 +137,19 @@ module.exports = {
       if (!data.isFromMe || !data.guid) return [];
       const base = { type: "message.status", providerMessageId: data.guid, tempGuid: data.tempGuid };
       if (data.error) {
-        return [{ ...base, providerEventId: `${data.guid}:failed`, status: "failed", errorCode: String(data.error), errorMessage: "BlueBubbles reported a send error", at: new Date() }];
+        // Code 22 is Messages.app's "not delivered", which is what a recipient
+        // who is not registered with iMessage produces (seen live in BlueBubbles'
+        // log: "Errored Msg ... Code: 22"). Other codes stay line-level.
+        const notDelivered = Number(data.error) === 22;
+        return [{
+          ...base,
+          providerEventId: `${data.guid}:failed`,
+          status: "failed",
+          errorKind: notDelivered ? "recipient" : "line",
+          errorCode: String(data.error),
+          errorMessage: notDelivered ? "Not delivered (recipient is likely not an iMessage user)" : `BlueBubbles reported send error code ${data.error}`,
+          at: new Date(),
+        }];
       }
       if (data.dateRead) {
         return [{ ...base, providerEventId: `${data.guid}:read`, status: "read", at: new Date(data.dateRead) }];

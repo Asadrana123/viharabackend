@@ -63,7 +63,7 @@ function isInsideWindow(now, tz, step) {
  * opted out, or a sequence is already running.
  * @returns {Promise<{ started: boolean, reason?: string }>}
  */
-async function startFollowUp({ contactId, lead, property }) {
+async function startFollowUp({ contactId, lead, property, welcomeMessageId }) {
   const settings = await getSettings();
   if (!settings.followUpsEnabled) return { started: false, reason: "follow-ups are off" };
 
@@ -82,6 +82,8 @@ async function startFollowUp({ contactId, lead, property }) {
       step: 0,
       startedAt: now,
       nextAt: computeNextSendAt(now, tz, 1),
+      // Checked before step 1, so a welcome text that never delivered stops the sequence.
+      lastMessageId: welcomeMessageId,
     },
   };
   if (!contact.timezone) set.timezone = tz;
