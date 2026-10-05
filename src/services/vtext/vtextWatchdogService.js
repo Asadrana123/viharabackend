@@ -19,6 +19,7 @@
 const { sendAlertWithCooldown } = require("./vtextAlertService");
 
 const MINUTE = 60 * 1000;
+const minutes = (n) => `${n} minute${n === 1 ? "" : "s"}`;
 
 /**
  * @param {object} deps
@@ -47,7 +48,7 @@ function createWatchdog({ ping, getHeartbeat, staleMs = 3 * MINUTE, graceMs = 3 
     if (!heartbeat) return { status: "workers-stopped", detail: "No heartbeat has been recorded" };
     const ageMs = clock() - new Date(heartbeat).getTime();
     if (!(ageMs < staleMs)) {
-      return { status: "workers-stopped", detail: `Last heartbeat ${Math.max(1, Math.round(ageMs / MINUTE))} minutes ago (${heartbeat})` };
+      return { status: "workers-stopped", detail: `Last heartbeat ${minutes(Math.max(1, Math.round(ageMs / MINUTE)))} ago (${heartbeat})` };
     }
     return { status: "ok" };
   }
@@ -63,7 +64,7 @@ function createWatchdog({ ping, getHeartbeat, staleMs = 3 * MINUTE, graceMs = 3 
         await sendAlertWithCooldown("watchdog-recovered", MINUTE, {
           level: "info",
           title: "Workers and Redis recovered",
-          fields: [{ label: "Was down for", value: `about ${downMinutes} minutes` }],
+          fields: [{ label: "Was down for", value: `about ${minutes(downMinutes)}` }],
         }).catch((err) => console.error("[vtext watchdog] could not send recovery alert:", err.message));
         alertedStatus = null;
         problemSince = null;
