@@ -48,7 +48,9 @@ module.exports = {
     readReceipts: true,
     media: false, // v1 is text-only (D15)
     reachabilityCheck: true, // interface declares it; see checkReachability() below for current honest status
-    heartbeat: true,
+    // BlueBubbles sends no heartbeat event (its only webhooks are new-message and
+    // updated-message), so the line health sweep treats a passing healthCheck() as proof of life.
+    heartbeat: false,
   },
   defaultLimits: {
     perMinute: 3,

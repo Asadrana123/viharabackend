@@ -10,6 +10,7 @@ const VtextLineUsage = require("../../model/vtext/vtextLineUsageModel");
 const { getAdapter } = require("../../services/vtext/channels/registry");
 const { encryptCredentials, decryptCredentials } = require("../../utils/secretBox");
 const { drainLine } = require("../../services/vtext/vtextLineDrainService");
+const { statusBeforeOffline } = require("../../services/vtext/vtextLineHealthService");
 const { normalizeInternationalPhone } = require("../../utils/internationalPhone");
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -219,8 +220,28 @@ const pauseLine = catchAsyncError(async (req, res) => {
 const resumeLine = catchAsyncError(async (req, res) => {
   const line = await VtextLine.findById(req.params.id);
   if (!line) return res.status(404).json({ success: false, message: "Line not found" });
+  if (line.status === "offline") {
+    // Offline is set by the health sweep, not by an admin, and there is no pause event
+    // to read. Only bring it back if the channel is actually reachable right now.
+    const withCreds = await VtextLine.findById(line._id).select("+credentials.iv +credentials.tag +credentials.ciphertext");
+    let check;
+    try {
+      check = await getAdapter(withCreds.channelType).healthCheck({ line: withCreds });
+    } catch (err) {
+      check = { ok: false, details: err.message };
+    }
+    if (!check?.ok) {
+      const why = typeof check?.details === "string" ? check.details : "the health check did not pass";
+      return res.status(409).json({ success: false, message: `Line is still unreachable (${why}). Check that the Mac is awake, BlueBubbles is running and the ngrok tunnel is up, then try again.` });
+    }
+    withCreds.health = withCreds.health || {};
+    withCreds.health.lastHeartbeatAt = new Date();
+    const restoreTo = await statusBeforeOffline(withCreds._id);
+    await setLineStatus(withCreds, restoreTo, "resumed by admin after a passing health check", req);
+    return res.status(200).json({ success: true, line: withWebhookUrl(withCreds.toObject()) });
+  }
   if (line.status !== "paused") {
-    return res.status(400).json({ success: false, message: `Line is "${line.status}", not "paused" — nothing to resume` });
+    return res.status(400).json({ success: false, message: `Line is "${line.status}", not "paused" or "offline" — nothing to resume` });
   }
   const lastPause = await VtextLineEvent.findOne({ lineId: line._id, type: "status-change", to: "paused" }).sort({ createdAt: -1 });
   const restoreTo = lastPause?.from && ["warming", "active"].includes(lastPause.from) ? lastPause.from : "active";

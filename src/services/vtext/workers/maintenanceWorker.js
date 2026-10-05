@@ -18,7 +18,7 @@ const VtextLine = require("../../../model/vtext/vtextLineModel");
 const VtextLineUsage = require("../../../model/vtext/vtextLineUsageModel");
 const VtextLineEvent = require("../../../model/vtext/vtextLineEventModel");
 const { getAdapter } = require("../channels/registry");
-const { evaluateAndMaybeQuarantine } = require("../vtextLineHealthService");
+const { evaluateAndMaybeQuarantine, statusBeforeOffline } = require("../vtextLineHealthService");
 const { runFollowUpSweep } = require("../vtextFollowUpService");
 const { dayKey } = require("../vtextCapacityService");
 const { notifyVtextAlert } = require("../../shared/slackService");
@@ -103,7 +103,17 @@ async function runLineHealthSweep() {
     } catch {
       healthy = false;
     }
-    if (healthy) continue;
+    if (healthy) {
+      // Channels with no heartbeat event (BlueBubbles) never get a lastHeartbeatAt,
+      // so a passing health check is recorded as one. That makes "Last heartbeat"
+      // in the admin UI meaningful and lets an offline line come back on its own.
+      if (!adapter.capabilities?.heartbeat) {
+        line.health = line.health || {};
+        line.health.lastHeartbeatAt = new Date();
+        await line.save();
+      }
+      continue;
+    }
 
     const fromStatus = line.status;
     line.status = "offline";
@@ -119,16 +129,35 @@ async function runLineHealthSweep() {
   // Restoration: an offline line whose heartbeat is fresh again goes back to
   // whatever status it was in right before going offline (read from its own
   // most recent heartbeat-lost event, rather than a new schema field).
-  const offlineLines = await VtextLine.find({ status: "offline" });
+  const offlineLines = await VtextLine.find({ status: "offline" })
+    .select("+credentials.iv +credentials.tag +credentials.ciphertext");
   for (const line of offlineLines) {
-    const fresh = line.health?.lastHeartbeatAt && new Date(line.health.lastHeartbeatAt) >= staleCutoff;
+    let fresh = line.health?.lastHeartbeatAt && new Date(line.health.lastHeartbeatAt) >= staleCutoff;
+    let restoredBy = "heartbeat restored";
+
+    // A line whose channel has no heartbeat can never prove it is back through one.
+    // Before this, a BlueBubbles line that went offline (say the Mac lost its
+    // network for an hour) stayed offline forever. Use the health check instead.
+    if (!fresh && !getAdapter(line.channelType).capabilities?.heartbeat) {
+      let healthy = false;
+      try {
+        healthy = !!(await getAdapter(line.channelType).healthCheck({ line }))?.ok;
+      } catch {
+        healthy = false;
+      }
+      if (healthy) {
+        line.health = line.health || {};
+        line.health.lastHeartbeatAt = new Date();
+        fresh = true;
+        restoredBy = "health check passing again";
+      }
+    }
     if (!fresh) continue;
 
-    const lastLostEvent = await VtextLineEvent.findOne({ lineId: line._id, type: "heartbeat-lost" }).sort({ createdAt: -1 });
-    const restoreTo = lastLostEvent?.from && ["warming", "active"].includes(lastLostEvent.from) ? lastLostEvent.from : "active";
+    const restoreTo = await statusBeforeOffline(line._id);
 
     line.status = restoreTo;
-    line.statusReason = "heartbeat restored";
+    line.statusReason = restoredBy;
     line.statusChangedAt = new Date();
     line.statusChangedBy = { kind: "system" };
     await line.save();
@@ -286,6 +315,7 @@ async function stopMaintenanceWorker() {
 
 module.exports = {
   HEARTBEAT_KEY,
+  runLineHealthSweep,
   ensureMaintenanceSchedulers,
   startMaintenanceWorker,
   stopMaintenanceWorker,
