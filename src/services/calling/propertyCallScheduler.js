@@ -183,6 +183,7 @@ async function sweepDueCalls() {
       callStatus: "no-answer",
       nextCallAt: { $ne: null, $lte: now },
       callingStopped: { $ne: true },
+      isQaTest: { $ne: true }, // QA agent test leads are never dialed
     })
       .sort({ nextCallAt: 1 })
       .limit(SWEEP_BATCH)

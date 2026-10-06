@@ -8,6 +8,8 @@ const rateLimiter = require('../middleware/socketRateLimitMiddleware');
 // Vtext's own, separate socket handlers (join/leave the admin room) — kept
 // out of socketHandlers.js on purpose, see vtextSocketBridge.js's header.
 const { registerVtextSocketHandlers } = require('./vtextSocketBridge');
+// QA agent live updates — admin-only "qa-admin" room (see qaSocket.js).
+const { registerQaSocketHandlers } = require('./qaSocket');
 
 // Store active auctions in memory
 const activeAuctions = new Map();
@@ -84,6 +86,7 @@ function initSocketServer(server) {
 
     registerSocketHandlers(socket);
     registerVtextSocketHandlers(socket);
+    registerQaSocketHandlers(socket);
   });
 
   setInterval(() => {

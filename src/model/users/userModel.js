@@ -53,6 +53,13 @@ const userSchema = new mongoose.Schema({
   businessPhone: {
     type: String,
   },
+  // Account used only by the QA agent (see controller/qa/qaAgentController.js
+  // createTestSession). Has an unknowable random password, so it can't log in
+  // through the site; QA admin accounts are read-only (middleware/auth.js).
+  isQaAccount: {
+    type: Boolean,
+    default: false,
+  },
   createdAt: {
     type: Date,
     default: Date.now

@@ -5,6 +5,8 @@ const adminModel = require("../model/users/adminModel");
 
 const jwt = require("jsonwebtoken");
 
+const QA_SAFE_METHODS = ["GET", "HEAD", "OPTIONS"];
+
 exports.isAuthenticated = catchAsyncError(async (req, res, next) => {
   // Only accept token from cookies
   const token = req.cookies?.token;
@@ -21,6 +23,11 @@ exports.isAuthenticated = catchAsyncError(async (req, res, next) => {
 
     if (!req.user) {
       return next(new Errorhandler("User not found", 404));
+    }
+
+    // QA agent admin sessions may look but never change anything.
+    if (req.user.isQaAccount && req.user.role === "admin" && !QA_SAFE_METHODS.includes(req.method)) {
+      return next(new Errorhandler("QA agent admin accounts are read-only", 403));
     }
 
     next();

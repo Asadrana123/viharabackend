@@ -73,6 +73,10 @@ const buyerMatchRoutes = require("./routes/leads/buyerMatchRoutes");
 // (the planning doc itself kept its original filename — not part of this rename).
 const vtextAdminRoutes = require("./routes/vtext/vtextAdminRoutes");
 const vtextWebhookRoutes = require("./routes/vtext/vtextWebhookRoutes");
+// QA agent (admin-only): plain-language test requests, plan approval, results.
+const qaAdminRoutes = require("./routes/qa/qaAdminRoutes");
+// QA worker API — token-authenticated, inert until QA_AGENT_TOKEN is set.
+const qaAgentRoutes = require("./routes/qa/qaAgentRoutes");
 // Middleware
 app.use(cookieParser());
 app.use(cors(expressCorsOptions));
@@ -149,6 +153,8 @@ app.use("/api/v1/marketing-engine", marketingEngineRoutes);
 app.use("/api/v1/buyer-match", buyerMatchRoutes);
 app.use("/api/v1/vtext", vtextAdminRoutes);
 app.use("/api/webhooks/vtext", vtextWebhookRoutes);
+app.use("/api/v1/qa", qaAdminRoutes);
+app.use("/api/v1/qa-agent", qaAgentRoutes);
 
 // D7 (sendify-infra.md §2): fail loudly at boot if CHANNEL_TYPES has an enum
 // entry with no registered adapter, rather than discovering it the first

@@ -86,6 +86,11 @@ const propertyLeadSchema = new mongoose.Schema(
 
     // Tag for analytics/debugging. Controller sets "auction-<slug>".
     source: { type: String, default: "" },
+
+    // Created by the QA agent (request carried the QA agent token). Such leads
+    // never get calls, Slack posts, enrichment, Brevo sync or texts, are hidden
+    // from admin lead lists and Buyer Match, and are deleted by QA cleanup.
+    isQaTest: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

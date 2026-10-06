@@ -1,0 +1,22 @@
+{
+  "name": "vihara-qa-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "QA agent worker: claims runs from the Vihara backend, plans and runs feature tests with the Claude Agent SDK.",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "once": "node src/index.js --once"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.289",
+    "@anthropic-ai/sdk": "^0.131.0",
+    "dotenv": "^18.0.5",
+    "socket.io-client": "^4.8.4",
+    "zod": "^4.6.5"
+  }
+}
