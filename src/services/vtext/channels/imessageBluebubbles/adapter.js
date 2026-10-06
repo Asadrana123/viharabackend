@@ -45,6 +45,9 @@ module.exports = {
   capabilities: {
     reachesAllUsNumbers: false, // only other iMessage/Apple users — SMS fallback (Phase 6) covers the rest
     deliveryReceipts: true,
+    // iMessage reports Sent and Delivered for every message it really sends, so a message still
+    // "accepted" after a while never got out (the maintenance sweep marks it "unknown").
+    confirmsEveryDelivery: true,
     readReceipts: true,
     media: false, // v1 is text-only (D15)
     reachabilityCheck: true, // interface declares it; see checkReachability() below for current honest status

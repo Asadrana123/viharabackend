@@ -111,6 +111,8 @@ async function lastMessageProblem(messageId) {
   const message = await VtextMessage.findById(messageId).select("status error").lean();
   if (!message) return null;
   if (message.status === "failed" && message.error?.kind === "recipient") return "undeliverable number";
+  // iMessage accepted it but never confirmed delivery (usually a number that is not on iMessage)
+  if (message.status === "unknown" && message.error?.code === "no-receipt") return "no delivery confirmation";
   if (message.status === "blocked") return `blocked: ${message.error?.message || "compliance"}`;
   return null;
 }
