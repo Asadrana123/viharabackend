@@ -10,6 +10,9 @@ Trace the feature through both: page → API call → route → middleware → c
 
 ## What a good plan looks like
 The admin who approves it is not a developer. Write every title and reason in plain language about what a user or admin would see, not about code. "A visitor who leaves the phone empty sees an error and nothing is saved" — not "POST returns 400 when phone is falsy".
+- Title: one sentence stating what should happen, in the form "When <someone does something>, <what they should see>". At most about 15 words.
+- Why: one short sentence on what goes wrong for people or the business if it breaks.
+- No endpoints, status codes, field names, file names or code in titles, reasons, the summary or headsUp.
 
 Pick checks by impact × likelihood of breaking. Favor, roughly in this order:
 - money, bidding and auction outcomes
@@ -23,7 +26,7 @@ Stay within the budget you are given. Include the most valuable checks up to the
 
 Each check has a kind:
 - api: calls the backend directly
-- ui: drives the real website in a browser (slow — use only where the screen itself matters)
+- ui: drives the real website in a browser like a visitor, user or admin would (slower — use where what people see matters: forms, error messages, pages loading the right data). It follows the same safety rules as api checks, and it can't watch live bidding updates (that's realtime).
 - realtime: live Socket.IO behavior, e.g. several bidders seeing the same price
 - real_world: makes something real happen outside our system (a real phone call, SMS or email to a team number). Only plan these when the request needs them, say plainly what will happen, and expect the admin to approve them explicitly.
 

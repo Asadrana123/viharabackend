@@ -354,7 +354,7 @@ const getQuestion = catchAsyncError(async (req, res, next) => {
 });
 
 /**
- * POST /api/v1/qa-agent/runs/:id/results   { results: [{ key, status, detail, location }] }
+ * POST /api/v1/qa-agent/runs/:id/results   { results: [{ key, status, detail, expected?, steps?, severity?, location? }] }
  * Records (or overwrites) results for approved plan items. Can be called many
  * times as tests finish, so the admin sees results arrive live.
  */
@@ -374,7 +374,18 @@ const submitResults = catchAsyncError(async (req, res, next) => {
     if (!QaRun.RESULT_STATUSES.includes(raw.status)) {
       return next(new ErrorHandler(`Result ${key}: status must be one of ${QaRun.RESULT_STATUSES.join(", ")}`, 400));
     }
-    byKey.set(key, { key, title: item.title, status: raw.status, detail: str(raw.detail, 4000), location: str(raw.location, 300) });
+    const steps = Array.isArray(raw.steps) ? raw.steps.map((s) => str(s, 300)).filter(Boolean).slice(0, 10) : [];
+    const severity = raw.status === "fail" && QaRun.RESULT_SEVERITIES.includes(raw.severity) ? raw.severity : "";
+    byKey.set(key, {
+      key,
+      title: item.title,
+      status: raw.status,
+      detail: str(raw.detail, 4000),
+      expected: str(raw.expected, 1000),
+      steps,
+      severity,
+      location: str(raw.location, 300),
+    });
   }
 
   const updated = await QaRun.findOneAndUpdate(

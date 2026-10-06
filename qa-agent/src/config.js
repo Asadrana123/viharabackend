@@ -12,6 +12,12 @@ const required = (name) => {
   return value;
 };
 
+const httpUrl = (name, fallback) => {
+  const value = (process.env[name] || fallback).trim().replace(/\/+$/, "");
+  if (!/^https?:\/\/[^/\s]+$/.test(value)) errors.push(`${name}=${value} must be an http(s) origin with no path, e.g. http://localhost:3000`);
+  return value;
+};
+
 const repoDir = (name) => {
   const value = required(name);
   if (value && !fs.existsSync(path.join(value, "package.json"))) {
@@ -23,6 +29,9 @@ const repoDir = (name) => {
 export const config = {
   apiUrl: required("QA_API_URL").replace(/\/+$/, ""),
   agentToken: required("QA_AGENT_TOKEN"),
+  // The website the browser opens for ui checks. It must call the backend at
+  // QA_API_URL (in development the frontend uses http://localhost:5000).
+  frontendUrl: httpUrl("QA_FRONTEND_URL", "http://localhost:3000"),
   workerId: (process.env.QA_WORKER_ID || "qa-worker-1").trim(),
   model: (process.env.QA_MODEL || "claude-opus-5-5").trim(),
   // Small, fast model for the first look at a request (is it a test request at all?).

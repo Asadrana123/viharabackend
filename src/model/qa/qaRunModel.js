@@ -30,6 +30,8 @@ const CLAIMABLE = {
 const PLAN_ITEM_KINDS = ["api", "ui", "realtime", "real_world"];
 const QUESTION_KINDS = ["yes_no", "text", "allow_skip", "number"];
 const RESULT_STATUSES = ["pass", "fail", "skipped", "not_verified"];
+// How much a failure matters to users or the business (failures only).
+const RESULT_SEVERITIES = ["critical", "major", "minor"];
 const MESSAGE_TYPES = ["request", "plan", "feedback", "question", "answer", "report", "status", "note", "clarification"];
 
 const planItemSchema = new mongoose.Schema(
@@ -78,7 +80,12 @@ const resultSchema = new mongoose.Schema(
     key: { type: String, required: true, trim: true }, // matches a plan item key
     title: { type: String, default: "", trim: true },
     status: { type: String, enum: RESULT_STATUSES, required: true },
-    detail: { type: String, default: "", trim: true },   // plain-language explanation
+    detail: { type: String, default: "", trim: true },   // plain-language explanation: what happened
+    expected: { type: String, default: "", trim: true }, // failures: what should have happened
+    // Steps a non-technical person can follow on the website to see it themselves
+    // (failures, and checks the agent couldn't run).
+    steps: { type: [String], default: [] },
+    severity: { type: String, enum: [...RESULT_SEVERITIES, ""], default: "" },
     location: { type: String, default: "", trim: true }, // file:line when a bug is pinned down
   },
   { _id: false }
@@ -143,3 +150,4 @@ module.exports.CLAIMABLE = CLAIMABLE;
 module.exports.PLAN_ITEM_KINDS = PLAN_ITEM_KINDS;
 module.exports.QUESTION_KINDS = QUESTION_KINDS;
 module.exports.RESULT_STATUSES = RESULT_STATUSES;
+module.exports.RESULT_SEVERITIES = RESULT_SEVERITIES;

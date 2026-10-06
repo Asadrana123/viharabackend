@@ -25,14 +25,15 @@ router.put('/admin/:id/listing-settings', isAuthenticated, authorizeRoles("admin
 router.put('/admin/:id/basic-details', isAuthenticated, authorizeRoles("admin"), updateProductBasicDetails);
 router.put('/admin/:id/zillow-sync', isAuthenticated, authorizeRoles("admin"), updateZillowSyncSettings);
 
-// Public slug fetch (detail + landing pages)
-router.get('/slug/:slug', getProductBySlug);
+// Public slug fetch (detail + landing pages). optionalAuth only so admins get
+// the internal fields too; visitors get the public view.
+router.get('/slug/:slug', optionalAuth, getProductBySlug);
 
 // Public Terms & Conditions (general, and per property)
 router.get('/terms', getDefaultTerms);
 router.get('/terms/:slug', getProductTermsBySlug);
 
 // Keep the id catch-all LAST
-router.get("/:id", getProductById);
+router.get("/:id", optionalAuth, getProductById);
 
 module.exports = router;

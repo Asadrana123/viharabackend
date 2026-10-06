@@ -68,7 +68,7 @@ exports.optionalAuth = async (req, res, next) => {
         if (!token) return next();
 
         const decodedData = jwt.verify(token, process.env.secret);
-        req.user = await userModel.findById(decodedData.id).select('email');
+        req.user = await userModel.findById(decodedData.id).select('email role');
     } catch {
         // Invalid/expired token — treat as unauthenticated, don't block
     }

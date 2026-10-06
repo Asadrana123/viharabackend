@@ -42,15 +42,34 @@ exports.createProductsBulk = catchAsyncError(async (req, res, next) => {
 });
 
 
+// Internal fields the public property endpoints never send to non-admins:
+// the Zillow source + price shift (would let anyone undo the shift), the
+// reserve, other bidders' emails, seller / test-user / Brevo bookkeeping.
+const PUBLIC_HIDDEN_FIELDS = [
+    "zillowSync", "reservePrice", "bidderEmails", "allowedTestUsers",
+    "sellerIds", "currentBidder", "brevoListId", "brevoOutboundSmsListId",
+];
+
+/**
+ * The property as the detail endpoints return it: admins get the full document
+ * (Manage Listings loads it from here), everyone else the public view.
+ * auctionTimezone is the resolved IANA zone so the frontend can render the
+ * auction banner in the property's local time — computed on read, never stored.
+ */
+function toProductResponse(product, user) {
+    const out = { ...product.toObject(), auctionTimezone: resolvePropertyTimezone(product) };
+    if (user?.role !== "admin") {
+        PUBLIC_HIDDEN_FIELDS.forEach((field) => { delete out[field]; });
+    }
+    return out;
+}
+
 exports.getProductById = catchAsyncError(async (req, res, next) => {
     const product = await productModel.findById(req.params.id);
     if (!product) {
         return next(new Errorhandler("Property not found", 404));
     }
-    // Resolved IANA zone so the frontend can render the auction banner in the
-    // property's local time. Computed on read; nothing stored.
-    const auctionTimezone = resolvePropertyTimezone(product);
-    return res.json({ success: true, product: { ...product.toObject(), auctionTimezone } });
+    return res.json({ success: true, product: toProductResponse(product, req.user) });
 });
 
 exports.createProduct = catchAsyncError(async (req, res) => {
@@ -102,10 +121,7 @@ exports.getProductBySlug = catchAsyncError(async (req, res, next) => {
     if (!product) {
         return next(new Errorhandler("Property not found", 404));
     }
-    // Resolved IANA zone so the frontend can render the auction banner in the
-    // property's local time. Computed on read; nothing stored.
-    const auctionTimezone = resolvePropertyTimezone(product);
-    return res.json({ success: true, product: { ...product.toObject(), auctionTimezone } });
+    return res.json({ success: true, product: toProductResponse(product, req.user) });
 });
 
 // Public — state-neutral Terms & Conditions (no property-specific section).

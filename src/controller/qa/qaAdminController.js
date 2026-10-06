@@ -113,6 +113,7 @@ const listRuns = catchAsyncError(async (req, res, next) => {
     pendingQuestions: questions.filter((q) => q.status === "pending").length,
     passed: results.filter((r) => r.status === "pass").length,
     failed: results.filter((r) => r.status === "fail").length,
+    notVerified: results.filter((r) => r.status === "not_verified").length,
   }));
 
   res.status(200).json({ success: true, runs: rows, total, page, limit });
