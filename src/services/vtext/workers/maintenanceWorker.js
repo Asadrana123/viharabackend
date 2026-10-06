@@ -18,7 +18,7 @@ const VtextContact = require("../../../model/vtext/vtextContactModel");
 const VtextLine = require("../../../model/vtext/vtextLineModel");
 const VtextLineUsage = require("../../../model/vtext/vtextLineUsageModel");
 const VtextLineEvent = require("../../../model/vtext/vtextLineEventModel");
-const { getAdapter } = require("../channels/registry");
+const { getAdapter, listAdapters } = require("../channels/registry");
 const { evaluateAndMaybeQuarantine, statusBeforeOffline } = require("../vtextLineHealthService");
 const { runFollowUpSweep } = require("../vtextFollowUpService");
 const { sendAlertWithCooldown, getAlertWatermark, setAlertWatermark, isAlertingConfigured } = require("../vtextAlertService");
@@ -43,6 +43,48 @@ async function runNoopHeartbeat() {
 // harmless: routeWorker's own status check (STATUSES_ROUTABLE) makes it a no-op.
 const STUCK_SENDING_MIN = Number(process.env.VTEXT_STUCK_SENDING_MIN || 10);
 const STUCK_QUEUED_MIN = Number(process.env.VTEXT_STUCK_QUEUED_MIN || 2);
+// An iMessage text that BlueBubbles accepted but never reported Sent/Delivered for did not get out
+// (the Mac's Messages app shows "Not Delivered", usually a non-iMessage number). BlueBubbles sends no
+// error for it, so without this the message stays "accepted" for good. The lookback keeps old history
+// from flipping when this first runs.
+const UNCONFIRMED_MIN = () => Number(process.env.VTEXT_UNCONFIRMED_MIN || 10);
+const UNCONFIRMED_LOOKBACK_HOURS = () => Number(process.env.VTEXT_UNCONFIRMED_LOOKBACK_HOURS || 48);
+const NO_RECEIPT_CODE = "no-receipt";
+
+async function runUnconfirmedSendSweep() {
+  const channelTypes = listAdapters().filter((a) => a.capabilities?.confirmsEveryDelivery).map((a) => a.type);
+  if (!channelTypes.length) return 0;
+
+  const now = Date.now();
+  const candidates = await VtextMessage.find({
+    direction: "out",
+    status: "accepted",
+    channelType: { $in: channelTypes },
+    updatedAt: { $lt: new Date(now - UNCONFIRMED_MIN() * 60_000), $gt: new Date(now - UNCONFIRMED_LOOKBACK_HOURS() * 3_600_000) },
+  }).select("_id conversationId").lean();
+
+  let marked = 0;
+  for (const c of candidates) {
+    // The filter repeats the status, so a receipt that lands between the find and this write wins.
+    const result = await VtextMessage.updateOne(
+      { _id: c._id, status: "accepted" },
+      {
+        $set: {
+          status: "unknown",
+          failedAt: new Date(),
+          error: { kind: "transient", code: NO_RECEIPT_CODE, message: `No delivery confirmation after ${UNCONFIRMED_MIN()} minutes` },
+        },
+        $push: { statusHistory: { status: "unknown", at: new Date(), detail: "no delivery receipt" } },
+      }
+    );
+    if (result.modifiedCount) {
+      marked += 1;
+      publishEvent({ type: "message.updated", messageId: String(c._id), conversationId: c.conversationId ? String(c.conversationId) : null, status: "unknown" });
+    }
+  }
+  if (marked > 0) console.warn(`[vtext stuck-sweep] ${marked} iMessage text(s) with no delivery receipt after ${UNCONFIRMED_MIN()}min -> marked "unknown"`);
+  return marked;
+}
 
 async function runStuckMessageSweep() {
   const sendingCutoff = new Date(Date.now() - STUCK_SENDING_MIN * 60_000);
@@ -66,6 +108,8 @@ async function runStuckMessageSweep() {
   if (stuckQueued.length > 0) {
     console.warn(`[vtext stuck-sweep] re-enqueued ${stuckQueued.length} message(s) stuck pre-send > ${STUCK_QUEUED_MIN}min`);
   }
+
+  await runUnconfirmedSendSweep();
 }
 
 // §4.6/§7.4: heartbeat-staleness -> offline, and restoration when healthy
@@ -253,9 +297,12 @@ async function runFailedSendDigest() {
   const window = { $gt: since, $lte: runStartedAt };
   const failed = await VtextMessage.find({
     direction: "out",
-    status: "failed",
-    // every path that fails a message sets failedAt; updatedAt covers a path that ever forgets
-    $or: [{ failedAt: window }, { failedAt: { $exists: false }, updatedAt: window }],
+    // "unknown" with no-receipt is a text BlueBubbles accepted that never got out (see runUnconfirmedSendSweep)
+    $and: [
+      { $or: [{ status: "failed" }, { status: "unknown", "error.code": NO_RECEIPT_CODE }] },
+      // every path that fails a message sets failedAt; updatedAt covers a path that ever forgets
+      { $or: [{ failedAt: window }, { failedAt: { $exists: false }, updatedAt: window }] },
+    ],
   })
     .select("contactId error")
     .lean();
@@ -265,7 +312,7 @@ async function runFailedSendDigest() {
     return;
   }
 
-  const kindOf = (m) => m.error?.kind || "unknown";
+  const kindOf = (m) => (m.error?.code === NO_RECEIPT_CODE ? "no delivery confirmation" : m.error?.kind || "unknown");
   const expected = failed.filter((m) => kindOf(m) === "recipient").length;
   const attention = failed.length - expected;
   const breakdown = {};
@@ -405,6 +452,7 @@ module.exports = {
   runLineHealthSweep,
   runBacklogAlert,
   runFailedSendDigest,
+  runUnconfirmedSendSweep,
   ensureMaintenanceSchedulers,
   startMaintenanceWorker,
   stopMaintenanceWorker,

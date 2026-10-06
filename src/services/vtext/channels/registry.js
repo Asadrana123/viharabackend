@@ -33,6 +33,11 @@ function getAdapter(channelType) {
   return adapter;
 }
 
+/** Every registered adapter (mock only when enabled). */
+function listAdapters() {
+  return Object.values(adapters);
+}
+
 /**
  * Called once at boot (web process and worker process both). Throws loudly
  * if a real (non-"mock") CHANNEL_TYPES entry has no adapter — catches the
@@ -48,4 +53,4 @@ function assertRegistryMatchesEnum() {
   }
 }
 
-module.exports = { getAdapter, assertRegistryMatchesEnum, MOCK_ENABLED };
+module.exports = { getAdapter, listAdapters, assertRegistryMatchesEnum, MOCK_ENABLED };
