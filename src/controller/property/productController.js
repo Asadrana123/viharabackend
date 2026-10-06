@@ -231,6 +231,7 @@ exports.updateListingSettings = catchAsyncError(async (req, res, next) => {
 // description, address, classification, specs). Auction terms, images, sellers,
 // visibility and status each have their own endpoints and are left untouched.
 const BASIC_TEXT_FIELDS = ["productName", "propertyDescription", "street", "city", "county", "state", "zipCode"];
+const CLEARABLE_TEXT_FIELDS = ["propertyDescription", "county"];
 const BASIC_NUMBER_FIELDS = ["beds", "baths", "squareFootage", "lotSize", "yearBuilt", "monthlyHOADues"];
 const BASIC_ENUMS = {
     propertyType: { values: ['Single Family', 'Condo, Townhouse, other single unit', 'Multi-family', 'Land'], required: true },
@@ -247,11 +248,11 @@ exports.updateProductBasicDetails = catchAsyncError(async (req, res, next) => {
     const b = req.body || {};
 
     // Text — trim. Title + address are required on the model, so ignore any
-    // attempt to blank them; only the description may be cleared.
+    // attempt to blank them; only the description and county may be cleared.
     BASIC_TEXT_FIELDS.forEach((k) => {
         if (b[k] === undefined) return;
         const val = b[k] === null ? "" : String(b[k]).trim();
-        if (val === "" && k !== "propertyDescription") return;
+        if (val === "" && !CLEARABLE_TEXT_FIELDS.includes(k)) return;
         product[k] = val;
     });
 

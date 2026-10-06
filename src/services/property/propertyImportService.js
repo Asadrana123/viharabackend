@@ -33,7 +33,7 @@ const START_BID_RATIO = 0.9;
 
 // productModel fields that are required but Zillow may not provide.
 const REQUIRED_CORE_FIELDS = [
-    "street", "city", "county", "state", "zipCode", "beds", "baths",
+    "street", "city", "state", "zipCode", "beds", "baths",
     "squareFootage", "lotSize", "yearBuilt", "apn", "propertyType",
 ];
 
@@ -449,7 +449,7 @@ async function buildPropertyDraftFromZillow({ zillowUrl, folderRoot = "vihara/pr
             : null,
         street: address.street || null,
         city: address.city || null,
-        county: null, // not available on the Zillow listing — admin fills
+        county: null, // optional — not available on the Zillow listing
         state: address.state || null,
         zipCode: address.zipCode || null,
         beds: specs.beds ?? null,

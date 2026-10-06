@@ -15,6 +15,7 @@ const { startMatchCallScheduler } = require('./services/buyerMatch/matchCallServ
 const { startBrevoBackfillJob } = require('./jobs/brevoBackfillJob'); // ← ADD
 const { startAuctionCloseJob } = require('./jobs/auctionCloseJob');
 const { startZillowSyncJob } = require('./jobs/zillowSyncJob');
+const { startPropertyImportWorker } = require('./services/property/propertyImportQueueService');
 const { startVtextWorkersInProcess } = require('./workers/vtextWorker');
 const { startVtextSocketBridge } = require('./socket/vtextSocketBridge');
 const { startVtextWatchdog } = require('./services/vtext/vtextWatchdogService');
@@ -65,6 +66,9 @@ server.listen(PORT, () => {
 
   // Weekly Zillow refresh of every linked property the admin hasn't paused.
   startZillowSyncJob();
+
+  // Property Importer queue: Zillow links an admin queued, scraped one at a time.
+  startPropertyImportWorker();
 
   // Vtext (in-house iMessage/SMS infra): fully inert unless VTEXT_ENABLED=true.
   // In production the worker runs as a separate Render process

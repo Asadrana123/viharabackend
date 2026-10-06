@@ -88,9 +88,10 @@ const productSchema = new mongoose.Schema({
         type: String,
         required: true,
     },
+    // Optional — most Zillow listings don't show the county.
     county: {
         type: String,
-        required: true,
+        default: null,
     },
     state: {
         type: String,
