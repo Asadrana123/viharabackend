@@ -3,18 +3,20 @@ const catchAsyncError = require("../../middleware/catchAsyncError");
 const VtextConversation = require("../../model/vtext/vtextConversationModel");
 const VtextMessage = require("../../model/vtext/vtextMessageModel");
 const VtextContact = require("../../model/vtext/vtextContactModel");
+const { publishEvent } = require("../../services/vtext/vtextEventsBus");
 
 // Contact fields the admin UI needs on every conversation payload (list, thread, mark-read).
 const CONTACT_FIELDS = "name phoneE164 optOut.isOptedOut followUp.status followUp.step";
 
-/** GET /api/v1/vtext/conversations?status=&lineId=&q=&cursor=&limit= */
+/** GET /api/v1/vtext/conversations?status=&lineId=&q=&unread=true&cursor=&limit= */
 const listConversations = catchAsyncError(async (req, res) => {
-  const { status, lineId, q, cursor, limit } = req.query;
+  const { status, lineId, q, unread, cursor, limit } = req.query;
   const pageSize = Math.min(100, Math.max(1, Number(limit) || 30));
 
   const filter = {};
   if (status) filter.status = status;
   if (lineId) filter.lineId = lineId;
+  if (unread === "true") filter.unreadCount = { $gt: 0 };
   if (cursor) filter.lastMessageAt = { $lt: new Date(cursor) };
 
   if (q) {
@@ -35,7 +37,10 @@ const listConversations = catchAsyncError(async (req, res) => {
   const page = conversations.slice(0, pageSize);
   const nextCursor = hasMore ? page[page.length - 1].lastMessageAt?.toISOString() : null;
 
-  return res.status(200).json({ success: true, conversations: page, nextCursor });
+  // Total across the whole inbox (ignores the other filters) for the "Unread (n)" chip.
+  const unreadTotal = await VtextConversation.countDocuments({ unreadCount: { $gt: 0 } });
+
+  return res.status(200).json({ success: true, conversations: page, nextCursor, unreadTotal });
 });
 
 /** GET /api/v1/vtext/conversations/:id/messages?limit= */
@@ -49,19 +54,30 @@ const getConversationMessages = catchAsyncError(async (req, res) => {
   return res.status(200).json({ success: true, conversation, messages });
 });
 
-/** PATCH /api/v1/vtext/conversations/:id — body: { status?, markRead?, needsHuman? } */
+/** PATCH /api/v1/vtext/conversations/:id — body: { status?, markRead?, markUnread?, needsHuman? } */
 const updateConversation = catchAsyncError(async (req, res) => {
-  const { status, markRead, needsHuman } = req.body;
+  const { status, markRead, markUnread, needsHuman } = req.body;
+  if (markRead && markUnread) {
+    return res.status(400).json({ success: false, message: "Send either markRead or markUnread, not both" });
+  }
+
   const update = {};
   if (status) update.status = status;
   if (markRead) update.unreadCount = 0;
   if (typeof needsHuman === "boolean") update.needsHuman = needsHuman; // "Mark handled" sends false
+  // Mark unread raises the count to at least 1 and leaves a higher real count alone.
+  const mongoUpdate = markUnread ? { ...(Object.keys(update).length ? { $set: update } : {}), $max: { unreadCount: 1 } } : update;
 
-  const conversation = await VtextConversation.findByIdAndUpdate(req.params.id, update, { new: true }).populate("contactId", CONTACT_FIELDS);
+  const conversation = await VtextConversation.findByIdAndUpdate(req.params.id, mongoUpdate, { new: true }).populate("contactId", CONTACT_FIELDS);
   if (!conversation) return res.status(404).json({ success: false, message: "Conversation not found" });
 
   if (markRead) {
     await VtextMessage.updateMany({ conversationId: conversation._id, direction: "in", readAt: null }, { $set: { readAt: new Date() } });
+  }
+
+  if (markRead || markUnread) {
+    // Lets other open admin inboxes refresh their unread dots.
+    publishEvent({ type: "conversation.updated", conversationId: String(conversation._id), unreadCount: conversation.unreadCount });
   }
 
   return res.status(200).json({ success: true, conversation });
