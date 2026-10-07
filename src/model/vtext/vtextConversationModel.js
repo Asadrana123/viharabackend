@@ -42,6 +42,8 @@ const vtextConversationSchema = new mongoose.Schema(
 vtextConversationSchema.index({ contactId: 1, lineId: 1 }, { unique: true });
 vtextConversationSchema.index({ status: 1, lastMessageAt: -1 });
 vtextConversationSchema.index({ lineId: 1, lastMessageAt: -1 });
+// Serves the inbox "Unread" filter and its count without scanning read conversations.
+vtextConversationSchema.index({ lastMessageAt: -1 }, { partialFilterExpression: { unreadCount: { $gt: 0 } } });
 
 // Collection name pinned to its pre-rename value so the Sendify->Vtext
 // rename does not orphan any data already stored in Mongo.
