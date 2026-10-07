@@ -9,6 +9,7 @@ const createRegistrationPendingEmail=require('../../htmlPages/bidding/registrati
 const createRegistrationApprovedEmail=require('../../htmlPages/bidding/registrationApprovedEmail');
 const getAdminRegistrationNotificationEmail = require('../../htmlPages/bidding/adminRegistrationNotificationEmail');
 const Realtor = require("../../model/users/realtorModel");
+const { endFollowUpsForRegistration } = require("../../services/vtext/vtextFollowUpEnd");
 const createRealtorNewLeadEmail = require('../../htmlPages/users/realtorNewLeadEmail');
 const { trackEvent } = require("../../services/integrations/brevoService");
 const {
@@ -83,6 +84,12 @@ function trackBuyerRegistered(realtor, { buyerId, buyerEmail, auction }) {
 }
 
 // Submit a registration request for an auction
+// Someone who registers to bid needs no more "register now" texts from Vtext. Never blocks or fails the registration.
+const stopVtextFollowUps = ({ auctionId, mobilePhone, email }) =>
+  endFollowUpsForRegistration({ auctionId, mobilePhone, email }).catch((err) =>
+    console.error("[vtext] stopping follow-ups after registration failed:", err.message)
+  );
+
 exports.submitAuctionRegistration = catchAsyncError(
   async (req, res, next) => {
     const {
@@ -132,6 +139,8 @@ exports.submitAuctionRegistration = catchAsyncError(
 
     if (existingRegistration) {
       // If already registered and approved, return success with status
+      stopVtextFollowUps({ auctionId, mobilePhone, email });
+
       if (existingRegistration.status === "approved") {
         // First-touch attribution: stamp only if not already attributed.
         if (attribution && !existingRegistration.realtorId) {
@@ -212,6 +221,8 @@ exports.submitAuctionRegistration = catchAsyncError(
       buyerType,
       ...(attribution || {})
     });
+
+    stopVtextFollowUps({ auctionId, mobilePhone, email });
 
     // Notify the referring realtor of the new attributed lead (fire-and-forget).
     const sequenceOn = isSequenceOn(auction);

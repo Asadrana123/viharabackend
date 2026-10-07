@@ -9,7 +9,7 @@
 // function vtextMessageController.sendBulkMessages already calls.
 const OutboundCampaign = require("../../model/outbound/outboundCampaignModel");
 const { markRecipient, finishCampaign } = require("./outboundCampaignService");
-const { loadTemplateAndProperty, resolveContactVariables, renderTemplate } = require("../vtext/vtextTemplateService");
+const { loadTemplateAndProperty, resolveContactVariables, renderTemplate, checkRendered } = require("../vtext/vtextTemplateService");
 const { enqueueOutbound } = require("../vtext/vtextMessageService");
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -26,6 +26,8 @@ async function runVtextCampaign(campaignId) {
     try {
       const values = { ...propertyValues, ...resolveContactVariables(recipient.name) };
       const body = renderTemplate(template.body, values);
+      const problem = checkRendered(template.body, body, values, ["quote_price"]);
+      if (problem) throw new Error(`Not sent: ${problem}`);
 
       const result = await enqueueOutbound({
         to: recipient.phone,

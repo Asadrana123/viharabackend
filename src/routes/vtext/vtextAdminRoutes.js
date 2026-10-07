@@ -15,7 +15,7 @@ const {
 } = require("../../controller/vtext/vtextLineController");
 const { sendMessage, sendBulkMessages, listMessagesByStatus, retryMessage, cancelMessage, rerouteMessage, approveDraft } = require("../../controller/vtext/vtextMessageController");
 const { listConversations, getConversationMessages, updateConversation } = require("../../controller/vtext/vtextConversationController");
-const { getContact, updateContactConsent } = require("../../controller/vtext/vtextContactController");
+const { getContact, updateContactConsent, markCallBooked } = require("../../controller/vtext/vtextContactController");
 const { getStatsOverview } = require("../../controller/vtext/vtextStatsController");
 const { getVtextSettings, updateVtextSettings } = require("../../controller/vtext/vtextSettingsController");
 const {
@@ -43,6 +43,7 @@ router.patch("/conversations/:id", updateConversation);
 
 router.get("/contacts/:id", getContact);
 router.patch("/contacts/:id/consent", updateContactConsent);
+router.post("/contacts/:id/call-booked", markCallBooked);
 
 // Literal path before :id, same ordering convention as the rest of this file.
 router.get("/templates/variables", getTemplateVariables);

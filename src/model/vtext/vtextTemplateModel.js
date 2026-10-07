@@ -17,7 +17,12 @@ const vtextTemplateSchema = new mongoose.Schema(
     // field changes rarely enough that an app-level invariant is simpler).
     // vtextAutoSignupService.js looks this one up to text a new property-page
     // signup automatically, same consent basis as Brevo's own SMS checkbox.
+    // Superseded by autoSignupRole below; no longer read.
     isAutoSignupTemplate: { type: Boolean, default: false },
+    // Which automatic signup text this template is. At most one template holds each
+    // role (enforced in the controller). The signup text picks the role by comparing the
+    // lead's quoted price with the property's starting bid (vtextAutoSignupService.js).
+    autoSignupRole: { type: String, enum: ["", "quote_in_range", "quote_short"], default: "" },
     createdBy: {
       adminId: { type: mongoose.Schema.Types.ObjectId },
       adminName: { type: String },
