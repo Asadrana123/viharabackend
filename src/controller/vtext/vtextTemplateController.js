@@ -54,20 +54,25 @@ const getTemplate = catchAsyncError(async (req, res) => {
   return res.status(200).json({ success: true, template });
 });
 
-/** PATCH /api/v1/vtext/templates/:id — body may also include isAutoSignupTemplate: true to designate this one for the automated property-signup text (unsets it on every other template first, so at most one is ever true). */
+const AUTO_SIGNUP_ROLES = ["", "quote_in_range", "quote_short"];
+
+/** PATCH /api/v1/vtext/templates/:id — body may also include autoSignupRole ("quote_in_range" | "quote_short" | "") to designate this one for the automated signup text (clears that role on every other template first, so each role has at most one). */
 const updateTemplate = catchAsyncError(async (req, res) => {
-  const { name, body, isAutoSignupTemplate } = req.body;
+  const { name, body, autoSignupRole } = req.body;
   if (body !== undefined) {
     const badPlaceholder = unknownPlaceholderMessage(body);
     if (badPlaceholder) return res.status(400).json({ success: false, message: badPlaceholder });
   }
+  if (autoSignupRole !== undefined && !AUTO_SIGNUP_ROLES.includes(autoSignupRole)) {
+    return res.status(400).json({ success: false, message: "autoSignupRole must be quote_in_range, quote_short or empty" });
+  }
   const update = {};
   if (name !== undefined) update.name = name;
   if (body !== undefined) update.body = body;
-  if (isAutoSignupTemplate !== undefined) update.isAutoSignupTemplate = !!isAutoSignupTemplate;
+  if (autoSignupRole !== undefined) update.autoSignupRole = autoSignupRole;
 
-  if (isAutoSignupTemplate === true) {
-    await VtextTemplate.updateMany({ _id: { $ne: req.params.id } }, { $set: { isAutoSignupTemplate: false } });
+  if (autoSignupRole) {
+    await VtextTemplate.updateMany({ _id: { $ne: req.params.id }, autoSignupRole }, { $set: { autoSignupRole: "" } });
   }
 
   const template = await VtextTemplate.findByIdAndUpdate(req.params.id, update, { new: true });

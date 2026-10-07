@@ -7,7 +7,7 @@
 // due. See vtextFollowUpSequence.js for the copy, the target days and the
 // rules (one text a day, skip a missed day, auction-based steps win a clash).
 //
-// Lifecycle: startFollowUp (after the welcome text) -> each step on its target
+// Lifecycle: startFollowUp (after the signup text) -> each step on its target
 // day inside a send window -> "no-response" a few days after the last step.
 // Ends early as "replied", "opted-out" or "cancelled" (registered, booked a
 // call, undeliverable, ...).
@@ -73,12 +73,12 @@ function windowState(now, tz, step) {
 const isInsideWindow = (now, tz, step) => windowState(now, tz, step) === "inside";
 
 /**
- * Enrolls a contact right after their welcome text was queued. Does nothing
+ * Enrolls a contact right after their signup text was queued. Does nothing
  * if follow-ups are off, the contact is opted out, a sequence is already
  * running, or no step fits before the auction.
  * @returns {Promise<{ started: boolean, reason?: string }>}
  */
-async function startFollowUp({ contactId, lead, property, welcomeMessageId, now = new Date() }) {
+async function startFollowUp({ contactId, lead, property, signupMessageId, now = new Date() }) {
   const settings = await getSettings();
   if (!settings.followUpsEnabled) return { started: false, reason: "follow-ups are off" };
 
@@ -88,7 +88,7 @@ async function startFollowUp({ contactId, lead, property, welcomeMessageId, now 
 
   const tz = resolveFollowUpTimezone(contact.phoneE164, property);
   const signupDay = localDay(now, tz);
-  // The welcome text went out today, so today is taken.
+  // The signup text went out today, so today is taken.
   const plan = planFollowUps({ signupDay, today: signupDay, auctionDay: auctionDayOf(property), takenDays: [signupDay] });
   if (!plan.length) return { started: false, reason: "no follow-up fits before the auction" };
 
@@ -103,8 +103,8 @@ async function startFollowUp({ contactId, lead, property, welcomeMessageId, now 
       doneSteps: [],
       startedAt: now,
       nextAt: computeSendAtOnDay(plan[0].day, tz, plan[0].step),
-      // Checked before the first follow-up, so a welcome text that never delivered stops the sequence.
-      lastMessageId: welcomeMessageId,
+      // Checked before the first follow-up, so a signup text that never delivered stops the sequence.
+      lastMessageId: signupMessageId,
     },
   };
   if (!contact.timezone) set.timezone = tz;

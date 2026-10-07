@@ -10,7 +10,7 @@
 //   4  the day before the auction     (auction-based)
 //
 // Rules (from the sending rules in the Vtext copy spec):
-//   - one automatic text per person per day; the welcome text counts
+//   - one automatic text per person per day; the signup text counts
 //   - a step whose day has already passed is skipped, never sent late
 //   - when two steps want the same day, the auction-based one wins
 //   - nothing goes out on or after the auction day
@@ -90,11 +90,11 @@ function valuesForStep(def, values) {
  * Pure: nothing here touches the database.
  *
  * @param {object} p
- * @param {string} p.signupDay - local calendar day of the signup / welcome text, "YYYY-MM-DD"
+ * @param {string} p.signupDay - local calendar day of the signup text, "YYYY-MM-DD"
  * @param {string} p.today - the contact's local calendar day right now, "YYYY-MM-DD"
  * @param {string|null} p.auctionDay - the auction's calendar day ("YYYY-MM-DD"), or null when the property has no date
  * @param {number[]} [p.doneSteps] - steps already sent or skipped
- * @param {string[]} [p.takenDays] - local days that already had an automatic text (the welcome day, the last follow-up's day)
+ * @param {string[]} [p.takenDays] - local days that already had an automatic text (the signup day, the last follow-up's day)
  * @returns {{ step: number, day: string }[]}
  */
 function planFollowUps({ signupDay, today, auctionDay, doneSteps = [], takenDays = [] }) {

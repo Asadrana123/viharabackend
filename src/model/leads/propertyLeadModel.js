@@ -38,9 +38,9 @@ const propertyLeadSchema = new mongoose.Schema(
     buyerType: { type: String, default: "", trim: true },
 
     // Buyer's quoted price (Quote Your Price funnel), in whole dollars. Set from
-    // the client's DB-bound slider (floor = startBid, ceiling = ViharaValue + 50k).
-    // null when the lead did not quote a price. 0 is not expected (slider floor is
-    // startBid), but null vs a number keeps "not quoted" distinct from any value.
+    // the client's slider (estimate +/- 30%, or fixed numbers for some properties;
+    // see quoteBounds in the website's landing.helpers.js). It can be below startBid.
+    // null when the lead did not quote a price (no slider on the page).
     quotePrice: { type: Number, default: null },
 
     // IANA timezone captured silently from the browser at submit

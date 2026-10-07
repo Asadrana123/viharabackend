@@ -29,6 +29,7 @@ const PRODUCT_TEMPLATE_FIELDS =
  */
 const TEMPLATE_VARIABLES = [
   { key: "name", label: "Contact first name", scope: "contact", example: "Jane" },
+  { key: "quote_price", label: "Price the lead quoted", scope: "contact", example: "$540,000" },
   { key: "property_name", label: "Property name", scope: "property", example: "Kings Point Village Estate" },
   { key: "property_address", label: "Property address", scope: "property", example: "1703 Brookside Pine Ln, Kingwood, TX 77345" },
   { key: "property_type", label: "Property type", scope: "property", example: "Single Family Home" },
@@ -81,15 +82,23 @@ function resolvePropertyVariables(product = {}) {
   };
 }
 
-/** @param {string} [name] - contact's name (full or first); only a safe first name is used (see utils/firstName.js). Blank when unknown — never guessed. */
-function resolveContactVariables(name) {
-  return { name: firstNameOf(name) };
+/**
+ * @param {string} [name] - contact's name (full or first); only a safe first name is used (see utils/firstName.js). Blank when unknown — never guessed.
+ * @param {object} [extra]
+ * @param {number} [extra.quotePrice] - the price the lead quoted on the auction page. Blank when there is none (manual sends).
+ */
+function resolveContactVariables(name, { quotePrice } = {}) {
+  return { name: firstNameOf(name), quote_price: formatCurrency(quotePrice) };
 }
 
 /** Preview values for the template editor — real property data if given, else the catalog's own examples; `name` uses its own example (or a given sample name) since it's never resolved from a property. */
 function buildPreviewValues(product, name) {
   const live = product ? { ...resolvePropertyVariables(product), ...resolveContactVariables(name) } : null;
-  return TEMPLATE_VARIABLES.map((v) => ({ ...v, value: live ? live[v.key] || "" : name && v.key === "name" ? firstNameOf(name) : v.example }));
+  // The quote comes from the signup form, so the editor preview always shows the example for it.
+  return TEMPLATE_VARIABLES.map((v) => ({
+    ...v,
+    value: v.key === "quote_price" ? v.example : live ? live[v.key] || "" : name && v.key === "name" ? firstNameOf(name) : v.example,
+  }));
 }
 
 /** Replaces every {{key}} in body with values[key]. A key with no match in `values` is left as a literal {{key}} — same convention as vapiPromptService, so a typo'd variable is visible/debuggable rather than silently dropped. */
@@ -149,9 +158,9 @@ async function loadTemplateAndProperty(templateId, propertyId) {
 }
 
 /** Loads a property and renders a template against it (+ an optional recipient name) in one call — what the Send tab's single-send and preview both need. */
-async function renderTemplateForProperty(templateId, propertyId, name) {
+async function renderTemplateForProperty(templateId, propertyId, name, extra) {
   const { template, product, propertyValues } = await loadTemplateAndProperty(templateId, propertyId);
-  const values = { ...propertyValues, ...resolveContactVariables(name) };
+  const values = { ...propertyValues, ...resolveContactVariables(name, extra) };
   return { template, property: product, body: renderTemplate(template.body, values), values };
 }
 

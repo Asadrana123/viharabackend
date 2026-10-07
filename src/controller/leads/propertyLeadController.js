@@ -16,7 +16,7 @@ const { getEmailEventsForEmails } = require("../../services/integrations/emailEv
 const { getNotesForLeads } = require("../../services/leads/leadNotesService");
 const { listView, scopeQuery, unlessSummary, shapeLeads } = require("../../services/leads/leadListView");
 const { getVtextMessagesForPhones } = require("../../services/vtext/vtextLeadMessagesService");
-const { maybeSendSignupWelcomeText } = require("../../services/vtext/vtextAutoSignupService");
+const { maybeSendSignupQuoteText } = require("../../services/vtext/vtextAutoSignupService");
 const { syncPropertyLead } = require("../../services/integrations/brevoService");
 const { notifyNewLead } = require("../../services/shared/slackService");
 const { onPropertyLeadSignup } = require("../../services/propertyEmail/propertyEmailService");
@@ -212,7 +212,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
     // Vtext's own automated signup text — independent of and in addition to
     // the Brevo sync above, off by default (VTEXT_AUTO_SIGNUP_TEXT_ENABLED).
     // See vtextAutoSignupService.js's header for the full design.
-    maybeSendSignupWelcomeText({ lead, property });
+    maybeSendSignupQuoteText({ lead, property });
   })();
 });
 
