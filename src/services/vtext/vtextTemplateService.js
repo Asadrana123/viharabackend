@@ -9,6 +9,7 @@ const mongoose = require("mongoose");
 const Product = require("../../model/property/productModel");
 const VtextTemplate = require("../../model/vtext/vtextTemplateModel");
 const Errorhandler = require("../../utils/errorhandler");
+const { firstNameOf } = require("../../utils/firstName");
 
 const SITE_DOMAIN = "vihara.ai";
 
@@ -21,7 +22,7 @@ const SITE_DOMAIN = "vihara.ai";
  * "property"` variables are the same for everyone in a given send.
  */
 const TEMPLATE_VARIABLES = [
-  { key: "name", label: "Contact name", scope: "contact", example: "Jane" },
+  { key: "name", label: "Contact first name", scope: "contact", example: "Jane" },
   { key: "property_name", label: "Property name", scope: "property", example: "Kings Point Village Estate" },
   { key: "property_address", label: "Property address", scope: "property", example: "1703 Brookside Pine Ln, Kingwood, TX 77345" },
   { key: "property_type", label: "Property type", scope: "property", example: "Single Family Home" },
@@ -63,20 +64,30 @@ function resolvePropertyVariables(product = {}) {
   };
 }
 
-/** @param {string} [name] - contact's name, blank when unknown — never guessed. */
+/** @param {string} [name] - contact's name (full or first); only a safe first name is used (see utils/firstName.js). Blank when unknown — never guessed. */
 function resolveContactVariables(name) {
-  return { name: name || "" };
+  return { name: firstNameOf(name) };
 }
 
 /** Preview values for the template editor — real property data if given, else the catalog's own examples; `name` uses its own example (or a given sample name) since it's never resolved from a property. */
 function buildPreviewValues(product, name) {
   const live = product ? { ...resolvePropertyVariables(product), ...resolveContactVariables(name) } : null;
-  return TEMPLATE_VARIABLES.map((v) => ({ ...v, value: live ? live[v.key] || "" : name && v.key === "name" ? name : v.example }));
+  return TEMPLATE_VARIABLES.map((v) => ({ ...v, value: live ? live[v.key] || "" : name && v.key === "name" ? firstNameOf(name) : v.example }));
 }
 
 /** Replaces every {{key}} in body with values[key]. A key with no match in `values` is left as a literal {{key}} — same convention as vapiPromptService, so a typo'd variable is visible/debuggable rather than silently dropped. */
 function renderTemplate(body, values) {
-  return String(body || "").replace(/\{\{(\w+)\}\}/g, (match, key) => (key in values ? values[key] : match));
+  let text = String(body || "");
+  // No usable name: drop {{name}} with its leading space, so "Hi {{name}}, ..." reads "Hi, ..." and not "Hi , ...".
+  if (values && values.name === "") {
+    const nameFirst = /^\s*\{\{name\}\}[ \t,:;-]*/;
+    if (nameFirst.test(text)) {
+      text = text.replace(nameFirst, "");
+      text = text.charAt(0).toUpperCase() + text.slice(1);
+    }
+    text = text.replace(/[ \t]*\{\{name\}\}/g, "");
+  }
+  return text.replace(/\{\{(\w+)\}\}/g, (match, key) => (key in values ? values[key] : match));
 }
 
 /** Loads a property once — the shared half of a bulk send's per-recipient rendering, so the DB isn't hit once per number. */

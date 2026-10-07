@@ -9,6 +9,7 @@
 // {{auction_url}}, plus everything vtextTemplateService.resolvePropertyVariables
 // produces (listing_url, property_name, ...).
 const { renderTemplate, resolvePropertyVariables } = require("./vtextTemplateService");
+const { firstNameOf } = require("../../utils/firstName");
 
 const SITE_DOMAIN = "vihara.ai";
 
@@ -37,7 +38,7 @@ function windowForStep(step) {
 }
 
 function greetingFor(name) {
-  const first = String(name || "").trim().split(/\s+/)[0];
+  const first = firstNameOf(name);
   return first ? `Hi ${first},` : "Hi,";
 }
 
