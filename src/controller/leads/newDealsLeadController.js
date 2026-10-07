@@ -19,7 +19,7 @@ const { getNotesForLeads } = require("../../services/leads/leadNotesService");
 const { listView, scopeQuery, unlessSummary, shapeLeads } = require("../../services/leads/leadListView");
 const { scheduleNewDealsSignupCall } = require("../../services/calling/newDealsCallScheduler");
 const { newDealsPageUrl } = require("../../config/siteUrls");
-const { NEW_DEALS, findDeal, dealLabel } = require("../../config/newDeals");
+const { LIVE_DEALS, findDeal, dealLabel } = require("../../config/newDeals");
 const Product = require("../../model/property/productModel");
 const TEST_NAME_FIELDS = ["fullName", "firstName"];
 const {
@@ -328,19 +328,19 @@ let dealsCache = { at: 0, deals: null };
 /**
  * GET /api/v1/new-deals/deals   (public)
  *
- * The spotlight deals (config/newDeals.js) joined to their properties by slug:
+ * The live spotlight deals (config/newDeals.js) joined to their properties by slug:
  * address, photos, beds/baths/sqft, type. Price, area and "best for" stay from
  * the config (they're what Maya quotes). A deal whose property is missing comes
  * back without `property`, and the page shows it as before.
  */
 const getNewDealsSpotlight = catchAsyncError(async (req, res) => {
   if (!dealsCache.deals || Date.now() - dealsCache.at > DEALS_CACHE_MS) {
-    const products = await Product.find({ slug: { $in: NEW_DEALS.map((d) => d.slug).filter(Boolean) } })
+    const products = await Product.find({ slug: { $in: LIVE_DEALS.map((d) => d.slug).filter(Boolean) } })
       .select(DEAL_FIELDS)
       .lean();
     const bySlug = new Map(products.map((p) => [p.slug, p]));
 
-    const deals = NEW_DEALS.map((d) => {
+    const deals = LIVE_DEALS.map((d) => {
       const p = bySlug.get(d.slug);
       if (!p) return { id: d.id };
       const photos = [p.image, ...(p.otherImages || [])].filter(Boolean);
