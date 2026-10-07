@@ -1,25 +1,25 @@
-// services/property/parsers/zillowPropertyJsonParser.js
+// services/property/parsers/marketDataPropertyJsonParser.js
 //
-// Reads Zillow's structured property object from the Firecrawl RAW HTML scrape
+// Reads the source's structured property object from the Firecrawl RAW HTML scrape
 // (<script id="__NEXT_DATA__"> -> props.pageProps.componentProps.gdpClientCache)
-// and returns it in the SAME shape as zillowDetailsParser.extractFromMarkdown,
+// and returns it in the SAME shape as marketDataDetailsParser.extractFromMarkdown,
 // so the importer can merge the two.
 //
-// This JSON is Zillow's first-load data: reliable for the core facts (address,
-// beds, baths, sqft, lot, price, Zestimates, HOA, agent, coordinates) but it
+// This JSON is the source's first-load data: reliable for the core facts (address,
+// beds, baths, sqft, lot, price, estimates, HOA, agent, coordinates) but it
 // usually has no schools / price history / tax history. Those come from the
 // markdown scrape.
 //
-// Usage: parseZillowPropertyJson(firecrawlJson | rawHtmlString) -> parsed | null
+// Usage: parseMarketDataPropertyJson(firecrawlJson | rawHtmlString) -> parsed | null
 
 const NEXT_DATA_RE = /<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i;
 const SQFT_PER_ACRE = 43560;
 
-// Zillow homeStatus values where the page has no real asking price (the
+// Market data homeStatus values where the page has no real asking price (the
 // "price" field then holds a sold price or an estimate, not a list price).
 const NOT_FOR_SALE_STATUS = /SOLD|OTHER|OFF_MARKET|RENT/i;
 
-/** True when Zillow's status means there is no current list price. */
+/** True when the source's status means there is no current list price. */
 function isNotForSale(homeStatus) {
     return typeof homeStatus === "string" && NOT_FOR_SALE_STATUS.test(homeStatus);
 }
@@ -55,10 +55,10 @@ function getRawHtml(payload) {
 }
 
 /**
- * The raw Zillow property object, or null when the page has none.
+ * The raw market data property object, or null when the page has none.
  * @param {object|string} payload  Firecrawl response or raw HTML string.
  */
-function extractZillowProperty(payload) {
+function extractMarketDataProperty(payload) {
     const match = getRawHtml(payload).match(NEXT_DATA_RE);
     if (!match) return null;
 
@@ -132,7 +132,7 @@ function mapListingAgent(info) {
 }
 
 /**
- * Zillow property object -> the markdown parser's shape. Missing values are
+ * Market data property object -> the markdown parser's shape. Missing values are
  * null / [] — nothing is guessed.
  */
 function toParsedShape(p) {
@@ -169,8 +169,8 @@ function toParsedShape(p) {
         financials: {
             monthlyHoa: toNum(p.monthlyHoaFee ?? reso.hoaFee),
             taxAssessedValue: toNum(reso.taxAssessedValue),
-            zestimate: toNum(p.zestimate),
-            rentZestimate: toNum(p.rentZestimate),
+            estimate: toNum(p.zestimate),
+            rentEstimate: toNum(p.rentZestimate),
             pricePerSqft: toNum(reso.pricePerSquareFoot),
         },
         details: {
@@ -210,9 +210,9 @@ function toParsedShape(p) {
 }
 
 /** Firecrawl raw-HTML payload -> parsed shape, or null when no property JSON is found. */
-function parseZillowPropertyJson(payload) {
-    const property = extractZillowProperty(payload);
+function parseMarketDataPropertyJson(payload) {
+    const property = extractMarketDataProperty(payload);
     return property ? toParsedShape(property) : null;
 }
 
-module.exports = { parseZillowPropertyJson, extractZillowProperty, isNotForSale };
+module.exports = { parseMarketDataPropertyJson, extractMarketDataProperty, isNotForSale };

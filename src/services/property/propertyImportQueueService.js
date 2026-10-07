@@ -1,26 +1,26 @@
 // services/property/propertyImportQueueService.js
 //
-// Queue for the Property Importer: an admin pastes many Zillow links at once,
+// Queue for the Property Importer: an admin pastes many market data links at once,
 // each becomes a PropertyImportJob, and this worker builds the drafts ONE AT A
 // TIME, oldest first, with a randomized pause between scrapes — a steady,
-// human-paced trickle instead of a burst Zillow's bot detection could flag.
+// human-paced trickle instead of a burst the source's bot detection could flag.
 //
 // The queue lives in MongoDB (not memory), so queued links survive a restart.
-// The server runs as one instance (see jobs/zillowSyncJob.js), so a simple
+// The server runs as one instance (see jobs/marketSyncJob.js), so a simple
 // in-process "draining" flag is enough to keep a single worker loop.
 //
-// Pause between scrapes: random between ZILLOW_IMPORT_MIN_DELAY_MS and
-// ZILLOW_IMPORT_MAX_DELAY_MS (defaults 30s – 75s), measured from the end of one
+// Pause between scrapes: random between MARKET_DATA_IMPORT_MIN_DELAY_MS and
+// MARKET_DATA_IMPORT_MAX_DELAY_MS (defaults 30s – 75s), measured from the end of one
 // scrape to the start of the next.
 
 const PropertyImportJob = require("../../model/property/propertyImportJobModel");
 const productModel = require("../../model/property/productModel");
 const firecrawlService = require("../integrations/firecrawlService");
-const { buildPropertyDraftFromZillow } = require("./propertyImportService");
-const { normalizeZillowUrl } = require("../../utils/zillowUrl");
+const { buildPropertyDraftFromMarketData } = require("./propertyImportService");
+const { normalizeMarketDataUrl } = require("../../utils/marketDataUrl");
 
-const MIN_DELAY_MS = Number(process.env.ZILLOW_IMPORT_MIN_DELAY_MS) || 30000;
-const MAX_DELAY_MS = Math.max(MIN_DELAY_MS, Number(process.env.ZILLOW_IMPORT_MAX_DELAY_MS) || 75000);
+const MIN_DELAY_MS = Number(process.env.MARKET_DATA_IMPORT_MIN_DELAY_MS) || 30000;
+const MAX_DELAY_MS = Math.max(MIN_DELAY_MS, Number(process.env.MARKET_DATA_IMPORT_MAX_DELAY_MS) || 75000);
 const MAX_URLS_PER_BATCH = 50;
 // A job left "processing" by a crash/restart is re-queued up to this many tries.
 const MAX_ATTEMPTS = 3;
@@ -53,8 +53,8 @@ async function runJob(job) {
         if (!firecrawlService.isConfigured()) {
             throw new Error("Firecrawl is not configured on the server");
         }
-        const { draft, warnings, imageResults } = await buildPropertyDraftFromZillow({
-            zillowUrl: job.url,
+        const { draft, warnings, imageResults } = await buildPropertyDraftFromMarketData({
+            marketDataUrl: job.url,
             ...(job.folderRoot ? { folderRoot: job.folderRoot } : {}),
         });
         await PropertyImportJob.updateOne(
@@ -103,7 +103,7 @@ function kick() {
 }
 
 /**
- * Queue Zillow links. Invalid links, repeats within the batch, links already
+ * Queue market data links. Invalid links, repeats within the batch, links already
  * waiting in the importer and links already imported as a property are
  * reported back instead of queued.
  *
@@ -116,7 +116,7 @@ async function enqueueImports({ urls, folderRoot = null, userId = null }) {
     const seen = new Set();
 
     urls.forEach((raw) => {
-        const url = normalizeZillowUrl(raw);
+        const url = normalizeMarketDataUrl(raw);
         if (!url) {
             if (String(raw || "").trim()) invalid.push(String(raw).trim());
             return;
@@ -128,10 +128,10 @@ async function enqueueImports({ urls, folderRoot = null, userId = null }) {
 
     const [openJobs, existingProducts] = await Promise.all([
         PropertyImportJob.find({ url: { $in: unique } }).select("url status").lean(),
-        productModel.find({ "zillowSync.url": { $in: unique } }).select("zillowSync.url productName").lean(),
+        productModel.find({ "marketSync.url": { $in: unique } }).select("marketSync.url productName").lean(),
     ]);
     const jobByUrl = new Map(openJobs.map((j) => [j.url, j]));
-    const productByUrl = new Map(existingProducts.map((p) => [p.zillowSync.url, p]));
+    const productByUrl = new Map(existingProducts.map((p) => [p.marketSync.url, p]));
 
     const toQueue = [];
     unique.forEach((url) => {

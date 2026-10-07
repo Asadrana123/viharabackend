@@ -1,10 +1,10 @@
-// scripts/zillowSyncReport.js
+// scripts/marketSyncReport.js
 //
-// Read-only check of the weekly Zillow sync (jobs/zillowSyncJob.js). Lists
-// every Zillow-linked property with when it last synced and whether it worked,
+// Read-only check of the weekly market data sync (jobs/marketSyncJob.js). Lists
+// every market data-linked property with when it last synced and whether it worked,
 // and flags the ones the weekly job should have reached but didn't.
 //
-//   node src/scripts/zillowSyncReport.js
+//   node src/scripts/marketSyncReport.js
 //
 // Changes nothing in the database.
 
@@ -22,14 +22,14 @@ async function main() {
     await mongoose.connect(process.env.DB_URI);
 
     const products = await productModel
-        .find({ "zillowSync.url": { $nin: [null, ""] } })
-        .select("productName showOnAuctions zillowSync")
-        .sort({ "zillowSync.lastSyncedAt": -1 })
+        .find({ "marketSync.url": { $nin: [null, ""] } })
+        .select("productName showOnAuctions marketSync")
+        .sort({ "marketSync.lastSyncedAt": -1 })
         .lean();
 
     const now = Date.now();
     const rows = products.map((p) => {
-        const s = p.zillowSync || {};
+        const s = p.marketSync || {};
         const inScope = p.showOnAuctions && s.enabled !== false;
         const ageDays = s.lastSyncedAt ? (now - new Date(s.lastSyncedAt)) / DAY_MS : null;
         let verdict;
@@ -43,7 +43,7 @@ async function main() {
             verdict,
             lastSyncedAt: fmt(s.lastSyncedAt),
             daysAgo: ageDays == null ? "-" : ageDays.toFixed(1),
-            zillowStatus: s.zillowStatus || "-",
+            marketStatus: s.marketStatus || "-",
             error: s.lastError ? String(s.lastError).slice(0, 60) : "",
         };
     });
@@ -51,7 +51,7 @@ async function main() {
     console.table(rows);
 
     const count = (v) => rows.filter((r) => r.verdict === v).length;
-    const newest = products.find((p) => p.zillowSync?.lastSyncedAt)?.zillowSync.lastSyncedAt;
+    const newest = products.find((p) => p.marketSync?.lastSyncedAt)?.marketSync.lastSyncedAt;
     console.log(`Linked properties: ${rows.length}`);
     console.log(`  ok: ${count("ok")}, failed: ${count("FAILED")}, stale: ${count("STALE")}, never synced: ${count("NEVER SYNCED")}`);
     console.log(`  skipped by design (paused / not on /auctions): ${rows.filter((r) => r.verdict.startsWith("skipped")).length}`);

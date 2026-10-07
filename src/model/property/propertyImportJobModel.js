@@ -1,9 +1,9 @@
 // model/property/propertyImportJobModel.js
 //
-// One document per Zillow link an admin queued in the Property Importer.
+// One document per market data link an admin queued in the Property Importer.
 // The import worker (services/property/propertyImportQueueService) picks them
 // up one at a time, oldest first, with a randomized pause between scrapes so
-// Zillow never sees a burst. A finished job holds the built DRAFT — nothing is
+// the source never sees a burst. A finished job holds the built DRAFT — nothing is
 // created in productModel until the admin reviews it and clicks "Create all".
 // The admin removes a job once its draft is created or no longer wanted.
 const mongoose = require("mongoose");
@@ -17,7 +17,7 @@ const IMPORT_JOB_STATUSES = [
 
 const propertyImportJobSchema = new mongoose.Schema(
     {
-        url: { type: String, required: true, trim: true }, // normalized Zillow homedetails URL
+        url: { type: String, required: true, trim: true }, // normalized market data homedetails URL
         status: { type: String, enum: IMPORT_JOB_STATUSES, default: "queued", index: true },
         folderRoot: { type: String, default: null },        // optional Cloudinary root override
         queuedAt: { type: Date, default: Date.now },        // queue order (reset on retry)

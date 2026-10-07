@@ -6,9 +6,9 @@
 const express = require("express");
 const multer = require("multer");
 const {
-    importFromZillow,
+    importFromMarketData,
     uploadImages,
-    queueZillowImports,
+    queueMarketDataImports,
     listImportJobs,
     getImportJob,
     retryImportJob,
@@ -42,14 +42,14 @@ const router = express.Router();
 // }
 
 router.post(
-    "/zillow",
+    "/market-data",
     isAuthenticated,
     authorizeRoles("admin"),
-   importFromZillow
+   importFromMarketData
 );
 
 // Import queue: many links at once, scraped one by one in the background.
-router.post("/zillow/queue", isAuthenticated, authorizeRoles("admin"), queueZillowImports);
+router.post("/market-data/queue", isAuthenticated, authorizeRoles("admin"), queueMarketDataImports);
 router.get("/jobs", isAuthenticated, authorizeRoles("admin"), listImportJobs);
 router.get("/jobs/:id", isAuthenticated, authorizeRoles("admin"), getImportJob);
 router.post("/jobs/:id/retry", isAuthenticated, authorizeRoles("admin"), retryImportJob);

@@ -1,9 +1,9 @@
-// services/property/parsers/zillowImageParser.js
+// services/property/parsers/marketDataImageParser.js
 //
 // Extracts the listing's photo gallery from the Firecrawl RAW HTML scrape of a
-// Zillow listing. Source: scripts/image-parser.js (file I/O and logging removed).
+// Market data listing. Source: scripts/image-parser.js (file I/O and logging removed).
 //
-// Usage: extractZillowImages(firecrawlJson | rawHtmlString)
+// Usage: extractMarketDataImages(firecrawlJson | rawHtmlString)
 //   -> { totalFound, image, otherImages }   (image = first photo, 1536px)
 
 const EMPTY_RESULT = Object.freeze({ totalFound: 0, image: null, otherImages: [] });
@@ -14,7 +14,7 @@ function getRawHtml(payload) {
   return payload.data?.rawHtml || payload.rawHtml || '';
 }
 
-function extractZillowImages(payload) {
+function extractMarketDataImages(payload) {
   const rawHtml = getRawHtml(payload);
   if (!rawHtml) return { ...EMPTY_RESULT };
 
@@ -81,4 +81,4 @@ function extractZillowImages(payload) {
   };
 }
 
-module.exports = { extractZillowImages };
+module.exports = { extractMarketDataImages };

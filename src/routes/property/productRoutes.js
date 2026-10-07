@@ -10,7 +10,7 @@ const {
     updateListingSettings,
     createProductsBulk,
     updateProductBasicDetails,
-    updateZillowSyncSettings
+    updateMarketSyncSettings
 } =require("../../controller/property/productController");
 const { isAuthenticated, authorizeRoles, optionalAuth } = require("../../middleware/auth");
 const router = express.Router();
@@ -23,7 +23,7 @@ router.get('/get', optionalAuth, getAllProducts);
 router.get('/admin/all', isAuthenticated, authorizeRoles("admin"), getAllProductsAdmin);
 router.put('/admin/:id/listing-settings', isAuthenticated, authorizeRoles("admin"), updateListingSettings);
 router.put('/admin/:id/basic-details', isAuthenticated, authorizeRoles("admin"), updateProductBasicDetails);
-router.put('/admin/:id/zillow-sync', isAuthenticated, authorizeRoles("admin"), updateZillowSyncSettings);
+router.put('/admin/:id/market-sync', isAuthenticated, authorizeRoles("admin"), updateMarketSyncSettings);
 
 // Public slug fetch (detail + landing pages). optionalAuth only so admins get
 // the internal fields too; visitors get the public view.

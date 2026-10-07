@@ -6,29 +6,29 @@
 
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const Errorhandler = require("../../utils/errorhandler");
-const { buildPropertyDraftFromZillow } = require("../../services/property/propertyImportService");
+const { buildPropertyDraftFromMarketData } = require("../../services/property/propertyImportService");
 const firecrawlService = require("../../services/integrations/firecrawlService");
 const cloudinaryService = require("../../services/shared/cloudinaryService");
-const { normalizeZillowUrl } = require("../../utils/zillowUrl");
+const { normalizeMarketDataUrl } = require("../../utils/marketDataUrl");
 const PropertyImportJob = require("../../model/property/propertyImportJobModel");
 const importQueue = require("../../services/property/propertyImportQueueService");
 const mongoose = require("mongoose");
 
 /**
- * POST /api/v1/property-import/zillow
+ * POST /api/v1/property-import/market-data
  * body: { url: string, folderRoot?: string }
- *   - url        : Zillow listing URL (https://www.zillow.com/homedetails/...)
+ *   - url        : market data listing URL (https://.../homedetails/...)
  *   - folderRoot : optional Cloudinary root folder override
  *
  * Returns: { success, draft, warnings, imageResults }
  */
-exports.importFromZillow = catchAsyncError(async (req, res, next) => {
+exports.importFromMarketData = catchAsyncError(async (req, res, next) => {
     const { url, folderRoot } = req.body || {};
 
-    const zillowUrl = normalizeZillowUrl(url);
-    if (!zillowUrl) {
+    const marketDataUrl = normalizeMarketDataUrl(url);
+    if (!marketDataUrl) {
         return next(new Errorhandler(
-            "A valid Zillow listing URL is required (https://www.zillow.com/homedetails/...)",
+            "A valid market data listing URL is required (https://.../homedetails/...)",
             400
         ));
     }
@@ -36,8 +36,8 @@ exports.importFromZillow = catchAsyncError(async (req, res, next) => {
         return next(new Errorhandler("Firecrawl is not configured on the server", 500));
     }
 
-    const { draft, warnings, imageResults } = await buildPropertyDraftFromZillow({
-        zillowUrl,
+    const { draft, warnings, imageResults } = await buildPropertyDraftFromMarketData({
+        marketDataUrl,
         folderRoot: typeof folderRoot === "string" && folderRoot.trim() ? folderRoot.trim() : undefined,
     });
 
@@ -78,7 +78,7 @@ exports.uploadImages = catchAsyncError(async (req, res, next) => {
 });
 
 // ---------------------------------------------------------------------------
-// Import queue — many Zillow links at once, scraped slowly in the background
+// Import queue — many market data links at once, scraped slowly in the background
 // (services/property/propertyImportQueueService).
 // ---------------------------------------------------------------------------
 
@@ -88,14 +88,14 @@ const JOB_SUMMARY_FIELDS = "url status error warnings attempts queuedAt startedA
 const isObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 
 /**
- * POST /api/v1/property-import/zillow/queue
+ * POST /api/v1/property-import/market-data/queue
  * body: { urls: string[] | string, folderRoot?: string }
- *   - urls: Zillow links — an array, or one string with links separated by
+ *   - urls: market data links — an array, or one string with links separated by
  *           new lines / spaces / commas.
  *
  * Returns: { success, queuedCount, queued, invalid, skipped }
  */
-exports.queueZillowImports = catchAsyncError(async (req, res, next) => {
+exports.queueMarketDataImports = catchAsyncError(async (req, res, next) => {
     const { urls, folderRoot } = req.body || {};
     const list = Array.isArray(urls)
         ? urls
@@ -103,7 +103,7 @@ exports.queueZillowImports = catchAsyncError(async (req, res, next) => {
     const cleaned = list.map((u) => String(u || "").trim()).filter(Boolean);
 
     if (!cleaned.length) {
-        return next(new Errorhandler("Add at least one Zillow listing URL", 400));
+        return next(new Errorhandler("Add at least one market data listing URL", 400));
     }
     if (cleaned.length > importQueue.MAX_URLS_PER_BATCH) {
         return next(new Errorhandler(`Add at most ${importQueue.MAX_URLS_PER_BATCH} links at a time`, 400));

@@ -19,6 +19,7 @@ const { getVtextMessagesForPhones } = require("../../services/vtext/vtextLeadMes
 const { maybeSendSignupWelcomeText } = require("../../services/vtext/vtextAutoSignupService");
 const { syncPropertyLead } = require("../../services/integrations/brevoService");
 const { notifyNewLead } = require("../../services/shared/slackService");
+const { onPropertyLeadSignup } = require("../../services/propertyEmail/propertyEmailService");
 const { auctionPageUrl, listingPageUrl } = require("../../config/siteUrls");
 
 // Single note discriminator for all property-auction leads. Lead ids are unique,
@@ -36,7 +37,7 @@ async function resolveLandingProperty(slug, next) {
   }
   const product = await productModel
     .findOne({ slug: slug.trim().toLowerCase() })
-    .select("_id slug productName street city state zipCode isLandingPage brevoListId")
+    .select("_id slug productName street city state zipCode isLandingPage brevoListId emailSequenceEnabled startBid image features auctionStartDate auctionEndDate")
     .lean();
   if (!product) {
     next(new ErrorHandler("Property not found", 404));
@@ -172,6 +173,10 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       { label: "Quote", value: hasQuote ? `$${quoteNum.toLocaleString("en-US")}` : "—" },
     ],
   }).catch((e) => console.error(`[slack] property notify failed (${slug}):`, e.message));
+
+  // E1 confirmation from the backend email sequence (only when it's on for
+  // this property — see propertyEmailService). Never throws.
+  onPropertyLeadSignup({ property, lead });
 
   // ── Enrich + Brevo sync in the background; update the lead in place ─────────
   (async () => {

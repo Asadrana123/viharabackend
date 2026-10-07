@@ -2,7 +2,7 @@ const productModel = require("../../model/property/productModel");
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const Errorhandler = require("../../utils/errorhandler");
 const { resolvePropertyTimezone, utcToWallClock } = require("../../utils/resolveTimezone");
-const { normalizeZillowUrl } = require("../../utils/zillowUrl");
+const { normalizeMarketDataUrl } = require("../../utils/marketDataUrl");
 const { createTweakPercent, isValidTweakPercent } = require("../../services/property/priceTweakService");
 const {
     bulletDisclaimers,
@@ -43,10 +43,10 @@ exports.createProductsBulk = catchAsyncError(async (req, res, next) => {
 
 
 // Internal fields the public property endpoints never send to non-admins:
-// the Zillow source + price shift (would let anyone undo the shift), the
+// the market data source + price shift (would let anyone undo the shift), the
 // reserve, other bidders' emails, seller / test-user / Brevo bookkeeping.
 const PUBLIC_HIDDEN_FIELDS = [
-    "zillowSync", "reservePrice", "bidderEmails", "allowedTestUsers",
+    "marketSync", "reservePrice", "bidderEmails", "allowedTestUsers",
     "sellerIds", "currentBidder", "brevoListId", "brevoOutboundSmsListId",
 ];
 
@@ -150,7 +150,7 @@ exports.getAllProductsAdmin = catchAsyncError(async (req, res) => {
     const products = await productModel
         .find({})
         // zipCode is not displayed, but resolvePropertyTimezone needs it for split-zone states
-        .select('productName street city state zipCode slug showOnAuctions isLandingPage auctionEventLabel brevoListId brevoOutboundSmsListId isTestProperty status availableAreas startBid reservePrice minIncrement auctionStartDate auctionEndDate zillowSync')
+        .select('productName street city state zipCode slug showOnAuctions isLandingPage auctionEventLabel brevoListId brevoOutboundSmsListId emailSequenceEnabled isTestProperty status availableAreas startBid reservePrice minIncrement auctionStartDate auctionEndDate marketSync')
         .sort({ createdAt: -1 })
         .lean();
 
@@ -169,7 +169,7 @@ exports.getAllProductsAdmin = catchAsyncError(async (req, res) => {
 
 // Admin — update only the listing-control fields for one property.
 exports.updateListingSettings = catchAsyncError(async (req, res, next) => {
-    const { showOnAuctions, isLandingPage, auctionEventLabel, availableAreas, brevoListId, brevoOutboundSmsListId } = req.body;
+    const { showOnAuctions, isLandingPage, auctionEventLabel, availableAreas, brevoListId, brevoOutboundSmsListId, emailSequenceEnabled } = req.body;
 
     const product = await productModel.findById(req.params.id);
     if (!product) {
@@ -179,6 +179,8 @@ exports.updateListingSettings = catchAsyncError(async (req, res, next) => {
     if (typeof showOnAuctions === 'boolean') product.showOnAuctions = showOnAuctions;
     if (typeof isLandingPage === 'boolean') product.isLandingPage = isLandingPage;
     if (typeof auctionEventLabel === 'string') product.auctionEventLabel = auctionEventLabel;
+    // Backend property email sequence (E1, R1, R2, PT1) on/off for this property.
+    if (typeof emailSequenceEnabled === 'boolean') product.emailSequenceEnabled = emailSequenceEnabled;
 
     // Per-landing-page Brevo list override. Accept a positive integer, or
     // null/"" to clear it (leads then fall back to the shared Property Leads list).
@@ -237,7 +239,8 @@ exports.updateListingSettings = catchAsyncError(async (req, res, next) => {
             auctionEventLabel: product.auctionEventLabel,
             availableAreas: product.availableAreas,
             brevoListId: product.brevoListId,
-            brevoOutboundSmsListId: product.brevoOutboundSmsListId
+            brevoOutboundSmsListId: product.brevoOutboundSmsListId,
+            emailSequenceEnabled: product.emailSequenceEnabled
         }
     });
 });
@@ -322,28 +325,28 @@ exports.updateProductBasicDetails = catchAsyncError(async (req, res, next) => {
     });
 });
 
-// Admin — Zillow sync settings for one property (Manage Listings).
+// Admin — market data sync settings for one property (Manage Listings).
 // body (all optional):
-//   url                : Zillow listing link; "" / null unlinks (weekly sync stops)
+//   url                : market data listing link; "" / null unlinks (weekly sync stops)
 //   enabled            : false pauses the weekly sync, true resumes it
-//   dismissStatusAlert : true clears the "Zillow status changed" flag
-// Touches only zillowSync — nothing else on the property.
-exports.updateZillowSyncSettings = catchAsyncError(async (req, res, next) => {
+//   dismissStatusAlert : true clears the "Market data status changed" flag
+// Touches only marketSync — nothing else on the property.
+exports.updateMarketSyncSettings = catchAsyncError(async (req, res, next) => {
     const { url, enabled, dismissStatusAlert } = req.body || {};
 
     const product = await productModel.findById(req.params.id);
     if (!product) {
         return next(new Errorhandler("Property not found", 404));
     }
-    const sync = product.zillowSync;
+    const sync = product.marketSync;
 
     if (url !== undefined) {
         if (url === null || String(url).trim() === "") {
             sync.url = null;
         } else {
-            const clean = normalizeZillowUrl(String(url));
+            const clean = normalizeMarketDataUrl(String(url));
             if (!clean) {
-                return next(new Errorhandler("Enter a valid Zillow listing link (https://www.zillow.com/homedetails/...)", 400));
+                return next(new Errorhandler("Enter a valid market data listing link (https://.../homedetails/...)", 400));
             }
             if (clean !== sync.url) {
                 // A different listing: start its sync history fresh.
@@ -351,7 +354,7 @@ exports.updateZillowSyncSettings = catchAsyncError(async (req, res, next) => {
                 sync.lastSyncedAt = null;
                 sync.lastStatus = null;
                 sync.lastError = null;
-                sync.zillowStatus = null;
+                sync.marketStatus = null;
                 sync.statusAlert = null;
                 sync.photoSignature = null;
             }
@@ -373,7 +376,7 @@ exports.updateZillowSyncSettings = catchAsyncError(async (req, res, next) => {
 
     return res.json({
         success: true,
-        message: "Zillow sync settings updated",
-        zillowSync: product.zillowSync,
+        message: "Market data sync settings updated",
+        marketSync: product.marketSync,
     });
 });
