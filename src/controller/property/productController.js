@@ -150,7 +150,7 @@ exports.getAllProductsAdmin = catchAsyncError(async (req, res) => {
     const products = await productModel
         .find({})
         // zipCode is not displayed, but resolvePropertyTimezone needs it for split-zone states
-        .select('productName street city state zipCode slug showOnAuctions isLandingPage auctionEventLabel brevoListId brevoOutboundSmsListId emailSequenceEnabled isTestProperty status availableAreas startBid reservePrice minIncrement auctionStartDate auctionEndDate marketSync')
+        .select('productName street city state zipCode slug image showOnAuctions isLandingPage auctionEventLabel brevoListId brevoOutboundSmsListId emailSequenceEnabled isTestProperty status availableAreas startBid reservePrice minIncrement auctionStartDate auctionEndDate marketSync')
         .sort({ createdAt: -1 })
         .lean();
 
