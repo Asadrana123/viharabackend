@@ -4,19 +4,27 @@
 // so this is the backend's copy of NEW_DEALS in the frontend's
 // components/Landing/landing.config.js — keep the two in sync (same ids).
 // Used to validate deal_interest, label it for Slack / Brevo / admin, and to
-// build Maya's CURRENT NEW DEALS block. Never add street addresses here.
+// build Maya's CURRENT NEW DEALS block. `slug` ties each deal to its property
+// in the database (address, photos, beds/baths for the page's deal cards).
+// Maya's prompt stays address-free.
+//
+// live: true  → shown on the page and in Maya's CURRENT NEW DEALS block.
+// Retired deals stay in the list so older leads that tapped them keep their
+// label in admin / Slack / Brevo and Maya can still name the deal on a call.
 
 const NEW_DEALS = [
-  { id: "bal-01", city: "Baltimore", state: "MD", area: "East Baltimore", price: 65900, type: "Mixed-use", fit: "Buy & hold" },
-  { id: "pg-01", city: "Fairmount Heights", state: "MD", area: "Prince George's County", price: 139900, type: "", fit: "Fix & flip" },
-  { id: "det-01", city: "Lathrup Village", state: "MI", area: "Metro Detroit, Oakland County", price: 285000, type: "", fit: "Buy & hold" },
-  { id: "nola-01", city: "New Orleans", state: "LA", area: "Orleans Parish", price: 139900, type: "", fit: "Buy & hold" },
-  { id: "nola-02", city: "New Orleans", state: "LA", area: "Orleans Parish", price: 149900, type: "", fit: "Buy & hold" },
-  { id: "nola-03", city: "New Orleans", state: "LA", area: "Orleans Parish", price: 265500, type: "Multi-unit", fit: "Multi-unit income" },
+  { id: "bal-01", slug: "2529-2531-e-monument-st-baltimore", city: "Baltimore", state: "MD", area: "East Baltimore", price: 65900, type: "Mixed-use", fit: "Buy & hold" },
+  { id: "pg-01", slug: "703-59th-ave-capitol-heights", city: "Fairmount Heights", state: "MD", area: "Prince George's County", price: 139900, type: "", fit: "Fix & flip" },
+  { id: "det-01", slug: "18753-san-diego-blvd-lathrup-village", city: "Lathrup Village", state: "MI", area: "Metro Detroit, Oakland County", price: 285000, type: "", fit: "Buy & hold" },
+  { id: "nola-01", live: true, slug: "1983-law-st-new-orleans", city: "New Orleans", state: "LA", area: "Orleans Parish", price: 139900, type: "", fit: "Buy & hold" },
+  { id: "nola-02", live: true, slug: "1977-law-st-new-orleans", city: "New Orleans", state: "LA", area: "Orleans Parish", price: 149900, type: "", fit: "Buy & hold" },
+  { id: "nola-03", live: true, slug: "2508-12-s-prieur-st-new-orleans", city: "New Orleans", state: "LA", area: "Orleans Parish", price: 265500, type: "Multi-unit", fit: "Multi-unit income" },
 ];
 
 const STATE_WORDS = { MD: "Maryland", MI: "Michigan", LA: "Louisiana" };
 const usd = (n) => `$${Math.round(n).toLocaleString("en-US")}`;
+
+const LIVE_DEALS = NEW_DEALS.filter((d) => d.live);
 
 const findDeal = (id) => NEW_DEALS.find((d) => d.id === id) || null;
 
@@ -32,9 +40,9 @@ const dealSpoken = (id) => {
   return d ? `the ${d.city}, ${STATE_WORDS[d.state] || d.state} deal listed at ${usd(d.price)}` : "";
 };
 
-/** Maya's CURRENT NEW DEALS lines (facts only — no addresses). */
+/** Maya's CURRENT NEW DEALS lines (live deals only, facts only — no addresses). */
 const dealsForPrompt = () =>
-  NEW_DEALS.map((d, i) =>
+  LIVE_DEALS.map((d, i) =>
     [
       `${i + 1}) ${d.city}, ${STATE_WORDS[d.state] || d.state} — ${d.area}.`,
       d.type ? `${d.type}.` : "",
@@ -45,4 +53,4 @@ const dealsForPrompt = () =>
       .join(" ")
   ).join("\n");
 
-module.exports = { NEW_DEALS, findDeal, dealLabel, dealSpoken, dealsForPrompt };
+module.exports = { NEW_DEALS, LIVE_DEALS, findDeal, dealLabel, dealSpoken, dealsForPrompt };

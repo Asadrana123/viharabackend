@@ -1,10 +1,9 @@
 // config/newDealsVoicePrompt.js
 //
 // STATIC prompt for the /new-deals page ("A new deal just landed."). The
-// CURRENT NEW DEALS block is built from config/newDeals.js (the backend copy
-// of NEW_DEALS in the frontend's landing.config.js). These deals are NOT in the
-// property database yet, and the page promises "address and photos are shared
-// once you're matched", so Maya never gives an address.
+// CURRENT NEW DEALS block is built from the live deals in config/newDeals.js
+// (the backend copy of NEW_DEALS in the frontend's landing.config.js). The page
+// now shows each deal's address and photo; Maya's block is still address-free.
 //
 // Variables injected at call time (buildVariableValues in vapiPromptService.js):
 //   {{prospect_name}}  {{prospect_full_name}}
