@@ -7,6 +7,7 @@ const {
   findUnknownPlaceholders,
   buildPreviewValues,
   renderTemplateForProperty,
+  loadTemplateAndProperty,
 } = require("../../services/vtext/vtextTemplateService");
 
 /** 400 text for a body that uses a {{placeholder}} we don't have, or null when every one is known. */
@@ -90,7 +91,11 @@ const deleteTemplate = catchAsyncError(async (req, res) => {
 /** POST /api/v1/vtext/templates/:id/preview — body: { propertyId, name? } → the rendered text, for the Send tab's live preview before launching a send. */
 const previewTemplate = catchAsyncError(async (req, res) => {
   const { propertyId, name } = req.body;
-  const { body, property } = await renderTemplateForProperty(req.params.id, propertyId, name);
+  const { template, product } = await loadTemplateAndProperty(req.params.id, propertyId);
+  // A quote template has no real quote in a preview, so show a sample: the starting bid for the in-range text, a little under it for the short one.
+  const startBid = Number(product.startBid) || 0;
+  const quotePrice = req.body.quotePrice || (template.autoSignupRole === "quote_short" ? Math.max(startBid - 15000, 0) : startBid) || undefined;
+  const { body, property } = await renderTemplateForProperty(req.params.id, propertyId, name, { quotePrice });
   return res.status(200).json({ success: true, body, property: { id: property._id, name: property.productName } });
 });
 
