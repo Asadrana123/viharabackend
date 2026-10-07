@@ -10,8 +10,14 @@ const Product = require("../../model/property/productModel");
 const VtextTemplate = require("../../model/vtext/vtextTemplateModel");
 const Errorhandler = require("../../utils/errorhandler");
 const { firstNameOf } = require("../../utils/firstName");
+const { resolvePropertyTimezone } = require("../../utils/resolveTimezone");
+const { getSiteUrl, listingPageUrl } = require("../../config/siteUrls");
+const { formatShortMoney, formatAuctionDate, formatAuctionTime } = require("./vtextFormatters");
 
-const SITE_DOMAIN = "vihara.ai";
+// Every property field the variables below read — one list so the preview,
+// the Send tab and the follow-ups all load the same fields.
+const PRODUCT_TEMPLATE_FIELDS =
+  "productName street city state zipCode beds baths assetType propertyType startBid slug auctionStartDate auctionEndDate investmentData.valuation investmentData.rental";
 
 /**
  * Canonical list of variables a template can use — shown in the admin UI's
@@ -28,10 +34,15 @@ const TEMPLATE_VARIABLES = [
   { key: "property_type", label: "Property type", scope: "property", example: "Single Family Home" },
   { key: "property_beds", label: "Bedrooms", scope: "property", example: "5" },
   { key: "property_baths", label: "Bathrooms", scope: "property", example: "5" },
+  { key: "property_short", label: "Street address only", scope: "property", example: "449 Georgia St" },
+  { key: "city", label: "City", scope: "property", example: "Big Bear Lake" },
   { key: "property_price", label: "Starting bid", scope: "property", example: "$800,000" },
+  { key: "opening_bid", label: "Opening bid (short)", scope: "property", example: "$525K" },
+  { key: "auction_date", label: "Auction day", scope: "property", example: "Sat, Oct 17" },
+  { key: "auction_time", label: "Auction hours", scope: "property", example: "11 AM–3:15 PM PT" },
   { key: "estimated_value", label: "Vihara estimate", scope: "property", example: "$1,037,000" },
   { key: "monthly_rent", label: "Estimated monthly rent", scope: "property", example: "$4,499" },
-  { key: "listing_url", label: "Listing URL", scope: "property", example: "vihara.ai/listing/1703-brookside-pine-ln-kingwood" },
+  { key: "listing_url", label: "Listing URL", scope: "property", example: "https://www.vihara.ai/listing/1703-brookside-pine-ln-kingwood" },
 ];
 
 const formatCurrency = (n) => (typeof n === "number" && !Number.isNaN(n) ? `$${Math.round(n).toLocaleString("en-US")}` : "");
@@ -43,13 +54,14 @@ function buildAddress(product) {
 }
 
 function buildListingUrl(product) {
-  return product.slug ? `https://${SITE_DOMAIN}/listing/${product.slug}` : `https://${SITE_DOMAIN}`;
+  return product.slug ? listingPageUrl(product.slug) : getSiteUrl();
 }
 
 /** @param {object} product - a lean productModel document */
 function resolvePropertyVariables(product = {}) {
   const valuation = product.investmentData?.valuation || {};
   const rental = product.investmentData?.rental || {};
+  const tz = resolvePropertyTimezone(product);
 
   return {
     property_name: product.productName || "",
@@ -57,7 +69,12 @@ function resolvePropertyVariables(product = {}) {
     property_type: product.propertyType || product.assetType || "",
     property_beds: product.beds != null ? String(product.beds) : "",
     property_baths: product.baths != null ? String(product.baths) : "",
+    property_short: product.street || "",
+    city: product.city || "",
     property_price: formatCurrency(product.startBid),
+    opening_bid: formatShortMoney(product.startBid),
+    auction_date: formatAuctionDate(product.auctionStartDate, tz),
+    auction_time: formatAuctionTime(product.auctionStartDate, product.auctionEndDate, tz),
     estimated_value: formatCurrency(valuation.ViharaValue || valuation.highRange),
     monthly_rent: formatCurrency(rental.estimatedMonthlyRent || rental.rentalValue),
     listing_url: buildListingUrl(product),
@@ -90,6 +107,32 @@ function renderTemplate(body, values) {
   return text.replace(/\{\{(\w+)\}\}/g, (match, key) => (key in values ? values[key] : match));
 }
 
+const ALLOWED_KEYS = new Set(TEMPLATE_VARIABLES.map((v) => v.key));
+
+/** {{keys}} in `body` that are not in the catalog. A typo here would otherwise reach a lead as literal "{{typo}}". */
+function findUnknownPlaceholders(body) {
+  const unknown = new Set();
+  for (const m of String(body || "").matchAll(/\{\{(\w+)\}\}/g)) if (!ALLOWED_KEYS.has(m[1])) unknown.add(m[1]);
+  return [...unknown];
+}
+
+/**
+ * Safety check on a rendered message. Returns a reason string when it must not
+ * be sent — a {{placeholder}} is still in the text, or a required value that
+ * the template uses is empty — and null when it is fine.
+ * @param {string} templateBody - the body before rendering
+ * @param {string} renderedText - the body after rendering
+ * @param {object} values - the values it was rendered with
+ * @param {string[]} requiredKeys - keys that must have a value when the template uses them
+ */
+function checkRendered(templateBody, renderedText, values, requiredKeys = []) {
+  const left = String(renderedText || "").match(/\{\{\w+\}\}/);
+  if (left) return `unresolved placeholder ${left[0]}`;
+  const missing = requiredKeys.filter((k) => String(templateBody || "").includes(`{{${k}}}`) && !values[k]);
+  if (missing.length) return `missing ${missing.join(", ")}`;
+  return null;
+}
+
 /** Loads a property once — the shared half of a bulk send's per-recipient rendering, so the DB isn't hit once per number. */
 async function loadTemplateAndProperty(templateId, propertyId) {
   if (!templateId) throw new Errorhandler("templateId is required", 400);
@@ -99,9 +142,7 @@ async function loadTemplateAndProperty(templateId, propertyId) {
   const template = await VtextTemplate.findById(templateId).lean();
   if (!template) throw new Errorhandler("Template not found", 404);
 
-  const product = await Product.findById(propertyId)
-    .select("productName street city state zipCode beds baths assetType propertyType startBid slug investmentData.valuation investmentData.rental")
-    .lean();
+  const product = await Product.findById(propertyId).select(PRODUCT_TEMPLATE_FIELDS).lean();
   if (!product) throw new Errorhandler("Property not found", 404);
 
   return { template, product, propertyValues: resolvePropertyVariables(product) };
@@ -116,6 +157,9 @@ async function renderTemplateForProperty(templateId, propertyId, name) {
 
 module.exports = {
   TEMPLATE_VARIABLES,
+  PRODUCT_TEMPLATE_FIELDS,
+  findUnknownPlaceholders,
+  checkRendered,
   resolvePropertyVariables,
   resolveContactVariables,
   buildPreviewValues,

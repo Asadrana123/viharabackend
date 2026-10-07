@@ -2,6 +2,7 @@
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const VtextContact = require("../../model/vtext/vtextContactModel");
 const VtextMessage = require("../../model/vtext/vtextMessageModel");
+const { endFollowUp } = require("../../services/vtext/vtextFollowUpEnd");
 
 /** GET /api/v1/vtext/contacts/:id — contact plus its merged (all-lines) message timeline. */
 const getContact = catchAsyncError(async (req, res) => {
@@ -41,4 +42,17 @@ const updateContactConsent = catchAsyncError(async (req, res) => {
   return res.status(200).json({ success: true, contact });
 });
 
-module.exports = { getContact, updateContactConsent };
+/** POST /api/v1/vtext/contacts/:id/call-booked — the person booked an advisor call, so the follow-up texts stop. */
+const markCallBooked = catchAsyncError(async (req, res) => {
+  const contact = await VtextContact.findById(req.params.id).select("_id followUp.status");
+  if (!contact) return res.status(404).json({ success: false, message: "Contact not found" });
+  if (contact.followUp?.status !== "active") {
+    return res.status(409).json({ success: false, message: "No follow-up texts are running for this contact" });
+  }
+
+  await endFollowUp(contact._id, "cancelled", "call booked");
+  const updated = await VtextContact.findById(contact._id).select("followUp.status followUp.step followUp.endedReason");
+  return res.status(200).json({ success: true, followUp: updated.followUp });
+});
+
+module.exports = { getContact, updateContactConsent, markCallBooked };

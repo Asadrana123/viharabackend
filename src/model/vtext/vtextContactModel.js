@@ -66,14 +66,16 @@ const vtextContactSchema = new mongoose.Schema(
     ],
     tags: [{ type: String }],
 
-    // Daily follow-up texts after a property signup (vtextFollowUpService.js).
+    // Follow-up texts after a property signup (vtextFollowUpService.js).
     // "no-response" means all follow-ups went out and the contact never replied.
     followUp: {
       status: { type: String, enum: ["active", "replied", "opted-out", "no-response", "cancelled"] },
       leadId: { type: mongoose.Schema.Types.ObjectId },
       propertyId: { type: mongoose.Schema.Types.ObjectId },
       timezone: { type: String },
+      sequenceVersion: { type: Number }, // 2 = the 4-step, auction-dated sequence; unset = the old 7-step one, which is ended on sight
       step: { type: Number }, // follow-ups sent so far (set to 0 at enrollment)
+      doneSteps: [{ type: Number }], // step numbers (1-4) already sent or skipped
       startedAt: { type: Date },
       nextAt: { type: Date }, // null while no send is scheduled
       lastSentAt: { type: Date },

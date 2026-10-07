@@ -14,8 +14,11 @@
 // (lead.smsConsent) — not a new consent regime.
 const VtextTemplate = require("../../model/vtext/vtextTemplateModel");
 const { enqueueOutbound } = require("./vtextMessageService");
-const { renderTemplateForProperty } = require("./vtextTemplateService");
+const { renderTemplateForProperty, checkRendered } = require("./vtextTemplateService");
 const { startFollowUp } = require("./vtextFollowUpService");
+
+// The welcome text is never sent without the street and city it names, or with a {{placeholder}} left in it.
+const WELCOME_REQUIRED = ["property_short", "city"];
 
 const AUTO_ENABLED = () => process.env.VTEXT_ENABLED === "true" && process.env.VTEXT_AUTO_SIGNUP_TEXT_ENABLED === "true";
 
@@ -51,7 +54,12 @@ async function maybeSendSignupWelcomeText({ lead, property }) {
       return;
     }
 
-    const { body } = await renderTemplateForProperty(template._id, property._id, lead.fullName);
+    const { body, values } = await renderTemplateForProperty(template._id, property._id, lead.fullName);
+    const renderProblem = checkRendered(template.body, body, values, WELCOME_REQUIRED);
+    if (renderProblem) {
+      console.error(`[vtext auto-signup] SKIPPED lead ${lead._id} — ${renderProblem}`);
+      return;
+    }
 
     const { message, blocked, reason } = await enqueueOutbound({
       to: lead.phone,
