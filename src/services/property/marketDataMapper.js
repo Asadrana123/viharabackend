@@ -1,11 +1,11 @@
-// services/zillowMapper.js
+// services/marketDataMapper.js
 //
-// Maps the raw Zillow property object (pulled from the page's __NEXT_DATA__ by
+// Maps the raw market data property object (pulled from the page's __NEXT_DATA__ by
 // the browser extractor) into productModel-shaped fragments the importer can
 // merge onto a draft: schools, priceHistory, taxHistory, and propertyDetails
 // enrichment.
 //
-// This is the FRAGILE layer: Zillow changes __NEXT_DATA__ periodically, so the
+// This is the FRAGILE layer: the source changes __NEXT_DATA__ periodically, so the
 // browser extractor may need updates. Everything here is defensive — missing or
 // oddly-shaped fields yield [] rather than throwing, and NOTHING is invented.
 
@@ -221,7 +221,7 @@ function num(v) {
 }
 function mapValue(value) {
     if (!value || typeof value !== "object") {
-        return { valuationRange: null, rentZestimate: null, walkScores: null };
+        return { valuationRange: null, rentEstimate: null, walkScores: null };
     }
     const walk = num(value.walkScore), bike = num(value.bikeScore), transit = num(value.transitScore);
     return {
@@ -229,7 +229,7 @@ function mapValue(value) {
             value.zestimateLow != null || value.zestimateHigh != null
                 ? { high: num(value.zestimateHigh), low: num(value.zestimateLow) }
                 : null,
-        rentZestimate: num(value.rentZestimate),
+        rentEstimate: num(value.rentZestimate),
         walkScores:
             walk != null || bike != null || transit != null
                 ? { walk: walk, bike: bike, transit: transit }
@@ -237,7 +237,7 @@ function mapValue(value) {
     };
 }
 
-// "RealEstateOwned" (Zillow special conditions) -> productModel assetType.
+// "RealEstateOwned" (market data special conditions) -> productModel assetType.
 function assetTypeFromFacts(facts) {
     if (!facts || typeof facts !== "object") return null;
     const sc = String(facts["Special conditions"] || facts["special conditions"] || "").toLowerCase();
@@ -248,36 +248,36 @@ function assetTypeFromFacts(facts) {
 }
 
 /**
- * @param {object} zillow  Raw structured object from the browser extractor.
+ * @param {object} marketData  Raw structured object from the browser extractor.
  *   v2 shape: { schools, priceHistory, taxHistory, resoFacts, atAGlanceFacts, description }
  *   v3 shape: { schools, priceHistory, taxHistory, facts, value, description }
  * @returns mapped fragments the importer merges onto a draft (PDF-priority).
  */
-function mapZillowData(zillow) {
-    if (!zillow || typeof zillow !== "object") {
+function mapMarketData(marketData) {
+    if (!marketData || typeof marketData !== "object") {
         return {
             schools: null, priceHistory: [], taxHistory: [], propertyDetails: null,
-            description: null, valuationRange: null, rentZestimate: null, walkScores: null, assetType: null,
+            description: null, valuationRange: null, rentEstimate: null, walkScores: null, assetType: null,
         };
     }
     // propertyDetails: prefer v3 flat `facts`; fall back to v2 resoFacts/atAGlanceFacts.
-    const propertyDetails = zillow.facts
-        ? factsToDetails(zillow.facts)
-        : mapPropertyDetails(zillow.resoFacts, zillow.atAGlanceFacts);
+    const propertyDetails = marketData.facts
+        ? factsToDetails(marketData.facts)
+        : mapPropertyDetails(marketData.resoFacts, marketData.atAGlanceFacts);
 
-    const v = mapValue(zillow.value);
+    const v = mapValue(marketData.value);
 
     return {
-        schools: mapSchools(zillow.schools),
-        priceHistory: mapPriceHistory(zillow.priceHistory),
-        taxHistory: mapTaxHistory(zillow.taxHistory),
+        schools: mapSchools(marketData.schools),
+        priceHistory: mapPriceHistory(marketData.priceHistory),
+        taxHistory: mapTaxHistory(marketData.taxHistory),
         propertyDetails,
-        description: typeof zillow.description === "string" ? zillow.description.trim() : null,
+        description: typeof marketData.description === "string" ? marketData.description.trim() : null,
         valuationRange: v.valuationRange,
-        rentZestimate: v.rentZestimate,
+        rentEstimate: v.rentEstimate,
         walkScores: v.walkScores,
-        assetType: assetTypeFromFacts(zillow.facts),
+        assetType: assetTypeFromFacts(marketData.facts),
     };
 }
 
-module.exports = { mapZillowData };
+module.exports = { mapMarketData };

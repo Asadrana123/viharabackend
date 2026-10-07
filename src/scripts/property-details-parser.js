@@ -78,7 +78,7 @@ function extractFromMarkdown(markdownText) {
 
   // ============================================
   // 4. SCHOOLS
-  // Handles both the plain list format Zillow actually renders
+  // Handles both the plain list format the source actually renders
   // ("Name School\n\nGrades K-6 • 0.2 miles\n\n7/10") and, as a
   // fallback, a pipe-table format in case Firecrawl ever converts
   // it that way for a different listing/layout.
@@ -339,8 +339,8 @@ function extractFromMarkdown(markdownText) {
     financials: {
       monthlyHoa: parseNumber(/- HOA fee:\s*\$([0-9,]+)/, markdownText) || 0,
       taxAssessedValue,
-      zestimate: parseNumber(/\$([0-9,]+)\s*Zestimate/, markdownText),
-      rentZestimate: parseNumber(/Rent Zestimate[^$]{0,20}\$([0-9,]+)/i, markdownText),
+      estimate: parseNumber(/\$([0-9,]+)\s*Zestimate/, markdownText),
+      rentEstimate: parseNumber(/Rent Zestimate[^$]{0,20}\$([0-9,]+)/i, markdownText),
       pricePerSqft: parseNumber(/\$([\d,]+)\/sqft/, markdownText),
     },
     details: {
@@ -374,7 +374,7 @@ function extractFromMarkdown(markdownText) {
   };
 }
 
-function processZillowResponse(jsonPayload) {
+function processMarketDataResponse(jsonPayload) {
   const markdownContent = jsonPayload.data?.markdown || jsonPayload.markdown;
 
   // Mode 1: Parse from Markdown content if present
@@ -433,8 +433,8 @@ function processZillowResponse(jsonPayload) {
     financials: {
       monthlyHoa: jsonPayload.monthlyHoa ?? jsonPayload.hoaFee ?? 0,
       taxAssessedValue: jsonPayload.taxAssessedValue ?? jsonPayload.financials?.taxAssessedValue ?? null,
-      zestimate: jsonPayload.neighborhood?.zestimate ?? jsonPayload.zestimate ?? jsonPayload.financials?.zestimate ?? null,
-      rentZestimate: jsonPayload.rentZestimate ?? null,
+      estimate: jsonPayload.neighborhood?.zestimate ?? jsonPayload.zestimate ?? jsonPayload.financials?.zestimate ?? null,
+      rentEstimate: jsonPayload.rentZestimate ?? null,
       pricePerSqft: jsonPayload.pricePerSquareFoot ?? null,
     },
     details: {
@@ -482,10 +482,10 @@ try {
   const rawData = fs.readFileSync(filePath, 'utf8');
   const jsonPayload = JSON.parse(rawData);
 
-  const extractedData = processZillowResponse(jsonPayload);
+  const extractedData = processMarketDataResponse(jsonPayload);
   console.log(JSON.stringify(extractedData, null, 2));
 } catch (error) {
   console.error('Extraction failed:', error.message);
 }
 
-module.exports = { extractFromMarkdown, processZillowResponse };
+module.exports = { extractFromMarkdown, processMarketDataResponse };

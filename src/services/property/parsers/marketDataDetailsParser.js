@@ -1,9 +1,9 @@
-// services/property/parsers/zillowDetailsParser.js
+// services/property/parsers/marketDataDetailsParser.js
 //
-// Parses the Firecrawl MARKDOWN scrape of a Zillow listing into structured
+// Parses the Firecrawl MARKDOWN scrape of a market data listing into structured
 // property data. Source: scripts/property-details-parser.js (file I/O removed).
 //
-// Usage: processZillowResponse(firecrawlJson) -> { price, address, specs, ... }
+// Usage: processMarketDataResponse(firecrawlJson) -> { price, address, specs, ... }
 
 const parseNumber = (regex, text) => {
   if (!text) return null;
@@ -91,7 +91,7 @@ function extractFromMarkdown(rawMarkdown) {
   let cooling = parseString(/- Cooling features:\s*([^\n]+)/i, markdownText) ||
                 parseString(/Cooling:\s*([^\n]+)/i, markdownText);
 
-  // Current Zillow layout: "###### Heating\n\n- Central Forced Air"
+  // Current source page layout: "###### Heating\n\n- Central Forced Air"
   const factsSection = sectionOf(markdownText, '## Facts & features') || markdownText;
   if (!heating) heating = listUnderSubheading(factsSection, 'Heating').join(', ') || null;
   if (!cooling) cooling = listUnderSubheading(factsSection, 'Cooling').join(', ') || null;
@@ -117,7 +117,7 @@ function extractFromMarkdown(rawMarkdown) {
 
   // ============================================
   // 4. SCHOOLS
-  // Handles both the plain list format Zillow actually renders
+  // Handles both the plain list format the source actually renders
   // ("Name School\n\nGrades K-6 • 0.2 miles\n\n7/10") and, as a
   // fallback, a pipe-table format in case Firecrawl ever converts
   // it that way for a different listing/layout.
@@ -401,7 +401,7 @@ function extractFromMarkdown(rawMarkdown) {
   // ============================================
   // 10. MARKET ACTIVITY (days on market, views, saves)
   // ============================================
-  // "**31 days**on Zillow**2,286**views**136**saves" -> drop the bold markers first.
+  // "**31 days**on <source>**2,286**views**136**saves" -> drop the bold markers first.
   const activityText = markdownText.replace(/\*\*/g, ' ');
   const daysOnMarket = parseNumber(/(\d+)\s*days?\s*on\s*Zillow/i, activityText);
   const views = parseNumber(/([\d,]+)\s*views/i, activityText);
@@ -432,8 +432,8 @@ function extractFromMarkdown(rawMarkdown) {
     financials: {
       monthlyHoa: parseNumber(/- HOA fee:\s*\$([0-9,]+)/, markdownText) || 0,
       taxAssessedValue,
-      zestimate: parseNumber(/\$([0-9,]+)\s*Zestimate/, markdownText),
-      rentZestimate: parseNumber(/Rent Zestimate[^$]{0,20}\$([0-9,]+)/i, markdownText),
+      estimate: parseNumber(/\$([0-9,]+)\s*Zestimate/, markdownText),
+      rentEstimate: parseNumber(/Rent Zestimate[^$]{0,20}\$([0-9,]+)/i, markdownText),
       pricePerSqft: parseNumber(/\$([\d,]+)\/sqft/, markdownText),
     },
     details: {
@@ -468,7 +468,7 @@ function extractFromMarkdown(rawMarkdown) {
   };
 }
 
-function processZillowResponse(jsonPayload) {
+function processMarketDataResponse(jsonPayload) {
   const markdownContent = jsonPayload.data?.markdown || jsonPayload.markdown;
 
   // Mode 1: Parse from Markdown content if present
@@ -527,8 +527,8 @@ function processZillowResponse(jsonPayload) {
     financials: {
       monthlyHoa: jsonPayload.monthlyHoa ?? jsonPayload.hoaFee ?? 0,
       taxAssessedValue: jsonPayload.taxAssessedValue ?? jsonPayload.financials?.taxAssessedValue ?? null,
-      zestimate: jsonPayload.neighborhood?.zestimate ?? jsonPayload.zestimate ?? jsonPayload.financials?.zestimate ?? null,
-      rentZestimate: jsonPayload.rentZestimate ?? null,
+      estimate: jsonPayload.neighborhood?.zestimate ?? jsonPayload.zestimate ?? jsonPayload.financials?.zestimate ?? null,
+      rentEstimate: jsonPayload.rentZestimate ?? null,
       pricePerSqft: jsonPayload.pricePerSquareFoot ?? null,
     },
     details: {
@@ -570,4 +570,4 @@ function processZillowResponse(jsonPayload) {
   };
 }
 
-module.exports = { extractFromMarkdown, processZillowResponse };
+module.exports = { extractFromMarkdown, processMarketDataResponse };

@@ -1,12 +1,12 @@
 // services/property/priceTweakService.js
 //
-// Every money figure copied from Zillow is shifted by one fixed percentage
-// between -2% and +2% so Vihara never shows Zillow's exact numbers.
+// Every money figure copied from market data is shifted by one fixed percentage
+// between -2% and +2% so Vihara never shows the source's exact numbers.
 //
-// Each property gets ONE percentage (stored in productModel.zillowSync.tweakPercent)
+// Each property gets ONE percentage (stored in productModel.marketSync.tweakPercent)
 // and every figure on that property uses it. That keeps the numbers consistent
 // with each other (price vs. price/sqft, year-over-year tax changes) and stable
-// across the weekly sync — they only move when Zillow's own numbers move.
+// across the weekly sync — they only move when the source's own numbers move.
 
 const MAX_TWEAK_PERCENT = 2;
 
@@ -35,9 +35,34 @@ function tweakAmount(value, percent) {
     return Math.round(n * (1 + percent / 100));
 }
 
+// When the listing has no estimate of its own, the estimated value is the
+// (shifted) list price raised by one fixed percentage between 10% and 12%.
+// Like the tweak, each property gets ONE uplift, stored next to tweakPercent
+// and reused on every weekly sync, so the estimate never jumps around.
+const MIN_ESTIMATE_UPLIFT_PERCENT = 10;
+const MAX_ESTIMATE_UPLIFT_PERCENT = 12;
+
+/** A new random uplift in [10, 12], two decimals. */
+function createEstimateUpliftPercent() {
+    const span = MAX_ESTIMATE_UPLIFT_PERCENT - MIN_ESTIMATE_UPLIFT_PERCENT;
+    return Math.round((MIN_ESTIMATE_UPLIFT_PERCENT + Math.random() * span) * 100) / 100;
+}
+
+/** True when the value is a usable stored uplift. */
+function isValidEstimateUpliftPercent(percent) {
+    return typeof percent === "number"
+        && Number.isFinite(percent)
+        && percent >= MIN_ESTIMATE_UPLIFT_PERCENT
+        && percent <= MAX_ESTIMATE_UPLIFT_PERCENT;
+}
+
 module.exports = {
     MAX_TWEAK_PERCENT,
     createTweakPercent,
     isValidTweakPercent,
     tweakAmount,
+    MIN_ESTIMATE_UPLIFT_PERCENT,
+    MAX_ESTIMATE_UPLIFT_PERCENT,
+    createEstimateUpliftPercent,
+    isValidEstimateUpliftPercent,
 };

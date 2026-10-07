@@ -740,7 +740,75 @@ const trackEvent = async ({ eventName, email, eventProperties = {}, contactPrope
   }
 };
 
+// ============================================================================
+// PROPERTY EMAIL SEQUENCE  (property email spec, sections 7 and 11)
+// ----------------------------------------------------------------------------
+// Transactional sends don't check Brevo's blocklist on their own, so the
+// sequence asks first (getContactBlockStatus), then sends with
+// sendTransactionalEmail. Sender, reply-to and subject come from the template
+// and are never set here.
+
+/**
+ * Is this address blocklisted (unsubscribed, hard-bounced, spam complaint)?
+ * A 404 means Brevo has no contact for it, so nothing blocks the send.
+ * Throws when Brevo can't answer — callers must not send without an answer.
+ * @returns {Promise<{ blocked: boolean }>}
+ */
+const getContactBlockStatus = async (email) => {
+  if (!BREVO_API_KEY) throw new Error("BREVO_API_KEY not configured");
+  try {
+    const { data } = await axios.get(`${BREVO_BASE}/contacts/${encodeURIComponent(email)}`, {
+      headers: { "api-key": BREVO_API_KEY },
+      timeout: 10000,
+    });
+    return { blocked: data?.emailBlacklisted === true };
+  } catch (err) {
+    if (err.response?.status === 404) return { blocked: false };
+    throw new Error(String(err.response?.data?.message || err.message));
+  }
+};
+
+/**
+ * One transactional template send. Empty params are left out so the template
+ * hides that section (spec: "leave a field out rather than sending an empty
+ * string"). Retries 5xx / 429 / network errors up to 3 times. Non-throwing.
+ * @returns {Promise<{ success: boolean, messageId?: string, error?: string }>}
+ */
+const sendTransactionalEmail = async ({ templateId, email, name, params = {}, tags = [] }) => {
+  if (!BREVO_API_KEY) return { success: false, error: "BREVO_API_KEY not configured" };
+  if (!email || !templateId) return { success: false, error: "missing email or templateId" };
+
+  const cleanParams = Object.fromEntries(
+    Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== "" && v !== false)
+  );
+  const body = {
+    templateId,
+    to: [{ email, ...(name ? { name } : {}) }],
+    params: cleanParams,
+    ...(tags.length ? { tags } : {}),
+  };
+
+  let lastError = "";
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const { data } = await axios.post(`${BREVO_BASE}/smtp/email`, body, {
+        headers: { "api-key": BREVO_API_KEY, "Content-Type": "application/json" },
+        timeout: 10000,
+      });
+      return { success: true, messageId: data?.messageId || "" };
+    } catch (err) {
+      lastError = String(err.response?.data?.message || err.message);
+      const status = err.response?.status;
+      if (status && status >= 400 && status < 500 && status !== 429) break;
+      if (attempt < 3) await new Promise((r) => setTimeout(r, attempt * 1000));
+    }
+  }
+  return { success: false, error: lastError };
+};
+
 module.exports = {
+  getContactBlockStatus,
+  sendTransactionalEmail,
   syncPersonaLead,
   syncEarlyAccessLead,
   syncPropertyLead,

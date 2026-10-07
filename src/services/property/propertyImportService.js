@@ -1,39 +1,39 @@
 // services/property/propertyImportService.js
 //
 // Orchestrates the property importer end to end:
-//   1. Scrape the Zillow listing through Firecrawl (markdown + raw HTML, in parallel).
+//   1. Scrape the market data listing through Firecrawl (markdown + raw HTML, in parallel).
 //   2. Parse the raw HTML's property JSON (core facts) and the markdown (facts,
 //      schools, price/tax history), merge them, and read photo URLs from the raw HTML.
 //   3. Upload the photos to Cloudinary.
 //   4. Assemble a complete productModel-shaped DRAFT — with the auction business
 //      fields defaulted / left blank for the admin to fill.
 //
-// Every Zillow money figure is shifted by the property's fixed -2%..+2%
+// Every market data money figure is shifted by the property's fixed -2%..+2%
 // (priceTweakService), and the starting bid is 90% of the shifted list price.
 //
 // This never writes to the database. It returns a draft object that the admin
 // edits in the importer tab and then submits to the existing
 // POST /api/v1/product/bulk endpoint.
 //
-// fetchZillowListing / buildZillowDataFields / uploadListingImages are shared
-// with the weekly sync (zillowSyncService), so both read Zillow the same way.
+// fetchMarketDataListing / buildMarketDataFields / uploadListingImages are shared
+// with the weekly sync (marketSyncService), so both read the source the same way.
 
 const Errorhandler = require("../../utils/errorhandler");
 const firecrawlService = require("../integrations/firecrawlService");
 const cloudinaryService = require("../shared/cloudinaryService");
-const { processZillowResponse } = require("./parsers/zillowDetailsParser");
-const { parseZillowPropertyJson, isNotForSale } = require("./parsers/zillowPropertyJsonParser");
-const { extractZillowImages } = require("./parsers/zillowImageParser");
+const { processMarketDataResponse } = require("./parsers/marketDataDetailsParser");
+const { parseMarketDataPropertyJson, isNotForSale } = require("./parsers/marketDataPropertyJsonParser");
+const { extractMarketDataImages } = require("./parsers/marketDataImageParser");
 const { generatePropertyDescription } = require("./propertyDescriptionService");
-const { createTweakPercent, tweakAmount } = require("./priceTweakService");
+const { createTweakPercent, tweakAmount, createEstimateUpliftPercent } = require("./priceTweakService");
 const crypto = require("crypto");
 
-// Starting bid = this share of the (tweaked) Zillow list price.
+// Starting bid = this share of the (tweaked) market data list price.
 const START_BID_RATIO = 0.9;
 
-// productModel fields that are required but Zillow may not provide.
+// productModel fields that are required but the source may not provide.
 const REQUIRED_CORE_FIELDS = [
-    "street", "city", "county", "state", "zipCode", "beds", "baths",
+    "street", "city", "state", "zipCode", "beds", "baths",
     "squareFootage", "lotSize", "yearBuilt", "apn", "propertyType",
 ];
 
@@ -56,17 +56,17 @@ function formatSchoolRating(rating) {
     return typeof rating === "number" ? `${rating}/10` : String(rating);
 }
 
-/** Zillow special conditions / foreclosure history -> productModel assetType enum. */
-function mapAssetType(zillow) {
-    const conditions = String(zillow.details?.specialConditions || "").toLowerCase();
-    // Zillow writes "RealEstateOwned" (no spaces).
+/** Market data special conditions / foreclosure history -> productModel assetType enum. */
+function mapAssetType(marketData) {
+    const conditions = String(marketData.details?.specialConditions || "").toLowerCase();
+    // The source writes "RealEstateOwned" (no spaces).
     if (/real\s*estate\s*owned|bank\s*owned|\breo\b/.test(conditions)) return "Reo Bank Owned";
     if (/short sale/.test(conditions)) return "Short Sale";
-    if (/foreclos|trustee/.test(conditions) || zillow.foreclosureHistory?.length) return "Foreclosure Homes";
+    if (/foreclos|trustee/.test(conditions) || marketData.foreclosureHistory?.length) return "Foreclosure Homes";
     return "";
 }
 
-/** Zillow home type ("SingleFamily", "SINGLE_FAMILY", "Condo", ...) -> productModel propertyType enum. */
+/** Market data home type ("SingleFamily", "SINGLE_FAMILY", "Condo", ...) -> productModel propertyType enum. */
 function mapPropertyType(homeType) {
     const t = String(homeType || "").toLowerCase().replace(/[^a-z]/g, "");
     if (!t) return null;
@@ -95,7 +95,7 @@ function folderKeyFor({ street, city }) {
     return base || "property";
 }
 
-/** Short stable fingerprint of Zillow's photo list (order matters: first = main photo). */
+/** Short stable fingerprint of the source's photo list (order matters: first = main photo). */
 function photoSignatureFor(photoUrls) {
     if (!photoUrls.length) return null;
     return crypto.createHash("sha1").update(photoUrls.join("|")).digest("hex");
@@ -107,10 +107,22 @@ function startBidFrom(listPrice, tweakPercent) {
     return typeof tweaked === "number" ? Math.round(tweaked * START_BID_RATIO) : null;
 }
 
+/**
+ * The property's estimated value (ViharaValue): the tweaked estimate; when the
+ * listing has none, the tweaked list price raised by the property's fixed
+ * 10-12% uplift. null when the listing shows neither.
+ */
+function estimatedValueFrom(marketData, tweakPercent, upliftPercent) {
+    const estimate = tweakAmount(marketData.financials?.estimate ?? null, tweakPercent);
+    if (typeof estimate === "number") return estimate;
+    const listPrice = tweakAmount(marketData.price ?? null, tweakPercent);
+    return typeof listPrice === "number" ? Math.round(listPrice * (1 + upliftPercent / 100)) : null;
+}
+
 // Auction business terms. The two DATES are left for the admin to fill;
 // everything else is seeded or defaulted.
-//   - reservePrice            : seeded from the (tweaked) Zestimate, else list price — editable
-//   - startBid                : 90% of the (tweaked) list price. null when Zillow shows
+//   - reservePrice            : seeded from the estimated value (see estimatedValueFrom) — editable
+//   - startBid                : 90% of the (tweaked) list price. null when the source shows
 //                               no list price (e.g. off-market) — the admin must fill it.
 //                               Callers that don't pass startBid keep the old behaviour.
 //   - minIncrement            : 1000 default
@@ -139,7 +151,7 @@ function auctionDefaults(parsed) {
 
 // ---------------------------------------------------------------------------
 // Merge the two parsed sources (same shape)
-//   - JSON first for core facts: it is Zillow's own structured data.
+//   - JSON first for core facts: it is the source's own structured data.
 //   - Markdown first for facts & features, schools and history: the JSON's
 //     first-load data usually doesn't include them.
 // Each value falls back to the other source when blank.
@@ -182,7 +194,7 @@ function mergeParsedListing(json, markdown) {
 }
 
 // ---------------------------------------------------------------------------
-// Zillow parsed data -> productModel sub-documents
+// Market data parsed data -> productModel sub-documents
 // ---------------------------------------------------------------------------
 function buildPropertyDetails(z, tweakPercent) {
     const { specs = {}, details = {}, financials = {} } = z;
@@ -232,7 +244,7 @@ function buildPropertyDetails(z, tweakPercent) {
     };
 }
 
-function buildInvestmentData(z, tweakPercent) {
+function buildInvestmentData(z, tweakPercent, upliftPercent) {
     const { financials = {} } = z;
     const tweak = (v) => tweakAmount(v, tweakPercent);
     const taxHistory = (z.taxHistory || []).map((t) => ({
@@ -246,11 +258,11 @@ function buildInvestmentData(z, tweakPercent) {
     // The newest year is often assessed but not billed yet ("--"), so take the
     // tax amount from the newest year that has one.
     const latestPaidTax = taxHistory.find((t) => t.propertyTax != null) || {};
-    const rent = tweak(financials.rentZestimate ?? null);
+    const rent = tweak(financials.rentEstimate ?? null);
 
     return {
         valuation: {
-            ViharaValue: tweak(financials.zestimate ?? null),
+            ViharaValue: estimatedValueFrom(z, tweakPercent, upliftPercent),
             highRange: null,
             lowRange: null,
             confidenceScore: null,
@@ -311,10 +323,10 @@ function buildListingAgent(agent) {
 // ---------------------------------------------------------------------------
 // Firecrawl scrape (both requests in parallel)
 // ---------------------------------------------------------------------------
-async function scrapeListing(zillowUrl, warnings) {
+async function scrapeListing(marketDataUrl, warnings) {
     const [detailsResult, imagesResult] = await Promise.allSettled([
-        firecrawlService.scrapePropertyDetails(zillowUrl),
-        firecrawlService.scrapePropertyImages(zillowUrl),
+        firecrawlService.scrapePropertyDetails(marketDataUrl),
+        firecrawlService.scrapePropertyImages(marketDataUrl),
     ]);
 
     // Details are mandatory — without them there is no property.
@@ -357,37 +369,37 @@ async function uploadListingImages(imageUrls, folder, warnings) {
 // Shared steps (importer + weekly sync)
 // ---------------------------------------------------------------------------
 /**
- * Scrape + parse one Zillow listing. No uploads, no database.
+ * Scrape + parse one market data listing. No uploads, no database.
  *
- * @param {string} zillowUrl  Validated Zillow homedetails URL.
- * @returns {Promise<{ zillow:object, photoUrls:string[], photoSignature:string|null,
+ * @param {string} marketDataUrl  Validated market data homedetails URL.
+ * @returns {Promise<{ marketData:object, photoUrls:string[], photoSignature:string|null,
  *                     photosFetched:boolean, warnings:string[] }>}
- *          zillow = merged parsed listing (see mergeParsedListing).
+ *          marketData = merged parsed listing (see mergeParsedListing).
  */
-async function fetchZillowListing(zillowUrl) {
+async function fetchMarketDataListing(marketDataUrl) {
     const warnings = [];
-    const { detailsPayload, imagesPayload } = await scrapeListing(zillowUrl, warnings);
+    const { detailsPayload, imagesPayload } = await scrapeListing(marketDataUrl, warnings);
 
-    const zillow = mergeParsedListing(
-        parseZillowPropertyJson(imagesPayload),
-        processZillowResponse(detailsPayload)
+    const marketData = mergeParsedListing(
+        parseMarketDataPropertyJson(imagesPayload),
+        processMarketDataResponse(detailsPayload)
     );
-    const { address = {}, specs = {} } = zillow;
+    const { address = {}, specs = {} } = marketData;
     if (!address.street && !specs.beds && !specs.sqft) {
         throw new Errorhandler(
-            "Could not read property details from this Zillow page. Check the URL or try again in a minute.",
+            "Could not read property details from this market data page. Check the URL or try again in a minute.",
             422
         );
     }
 
-    const photos = extractZillowImages(imagesPayload);
+    const photos = extractMarketDataImages(imagesPayload);
     const photoUrls = compact([photos.image, ...photos.otherImages]);
     if (imagesPayload && !photoUrls.length) {
-        warnings.push("No photos found on the Zillow page — add them manually.");
+        warnings.push("No photos found on the market data page — add them manually.");
     }
 
     return {
-        zillow,
+        marketData,
         photoUrls,
         photoSignature: photoSignatureFor(photoUrls),
         photosFetched: Boolean(imagesPayload),
@@ -396,22 +408,22 @@ async function fetchZillowListing(zillowUrl) {
 }
 
 /**
- * The productModel fields that come purely from Zillow data (money figures
+ * The productModel fields that come purely from market data (money figures
  * already shifted by tweakPercent). The weekly sync refreshes exactly these.
  */
-function buildZillowDataFields(zillow, tweakPercent) {
-    const coordinates = mapCoordinates(zillow.coordinates);
-    const listingAgent = buildListingAgent(zillow.listingAgent);
-    const schools = buildSchools(zillow.schools);
-    const walkScores = zillow.walkScores || {};
+function buildMarketDataFields(marketData, tweakPercent, upliftPercent) {
+    const coordinates = mapCoordinates(marketData.coordinates);
+    const listingAgent = buildListingAgent(marketData.listingAgent);
+    const schools = buildSchools(marketData.schools);
+    const walkScores = marketData.walkScores || {};
 
     return {
-        propertyDetails: buildPropertyDetails(zillow, tweakPercent),
-        investmentData: buildInvestmentData(zillow, tweakPercent),
+        propertyDetails: buildPropertyDetails(marketData, tweakPercent),
+        investmentData: buildInvestmentData(marketData, tweakPercent, upliftPercent),
         marketInsights: {
             medianListPrice: null,
             medianSoldPrice: null,
-            daysOnMarket: zillow.marketActivity?.daysOnMarket ?? null,
+            daysOnMarket: marketData.marketActivity?.daysOnMarket ?? null,
             salesListPrice: null,
             trends: { listPrice: null, soldPrice: null, daysOnMarket: null, salesRatio: null },
         },
@@ -426,20 +438,22 @@ function buildZillowDataFields(zillow, tweakPercent) {
 // Main
 // ---------------------------------------------------------------------------
 /**
- * Build one property draft from a Zillow listing URL.
+ * Build one property draft from a market data listing URL.
  *
  * @param {object} input
- * @param {string} input.zillowUrl     Required — validated Zillow homedetails URL.
+ * @param {string} input.marketDataUrl     Required — validated market data homedetails URL.
  * @param {string} [input.folderRoot]  Cloudinary root folder (default vihara/properties).
  * @returns {Promise<{ draft:object, warnings:string[], imageResults:object }>}
  */
-async function buildPropertyDraftFromZillow({ zillowUrl, folderRoot = "vihara/properties" }) {
+async function buildPropertyDraftFromMarketData({ marketDataUrl, folderRoot = "vihara/properties" }) {
     // 1-2) Scrape + parse ----------------------------------------------------
-    const { zillow, photoUrls, photoSignature, warnings } = await fetchZillowListing(zillowUrl);
-    const { address = {}, specs = {}, financials = {}, details = {} } = zillow;
+    const { marketData, photoUrls, photoSignature, warnings } = await fetchMarketDataListing(marketDataUrl);
+    const { address = {}, specs = {}, financials = {}, details = {} } = marketData;
 
     // This property's fixed -2%..+2% — saved on the draft so the weekly sync reuses it.
     const tweakPercent = createTweakPercent();
+    // This property's fixed 10-12% uplift, used when the listing has no estimate.
+    const estimateUpliftPercent = createEstimateUpliftPercent();
     const tweak = (v) => tweakAmount(v, tweakPercent);
 
     // Core facts in productModel field names (also the input for the description).
@@ -449,7 +463,7 @@ async function buildPropertyDraftFromZillow({ zillowUrl, folderRoot = "vihara/pr
             : null,
         street: address.street || null,
         city: address.city || null,
-        county: null, // not available on the Zillow listing — admin fills
+        county: null, // optional — not available on the market data listing
         state: address.state || null,
         zipCode: address.zipCode || null,
         beds: specs.beds ?? null,
@@ -458,15 +472,15 @@ async function buildPropertyDraftFromZillow({ zillowUrl, folderRoot = "vihara/pr
         lotSize: specs.lotSizeSqft ?? null,
         yearBuilt: specs.yearBuilt ?? null,
         apn: details.apn || null,
-        propertyType: mapPropertyType(details.homeType), // null when Zillow's type has no match — admin fills
-        occupancyStatus: null,  // not available on the Zillow listing — admin fills
-        assetType: mapAssetType(zillow),
-        estimatedValue: tweak(financials.zestimate ?? zillow.price ?? null),
-        startBid: startBidFrom(zillow.price, tweakPercent),
+        propertyType: mapPropertyType(details.homeType), // null when the source's type has no match — admin fills
+        occupancyStatus: null,  // not available on the market data listing — admin fills
+        assetType: mapAssetType(marketData),
+        estimatedValue: estimatedValueFrom(marketData, tweakPercent, estimateUpliftPercent),
+        startBid: startBidFrom(marketData.price, tweakPercent),
     };
 
     if (facts.startBid == null) {
-        warnings.unshift("Zillow shows no list price for this home, so the starting bid is empty. Set it before saving.");
+        warnings.unshift("Market data shows no list price for this home, so the starting bid is empty. Set it before saving.");
     }
 
     // 3) Upload images -------------------------------------------------------
@@ -502,14 +516,15 @@ async function buildPropertyDraftFromZillow({ zillowUrl, folderRoot = "vihara/pr
         otherImages,
 
         // rich data (money already tweaked)
-        ...buildZillowDataFields(zillow, tweakPercent),
+        ...buildMarketDataFields(marketData, tweakPercent, estimateUpliftPercent),
 
         // weekly sync — the admin can pause it in Manage Listings
-        zillowSync: {
-            url: zillowUrl,
+        marketSync: {
+            url: marketDataUrl,
             enabled: true,
             tweakPercent,
-            zillowStatus: zillow.homeStatus || null,
+            estimateUpliftPercent,
+            marketStatus: marketData.homeStatus || null,
             photoSignature,
         },
 
@@ -522,17 +537,17 @@ async function buildPropertyDraftFromZillow({ zillowUrl, folderRoot = "vihara/pr
 
     const missing = REQUIRED_CORE_FIELDS.filter((k) => isBlank(draft[k]));
     if (missing.length) {
-        warnings.unshift(`Zillow did not provide these required fields: ${missing.join(", ")}. Fill them before saving.`);
+        warnings.unshift(`Market data did not provide these required fields: ${missing.join(", ")}. Fill them before saving.`);
     }
 
     return { draft, warnings, imageResults };
 }
 
 module.exports = {
-    buildPropertyDraftFromZillow,
+    buildPropertyDraftFromMarketData,
     auctionDefaults,
-    fetchZillowListing,
-    buildZillowDataFields,
+    fetchMarketDataListing,
+    buildMarketDataFields,
     uploadListingImages,
     folderKeyFor,
 };

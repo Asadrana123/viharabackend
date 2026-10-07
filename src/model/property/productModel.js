@@ -88,9 +88,10 @@ const productSchema = new mongoose.Schema({
         type: String,
         required: true,
     },
+    // Optional — most market data listings don't show the county.
     county: {
         type: String,
-        required: true,
+        default: null,
     },
     state: {
         type: String,
@@ -503,6 +504,14 @@ const productSchema = new mongoose.Schema({
         type: Number,
         default: null
     },
+    // Backend property email sequence (propertyEmailService). When true (and
+    // PROPERTY_EMAILS_ENABLED=true), this property's signups and registrations
+    // get the Brevo templates (E1, R1, R2, PT1) instead of the old emails.
+    // Off by default so live properties on the interim setup are untouched.
+    emailSequenceEnabled: {
+        type: Boolean,
+        default: false
+    },
 
     // ============================================
     // MARKETING ENGINE
@@ -515,7 +524,7 @@ const productSchema = new mongoose.Schema({
         enum: ['investor', 'owner-occupant', 'retail', null],
         default: null
     },
-    // Internal monthly rent estimate in dollars (not the Zillow rent Zestimate
+    // Internal monthly rent estimate in dollars (not the source's rent estimate
     // stored under investmentData.rental).
     rentEstimate: {
         type: Number,
@@ -539,25 +548,28 @@ const productSchema = new mongoose.Schema({
     },
 
     // ============================================
-    // ZILLOW SYNC (weekly background refresh)
+    // MARKET DATA SYNC (weekly background refresh)
     // ============================================
     // Set by the Property Importer (or the one-time link script / the admin's
-    // "Zillow link" field). The weekly job re-reads the listing and refreshes
-    // only Zillow data — never fields the admin edits in Manage Listings.
-    zillowSync: {
-        // Canonical Zillow listing URL. null = this property is not synced.
+    // "Market data link" field). The weekly job re-reads the listing and refreshes
+    // only market data — never fields the admin edits in Manage Listings.
+    marketSync: {
+        // Canonical market data listing URL. null = this property is not synced.
         url: { type: String, default: null, trim: true },
         // Admin pause switch. false = the weekly job skips this property.
         enabled: { type: Boolean, default: true },
-        // This property's fixed -2%..+2% shift for every Zillow money figure
+        // This property's fixed -2%..+2% shift for every market data money figure
         // (see priceTweakService). Set once, reused on every sync.
         tweakPercent: { type: Number, default: null, min: -2, max: 2 },
+        // Fixed 10-12% uplift on the list price, used for the estimated value
+        // when the listing has no estimate of its own. Set once, reused on every sync.
+        estimateUpliftPercent: { type: Number, default: null, min: 10, max: 12 },
         lastSyncedAt: { type: Date, default: null },
         lastStatus: { type: String, enum: ["success", "failed", null], default: null },
         lastError: { type: String, default: null },
-        // Zillow's own listing status (FOR_SALE, PENDING, RECENTLY_SOLD, ...).
-        zillowStatus: { type: String, default: null },
-        // Set when zillowStatus changes between syncs; cleared when the admin
+        // the source's own listing status (FOR_SALE, PENDING, RECENTLY_SOLD, ...).
+        marketStatus: { type: String, default: null },
+        // Set when marketStatus changes between syncs; cleared when the admin
         // dismisses it in Manage Listings. Nothing else changes automatically.
         statusAlert: {
             type: new mongoose.Schema(
@@ -566,8 +578,8 @@ const productSchema = new mongoose.Schema({
             ),
             default: null
         },
-        // Fingerprint of Zillow's photo list. Photos are re-uploaded only when
-        // Zillow's photos change, so admin photo edits survive normal syncs.
+        // Fingerprint of the source's photo list. Photos are re-uploaded only when
+        // the source's photos change, so admin photo edits survive normal syncs.
         photoSignature: { type: String, default: null }
     },
     // ============================================

@@ -1,6 +1,7 @@
 // controller/brevoWebhookController.js
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const { ingestBrevoEvents } = require("../../services/integrations/emailEventsService");
+const { handleDeliverabilityEvents } = require("../../services/propertyEmail/propertyEmailService");
 
 // Brevo does NOT sign its webhooks, so the endpoint URL is the security boundary.
 // We add a shared-secret check: the token must arrive either as ?token=... or an
@@ -32,6 +33,9 @@ const handleEmailWebhook = catchAsyncError(async (req, res) => {
   }
 
   const result = await ingestBrevoEvents(req.body);
+  // Hard bounce / spam complaint / unsubscribe → close that contact's
+  // property email lead records (never throws).
+  await handleDeliverabilityEvents(req.body);
   return res.status(200).json({ success: true, ...result });
 });
 

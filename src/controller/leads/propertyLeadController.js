@@ -19,6 +19,7 @@ const { getVtextMessagesForPhones } = require("../../services/vtext/vtextLeadMes
 const { maybeSendSignupWelcomeText } = require("../../services/vtext/vtextAutoSignupService");
 const { syncPropertyLead } = require("../../services/integrations/brevoService");
 const { notifyNewLead } = require("../../services/shared/slackService");
+const { onPropertyLeadSignup } = require("../../services/propertyEmail/propertyEmailService");
 const { auctionPageUrl, listingPageUrl } = require("../../config/siteUrls");
 
 // Single note discriminator for all property-auction leads. Lead ids are unique,
@@ -36,7 +37,7 @@ async function resolveLandingProperty(slug, next) {
   }
   const product = await productModel
     .findOne({ slug: slug.trim().toLowerCase() })
-    .select("_id slug productName street city state zipCode isLandingPage brevoListId")
+    .select("_id slug productName street city state zipCode isLandingPage brevoListId emailSequenceEnabled startBid image features auctionStartDate auctionEndDate")
     .lean();
   if (!product) {
     next(new ErrorHandler("Property not found", 404));
@@ -112,6 +113,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       smsConsentAt: smsOptedIn ? new Date() : null,
       eventId: eventId || "",
       source: `auction-${slug}`,
+      isQaTest: req.isQaTest === true,
     });
   } catch (err) {
     if (err && err.code === 11000) {
@@ -121,8 +123,12 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
   }
 
   // ── Schedule the call (fire-and-forget, only with consent) ──────────────────
+  // QA test leads never get a real call; the response says it was suppressed
+  // so the QA agent can still check that consent WOULD have scheduled one.
   let call = { attempted: false };
-  if (consent === true) {
+  if (consent === true && lead.isQaTest) {
+    call = { attempted: false, suppressedForQaTest: true };
+  } else if (consent === true) {
     scheduleSignupCall({
       leadId: lead._id,
       propertySlug: slug,
@@ -146,7 +152,11 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       ? "Registered — Maya will call you shortly."
       : "Registered. (No calls — consent not given.)",
     call,
+    ...(lead.isQaTest && { qaTest: { suppressed: [...(consent === true ? ["call"] : []), "slack", "enrichment", "brevo", "vtext"] } }),
   });
+
+  // QA test leads stop here: no Slack post, paid enrichment, Brevo contact or text.
+  if (lead.isQaTest) return;
 
   // ── Slack notification (fire-and-forget) ───────────────────────────────────
   notifyNewLead({
@@ -163,6 +173,10 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       { label: "Quote", value: hasQuote ? `$${quoteNum.toLocaleString("en-US")}` : "—" },
     ],
   }).catch((e) => console.error(`[slack] property notify failed (${slug}):`, e.message));
+
+  // E1 confirmation from the backend email sequence (only when it's on for
+  // this property — see propertyEmailService). Never throws.
+  onPropertyLeadSignup({ property, lead });
 
   // ── Enrich + Brevo sync in the background; update the lead in place ─────────
   (async () => {
@@ -217,7 +231,7 @@ const getLeadsByProperty = catchAsyncError(async (req, res, next) => {
   const view = listView(req); // ?view=summary (light rows) / ?id= (one lead, full)
   if (view.badId) return res.status(400).json({ success: false, message: "Invalid id" });
 
-  const query = { propertySlug: slug, fullName: { $not: TEST_NAME_REGEX } };
+  const query = { propertySlug: slug, fullName: { $not: TEST_NAME_REGEX }, isQaTest: { $ne: true } };
   const [leads, total] = await Promise.all([
     PropertyLead.find(scopeQuery(view, query)).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit).lean(),
     PropertyLead.countDocuments(scopeQuery(view, query)),

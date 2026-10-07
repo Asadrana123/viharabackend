@@ -3,10 +3,10 @@
 // Thin, self-contained wrapper around Cloudinary for the property importer.
 // Uploads images to Cloudinary and returns their permanent secure_url values.
 //
-// Why upload-by-URL: the importer receives Zillow CDN photo URLs
-// (photos.zillowstatic.com …) collected in the browser. Zillow's *image* CDN
+// Why upload-by-URL: the importer receives market data CDN photo URLs
+// (photos.zillowstatic.com …) collected in the browser. The source's *image* CDN
 // is public — unlike the listing pages — so Cloudinary can fetch these URLs
-// directly. We never persist raw Zillow URLs; only the Cloudinary secure_url
+// directly. We never persist raw market data URLs; only the Cloudinary secure_url
 // ends up in the product's image / otherImages fields.
 //
 // Env vars (already in your .env):

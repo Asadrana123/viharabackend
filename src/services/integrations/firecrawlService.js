@@ -2,7 +2,7 @@
 //
 // Thin client for the Firecrawl v2 scrape API. Holds the two request formats
 // used by the Property Importer:
-//   - DETAILS: markdown of the Zillow listing (facts, schools, history, ...),
+//   - DETAILS: markdown of the market data listing (facts, schools, history, ...),
 //              scrolled and with collapsed sections expanded first
 //   - IMAGES : raw HTML of the listing (the photo gallery AND the property JSON
 //              live in __NEXT_DATA__)
@@ -116,10 +116,10 @@ async function scrape(url, options) {
     }
 }
 
-/** Markdown scrape — input for zillowDetailsParser. */
+/** Markdown scrape — input for marketDataDetailsParser. */
 const scrapePropertyDetails = (url) => scrape(url, DETAILS_SCRAPE_OPTIONS);
 
-/** Raw HTML scrape — input for zillowImageParser. */
+/** Raw HTML scrape — input for marketDataImageParser. */
 const scrapePropertyImages = (url) => scrape(url, IMAGES_SCRAPE_OPTIONS);
 
 module.exports = {

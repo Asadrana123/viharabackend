@@ -360,7 +360,7 @@ async function loadLeadProfiles() {
     SOURCES.map(async (source) => {
       const docs = await source.model.find().lean();
       return docs
-        .filter((l) => !TEST_NAME_REGEX.test(l.fullName || `${l.firstName || ""} ${l.lastName || ""}`))
+        .filter((l) => !l.isQaTest && !TEST_NAME_REGEX.test(l.fullName || `${l.firstName || ""} ${l.lastName || ""}`))
         .map((l) => buildLead(source, l, ctx));
     })
   );

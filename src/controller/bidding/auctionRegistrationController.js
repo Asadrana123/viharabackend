@@ -11,6 +11,12 @@ const getAdminRegistrationNotificationEmail = require('../../htmlPages/bidding/a
 const Realtor = require("../../model/users/realtorModel");
 const createRealtorNewLeadEmail = require('../../htmlPages/users/realtorNewLeadEmail');
 const { trackEvent } = require("../../services/integrations/brevoService");
+const {
+  isSequenceOn,
+  onAuctionRegistration,
+  sendPartnerReferralEmail,
+  onVerificationChange,
+} = require("../../services/propertyEmail/propertyEmailService");
 
 const FRONTEND_URL = "https://vihara.ai";
 
@@ -134,7 +140,11 @@ exports.submitAuctionRegistration = catchAsyncError(
           existingRegistration.attributionSource = attribution.attributionSource;
           existingRegistration.attributedAt = attribution.attributedAt;
           await existingRegistration.save();
-          notifyRealtorNewLead(attributionRealtor, { firstName, lastName, buyerType, auction });
+          if (isSequenceOn(auction)) {
+            sendPartnerReferralEmail({ property: auction, registration: existingRegistration, realtor: attributionRealtor });
+          } else {
+            notifyRealtorNewLead(attributionRealtor, { firstName, lastName, buyerType, auction });
+          }
           trackBuyerRegistered(attributionRealtor, { buyerId: userId, buyerEmail: email, auction });
         }
         return res.status(200).json({
@@ -145,13 +155,14 @@ exports.submitAuctionRegistration = catchAsyncError(
         });
       }
 
-      // If already registered but pending or rejected, update the registration
+      // If already registered but pending or rejected, update the details only.
+      // The status is NOT changed here: only the team approves a registrant
+      // (updateRegistrationStatus), after checking ID and proof of funds.
       existingRegistration.firstName = firstName;
       existingRegistration.lastName = lastName;
       existingRegistration.email = email;
       existingRegistration.mobilePhone = mobilePhone;
       existingRegistration.buyerType = buyerType;
-      existingRegistration.status = "approved";
       existingRegistration.updatedAt = Date.now();
 
       // First-touch attribution: stamp only if not already attributed.
@@ -167,15 +178,26 @@ exports.submitAuctionRegistration = catchAsyncError(
       await existingRegistration.save();
 
       if (newlyAttributed) {
-        notifyRealtorNewLead(attributionRealtor, { firstName, lastName, buyerType, auction });
+        if (!isSequenceOn(auction)) notifyRealtorNewLead(attributionRealtor, { firstName, lastName, buyerType, auction });
         trackBuyerRegistered(attributionRealtor, { buyerId: userId, buyerEmail: email, auction });
+      }
+
+      // Backend email sequence (R1 if they never got it, PT1 if newly
+      // attributed). A rejected registrant gets nothing: the team follows up
+      // by phone. No-op unless the sequence is on for this property.
+      if (existingRegistration.status !== "rejected") {
+        onAuctionRegistration({
+          property: auction,
+          registration: existingRegistration,
+          realtor: newlyAttributed ? attributionRealtor : null,
+        });
       }
 
       return res.status(200).json({
         success: true,
-        message: "Registration request updated successfully",
+        message: "Registration updated. You can bid once our team has verified it.",
         registration: existingRegistration,
-        isApproved: true
+        isApproved: false
       });
     }
 
@@ -192,13 +214,20 @@ exports.submitAuctionRegistration = catchAsyncError(
     });
 
     // Notify the referring realtor of the new attributed lead (fire-and-forget).
+    const sequenceOn = isSequenceOn(auction);
     if (attribution) {
-      notifyRealtorNewLead(attributionRealtor, { firstName, lastName, buyerType, auction });
+      if (!sequenceOn) notifyRealtorNewLead(attributionRealtor, { firstName, lastName, buyerType, auction });
       trackBuyerRegistered(attributionRealtor, { buyerId: userId, buyerEmail: email, auction });
     }
 
-    // Send pending approval email to user
-    try {
+    // Backend email sequence: R1 + Slack alert + PT1 replace the old pending
+    // email and realtor email for this property. Never throws.
+    if (sequenceOn) {
+      onAuctionRegistration({ property: auction, registration, realtor: attributionRealtor });
+    }
+
+    // Send pending approval email to user (old setup, sequence off)
+    if (!sequenceOn) try {
       const emailContent = createRegistrationPendingEmail(
         user.name,
         auction.street,
@@ -231,7 +260,7 @@ exports.submitAuctionRegistration = catchAsyncError(
       success: true,
       message: "Registration request submitted successfully",
       registration,
-      isApproved: true
+      isApproved: false
     });
   }
 );
@@ -367,8 +396,11 @@ exports.updateRegistrationStatus = catchAsyncError(
     const user = await User.findById(registration.userId);
     const auction = await Product.findById(registration.auctionId);
 
-    // Send email notification to user
-    try {
+    // Backend email sequence: R2 on approval, close the lead record on
+    // rejection. Replaces the old approval email for this property.
+    if (isSequenceOn(auction)) {
+      onVerificationChange({ property: auction, registration, status });
+    } else try {
       if (status === "approved") {
         const emailContent = createRegistrationApprovedEmail(
           user.name,

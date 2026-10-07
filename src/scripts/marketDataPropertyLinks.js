@@ -1,7 +1,7 @@
-// scripts/zillowPropertyLinks.js
+// scripts/marketDataPropertyLinks.js
 //
-// Zillow listing links for the existing properties, used once by
-// linkZillowUrls.js. Duplicates are fine — the script uses each link once.
+// Market data listing links for the existing properties, used once by
+// linkMarketDataUrls.js. Duplicates are fine — the script uses each link once.
 
 module.exports = [
     "https://www.zillow.com/homedetails/1405-Tamarack-Ave-Atwater-CA-95301/19153365_zpid/",
