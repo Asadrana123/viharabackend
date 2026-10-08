@@ -19,7 +19,6 @@ const MODEL = process.env.ADMIN_ASK_MODEL || "claude-opus-5-5";
 const EFFORT = process.env.ADMIN_ASK_EFFORT || "medium";
 // Lookups Claude may chain for one question before we stop it.
 const MAX_STEPS = 10;
-const MAX_REFERENCES = 12;
 
 let client = null;
 function getClient() {
@@ -154,17 +153,13 @@ function addUsage(totals, usage) {
   totals.cacheWriteTokens += usage.cache_creation_input_tokens || 0;
 }
 
-async function runTool(block, refs) {
+async function runTool(block) {
   const executor = EXECUTORS[block.name];
   if (!executor) {
     return { type: "tool_result", tool_use_id: block.id, is_error: true, content: `Unknown tool ${block.name}` };
   }
   try {
-    const { result, refs: found } = await executor(block.input || {});
-    for (const ref of found) {
-      const key = `${ref.collection}:${ref.id}`;
-      if (!refs.has(key)) refs.set(key, ref);
-    }
+    const result = await executor(block.input || {});
     return { type: "tool_result", tool_use_id: block.id, content: JSON.stringify(result) };
   } catch (err) {
     // Hand the problem back to Claude so it can fix the query and retry.
@@ -180,7 +175,7 @@ async function runTool(block, refs) {
  * @param {object} opts
  * @param {Array}  opts.history  prior Claude API messages for this conversation
  * @param {string} opts.question the admin's new question
- * @returns {Promise<{answer, references, toolCalls, messages, usage}>}
+ * @returns {Promise<{answer, toolCalls, messages, usage}>}
  *   messages = history + everything appended this turn (store it as the new history)
  */
 async function askQuestion({ history, question }) {
@@ -195,7 +190,6 @@ async function askQuestion({ history, question }) {
       ],
     },
   ];
-  const refs = new Map();
   const usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
   let toolCalls = 0;
 
@@ -222,7 +216,7 @@ async function askQuestion({ history, question }) {
 
     if (response.stop_reason === "tool_use" && toolUses.length) {
       toolCalls += toolUses.length;
-      const results = await Promise.all(toolUses.map((b) => runTool(b, refs)));
+      const results = await Promise.all(toolUses.map((b) => runTool(b)));
       messages.push({ role: "user", content: results });
       continue;
     }
@@ -256,12 +250,11 @@ async function askQuestion({ history, question }) {
       answer = "I couldn't come up with an answer. Try rephrasing the question.";
     }
 
-    return { answer, references: [...refs.values()].slice(0, MAX_REFERENCES), toolCalls, messages, usage };
+    return { answer, toolCalls, messages, usage };
   }
 
   return {
     answer: "That question needed more lookups than I'm allowed for one answer. Try splitting it into smaller questions.",
-    references: [...refs.values()].slice(0, MAX_REFERENCES),
     toolCalls,
     messages,
     usage,

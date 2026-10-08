@@ -15,7 +15,6 @@ const turnSchema = new mongoose.Schema(
   {
     question: { type: String, required: true },
     answer: { type: String, default: "" },
-    references: { type: [mongoose.Schema.Types.Mixed], default: [] },
     toolCalls: { type: Number, default: 0 },
     askedAt: { type: Date, default: Date.now },
   },

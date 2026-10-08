@@ -226,21 +226,18 @@ async function findRecords({ collection, filter = {}, sort, limit, fields }) {
 
   const { records, truncated } = fitRecords(docs.map((d) => cleanValue(d, MAX_STRING_IN_LIST)));
   return {
-    result: {
-      collection,
-      totalMatching: total,
-      returned: records.length,
-      ...(truncated && { note: "Result was too large; only the first records are shown. Ask for fewer fields." }),
-      records,
-    },
-    refs: docs.slice(0, records.length).map((d) => refFor(entry, d)),
+    collection,
+    totalMatching: total,
+    returned: records.length,
+    ...(truncated && { note: "Result was too large; only the first records are shown. Ask for fewer fields." }),
+    records,
   };
 }
 
 async function countRecords({ collection, filter = {} }) {
   const entry = getCollection(collection);
   const count = await entry.model.countDocuments(sanitizeFilter(filter || {})).maxTimeMS(MAX_TIME_MS);
-  return { result: { collection, count }, refs: [] };
+  return { collection, count };
 }
 
 const DATE_UNITS = new Set(["day", "week", "month", "year"]);
@@ -270,13 +267,10 @@ async function groupCount({ collection, filter = {}, group_by, date_unit, sum_fi
     .option({ maxTimeMS: MAX_TIME_MS });
 
   return {
-    result: {
-      collection,
-      group_by,
-      ...(date_unit && { date_unit }),
-      groups: rows.map((r) => ({ value: cleanValue(r._id, MAX_STRING_IN_LIST), count: r.count, ...(sum_field && { sum: r.sum }) })),
-    },
-    refs: [],
+    collection,
+    group_by,
+    ...(date_unit && { date_unit }),
+    groups: rows.map((r) => ({ value: cleanValue(r._id, MAX_STRING_IN_LIST), count: r.count, ...(sum_field && { sum: r.sum }) })),
   };
 }
 
@@ -288,19 +282,15 @@ async function getRecord({ collection, id }) {
     .select(projectionFor(entry, null, { full: true }))
     .maxTimeMS(MAX_TIME_MS)
     .lean();
-  if (!doc) return { result: { collection, id, found: false }, refs: [] };
-  const record = cleanValue(doc, MAX_STRING_IN_RECORD);
-  return { result: { collection, found: true, record }, refs: [refFor(entry, doc)] };
+  if (!doc) return { collection, id, found: false };
+  return { collection, found: true, record: cleanValue(doc, MAX_STRING_IN_RECORD) };
 }
 
 async function searchRecords({ text, collections }) {
   const { groups } = await searchAll(text, { collections });
   return {
-    result: {
-      query: text,
-      matches: groups.map((g) => ({ collection: g.collection, records: g.results.map(({ id, title, subtitle }) => ({ id, title, subtitle })) })),
-    },
-    refs: groups.flatMap((g) => g.results),
+    query: text,
+    matches: groups.map((g) => ({ collection: g.collection, records: g.results.map(({ id, title, subtitle }) => ({ id, title, subtitle })) })),
   };
 }
 

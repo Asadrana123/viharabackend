@@ -76,7 +76,6 @@ exports.ask = catchAsyncError(async (req, res, next) => {
   conversation.turns.push({
     question,
     answer: result.answer,
-    references: result.references,
     toolCalls: result.toolCalls,
   });
   for (const [k, v] of Object.entries(result.usage)) {
