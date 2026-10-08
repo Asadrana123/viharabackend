@@ -77,6 +77,8 @@ const vtextWebhookRoutes = require("./routes/vtext/vtextWebhookRoutes");
 const qaAdminRoutes = require("./routes/qa/qaAdminRoutes");
 // QA worker API — token-authenticated, inert until QA_AGENT_TOKEN is set.
 const qaAgentRoutes = require("./routes/qa/qaAgentRoutes");
+// Admin global search + "Ask AI" (Claude answering questions from the DB, read-only).
+const adminAskRoutes = require("./routes/adminAsk/adminAskRoutes");
 // Middleware
 app.use(cookieParser());
 app.use(cors(expressCorsOptions));
@@ -155,6 +157,7 @@ app.use("/api/v1/vtext", vtextAdminRoutes);
 app.use("/api/webhooks/vtext", vtextWebhookRoutes);
 app.use("/api/v1/qa", qaAdminRoutes);
 app.use("/api/v1/qa-agent", qaAgentRoutes);
+app.use("/api/v1/admin-ask", adminAskRoutes);
 
 // D7 (sendify-infra.md §2): fail loudly at boot if CHANNEL_TYPES has an enum
 // entry with no registered adapter, rather than discovering it the first
