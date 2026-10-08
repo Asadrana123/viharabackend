@@ -1,0 +1,178 @@
+// services/analytics/gaInsightsService.js
+//
+// Pulls website numbers from Google Analytics 4 (Data API) for the daily
+// analytics report. Every query is read-only.
+//
+// Env:
+//   GA_PROPERTY_ID            GA4 property id, digits only (549331956)
+//   GA_SERVICE_ACCOUNT_JSON   the service account key file, pasted as one line of JSON.
+//                             If unset, the client falls back to GOOGLE_APPLICATION_CREDENTIALS.
+//
+// The service account needs the Viewer role on the GA4 property.
+
+const { BetaAnalyticsDataClient } = require("@google-analytics/data");
+const { DateTime } = require("luxon");
+
+// GA4 days follow the property's reporting time zone, which is India time.
+const PROPERTY_TIMEZONE = "Asia/Kolkata";
+
+// Events the report counts. Anything not listed here is ignored.
+const TRACKED_EVENTS = [
+    "sign_up",
+    "property_view",
+    "renovation_open",
+    "renovation_generate",
+    "email_agent",
+    "bid_registration_submit",
+];
+
+const TOP_ROWS = 10;
+const ADMIN_PATH_FILTER = {
+    notExpression: { filter: { fieldName: "pagePath", stringFilter: { matchType: "BEGINS_WITH", value: "/admin" } } },
+};
+
+// Created on first use so a missing key fails the report, not server startup.
+let client;
+
+function getClient() {
+    if (client) return client;
+    const raw = process.env.GA_SERVICE_ACCOUNT_JSON;
+    if (!raw) {
+        client = new BetaAnalyticsDataClient();
+        return client;
+    }
+    let key;
+    try {
+        key = JSON.parse(raw);
+    } catch (e) {
+        throw new Error("GA_SERVICE_ACCOUNT_JSON is not valid JSON");
+    }
+    client = new BetaAnalyticsDataClient({
+        credentials: {
+            client_email: key.client_email,
+            // Env vars often store the key's line breaks as a literal backslash-n.
+            private_key: String(key.private_key || "").replace(/\\n/g, "\n"),
+        },
+    });
+    return client;
+}
+
+function propertyName() {
+    const id = process.env.GA_PROPERTY_ID;
+    if (!id || !/^\d+$/.test(id)) throw new Error("GA_PROPERTY_ID is not set (digits only)");
+    return `properties/${id}`;
+}
+
+/**
+ * Runs one report and flattens it to plain objects: { <dimension>: string, <metric>: number }.
+ * With more than one date range, GA4 adds a "dateRange" dimension (date_range_0, date_range_1, ...).
+ */
+async function runReport({ dimensions = [], metrics, dateRanges, dimensionFilter, orderBys, limit }) {
+    const [response] = await getClient().runReport({
+        property: propertyName(),
+        dimensions: dimensions.map((name) => ({ name })),
+        metrics: metrics.map((name) => ({ name })),
+        dateRanges,
+        dimensionFilter,
+        orderBys,
+        limit,
+    });
+
+    const dimNames = [...dimensions, ...(dateRanges.length > 1 ? ["dateRange"] : [])];
+    return (response.rows || []).map((row) => {
+        const out = {};
+        (row.dimensionValues || []).forEach((v, i) => {
+            out[dimNames[i]] = v.value;
+        });
+        (row.metricValues || []).forEach((v, i) => {
+            out[metrics[i]] = Number(v.value);
+        });
+        return out;
+    });
+}
+
+const byMetricDesc = (metric) => [{ metric: { metricName: metric }, desc: true }];
+
+/** Event split by a custom dimension. Returns null when the dimension is not registered in GA4 yet. */
+async function eventSplit({ eventName, dimension, dateRanges }) {
+    try {
+        return await runReport({
+            dimensions: [dimension],
+            metrics: ["eventCount"],
+            dateRanges,
+            dimensionFilter: { filter: { fieldName: "eventName", stringFilter: { matchType: "EXACT", value: eventName } } },
+            orderBys: byMetricDesc("eventCount"),
+            limit: TOP_ROWS,
+        });
+    } catch (error) {
+        // GA4 rejects a custom dimension that was never registered (or has no data yet).
+        if (/not a valid dimension|invalid.*dimension|customEvent/i.test(error.message)) return null;
+        throw error;
+    }
+}
+
+/**
+ * Everything the report needs for one day.
+ * @param {string} [day] - "YYYY-MM-DD" in property time. Defaults to yesterday.
+ */
+async function fetchGaReportData(day) {
+    const reportDay = day || DateTime.now().setZone(PROPERTY_TIMEZONE).minus({ days: 1 }).toISODate();
+    const dayDt = DateTime.fromISO(reportDay, { zone: PROPERTY_TIMEZONE });
+    const weekAgo = dayDt.minus({ days: 7 }).toISODate();
+
+    const dayRange = { startDate: reportDay, endDate: reportDay };
+    const weekAgoRange = { startDate: weekAgo, endDate: weekAgo };
+    const dailyRange = { startDate: weekAgo, endDate: reportDay }; // 8 days: the report day plus the 7 before it
+
+    const [daily, events, pages, landing, channels, sources] = await Promise.all([
+        runReport({
+            dimensions: ["date"],
+            metrics: ["activeUsers", "sessions", "engagedSessions", "userEngagementDuration", "screenPageViews", "newUsers"],
+            dateRanges: [dailyRange],
+        }),
+        runReport({
+            dimensions: ["date", "eventName"],
+            metrics: ["eventCount"],
+            dateRanges: [dailyRange],
+            dimensionFilter: { filter: { fieldName: "eventName", inListFilter: { values: TRACKED_EVENTS } } },
+        }),
+        runReport({
+            dimensions: ["pagePath"],
+            metrics: ["screenPageViews", "activeUsers", "userEngagementDuration"],
+            dateRanges: [dayRange],
+            dimensionFilter: ADMIN_PATH_FILTER,
+            orderBys: byMetricDesc("screenPageViews"),
+            limit: TOP_ROWS,
+        }),
+        runReport({
+            dimensions: ["landingPage"],
+            metrics: ["sessions", "engagedSessions"],
+            dateRanges: [dayRange],
+            dimensionFilter: { notExpression: { filter: { fieldName: "landingPage", stringFilter: { matchType: "BEGINS_WITH", value: "/admin" } } } },
+            orderBys: byMetricDesc("sessions"),
+            limit: TOP_ROWS,
+        }),
+        runReport({
+            dimensions: ["sessionDefaultChannelGroup"],
+            metrics: ["sessions", "engagedSessions"],
+            dateRanges: [dayRange, weekAgoRange],
+            orderBys: byMetricDesc("sessions"),
+        }),
+        runReport({
+            dimensions: ["sessionSourceMedium"],
+            metrics: ["sessions"],
+            dateRanges: [dayRange],
+            orderBys: byMetricDesc("sessions"),
+            limit: TOP_ROWS,
+        }),
+    ]);
+
+    const [signUpByForm, viewByPageType] = await Promise.all([
+        eventSplit({ eventName: "sign_up", dimension: "customEvent:form_location", dateRanges: [dayRange] }),
+        eventSplit({ eventName: "property_view", dimension: "customEvent:page_type", dateRanges: [dayRange] }),
+    ]);
+
+    return { reportDay, weekAgo, daily, events, pages, landing, channels, sources, signUpByForm, viewByPageType };
+}
+
+module.exports = { fetchGaReportData, TRACKED_EVENTS, PROPERTY_TIMEZONE };
