@@ -17,6 +17,7 @@ const { QUEUE_NAMES, QUEUE_PREFIX } = require("../queue/queues");
 const { getSettings } = require("../vtextSettingsService");
 const { buildPropertyContext, generateDraftReply, MODEL_NAME } = require("../vtextAiReplyService");
 const { createDraftReply, approveDraft } = require("../vtextDraftReplyService");
+const { isRagEnabled, buildReplyKnowledge } = require("../vtextKnowledgeService");
 const { publishEvent } = require("../vtextEventsBus");
 const { notifyVtextAlert } = require("../../shared/slackService");
 const { sendAlertWithCooldown, inboxUrl, clip } = require("../vtextAlertService");
@@ -48,8 +49,11 @@ async function processDraftReplyJob(job) {
     .lean();
   history.reverse();
 
-  const propertyContext = await buildPropertyContext(contact);
-  const draft = await generateDraftReply({ contact, messages: history, replyToBody: inboundMessage.body, propertyContext });
+  // With the knowledge lookup on, the AI also gets what this lead told us and the property details that
+  // match the question (vtextKnowledgeService.js, which never throws). Off, nothing changes.
+  const knowledge = isRagEnabled() ? await buildReplyKnowledge({ contact, messages: history, replyToBody: inboundMessage.body }) : null;
+  const propertyContext = knowledge ? knowledge.propertyContext : await buildPropertyContext(contact);
+  const draft = await generateDraftReply({ contact, messages: history, replyToBody: inboundMessage.body, propertyContext, knowledge });
   if (!draft) {
     // Generation unavailable or failed: the conversation just stays needs-reply, which used to be
     // completely silent. Tell the team once in a while that nobody is answering this customer.
@@ -78,6 +82,8 @@ async function processDraftReplyJob(job) {
     model: MODEL_NAME,
     needsHuman,
     topic,
+    sources: knowledge?.sources,
+    retrieval: knowledge?.retrieval,
   });
   await publishEvent({ type: "message.updated", conversationId: String(conversationId), contactId: String(contactId) });
 

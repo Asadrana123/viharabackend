@@ -103,6 +103,15 @@ const vtextMessageSchema = new mongoose.Schema(
       // The AI said it could not answer and a team member will follow up (see draftReplyWorker.js).
       needsHuman: { type: Boolean },
       topic: { type: String },
+      // What the AI looked up to write this (vtextKnowledgeService.js): the knowledge-base chunks it was given and how the search went.
+      sources: [{ type: String }],
+      retrieval: {
+        used: { type: Boolean },
+        query: { type: String },
+        topScore: { type: Number },
+        ms: { type: Number },
+        error: { type: String },
+      },
       approvedBy: {
         adminId: { type: mongoose.Schema.Types.ObjectId },
         adminName: { type: String },
