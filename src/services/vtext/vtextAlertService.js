@@ -10,6 +10,16 @@ const VtextSettings = require("../../model/vtext/vtextSettingsModel");
 const { getSettings } = require("./vtextSettingsService");
 const { notifyVtextAlert } = require("../shared/slackService");
 
+// Opens the Inbox on this conversation (InboxTab reads ?conversation=).
+const inboxUrl = (conversationId) => {
+  const base = process.env.VTEXT_ADMIN_URL || "https://vihara.ai/admin/dashboard?tab=vtext&vtextTab=inbox";
+  return conversationId ? `${base}${base.includes("?") ? "&" : "?"}conversation=${conversationId}` : base;
+};
+const clip = (text, max = 300) => {
+  const t = String(text || "").trim();
+  return t.length > max ? `${t.slice(0, max - 1)}…` : t;
+};
+
 const KEY_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 function assertKey(key) {
@@ -49,6 +59,25 @@ async function sendAlertWithCooldown(key, cooldownMs, alert) {
   return true;
 }
 
+/**
+ * Tells the team that a customer wrote in and no AI reply is on its way, so the
+ * message does not sit unseen. Not rate-limited on purpose: one alert per reply.
+ * Never throws.
+ */
+function notifyInboundNoDraft({ contact, conversationId, body, reason }) {
+  return notifyVtextAlert({
+    level: "warning",
+    title: "Reply received, no AI reply",
+    fields: [
+      { label: "Contact", value: contact?.name || "(no name)" },
+      { label: "Phone", value: contact?.phoneE164 },
+      { label: "Their message", value: clip(body) },
+      { label: "Why no AI reply", value: reason },
+      { label: "Inbox", value: inboxUrl(conversationId) },
+    ],
+  }).catch((err) => console.error("[vtext inbound] could not send the no-AI-reply alert:", err.message));
+}
+
 /** True only when both settings that switch Vtext Slack alerts on are present. */
 function isAlertingConfigured() {
   return process.env.VTEXT_ENABLE_SLACK_ALERTS === "true" && Boolean(process.env.SLACK_VTEXT_WEBHOOK_URL);
@@ -68,4 +97,4 @@ async function setAlertWatermark(key, date) {
   await VtextSettings.updateOne({}, { $set: { [`alertState.${key}`]: date } }, { upsert: true });
 }
 
-module.exports = { sendAlertWithCooldown, getAlertWatermark, setAlertWatermark, isAlertingConfigured };
+module.exports = { inboxUrl, clip, notifyInboundNoDraft, sendAlertWithCooldown, getAlertWatermark, setAlertWatermark, isAlertingConfigured };

@@ -19,20 +19,10 @@ const { buildPropertyContext, generateDraftReply, MODEL_NAME } = require("../vte
 const { createDraftReply, approveDraft } = require("../vtextDraftReplyService");
 const { publishEvent } = require("../vtextEventsBus");
 const { notifyVtextAlert } = require("../../shared/slackService");
-const { sendAlertWithCooldown } = require("../vtextAlertService");
+const { sendAlertWithCooldown, inboxUrl, clip } = require("../vtextAlertService");
 
 const HISTORY_LIMIT = 10;
 const AI_FAILURE_ALERT_COOLDOWN_MS = 30 * 60_000; // a Gemini outage must not post once per customer message
-
-// Opens the Inbox on this conversation (InboxTab reads ?conversation=).
-const inboxUrl = (conversationId) => {
-  const base = process.env.VTEXT_ADMIN_URL || "https://vihara.ai/admin/dashboard?tab=vtext&vtextTab=inbox";
-  return conversationId ? `${base}${base.includes("?") ? "&" : "?"}conversation=${conversationId}` : base;
-};
-const clip = (text, max = 300) => {
-  const t = String(text || "").trim();
-  return t.length > max ? `${t.slice(0, max - 1)}…` : t;
-};
 
 async function processDraftReplyJob(job) {
   const { conversationId, contactId, inboundMessageId, lineId, channelType } = job.data;
