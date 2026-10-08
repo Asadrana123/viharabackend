@@ -4,7 +4,7 @@
 // — real sends now go through the queue via vtextMessageService.enqueueOutbound.
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const { enqueueOutbound } = require("../../services/vtext/vtextMessageService");
-const { renderTemplateForProperty, loadTemplateAndProperty, renderTemplate, resolveContactVariables } = require("../../services/vtext/vtextTemplateService");
+const { renderTemplateForProperty, loadTemplateAndProperty, renderTemplate, resolveContactVariables, checkRendered } = require("../../services/vtext/vtextTemplateService");
 const { approveDraft: approveDraftReply } = require("../../services/vtext/vtextDraftReplyService");
 const VtextMessage = require("../../model/vtext/vtextMessageModel");
 const VtextLine = require("../../model/vtext/vtextLineModel");
@@ -26,6 +26,9 @@ const sendMessage = catchAsyncError(async (req, res) => {
   const origin = { kind: "manual", sentBy: { adminId: req.user?._id, adminName: req.user?.name } };
   if (!body && templateId) {
     const rendered = await renderTemplateForProperty(templateId, propertyId, name);
+    // {{quote_price}} only has a value for a signup text; a manual send has no quote to fill it with.
+    const problem = checkRendered(rendered.template.body, rendered.body, rendered.values, ["quote_price"]);
+    if (problem) return res.status(400).json({ success: false, message: `This template can't be sent from here: ${problem}` });
     body = rendered.body;
     origin.campaignId = templateId;
   }
@@ -71,7 +74,8 @@ const sendBulkMessages = catchAsyncError(async (req, res) => {
       const phone = typeof entry === "string" ? entry : entry.to;
       const name = typeof entry === "string" ? undefined : entry.name;
       const values = { ...propertyValues, ...resolveContactVariables(name) };
-      return { to: phone, body: renderTemplate(template.body, values), name };
+      const rendered = renderTemplate(template.body, values);
+      return { to: phone, body: rendered, name, problem: checkRendered(template.body, rendered, values, ["quote_price"]) };
     });
     origin.campaignId = templateId;
   }
@@ -83,6 +87,10 @@ const sendBulkMessages = catchAsyncError(async (req, res) => {
   const results = [];
   for (const recipient of resolvedRecipients) {
     try {
+      if (recipient.problem) {
+        results.push({ to: recipient.to, error: `Not sent: ${recipient.problem}` });
+        continue;
+      }
       const result = await enqueueOutbound({ to: recipient.to, body: recipient.body, origin, contactName: recipient.name });
       results.push({ to: recipient.to, blocked: result.blocked, reason: result.reason, messageId: result.message._id });
     } catch (err) {

@@ -21,6 +21,7 @@ const { publishEvent } = require("../vtextEventsBus");
 const { findLeadRefs } = require("../vtextLeadLookupService");
 const { endFollowUp } = require("../vtextFollowUpService");
 const { notifyVtextAlert } = require("../../shared/slackService");
+const { notifyInboundNoDraft } = require("../vtextAlertService");
 
 const HELP_TEXT = process.env.VTEXT_HELP_TEXT || "This is Vihara. Reply STOP to opt out, or visit vihara.ai for more info.";
 const STOP_CONFIRM_TEXT = process.env.VTEXT_STOP_CONFIRM_TEXT || "You're unsubscribed and won't receive more messages from Vihara. Reply START to resubscribe.";
@@ -173,7 +174,13 @@ async function handleMessageReceived(event, line) {
   contact.lastInboundAt = event.receivedAt || new Date();
   await contact.save();
 
-  const keyword = detectKeyword(event.body);
+  let keyword = detectKeyword(event.body);
+  // "Yes" is the most common answer to our own questions ("Are you free for a quick call?"). It only
+  // counts as a resubscribe keyword for someone who is actually opted out; for anyone else it is a
+  // normal reply and goes to the AI. START and UNSTOP stay keywords for everyone.
+  if (keyword.type === "start" && keyword.matched === "YES" && !contact.optOut?.isOptedOut) {
+    keyword = { type: null, matched: null, method: null };
+  }
 
   // Any reply ends the follow-up sequence. A STOP also cancels everything
   // pending below, so only a plain reply needs the follow-up-only cancel here.
@@ -187,6 +194,10 @@ async function handleMessageReceived(event, line) {
   } catch (err) {
     console.error(`[vtext inbound] couldn't end follow-up sequence for contact ${contact._id}:`, err.message);
   }
+
+  // One alert per reply that no AI draft will answer, so a person knows to look. STOP already alerts above.
+  const alertNoDraft = (reason) =>
+    notifyInboundNoDraft({ contact, conversationId: conversation._id, body: event.body, reason });
 
   const message = await VtextMessage.create({
     direction: "in",
@@ -251,6 +262,7 @@ async function handleMessageReceived(event, line) {
     if (!lastHelp || Date.now() - lastHelp.getTime() > AUTO_REPLY_COOLDOWN_MS) {
       await sendSystemReply(contact, line, HELP_TEXT, "help");
     }
+    alertNoDraft("They sent HELP, so the help text was sent automatically");
   } else if (keyword.type === "start") {
     // An admin-set opt-out is a deliberate human decision — a keyword doesn't override it.
     if (contact.optOut?.isOptedOut && contact.optOut.method !== "admin") {
@@ -261,6 +273,11 @@ async function handleMessageReceived(event, line) {
       contact.consentEvents.push({ type: "resubscribe", at: new Date(), method: keyword.method, keyword: keyword.matched, messageId: message._id, lineId: line._id });
       await contact.save();
       await sendSystemReply(contact, line, "You're resubscribed to messages from Vihara.", "resubscribe-confirm");
+      alertNoDraft("They had opted out and resubscribed, so the confirmation was sent automatically");
+    } else if (contact.optOut?.isOptedOut) {
+      alertNoDraft("They are opted out by an admin, and a keyword does not change that");
+    } else {
+      alertNoDraft(`They sent ${keyword.matched}, which is a keyword, and they were not opted out, so nothing was done`);
     }
   } else if (process.env.VTEXT_AI_DRAFT_REPLY_ENABLED === "true" && !contact.optOut?.isOptedOut) {
     // No compliance keyword matched — a real inbound message that may
@@ -276,6 +293,8 @@ async function handleMessageReceived(event, line) {
       lineId: String(line._id),
       channelType: line.channelType,
     });
+  } else {
+    alertNoDraft(contact.optOut?.isOptedOut ? "This contact is opted out, so no AI reply is made" : "AI replies are switched off");
   }
 
   publishEvent({ type: "message.inbound", conversationId: String(conversation._id), contactId: String(contact._id) });

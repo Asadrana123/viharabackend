@@ -16,4 +16,4 @@ const partnerPageUrl = () => `${getSiteUrl()}/partner-page`;
 const buyerListPageUrl = () => `${getSiteUrl()}/buyer-list`;
 const newDealsPageUrl = () => `${getSiteUrl()}/new-deals`;
 
-module.exports = { auctionPageUrl, listingPageUrl, norCalPageUrl, partnerPageUrl, buyerListPageUrl, newDealsPageUrl };
+module.exports = { getSiteUrl, auctionPageUrl, listingPageUrl, norCalPageUrl, partnerPageUrl, buyerListPageUrl, newDealsPageUrl };
