@@ -3,20 +3,31 @@ const catchAsyncError = require("../../middleware/catchAsyncError");
 const VtextConversation = require("../../model/vtext/vtextConversationModel");
 const VtextMessage = require("../../model/vtext/vtextMessageModel");
 const VtextContact = require("../../model/vtext/vtextContactModel");
+const Product = require("../../model/property/productModel");
+const mongoose = require("mongoose");
 const { publishEvent } = require("../../services/vtext/vtextEventsBus");
 
 // Contact fields the admin UI needs on every conversation payload (list, thread, mark-read).
 const CONTACT_FIELDS = "name phoneE164 optOut.isOptedOut followUp.status followUp.step";
 
-/** GET /api/v1/vtext/conversations?status=&lineId=&q=&unread=true&cursor=&limit= */
+// Property fields the inbox pill and picker show.
+const PROPERTY_FIELDS = "street city state slug productName";
+
+/** GET /api/v1/vtext/conversations?status=&lineId=&q=&unread=true&propertyId=<id>|none&cursor=&limit= */
 const listConversations = catchAsyncError(async (req, res) => {
-  const { status, lineId, q, unread, cursor, limit } = req.query;
+  const { status, lineId, q, unread, propertyId, cursor, limit } = req.query;
   const pageSize = Math.min(100, Math.max(1, Number(limit) || 30));
 
   const filter = {};
   if (status) filter.status = status;
   if (lineId) filter.lineId = lineId;
   if (unread === "true") filter.unreadCount = { $gt: 0 };
+  if (propertyId === "none") {
+    filter.propertyId = null; // matches conversations with no property set
+  } else if (propertyId) {
+    if (!mongoose.Types.ObjectId.isValid(propertyId)) return res.status(400).json({ success: false, message: "Invalid property id" });
+    filter.propertyId = propertyId;
+  }
   if (cursor) filter.lastMessageAt = { $lt: new Date(cursor) };
 
   if (q) {
@@ -31,6 +42,7 @@ const listConversations = catchAsyncError(async (req, res) => {
     .sort({ lastMessageAt: -1 })
     .limit(pageSize + 1)
     .populate("contactId", CONTACT_FIELDS)
+    .populate("propertyId", PROPERTY_FIELDS)
     .lean();
 
   const hasMore = conversations.length > pageSize;
@@ -45,7 +57,7 @@ const listConversations = catchAsyncError(async (req, res) => {
 
 /** GET /api/v1/vtext/conversations/:id/messages?limit= */
 const getConversationMessages = catchAsyncError(async (req, res) => {
-  const conversation = await VtextConversation.findById(req.params.id).populate("contactId", CONTACT_FIELDS);
+  const conversation = await VtextConversation.findById(req.params.id).populate("contactId", CONTACT_FIELDS).populate("propertyId", PROPERTY_FIELDS);
   if (!conversation) return res.status(404).json({ success: false, message: "Conversation not found" });
 
   const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
@@ -68,7 +80,7 @@ const updateConversation = catchAsyncError(async (req, res) => {
   // Mark unread raises the count to at least 1 and leaves a higher real count alone.
   const mongoUpdate = markUnread ? { ...(Object.keys(update).length ? { $set: update } : {}), $max: { unreadCount: 1 } } : update;
 
-  const conversation = await VtextConversation.findByIdAndUpdate(req.params.id, mongoUpdate, { new: true }).populate("contactId", CONTACT_FIELDS);
+  const conversation = await VtextConversation.findByIdAndUpdate(req.params.id, mongoUpdate, { new: true }).populate("contactId", CONTACT_FIELDS).populate("propertyId", PROPERTY_FIELDS);
   if (!conversation) return res.status(404).json({ success: false, message: "Conversation not found" });
 
   if (markRead) {
@@ -83,4 +95,21 @@ const updateConversation = catchAsyncError(async (req, res) => {
   return res.status(200).json({ success: true, conversation });
 });
 
-module.exports = { listConversations, getConversationMessages, updateConversation };
+/** GET /api/v1/vtext/conversations/properties — the properties that have at least one conversation, for the inbox picker. */
+const listConversationProperties = catchAsyncError(async (req, res) => {
+  const counts = await VtextConversation.aggregate([
+    { $match: { propertyId: { $exists: true, $ne: null } } },
+    { $group: { _id: "$propertyId", count: { $sum: 1 } } },
+  ]);
+  const products = await Product.find({ _id: { $in: counts.map((c) => c._id) } })
+    .select(PROPERTY_FIELDS)
+    .lean();
+  const countById = new Map(counts.map((c) => [String(c._id), c.count]));
+  const properties = products
+    .map((p) => ({ ...p, count: countById.get(String(p._id)) }))
+    .sort((a, b) => String(a.street || "").localeCompare(String(b.street || "")));
+  const noPropertyCount = await VtextConversation.countDocuments({ propertyId: null });
+  return res.status(200).json({ success: true, properties, noPropertyCount });
+});
+
+module.exports = { listConversationProperties, listConversations, getConversationMessages, updateConversation };
