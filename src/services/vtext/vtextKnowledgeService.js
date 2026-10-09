@@ -111,8 +111,11 @@ async function rewriteQuery({ messages, replyToBody }) {
 
     const model = client.getGenerativeModel({ model: MODEL_NAME });
     const result = await withTimeout(
-      model.generateContent({ contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { temperature: 0 } }),
-      Math.min(TIMEOUT_MS, 3000),
+      model.generateContent({ contents: [{ role: "user", parts: [{ text: prompt }] }],
+        // Thinking off: this is a one-line rewrite, and thinking roughly doubled its time (about 1.1s vs 2.3s measured).
+        generationConfig: { temperature: 0, thinkingConfig: { thinkingBudget: 0 } },
+      }),
+      Math.min(TIMEOUT_MS, 4000),
       "query rewrite"
     );
     const rewritten = String(result?.response?.text() || "").trim().replace(/^["']|["']$/g, "");
