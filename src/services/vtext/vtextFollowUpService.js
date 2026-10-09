@@ -5,7 +5,7 @@
 // VtextContact.followUp (Mongo is the source of truth, so a Redis flush loses
 // nothing). A repeating maintenance job (runFollowUpSweep) sends whatever is
 // due. See vtextFollowUpSequence.js for the copy, the target days and the
-// rules (one text a day, skip a missed day, auction-based steps win a clash).
+// rules (one text a day for 7 days, skip a missed day, stop before the auction).
 //
 // Lifecycle: startFollowUp (after the signup text) -> each step on its target
 // day inside a send window -> "no-response" a few days after the last step.
@@ -161,7 +161,7 @@ async function processDueContact(contactId, now) {
     await endFollowUp(contactId, "replied", "contact replied");
     return;
   }
-  // Enrolled under the old 7-step sequence: it was replaced, so it ends here.
+  // Enrolled under an older sequence version: it was replaced, so it ends here.
   if (f.sequenceVersion !== SEQUENCE_VERSION) {
     await endFollowUp(contactId, "cancelled", "sequence replaced");
     return;
@@ -308,7 +308,7 @@ async function runFollowUpSweep({ now = new Date() } = {}) {
   if (!settings.followUpsEnabled) return;
 
 
-  // Sequences from the old 7-step version end right away. Ones that already finished all 7 and are
+  // Sequences from an older version end right away. Ones that already finished all their steps and are
   // only waiting out the reply grace period (they have a finalCheckAt) are left for flagNoResponse.
   await VtextContact.updateMany(
     { "followUp.status": "active", "followUp.sequenceVersion": { $ne: SEQUENCE_VERSION }, "followUp.finalCheckAt": { $exists: false } },
