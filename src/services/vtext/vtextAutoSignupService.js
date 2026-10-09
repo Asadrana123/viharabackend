@@ -79,7 +79,7 @@ async function maybeSendSignupQuoteText({ lead, property }) {
     const { message, blocked, reason } = await enqueueOutbound({
       to: lead.phone,
       body,
-      origin: { kind: "automation", templateKey: "property-signup-quote", campaignId: template._id },
+      origin: { kind: "automation", templateKey: "property-signup-quote", campaignId: template._id, propertyId: property._id },
       contactName: lead.fullName,
       isReplyToInbound: false,
     });

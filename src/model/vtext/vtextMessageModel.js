@@ -55,6 +55,8 @@ const vtextMessageSchema = new mongoose.Schema(
       templateKey: { type: String },
       batchId: { type: String },
       campaignId: { type: mongoose.Schema.Types.ObjectId },
+      // The property this text is about; routeWorker copies it onto the conversation.
+      propertyId: { type: mongoose.Schema.Types.ObjectId, ref: "productModel" },
       replyToMessageId: { type: mongoose.Schema.Types.ObjectId, ref: "vtextMessageModel" },
       sentBy: {
         adminId: { type: mongoose.Schema.Types.ObjectId },
