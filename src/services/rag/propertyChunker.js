@@ -410,10 +410,20 @@ const BUILDERS = [
 // silently. Values that are ALSO legitimately public (e.g. reservePrice happens
 // to equal the public ViharaValue) are excluded from the check to avoid nuking a
 // valid chunk.
+//
+// The same applies to every amount the chunks state ON PURPOSE: starting bid,
+// minimum increment, EMD, commission and the public valuation. An auction with
+// no bids yet has currentBid === startBid, so without this the guard mistook
+// the public starting bid for the live bid and dropped the whole auction chunk
+// (EMD, increment, dates). A confidential value that differs from all of these
+// is still blocked everywhere.
 function stripLeaks(chunks, p) {
   const publicOk = new Set();
   const vhVal = p.investmentData && p.investmentData.valuation && p.investmentData.valuation.ViharaValue;
   if (has(vhVal)) publicOk.add(money(vhVal));
+  for (const v of [p.startBid, p.minIncrement, p.emd, p.commission]) {
+    if (has(v) && Number(v) > 0) publicOk.add(money(v));
+  }
 
   const forbidden = new Set();
   const addForbidden = (v) => {
