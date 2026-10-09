@@ -246,7 +246,7 @@ async function processDueContact(contactId, now) {
     const result = await enqueueOutbound({
       to: contact.phoneE164,
       body,
-      origin: { kind: "automation", templateKey: `followup-${step}` },
+      origin: { kind: "automation", templateKey: `followup-${step}`, propertyId: f.propertyId },
       idempotencyKey: `followup-${contactId}-${step}`,
       isReplyToInbound: false,
     });

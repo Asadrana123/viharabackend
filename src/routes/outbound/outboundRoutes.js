@@ -16,6 +16,7 @@ const {
   launchEmailCampaign,
   listCampaigns,
   getCampaign,
+  getSmsCampaignStats,
   getCallPromptVariables,
   getCallPrompt,
   upsertCallPrompt,
@@ -39,6 +40,7 @@ router.post("/email/test", sendTestEmail);
 router.post("/email/campaigns", launchEmailCampaign);
 router.get("/campaigns", listCampaigns);
 router.get("/campaigns/:id", getCampaign);
+router.get("/sms/campaigns/:id/stats", getSmsCampaignStats);
 
 // ── Calls — separate prompt store + call-run collection from the existing
 // Calls tab and from Enrichment's call channel. Literal /call/campaigns and

@@ -36,6 +36,7 @@ async function runVtextCampaign(campaignId) {
           kind: "bulk",
           batchId: String(campaign._id),
           campaignId: campaign.sms.templateId,
+          propertyId: campaign.property.id,
           sentBy: { adminId: campaign.createdBy?.id, adminName: campaign.createdBy?.name },
         },
         contactName: recipient.name,

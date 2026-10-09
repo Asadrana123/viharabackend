@@ -5,6 +5,7 @@
 
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const Errorhandler = require("../../utils/errorhandler");
+const { getSmsCampaignStats: getSmsCampaignStatsFor } = require("../../services/outbound/outboundSmsStatsService");
 const Product = require("../../model/property/productModel");
 const sendEmail = require("../../utils/sendEmail");
 
@@ -264,6 +265,13 @@ exports.listCampaigns = catchAsyncError(async (req, res) => {
   const { channel, propertyId, page, limit } = req.query;
   const result = await outboundCampaignService.listCampaigns({ channel, propertyId }, page, limit);
   return res.json({ success: true, ...result });
+});
+
+/** GET /sms/campaigns/:id/stats — sent / delivered / failed / replied for a Vtext SMS campaign (computed on open). */
+exports.getSmsCampaignStats = catchAsyncError(async (req, res, next) => {
+  const stats = await getSmsCampaignStatsFor(req.params.id);
+  if (!stats) return next(new Errorhandler("Delivery stats are only available for Vtext SMS campaigns", 404));
+  return res.json({ success: true, ...stats });
 });
 
 /**

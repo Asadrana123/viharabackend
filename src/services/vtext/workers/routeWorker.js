@@ -113,6 +113,8 @@ async function processRouteJob(job) {
         lineAddress: line.address,
         firstOutboundAt: new Date(),
       },
+      // The latest property texted about wins.
+      ...(message.origin?.propertyId ? { $set: { propertyId: message.origin.propertyId } } : {}),
     },
     { upsert: true, new: true }
   );

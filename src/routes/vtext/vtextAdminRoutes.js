@@ -14,7 +14,7 @@ const {
   startWarmup, testSend, getLineUsage, getLineEvents, registerWebhooksForLine,
 } = require("../../controller/vtext/vtextLineController");
 const { sendMessage, sendBulkMessages, listMessagesByStatus, retryMessage, cancelMessage, rerouteMessage, approveDraft } = require("../../controller/vtext/vtextMessageController");
-const { listConversations, getConversationMessages, updateConversation } = require("../../controller/vtext/vtextConversationController");
+const { listConversationProperties, listConversations, getConversationMessages, updateConversation } = require("../../controller/vtext/vtextConversationController");
 const { getContact, updateContactConsent, markCallBooked } = require("../../controller/vtext/vtextContactController");
 const { getStatsOverview } = require("../../controller/vtext/vtextStatsController");
 const { getVtextSettings, updateVtextSettings } = require("../../controller/vtext/vtextSettingsController");
@@ -37,6 +37,7 @@ router.get("/stats/overview", getStatsOverview);
 router.get("/settings", getVtextSettings);
 router.patch("/settings", updateVtextSettings);
 
+router.get("/conversations/properties", listConversationProperties); // before /:id routes
 router.get("/conversations", listConversations);
 router.get("/conversations/:id/messages", getConversationMessages);
 router.patch("/conversations/:id", updateConversation);
