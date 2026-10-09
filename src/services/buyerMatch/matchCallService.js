@@ -587,6 +587,7 @@ module.exports = {
   getCallingStatus,
   startCampaign,
   stopCampaign,
+  endCampaign,
   buildCallbackPromptForCampaign,
   startMatchCallScheduler,
   sweepDueCampaigns,

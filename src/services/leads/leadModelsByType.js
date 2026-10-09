@@ -33,4 +33,25 @@ const MODEL_BY_TYPE = {
   newDeals: NewDealsLead, // /new-deals buy-box leads
 };
 
-module.exports = { MODEL_BY_TYPE };
+// Every lead tab's collection, with the label the admin UI shows for it.
+// MODEL_BY_TYPE above stays the calling-funnel subset; this is the full set,
+// for admin actions that apply to any lead (delete, "everything about this
+// person" lookups).
+const BuyerListLead = require("../../model/leads/buyerListLeadModel");
+const PersonaLead = require("../../model/leads/personaLeadModel");
+const RenovationContractorRequest = require("../../model/property/renovationContractorRequestModel");
+
+const ALL_LEAD_SOURCES = {
+  earlyAccess:          { model: EarlyAccessLead,             label: "Early Access" },
+  georgiaSt:            { model: GeorgiaStLead,               label: "449 Georgia St" },
+  rensselaerAve:        { model: RensselaerAveLead,           label: "401 Rensselaer Ave" },
+  partner:              { model: PartnerLead,                 label: "Partner Program" },
+  property:             { model: PropertyLead,                label: "Property page" },
+  norcal:               { model: NorCalLead,                  label: "Northern California" },
+  newDeals:             { model: NewDealsLead,                label: "New Deals" },
+  buyerList:            { model: BuyerListLead,               label: "Buyer List" },
+  persona:              { model: PersonaLead,                 label: "Persona" },
+  renovationContractor: { model: RenovationContractorRequest, label: "Renovation Contractors/Vendors" },
+};
+
+module.exports = { MODEL_BY_TYPE, ALL_LEAD_SOURCES };

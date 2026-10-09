@@ -34,8 +34,8 @@ const { FOLLOW_UP_DAYS, nextFollowUpAt } = require("../../services/calling/follo
  *
  * PATCH /api/v1/lead-calling   { leadType, leadId, restart: true }
  *
- * For a "not-reached" lead (7 follow-up days, no pickup): start a fresh 7-day
- * window — one call a day again from tomorrow.
+ * For a "not-reached" lead (7 follow-up days, no pickup) or a "connected" lead
+ * (picked up): start a fresh 7-day window — one call a day again from tomorrow.
  *
  * Returns the updated fields so the UI can reflect state without a refetch.
  */
@@ -66,18 +66,22 @@ const setLeadCalling = catchAsyncError(async (req, res, next) => {
   });
 });
 
+// Statuses where the follow-up loop has ended on its own and an admin may start
+// it again: "not-reached" (window ran out) or "connected" (lead picked up).
+const RESTARTABLE = ["not-reached", "connected"];
+
 /**
- * Restart a finished follow-up window. Only "not-reached" leads qualify — they
- * consented and went through the full window — so this can never start calling
- * a lead that never asked for a call.
+ * Restart a finished follow-up window. Only "not-reached" or "connected" leads
+ * qualify — they consented and Maya already called them — so this can never
+ * start calling a lead that never asked for a call.
  */
 async function restartFollowUps(Model, req, res, next) {
   const { leadType, leadId } = req.body;
 
   const lead = await Model.findById(leadId).select("callStatus timezone").lean();
   if (!lead) return next(new ErrorHandler("Lead not found", 404));
-  if (lead.callStatus !== "not-reached")
-    return next(new ErrorHandler("Only leads that were not reached can be restarted", 400));
+  if (!RESTARTABLE.includes(lead.callStatus))
+    return next(new ErrorHandler("Only leads whose calling has finished can be restarted", 400));
 
   const now = new Date();
   const updated = await Model.findByIdAndUpdate(

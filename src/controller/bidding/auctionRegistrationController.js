@@ -1,5 +1,13 @@
 const mongoose = require("mongoose");
 const AuctionRegistration = require("../../model/bidding/auctionRegistration");
+const AutoBidding = require("../../model/bidding/autoBiddingModel");
+const PropertyEmailLead = require("../../model/email/propertyEmailLeadModel");
+const { LEAD_TYPES } = require("../../model/leads/leadNoteModel");
+const { ALL_LEAD_SOURCES, MODEL_BY_TYPE } = require("../../services/leads/leadModelsByType");
+const { getCallsForPhones, normalisePhone } = require("../../services/calling/vapiCallsService");
+const { getVtextMessagesForPhones } = require("../../services/vtext/vtextLeadMessagesService");
+const { getEmailEventsForEmails } = require("../../services/integrations/emailEventsService");
+const { getNotesForLeads } = require("../../services/leads/leadNotesService");
 const Product = require("../../model/property/productModel");
 const User = require("../../model/users/userModel");
 const catchAsyncError = require("../../middleware/catchAsyncError");
@@ -433,6 +441,118 @@ exports.updateRegistrationStatus = catchAsyncError(
     });
   }
 );
+// Admin: permanently delete one registration. The person loses bid access for
+// this auction (bidding checks for an approved registration), so their auto-bid
+// settings here are removed too. Bids already placed stay in the auction record.
+exports.deleteRegistration = catchAsyncError(
+  async (req, res, next) => {
+    const registration = await AuctionRegistration.findByIdAndDelete(req.params.id).lean();
+    if (!registration) {
+      return next(new Errorhandler("Registration not found", 404));
+    }
+
+    await Promise.all([
+      AutoBidding.deleteMany({ userId: registration.userId, auctionId: registration.auctionId }),
+      // Email sequence record: they're no longer registered for this property.
+      registration.email
+        ? PropertyEmailLead.updateOne(
+            { contactEmail: String(registration.email).trim().toLowerCase(), propertyId: registration.auctionId },
+            { $set: { registered: false, verificationStatus: null } }
+          )
+        : null,
+    ]);
+
+    res.status(200).json({ success: true, id: String(registration._id) });
+  }
+);
+
+// Admin: everything we know about the person behind one registration, matched
+// by their phone and email — Maya calls (summaries + transcripts), Vtext
+// texts, Brevo email events, and every lead signup they made (with its advisor
+// notes), so the registration row can show the same picture as a lead.
+exports.getRegistrationActivity = catchAsyncError(
+  async (req, res, next) => {
+    const registration = await AuctionRegistration.findById(req.params.id)
+      .select("email mobilePhone userId")
+      .populate("userId", "email")
+      .lean();
+    if (!registration) {
+      return next(new Errorhandler("Registration not found", 404));
+    }
+
+    // The registration form's email plus the account's, in case they differ.
+    const phones = [registration.mobilePhone].map(normalisePhone).filter(Boolean);
+    const emails = [registration.email, registration.userId?.email]
+      .map((e) => String(e || "").trim().toLowerCase())
+      .filter(Boolean);
+    const uniquePhones = [...new Set(phones)];
+    const uniqueEmails = [...new Set(emails)];
+
+    const [callsByPhone, messagesByPhone, eventsByEmail, leads] = await Promise.all([
+      getCallsForPhones(uniquePhones),
+      getVtextMessagesForPhones(uniquePhones),
+      getEmailEventsForEmails(uniqueEmails),
+      findLeadsForPerson(uniquePhones, uniqueEmails),
+    ]);
+
+    const byNewest = (key) => (a, b) => new Date(b[key] || 0) - new Date(a[key] || 0);
+    res.status(200).json({
+      success: true,
+      calls: uniquePhones.flatMap((p) => callsByPhone[p] || []).sort(byNewest("startedAt")),
+      messages: uniquePhones
+        .flatMap((p) => messagesByPhone[p] || [])
+        .sort((a, b) => new Date(a.sentAt || 0) - new Date(b.sentAt || 0)),
+      emails: uniqueEmails.flatMap((e) => eventsByEmail[e] || []).sort(byNewest("date")),
+      leads,
+    });
+  }
+);
+
+const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * Every lead record this person has across the lead tabs, newest first, each
+ * with its advisor notes. Matched on email (any collection) and on the stored
+ * E.164 phone (collections that keep one).
+ */
+async function findLeadsForPerson(phones, emails) {
+  if (!phones.length && !emails.length) return [];
+  const emailMatch = emails.map((e) => ({ email: new RegExp(`^${escapeRegex(e)}$`, "i") }));
+
+  const perSource = await Promise.all(
+    Object.entries(ALL_LEAD_SOURCES).map(async ([leadType, { model, label }]) => {
+      const or = [...emailMatch];
+      if (phones.length && model.schema.path("phoneNormalized")) or.push({ phoneNormalized: { $in: phones } });
+      if (!or.length) return [];
+      try {
+        const found = await model.find({ $or: or }).sort({ createdAt: -1 }).limit(10).lean();
+        const notesByLead = LEAD_TYPES.includes(leadType)
+          ? await getNotesForLeads(leadType, found.map((l) => l._id))
+          : {};
+        return found.map((l) => ({
+          _id: l._id,
+          leadType,
+          label,
+          fullName: l.fullName || l.name || [l.firstName, l.lastName].filter(Boolean).join(" "),
+          propertySlug: l.propertySlug || "",
+          propertyName: l.propertyName || "",
+          callStatus: l.callStatus || null,
+          callingStopped: !!l.callingStopped,
+          nextCallAt: l.nextCallAt || null,
+          hasCalling: !!MODEL_BY_TYPE[leadType],
+          notesEnabled: LEAD_TYPES.includes(leadType),
+          notes: notesByLead[String(l._id)] || [],
+          createdAt: l.createdAt,
+        }));
+      } catch (err) {
+        console.error(`[registration-activity] ${leadType} lookup failed:`, err.message);
+        return [];
+      }
+    })
+  );
+  return perSource.flat().sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+}
+
 // Get all registrations for current user
 exports.getUserRegistrations = catchAsyncError(
   async (req, res, next) => {

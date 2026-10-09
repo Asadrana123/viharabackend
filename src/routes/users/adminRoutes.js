@@ -18,6 +18,8 @@ const {
   getAllRegistrations,
   getRegistrationProperties,
   updateRegistrationStatus,
+  deleteRegistration,
+  getRegistrationActivity,
 } = require("../../controller/bidding/auctionRegistrationController");
 const {
   adminGetRealtors,
@@ -91,6 +93,20 @@ router.put(
   isAuthenticated,
   authorizeRoles("admin"),
   updateRegistrationStatus
+);
+
+router.get(
+  "/auction-registration/:id/activity",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  getRegistrationActivity
+);
+
+router.delete(
+  "/auction-registration/:id",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  deleteRegistration
 );
 
 // Auction bids route
