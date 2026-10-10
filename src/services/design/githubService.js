@@ -121,12 +121,19 @@ async function commitFiles(branch, files, message) {
   return commit.sha;
 }
 
+// The website's "Design preview" GitHub Action builds each design branch and
+// reports the preview under this environment. Vercel's own Git builds can't
+// prerender (no Chrome) and always fail, so they're ignored.
+const previewEnvironment = () => process.env.DESIGN_PREVIEW_ENVIRONMENT || "Design Preview";
+
 /**
- * The Vercel preview for a commit, from the deployment Vercel reports to GitHub.
+ * The preview for a commit, from the deployment the preview Action reports to GitHub.
  * @returns {Promise<{state: "pending"|"success"|"failure", url?: string}>}
  */
 async function previewForCommit(sha) {
-  const deployments = await call("get", "/deployments", null, { params: { sha, per_page: 10 } });
+  const deployments = await call("get", "/deployments", null, {
+    params: { sha, environment: previewEnvironment(), per_page: 10 },
+  });
   if (!deployments.length) return { state: "pending" };
   for (const d of deployments) {
     const statuses = await call("get", `/deployments/${d.id}/statuses`, null, { params: { per_page: 5 } });

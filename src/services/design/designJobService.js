@@ -16,7 +16,7 @@ const { getCurrentBrandKit } = require("../brand/brandKitService");
 const { DESIGN_PAGES, NEW_PAGE } = require("../../config/designPages");
 
 const PREVIEW_POLL_MS = 15000;
-const PREVIEW_TIMEOUT_MS = 20 * 60 * 1000;
+const PREVIEW_TIMEOUT_MS = 30 * 60 * 1000;
 const BUILD_FAILED_INSTRUCTION =
   "The live preview failed to build. Re-read every file you changed and fix anything that could break a production Create React App build: syntax errors, missing imports, unused variables or imports (lint warnings count as errors), and invalid JSX.";
 
@@ -155,7 +155,7 @@ async function waitForPreview(id) {
       say(`checking preview: ${err.message}`);
     }
     if (Date.now() - started > PREVIEW_TIMEOUT_MS) {
-      return fail(id, i, "The preview took too long to build. Check that Vercel previews are switched on, then click \"Try again\".");
+      return fail(id, i, "The preview took too long to build. Check the \"Design preview\" run under GitHub → Actions, then click \"Try again\".");
     }
     await new Promise((r) => setTimeout(r, PREVIEW_POLL_MS));
   }
