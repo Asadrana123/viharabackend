@@ -165,6 +165,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
     email: lead.email,
     phone: lead.phone,
     consent: lead.consent,
+    smsConsent: lead.smsConsent,
     source: lead.source, // `auction-${slug}`
     extraFields: [
       { label: "Property", value: property.city || property.productName || slug },

@@ -119,6 +119,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
     email: lead.email,
     phone: lead.phone,
     consent: lead.consent,
+    smsConsent: lead.smsConsent,
     source: "partner-program",
     extraFields: [
       { label: "Primary Market", value: lead.primaryMarket },
