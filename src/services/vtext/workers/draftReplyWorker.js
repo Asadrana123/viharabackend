@@ -91,22 +91,25 @@ async function processDraftReplyJob(job) {
     await VtextConversation.updateOne({ _id: conversationId }, { $set: { needsHuman: true } });
     await publishEvent({ type: "message.updated", conversationId: String(conversationId), contactId: String(contactId) });
 
-    // The AI told the customer a team member will follow up. Nothing else in the system knows that,
-    // so say it here, whether the reply already went out or is waiting for approval.
-    notifyVtextAlert({
-      level: "warning",
-      title: "AI could not answer",
-      fields: [
-        { label: "Contact", value: contact.name || "(no name)" },
-        { label: "Phone", value: contact.phoneE164 },
-        { label: "Property", value: propertyContext?.property_name || propertyContext?.property_address },
-        { label: "Question", value: clip(inboundMessage.body) },
-        { label: "AI reply", value: clip(body) },
-        { label: "Status", value: settings.aiAutoReplyEnabled ? "Sent to the customer automatically" : "Waiting for approval in the Inbox" },
-        { label: "Topic", value: topic },
-        { label: "Inbox", value: inboxUrl(conversationId) },
-      ],
-    }).catch(() => {});
+    // A reply sent automatically already posted one combined Slack message (vtextAlertService.notifyAiReplySent),
+    // which says the team must follow up. Only a draft that is still waiting needs its own alert, because
+    // nothing else tells the team it is sitting in the Inbox.
+    if (!settings.aiAutoReplyEnabled) {
+      notifyVtextAlert({
+        level: "warning",
+        title: "AI could not answer",
+        fields: [
+          { label: "Contact", value: contact.name || "(no name)" },
+          { label: "Phone", value: contact.phoneE164 },
+          { label: "Property", value: propertyContext?.property_name || propertyContext?.property_address },
+          { label: "Question", value: clip(inboundMessage.body) },
+          { label: "AI reply", value: clip(body) },
+          { label: "Status", value: "Waiting for approval in the Inbox" },
+          { label: "Topic", value: topic },
+          { label: "Inbox", value: inboxUrl(conversationId) },
+        ],
+      }).catch(() => {});
+    }
   }
 }
 
