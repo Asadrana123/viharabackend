@@ -48,9 +48,10 @@ function friendlyError(err) {
 const setRound = (i, fields) =>
   Object.fromEntries(Object.entries(fields).map(([k, v]) => [`rounds.${i}.${k}`, v]));
 
+// Only while still in progress, so a discard in the meantime isn't overwritten.
 async function fail(id, roundIndex, message) {
   await DesignRequest.updateOne(
-    { _id: id },
+    { _id: id, status: { $in: ["working", "building"] } },
     { $set: { status: "failed", error: message, ...(roundIndex >= 0 ? setRound(roundIndex, { error: message, finishedAt: new Date() }) : {}) } }
   );
 }
@@ -91,6 +92,8 @@ async function runLatestRound(id) {
       history,
       mustCreate,
       log: say,
+      // Stop early (and stop spending) if the admin discards it meanwhile.
+      shouldStop: async () => !(await DesignRequest.exists({ _id: id, status: "working" })),
     });
     await DesignRequest.updateOne(
       { _id: id },
@@ -105,6 +108,11 @@ async function runLatestRound(id) {
       }
     );
     if (!result.ok) return fail(id, roundIndex, result.error);
+    if (!(await DesignRequest.exists({ _id: id, status: "working" }))) {
+      say("discarded while working — not saving");
+      await github.deleteBranch(doc.branch).catch(() => {});
+      return;
+    }
 
     const filesChanged = Object.keys(result.files);
     const sha = await github.commitFiles(
@@ -271,7 +279,7 @@ async function undo(id, byName) {
 
 async function discard(id) {
   const doc = await DesignRequest.findOneAndUpdate(
-    { _id: id, status: { $in: ["ready", "failed"] } },
+    { _id: id, status: { $in: ["working", "building", "ready", "failed"] } },
     { $set: { status: "discarded" } },
     { new: true }
   );

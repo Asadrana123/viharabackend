@@ -173,9 +173,10 @@ const isString = (v) => typeof v === "string";
  * @param {Array<{instruction, summary}>} opts.history earlier rounds on this request
  * @param {string[]} [opts.mustCreate] files that must exist at the end (new pages)
  * @param {(msg: string) => void} [opts.log]
+ * @param {() => Promise<boolean>} [opts.shouldStop] checked before each Claude turn
  * @returns {Promise<{ok: true, files, summary, usage} | {ok: false, error, usage}>}
  */
-async function runDesignRound({ ref, page, editable, kit, instruction, history = [], mustCreate = [], log = () => {} }) {
+async function runDesignRound({ ref, page, editable, kit, instruction, history = [], mustCreate = [], log = () => {}, shouldStop = async () => false }) {
   const anthropic = getClient();
   const repoFiles = new Set(await github.listFiles(ref));
   const pkg = JSON.parse((await github.readFile("package.json", ref)) || "{}");
@@ -257,6 +258,7 @@ async function runDesignRound({ ref, page, editable, kit, instruction, history =
   const system = systemPrompt({ kit, page, editable });
 
   for (let step = 0; step < MAX_STEPS; step++) {
+    if (await shouldStop()) return { ok: false, usage, error: "Stopped by the admin." };
     if (usage.costUsd > MAX_COST_USD) {
       return { ok: false, usage, error: `Stopped: this change hit the $${MAX_COST_USD} cost limit for one round. Try asking for a smaller change.` };
     }
