@@ -131,6 +131,7 @@ const previewEnvironment = () => process.env.DESIGN_PREVIEW_ENVIRONMENT || "Desi
  * @returns {Promise<{state: "pending"|"success"|"failure", url?: string}>}
  */
 async function previewForCommit(sha) {
+  if (!sha) throw new GithubError("previewForCommit needs a commit sha");
   const deployments = await call("get", "/deployments", null, {
     params: { sha, environment: previewEnvironment(), per_page: 10 },
   });

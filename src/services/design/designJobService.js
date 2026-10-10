@@ -15,6 +15,12 @@ const { runDesignRound } = require("./designAgentService");
 const { getCurrentBrandKit } = require("../brand/brandKitService");
 const { DESIGN_PAGES, NEW_PAGE } = require("../../config/designPages");
 
+const os = require("os");
+
+// Identifies this backend. A developer's local backend and the live one on
+// Render share the same database, so each only recovers its own requests.
+const WORKER_ID = process.env.RENDER_SERVICE_ID ? `render:${process.env.RENDER_SERVICE_ID}` : `local:${os.hostname()}`;
+
 const PREVIEW_POLL_MS = 15000;
 const PREVIEW_TIMEOUT_MS = 30 * 60 * 1000;
 const BUILD_FAILED_INSTRUCTION =
@@ -48,10 +54,13 @@ function friendlyError(err) {
 const setRound = (i, fields) =>
   Object.fromEntries(Object.entries(fields).map(([k, v]) => [`rounds.${i}.${k}`, v]));
 
-// Only while still in progress, so a discard in the meantime isn't overwritten.
+// Only while still in progress and still on this round, so a discard or a
+// newer round in the meantime isn't overwritten.
+const isLatest = (roundIndex) => (roundIndex >= 0 ? { [`rounds.${roundIndex + 1}`]: { $exists: false } } : {});
+
 async function fail(id, roundIndex, message) {
   await DesignRequest.updateOne(
-    { _id: id, status: { $in: ["working", "building"] } },
+    { _id: id, status: { $in: ["working", "building"] }, ...isLatest(roundIndex) },
     { $set: { status: "failed", error: message, ...(roundIndex >= 0 ? setRound(roundIndex, { error: message, finishedAt: new Date() }) : {}) } }
   );
 }
@@ -93,7 +102,7 @@ async function runLatestRound(id) {
       mustCreate,
       log: say,
       // Stop early (and stop spending) if the admin discards it meanwhile.
-      shouldStop: async () => !(await DesignRequest.exists({ _id: id, status: "working" })),
+      shouldStop: async () => !(await DesignRequest.exists({ _id: id, status: "working", ...isLatest(roundIndex) })),
     });
     await DesignRequest.updateOne(
       { _id: id },
@@ -108,9 +117,8 @@ async function runLatestRound(id) {
       }
     );
     if (!result.ok) return fail(id, roundIndex, result.error);
-    if (!(await DesignRequest.exists({ _id: id, status: "working" }))) {
-      say("discarded while working — not saving");
-      await github.deleteBranch(doc.branch).catch(() => {});
+    if (!(await DesignRequest.exists({ _id: id, status: "working", ...isLatest(roundIndex) }))) {
+      say("stopped or replaced while working — not saving");
       return;
     }
 
@@ -122,7 +130,7 @@ async function runLatestRound(id) {
     );
     say(`committed ${filesChanged.length} file(s) as ${sha.slice(0, 7)}`);
     await DesignRequest.updateOne(
-      { _id: id, status: "working" },
+      { _id: id, status: "working", ...isLatest(roundIndex) },
       { $set: { status: "building", error: "", ...setRound(roundIndex, { summary: result.summary, filesChanged, commitSha: sha }) } }
     );
   } catch (err) {
@@ -144,6 +152,7 @@ async function waitForPreview(id) {
     if (!doc || doc.status !== "building") return;
     const i = doc.rounds.length - 1;
     const sha = doc.rounds[i]?.commitSha;
+    if (!sha) return; // this round saved nothing, so there's no preview to wait for
     try {
       const preview = await github.previewForCommit(sha);
       if (preview.state === "success" && preview.url) {
@@ -177,6 +186,7 @@ async function startRequest({ pageKey, pageLabel, pagePath, newPageSlug, instruc
     newPageSlug: newPageSlug || "",
     createdByName: byName,
     status: "working",
+    worker: WORKER_ID,
     rounds: [{ instruction, byName }],
   });
   runLatestRound(doc._id);
@@ -187,7 +197,7 @@ async function startRequest({ pageKey, pageLabel, pagePath, newPageSlug, instruc
 async function addRound(id, { instruction, byName, from }) {
   const doc = await DesignRequest.findOneAndUpdate(
     { _id: id, status: { $in: from } },
-    { $set: { status: "working", error: "" }, $push: { rounds: { instruction, byName } } },
+    { $set: { status: "working", error: "", worker: WORKER_ID }, $push: { rounds: { instruction, byName } } },
     { new: true }
   );
   if (doc) runLatestRound(doc._id);
@@ -206,7 +216,7 @@ async function retry(id, byName) {
 async function approve(id, byName) {
   const doc = await DesignRequest.findOneAndUpdate(
     { _id: id, status: "ready" },
-    { $set: { status: "approving", error: "" } },
+    { $set: { status: "approving", error: "", worker: WORKER_ID } },
     { new: true }
   );
   if (!doc) return null;
@@ -237,7 +247,7 @@ async function approve(id, byName) {
 async function undo(id, byName) {
   const doc = await DesignRequest.findOneAndUpdate(
     { _id: id, status: "live" },
-    { $set: { status: "undoing", error: "" } },
+    { $set: { status: "undoing", error: "", worker: WORKER_ID } },
     { new: true }
   );
   if (!doc) return null;
@@ -287,20 +297,21 @@ async function discard(id) {
   return doc;
 }
 
-// After a restart: work that was in progress in memory is lost; previews
-// that were building can keep being watched.
+// After a restart: this server's in-progress work was lost; previews that
+// were building can keep being watched. Requests run by another server
+// (e.g. the live backend, when this is a local one) are left alone.
 async function recoverDesignJobs() {
   try {
     await DesignRequest.updateMany(
-      { status: "working" },
+      { status: "working", worker: WORKER_ID },
       { $set: { status: "failed", error: "The server restarted while the agent was working. Click \"Try again\"." } }
     );
     await DesignRequest.updateMany(
-      { status: "approving" },
+      { status: "approving", worker: WORKER_ID },
       { $set: { status: "ready", error: "Approval was interrupted by a server restart. Check the live site, then approve again if needed." } }
     );
     await DesignRequest.updateMany(
-      { status: "undoing" },
+      { status: "undoing", worker: WORKER_ID },
       { $set: { status: "live", error: "Undo was interrupted by a server restart. Check the live site, then undo again if needed." } }
     );
     const building = await DesignRequest.find({ status: "building" }).select("_id").lean();

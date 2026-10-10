@@ -41,6 +41,8 @@ const designRequestSchema = new mongoose.Schema(
     newPageSlug: { type: String, default: "", trim: true },
     status: { type: String, enum: STATUSES, default: "working", index: true },
     branch: { type: String, default: "" },
+    // Which server runs this request (local and live backends share one DB).
+    worker: { type: String, default: "" },
     rounds: { type: [roundSchema], default: [] },
     // Plain-language reason shown to the admin when status is "failed".
     error: { type: String, default: "" },
