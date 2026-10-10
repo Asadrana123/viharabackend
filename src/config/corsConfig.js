@@ -1,4 +1,5 @@
 // corsConfig.js - Centralized CORS configuration
+const Errorhandler = require("../utils/errorhandler");
 
 const allowedOrigins = [
   "https://www.vihara.ai",
@@ -21,7 +22,8 @@ const expressCorsOptions = {
     if (isAllowedOrigin(origin)) {
       callback(null, true);
     } else {
-      callback(new Error("CORS not allowed"));
+      // Name the origin so blocked callers can be identified in the logs.
+      callback(new Errorhandler(`CORS not allowed for origin ${origin}`, 403));
     }
   },
   credentials: true,
@@ -36,7 +38,7 @@ const socketIOCorsOptions = {
       if (isAllowedOrigin(origin)) {
         callback(null, true);
       } else {
-        callback(new Error("CORS not allowed"));
+        callback(new Error(`CORS not allowed for origin ${origin}`));
       }
     },
     methods: ["GET", "POST"],
