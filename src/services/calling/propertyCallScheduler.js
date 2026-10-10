@@ -32,6 +32,9 @@ const SWEEP_BATCH = 200; // max leads evaluated per minute
 const BURST_OPTS = {
   noPickupReasons: DID_NOT_CONNECT_REASONS,
   treatErrorsAsNoPickup: true,
+  // A quick "hello?" / "I'm busy" isn't a pickup — keep calling until there's
+  // a real conversation (registrationCallService.hadMeaningfulConversation).
+  requireConversation: true,
 };
 
 // Short-lived cache of { product, promptConfig } keyed by slug. Rebuilt on each

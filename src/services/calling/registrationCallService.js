@@ -65,11 +65,64 @@ function isPickup(call, noPickupReasons, treatErrorsAsNoPickup) {
   return true;
 }
 
+// ─── Was it a real conversation? ─────────────────────────────────────────────
+// For the follow-up loops a pickup alone isn't enough to stop calling: a quick
+// "hello?" / "I'm busy" / hang-up keeps the lead in the loop. Judged from the
+// transcript, which is on the call the moment it ends (VAPI's analysis summary
+// arrives later, via the end-of-call webhook — too late for this decision).
+
+// They asked us to stop — end the loop for good.
+const STOP_PHRASES = [
+  "stop calling", "remove me", "take me off", "don't call", "do not call",
+  "not interested", "unsubscribe", "wrong number", "lose my number",
+];
+// Clear interest — a short reply still counts as a real conversation.
+const INTEREST_PHRASES = [
+  "interested", "send me", "tell me more", "sounds good", "sounds great",
+  "advisor", "register", "sign me up", "yes please",
+];
+// Enough back-and-forth from the person to call it a conversation.
+const MIN_USER_WORDS = 25;
+
+function callMessages(call) {
+  return call?.artifact?.messages || call?.messages || [];
+}
+
+function userText(call) {
+  const fromMessages = callMessages(call)
+    .filter((m) => m.role === "user")
+    .map((m) => m.message || m.content || "")
+    .join(" ");
+  if (fromMessages.trim()) return fromMessages;
+  // Fallback: "User: …" lines of the flat transcript.
+  return String(call?.artifact?.transcript || call?.transcript || "")
+    .split("\n")
+    .filter((l) => l.startsWith("User:"))
+    .map((l) => l.replace(/^User:\s*/, ""))
+    .join(" ");
+}
+
+/**
+ * @returns {boolean} true when the call was a real conversation (or a request
+ * to stop / a booked callback) — i.e. the follow-up loop should end.
+ */
+function hadMeaningfulConversation(call) {
+  // They booked a callback — the callback flow takes it from here.
+  if (JSON.stringify(callMessages(call)).includes("scheduleCallback")) return true;
+
+  const said = userText(call).toLowerCase();
+  if (STOP_PHRASES.some((p) => said.includes(p))) return true;
+  if (INTEREST_PHRASES.some((p) => said.includes(p))) return true;
+  return said.split(/\s+/).filter(Boolean).length >= MIN_USER_WORDS;
+}
+
 /**
  * Poll VAPI until the call ends (or we time out).
- * @returns {{ connected: boolean }}  connected=true only when a human engaged.
+ * @param {boolean} [requireConversation=false]  loops only: a pickup without a
+ *   real conversation returns { connected: false, reached: true }
+ * @returns {{ connected: boolean, reached?: boolean }}  connected=true only when a human engaged.
  */
-async function pollCallOutcome(callId, noPickupReasons, treatErrorsAsNoPickup) {
+async function pollCallOutcome(callId, noPickupReasons, treatErrorsAsNoPickup, requireConversation = false) {
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < POLL_MAX_MS) {
@@ -83,9 +136,13 @@ async function pollCallOutcome(callId, noPickupReasons, treatErrorsAsNoPickup) {
     }
 
     if (String(call.status).toLowerCase() === "ended") {
-      const connected = isPickup(call, noPickupReasons, treatErrorsAsNoPickup);
-      console.log(`[reg-call] ended reason="${call.endedReason}" → connected=${connected}`);
-      return { connected, endedReason: call.endedReason || "" };
+      const pickedUp = isPickup(call, noPickupReasons, treatErrorsAsNoPickup);
+      if (pickedUp && requireConversation && !hadMeaningfulConversation(call)) {
+        console.log(`[reg-call] ended reason="${call.endedReason}" → picked up, no real conversation — keep calling`);
+        return { connected: false, reached: true, endedReason: call.endedReason || "" };
+      }
+      console.log(`[reg-call] ended reason="${call.endedReason}" → connected=${pickedUp}`);
+      return { connected: pickedUp, endedReason: call.endedReason || "" };
     }
   }
 
@@ -105,11 +162,13 @@ async function pollCallOutcome(callId, noPickupReasons, treatErrorsAsNoPickup) {
  *                                                 (defaults to persona RETRY_REASONS)
  * @param {boolean} [opts.treatErrorsAsNoPickup=false]
  * @param {number} [opts.maxCalls=2]               1 = single call, no 60s retry
- * @returns {{ connected: boolean }}
+ * @param {boolean} [opts.requireConversation=false] loops: only a real
+ *   conversation counts as connected (see hadMeaningfulConversation)
+ * @returns {{ connected: boolean, reached?: boolean }}
  */
 async function runCallBurst(
   lead = {},
-  { initialDelayMs = 0, noPickupReasons = RETRY_REASONS, treatErrorsAsNoPickup = false, maxCalls = 2 } = {}
+  { initialDelayMs = 0, noPickupReasons = RETRY_REASONS, treatErrorsAsNoPickup = false, maxCalls = 2, requireConversation = false } = {}
 ) {
   const who = lead.fullName || lead.phone || "lead";
   if (initialDelayMs > 0) await delay(initialDelayMs);
@@ -119,11 +178,14 @@ async function runCallBurst(
   console.log(`[reg-call] attempt 1 → ${who}:`, first);
   if (!first.success || !first.callId) return { connected: false };
 
-  const firstOutcome = await pollCallOutcome(first.callId, noPickupReasons, treatErrorsAsNoPickup);
+  const firstOutcome = await pollCallOutcome(first.callId, noPickupReasons, treatErrorsAsNoPickup, requireConversation);
   if (firstOutcome.connected) {
     console.log(`[reg-call] ${who}: connected on attempt 1.`);
     return { connected: true };
   }
+  // They answered but couldn't talk — don't ring straight back; the loop's
+  // next slot tries again.
+  if (firstOutcome.reached) return { connected: false, reached: true };
   if (maxCalls < 2) return { connected: false };
 
   // ── Attempt 2 (no pickup) — final call of this burst ───────────────────
@@ -132,9 +194,9 @@ async function runCallBurst(
   console.log(`[reg-call] attempt 2 (no-answer retry) → ${who}:`, second);
   if (!second.success || !second.callId) return { connected: false };
 
-  const secondOutcome = await pollCallOutcome(second.callId, noPickupReasons, treatErrorsAsNoPickup);
+  const secondOutcome = await pollCallOutcome(second.callId, noPickupReasons, treatErrorsAsNoPickup, requireConversation);
   console.log(`[reg-call] ${who}: connected=${secondOutcome.connected} after burst.`);
-  return { connected: secondOutcome.connected };
+  return { connected: secondOutcome.connected, reached: !!secondOutcome.reached };
 }
 
 /**
@@ -153,6 +215,7 @@ module.exports = {
   scheduleRegistrationCall,
   runCallBurst,
   pollCallOutcome,
+  hadMeaningfulConversation,
   RETRY_REASONS,
   DID_NOT_CONNECT_REASONS,
   WAIT_MS,

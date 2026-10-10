@@ -510,7 +510,8 @@ async function placeCall(campaign) {
     { $push: { calls: { callId: res.callId, at: new Date(), connected: null } } }
   );
 
-  const outcome = await pollCallOutcome(res.callId, DID_NOT_CONNECT_REASONS, true);
+  // Only a real conversation ends the schedule — a quick "I'm busy" keeps it going.
+  const outcome = await pollCallOutcome(res.callId, DID_NOT_CONNECT_REASONS, true, true);
   await MatchCallCampaign.updateOne(
     { _id: campaign._id, "calls.callId": res.callId },
     {
