@@ -148,6 +148,17 @@ function checkBrand(file, text, original, brandKit) {
     if (brandFonts.includes(first)) continue;
     problems.add(`${file}: font "${value}" isn't in the Brand Kit — use var(--brand-font-display), var(--brand-font-heading) or var(--brand-font-body)`);
   }
+  // Only regular Inter in weights 400–700 is loaded on the site.
+  const originalText = original || "";
+  if (/font-style\s*:\s*italic|fontStyle\s*:\s*["'`]italic/.test(text) && !/font-style\s*:\s*italic|fontStyle\s*:\s*["'`]italic/.test(originalText)) {
+    problems.add(`${file}: italics aren't loaded on this site — use colour (e.g. .v-text-gold) or weight for emphasis instead`);
+  }
+  for (const m of text.matchAll(/font-weight\s*:\s*(\d{3})|fontWeight\s*:\s*["'`]?(\d{3})/g)) {
+    const w = Number(m[1] || m[2]);
+    if ((w < 400 || w > 700) && !originalText.includes(m[0])) {
+      problems.add(`${file}: font weight ${w} isn't loaded — use 400, 500, 600 or 700`);
+    }
+  }
   return [...problems];
 }
 

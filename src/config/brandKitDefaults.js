@@ -7,25 +7,10 @@
 // Keep in sync with vihara-new-website/src/styles/brand.css, which holds the
 // same values so pages look right before the saved kit has loaded.
 
-// Fonts an admin may pick. Each must be available on Google Fonts, because the
-// frontend loads the chosen font from there.
-const ALLOWED_FONTS = [
-  // Classic serifs, for big display headings
-  "Playfair Display",
-  "Cormorant Garamond",
-  "DM Serif Display",
-  "Libre Baskerville",
-  "Lora",
-  // Clean sans-serifs, for headings and body text
-  "Inter",
-  "Poppins",
-  "Roboto",
-  "Open Sans",
-  "Lato",
-  "Montserrat",
-  "DM Sans",
-  "Manrope",
-];
+// Fonts an admin may pick. The website uses Inter everywhere (loaded in
+// public/index.html), so it is the only choice: one font keeps every page
+// consistent. Add a font here only if the website starts loading it too.
+const ALLOWED_FONTS = ["Inter"];
 
 // key → plain-language label and where the colour is used, shown to the admin
 // and given to the design agent. Order is the order shown on the page.
@@ -72,8 +57,8 @@ const BRAND_KIT_DEFAULTS = {
     danger: "#c62828",
   },
   fonts: {
-    // Big page and section titles on marketing pages (classic serif).
-    display: "Playfair Display",
+    // Big page and section titles (same Inter as the rest of the site, set larger and bolder).
+    display: "Inter",
     heading: "Inter",
     body: "Inter",
   },
