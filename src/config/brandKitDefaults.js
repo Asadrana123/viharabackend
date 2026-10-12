@@ -18,9 +18,6 @@ const COLOR_FIELDS = {
   primary: { label: "Main colour", usage: "Buttons, links, active tabs, highlights" },
   primaryHover: { label: "Main colour (hover)", usage: "Buttons and links when the mouse is over them" },
   primarySoft: { label: "Main colour (light)", usage: "Selected rows, soft highlights, badges" },
-  ink: { label: "Deep navy", usage: "Dark sections, hero gradients, footer-style bands" },
-  accent: { label: "Gold accent", usage: "Fine lines, small labels, ornaments — use sparingly" },
-  ivory: { label: "Ivory", usage: "Warm light background for marketing pages" },
   heading: { label: "Headings", usage: "Page titles and section headings" },
   text: { label: "Body text", usage: "Normal paragraph and table text" },
   muted: { label: "Secondary text", usage: "Hints, labels, timestamps, placeholder text" },
@@ -43,9 +40,6 @@ const BRAND_KIT_DEFAULTS = {
     primary: "#0c4bea",
     primaryHover: "#0a3cc0",
     primarySoft: "#e8eefd",
-    ink: "#0b1b3f",
-    accent: "#b08d57",
-    ivory: "#faf8f3",
     heading: "#111827",
     text: "#374151",
     muted: "#6b7280",
@@ -57,7 +51,7 @@ const BRAND_KIT_DEFAULTS = {
     danger: "#c62828",
   },
   fonts: {
-    // Big page and section titles (same Inter as the rest of the site, set larger and bolder).
+    // Big page and section titles: always Inter, like the rest of the site.
     display: "Inter",
     heading: "Inter",
     body: "Inter",

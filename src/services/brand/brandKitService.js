@@ -3,7 +3,7 @@
 // The current Brand Kit: what an admin saved, on top of the defaults.
 // Used by the Brand Kit API and by the design agent.
 const BrandKit = require("../../model/brand/brandKitModel");
-const { BRAND_KIT_DEFAULTS, ALLOWED_FONTS } = require("../../config/brandKitDefaults");
+const { BRAND_KIT_DEFAULTS, ALLOWED_FONTS, COLOR_FIELDS } = require("../../config/brandKitDefaults");
 
 // A saved font that's no longer allowed falls back to the default.
 const pickFont = (saved, fallback) => (ALLOWED_FONTS.includes(saved) ? saved : fallback);
@@ -13,7 +13,8 @@ const MESSAGING_FIELDS = ["tagline", "tone", "wordsToUse", "wordsToAvoid"];
 // Saved values on top of the defaults, so a field never saved still has a value.
 function mergeWithDefaults(saved) {
   const d = BRAND_KIT_DEFAULTS;
-  const savedColors = saved?.colors ? Object.fromEntries(saved.colors) : {};
+  // Only colours that are still part of the Brand Kit.
+  const savedColors = saved?.colors ? Object.fromEntries([...saved.colors].filter(([k]) => COLOR_FIELDS[k])) : {};
   return {
     logo: d.logo,
     colors: { ...d.colors, ...savedColors },

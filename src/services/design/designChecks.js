@@ -148,8 +148,20 @@ function checkBrand(file, text, original, brandKit) {
     if (brandFonts.includes(first)) continue;
     problems.add(`${file}: font "${value}" isn't in the Brand Kit — use var(--brand-font-display), var(--brand-font-heading) or var(--brand-font-body)`);
   }
-  // Only regular Inter in weights 400–700 is loaded on the site.
   const originalText = original || "";
+  // Current theme only: no new gradients, keyframe animations or blur effects.
+  const fresh = (re) => (text.match(re) || []).filter((m) => !originalText.includes(m));
+  if (fresh(/(?:linear|radial|conic|repeating-linear|repeating-radial|repeating-conic)-gradient\([^;}\n]*/g).length) {
+    problems.add(`${file}: gradients aren't part of the site's theme — use a plain Brand Kit background (or the Hero's photo overlay)`);
+  }
+  if (fresh(/@keyframes\s+[\w-]+/g).length) {
+    problems.add(`${file}: don't add new animations — use the design system's Reveal (fade-in / fade-up)`);
+  }
+  if (fresh(/backdrop-filter\s*:[^;}\n]*|filter\s*:\s*blur\([^;}\n]*/g).length) {
+    problems.add(`${file}: blur effects aren't part of the site's theme`);
+  }
+
+  // Only regular Inter in weights 400–700 is loaded on the site.
   if (/font-style\s*:\s*italic|fontStyle\s*:\s*["'`]italic/.test(text) && !/font-style\s*:\s*italic|fontStyle\s*:\s*["'`]italic/.test(originalText)) {
     problems.add(`${file}: italics aren't loaded on this site — use colour (e.g. .v-text-gold) or weight for emphasis instead`);
   }
