@@ -9,6 +9,7 @@
 const { buildClient } = require("./client");
 const { mapSendError } = require("./mapErrors");
 const { decryptCredentials } = require("../../../../utils/secretBox");
+const { loadMedia } = require("../../vtextMediaService");
 const crypto = require("crypto");
 
 /**
@@ -49,7 +50,7 @@ module.exports = {
     // "accepted" after a while never got out (the maintenance sweep marks it "unknown").
     confirmsEveryDelivery: true,
     readReceipts: true,
-    media: false, // v1 is text-only (D15)
+    media: true, // one image per message, no caption (send() below); no Private API needed
     reachabilityCheck: true, // interface declares it; see checkReachability() below for current honest status
     // BlueBubbles sends no heartbeat event (its only webhooks are new-message and
     // updated-message), so the line health sweep treats a passing healthCheck() as proof of life.
@@ -98,8 +99,9 @@ module.exports = {
    * @param {string} params.to - E.164 phone or an email (Apple ID) to message
    * @param {string} params.body
    * @param {string} params.clientMessageId - our vtextMessageModel _id, used as BlueBubbles' tempGuid for dedupe
+   * @param {{file: string}} [params.media] - when set, only this image is sent (an iMessage attachment carries no caption), and `body` is not
    */
-  async send({ line, credentials, to, body, clientMessageId }) {
+  async send({ line, credentials, to, body, clientMessageId, media }) {
     try {
       const creds = credentials || credentialsFor(line);
       const client = buildClient({ serverUrl: line.config?.serverUrl, password: creds.password });
@@ -107,7 +109,9 @@ module.exports = {
       const chatGuid = line.config?.guid || chatGuidFor(to);
       const tempGuid = clientMessageId || crypto.randomUUID();
 
-      const result = await client.sendText({ chatGuid, tempGuid, message: body });
+      const result = media?.file
+        ? await client.sendAttachment({ chatGuid, tempGuid, ...loadMedia(media.file) })
+        : await client.sendText({ chatGuid, tempGuid, message: body });
 
       // Response shape per BlueBubbles' own docs: { status, message, data: { guid, ... } }.
       // Treat anything without a usable guid as a send we can't confirm, not a hard failure —

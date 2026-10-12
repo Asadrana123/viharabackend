@@ -33,7 +33,7 @@ function normalizeAddress(raw) {
  * @param {string} [params.contactName] - admin-provided name (e.g. typed into a bulk-send row), takes priority over a lead-lookup match when a NEW contact is created
  * @returns {Promise<{ message: object, blocked: boolean, reason?: string }>}
  */
-async function enqueueOutbound({ to: rawTo, body, origin, channelPolicy, isReplyToInbound, idempotencyKey, scheduledFor, contactName }) {
+async function enqueueOutbound({ to: rawTo, body, media, origin, channelPolicy, isReplyToInbound, idempotencyKey, scheduledFor, contactName }) {
   const to = normalizeAddress(rawTo);
   if (!to) {
     throw new Errorhandler("to is not a valid US phone number or email address", 400);
@@ -89,6 +89,7 @@ async function enqueueOutbound({ to: rawTo, body, origin, channelPolicy, isReply
     contactId: contact._id,
     channelType: undefined, // set once routed
     body,
+    media: media?.file ? { file: media.file, label: media.label } : undefined,
     status: complianceResult.allowed ? "queued" : "blocked",
     origin: origin || { kind: "manual" },
     channelPolicy: channelPolicy || { mode: "any" },

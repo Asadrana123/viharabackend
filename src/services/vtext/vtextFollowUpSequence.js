@@ -11,6 +11,9 @@
 //   - a step whose day has already passed is skipped, never sent late
 //   - nothing goes out on or after the auction day, so a close auction cuts the sequence short
 //
+// Steps 3, 4 and 5 carry a meme (`media`, a file in src/assets/vtext/memes). It goes out alone, as an
+// image with no text. The step's `body` is what a line that can't send images (Android) sends instead.
+//
 // PLACEHOLDER COPY: swap the strings in STEPS for the final text. Nothing else
 // in the follow-up code depends on the wording. Placeholders are the {{keys}}
 // from vtextTemplateService.TEMPLATE_VARIABLES.
@@ -35,18 +38,21 @@ const STEPS = [
     step: 3,
     offsetDays: 3,
     body: "Hi {{name}}, wanted to check whether you're still interested in bidding. Happy to answer any questions.",
+    media: { file: "meme1.jpeg", label: "Meme 1 sent (day 3)" },
     required: [],
   },
   {
     step: 4,
     offsetDays: 4,
     body: "Hi {{name}}, are you still thinking about joining the auction? Let us know if anything is holding you back.",
+    media: { file: "meme2.jpeg", label: "Meme 2 sent (day 4)" },
     required: [],
   },
   {
     step: 5,
     offsetDays: 5,
     body: "Hi {{name}}, checking in again. Will you be participating in the auction?",
+    media: { file: "meme3.jpeg", label: "Meme 3 sent (day 5)" },
     required: [],
   },
   {
