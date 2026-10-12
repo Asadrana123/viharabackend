@@ -10,6 +10,7 @@ const brandKitSchema = new mongoose.Schema(
     key: { type: String, required: true, unique: true, default: "default" },
     colors: { type: Map, of: String, default: {} },
     fonts: {
+      display: { type: String, trim: true },
       heading: { type: String, trim: true },
       body: { type: String, trim: true },
     },

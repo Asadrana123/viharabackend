@@ -104,6 +104,10 @@ mongoose.connect(process.env.DB_URI, {
     startRenovationCleanupJob();
     // Pick up design requests that were mid-way when the server last stopped.
     recoverDesignJobs();
+    // Read the website's page list now so Design Studio opens quickly.
+    if (process.env.DESIGN_GITHUB_TOKEN) {
+      require("./services/design/pageDiscovery").discoverPages().catch((err) => console.error("[design] page discovery:", err.message));
+    }
   })
   .catch(err => console.log('MongoDB Connection Error:', err));
 

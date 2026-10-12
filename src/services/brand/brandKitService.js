@@ -15,6 +15,7 @@ function mergeWithDefaults(saved) {
     logo: d.logo,
     colors: { ...d.colors, ...savedColors },
     fonts: {
+      display: saved?.fonts?.display || d.fonts.display,
       heading: saved?.fonts?.heading || d.fonts.heading,
       body: saved?.fonts?.body || d.fonts.body,
     },

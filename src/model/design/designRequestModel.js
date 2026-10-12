@@ -39,6 +39,10 @@ const designRequestSchema = new mongoose.Schema(
     pageLabel: { type: String, required: true, trim: true },
     pagePath: { type: String, required: true, trim: true }, // e.g. /contact-us or /p/spring-promo
     newPageSlug: { type: String, default: "", trim: true },
+    // Files the agent may change, and the folder it may add new files to,
+    // fixed when the request is made (see services/design/pageDiscovery.js).
+    editable: { type: [String], default: [] },
+    newFilesIn: { type: String, default: "" },
     status: { type: String, enum: STATUSES, default: "working", index: true },
     branch: { type: String, default: "" },
     // Which server runs this request (local and live backends share one DB).

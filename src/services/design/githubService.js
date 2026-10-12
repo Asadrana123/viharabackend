@@ -55,19 +55,36 @@ async function call(method, url, data, config) {
 
 const branchSha = async (branch) => (await call("get", `/git/ref/heads/${encodeURIComponent(branch)}`)).object.sha;
 
-// Every file path in the repo at `ref` (one request, cached by commit sha).
+// Every file in the repo at `ref` as { path, sha } (one request, cached by commit sha).
 const treeCache = new Map();
-async function listFiles(ref) {
+async function listTree(ref) {
   const sha = /^[0-9a-f]{40}$/.test(ref) ? ref : await branchSha(ref);
   if (!treeCache.has(sha)) {
     const tree = await call("get", `/git/trees/${sha}`, null, { params: { recursive: 1 } });
     treeCache.set(
       sha,
-      tree.tree.filter((e) => e.type === "blob").map((e) => e.path)
+      tree.tree.filter((e) => e.type === "blob").map((e) => ({ path: e.path, sha: e.sha }))
     );
     if (treeCache.size > 20) treeCache.delete(treeCache.keys().next().value);
   }
   return treeCache.get(sha);
+}
+
+// Every file path in the repo at `ref`.
+async function listFiles(ref) {
+  return (await listTree(ref)).map((e) => e.path);
+}
+
+// File text by blob sha. Blobs never change, so they're cached for good
+// (bounded), which keeps re-scanning the site cheap after small changes.
+const blobCache = new Map();
+async function readBlob(sha) {
+  if (!blobCache.has(sha)) {
+    const blob = await call("get", `/git/blobs/${sha}`);
+    blobCache.set(sha, Buffer.from(blob.content, "base64").toString("utf8"));
+    if (blobCache.size > 3000) blobCache.delete(blobCache.keys().next().value);
+  }
+  return blobCache.get(sha);
 }
 
 // File text at `ref`, or null if it doesn't exist there.
@@ -173,7 +190,9 @@ module.exports = {
   GithubError,
   baseBranch,
   branchSha,
+  listTree,
   listFiles,
+  readBlob,
   readFile,
   createBranch,
   deleteBranch,

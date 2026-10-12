@@ -13,7 +13,7 @@ const DesignRequest = require("../../model/design/designRequestModel");
 const github = require("./githubService");
 const { runDesignRound } = require("./designAgentService");
 const { getCurrentBrandKit } = require("../brand/brandKitService");
-const { DESIGN_PAGES, NEW_PAGE } = require("../../config/designPages");
+const { LEGACY_PAGES, NEW_PAGE } = require("../../config/designPages");
 
 const os = require("os");
 
@@ -31,14 +31,17 @@ const active = new Set();
 
 const log = (id) => (msg) => console.log(`[design ${id}] ${msg}`);
 
+// What the agent may change for a request: fixed on the request when it was made.
 function pageFor(doc) {
+  const page = { label: doc.pageLabel, path: doc.pagePath };
   if (doc.pageKey === NEW_PAGE.key) {
     const folder = NEW_PAGE.folder(doc.newPageSlug);
-    return { page: { label: doc.pageLabel, path: doc.pagePath }, editable: [folder], mustCreate: [`${folder}index.jsx`] };
+    return { page, editable: [], newFilesIn: folder, mustCreate: [`${folder}index.jsx`] };
   }
-  const config = DESIGN_PAGES[doc.pageKey];
-  if (!config) throw new Error(`Unknown page "${doc.pageKey}"`);
-  return { page: { label: config.label, path: config.path }, editable: config.editable, mustCreate: [] };
+  if (doc.editable?.length) return { page, editable: doc.editable, newFilesIn: doc.newFilesIn, mustCreate: [] };
+  const legacy = LEGACY_PAGES[doc.pageKey];
+  if (!legacy) throw new Error(`Unknown page "${doc.pageKey}"`);
+  return { page, editable: legacy.editable, newFilesIn: "", mustCreate: [] };
 }
 
 // Plain-language reason for the admin, from whatever went wrong.
@@ -76,7 +79,7 @@ async function runLatestRound(id) {
     if (!doc || doc.status !== "working") return;
     roundIndex = doc.rounds.length - 1;
     const round = doc.rounds[roundIndex];
-    const { page, editable, mustCreate } = pageFor(doc);
+    const { page, editable, newFilesIn, mustCreate } = pageFor(doc);
 
     if (!doc.branch) {
       const branch = `design/${doc._id}`;
@@ -96,6 +99,7 @@ async function runLatestRound(id) {
       ref: doc.branch,
       page,
       editable,
+      newFilesIn,
       kit: await getCurrentBrandKit(),
       instruction: round.instruction,
       history,
@@ -178,12 +182,14 @@ async function waitForPreview(id) {
   }
 }
 
-async function startRequest({ pageKey, pageLabel, pagePath, newPageSlug, instruction, byName }) {
+async function startRequest({ pageKey, pageLabel, pagePath, newPageSlug, editable, newFilesIn, instruction, byName }) {
   const doc = await DesignRequest.create({
     pageKey,
     pageLabel,
     pagePath,
     newPageSlug: newPageSlug || "",
+    editable: editable || [],
+    newFilesIn: newFilesIn || "",
     createdByName: byName,
     status: "working",
     worker: WORKER_ID,

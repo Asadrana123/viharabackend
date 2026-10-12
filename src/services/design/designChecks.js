@@ -22,7 +22,7 @@ const COLOR_LITERAL = /#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?)\([^)]*\)/gi;
 const SHADOW_RGBA = /^rgba\(\s*(0\s*,\s*0\s*,\s*0|255\s*,\s*255\s*,\s*255)\s*,\s*[\d.]+\s*\)$/i;
 const FONT_DECL = /font-family\s*:\s*([^;}\n]+)/gi;
 const FONT_JSX = /fontFamily\s*:\s*["'`]([^"'`]+)["'`]/g;
-const OK_FONT_VALUE = /^(var\(--brand-font-(heading|body)\)|inherit|monospace|ui-monospace.*)$/i;
+const OK_FONT_VALUE = /^(var\(--(brand-font-(display|heading|body)|v-font-(display|heading|body))\)|inherit|monospace|ui-monospace.*)$/i;
 
 // Calls that load or save data, track analytics, or change app state/route. Redesigns must keep
 // every one of them exactly (layout around them may change freely).
@@ -128,7 +128,7 @@ function checkUnusedImports(file, text) {
 function checkBrand(file, text, original, brandKit) {
   if (!CODE_EXT.test(file) && !STYLE_EXT.test(file)) return [];
   const brandColors = new Set(Object.values(brandKit.colors).map(normalizeColor));
-  const brandFonts = [brandKit.fonts.heading, brandKit.fonts.body].map((f) => f.toLowerCase());
+  const brandFonts = [brandKit.fonts.display, brandKit.fonts.heading, brandKit.fonts.body].filter(Boolean).map((f) => f.toLowerCase());
   const existing = new Set((original || "").match(COLOR_LITERAL)?.map(normalizeColor) || []);
   const existingFonts = new Set(
     [...(original || "").matchAll(FONT_DECL), ...(original || "").matchAll(FONT_JSX)].map((m) => m[1].trim().toLowerCase())
@@ -146,7 +146,7 @@ function checkBrand(file, text, original, brandKit) {
     if (OK_FONT_VALUE.test(value) || existingFonts.has(lower)) continue;
     const first = lower.split(",")[0].replace(/["']/g, "").trim();
     if (brandFonts.includes(first)) continue;
-    problems.add(`${file}: font "${value}" isn't in the Brand Kit — use var(--brand-font-heading) or var(--brand-font-body)`);
+    problems.add(`${file}: font "${value}" isn't in the Brand Kit — use var(--brand-font-display), var(--brand-font-heading) or var(--brand-font-body)`);
   }
   return [...problems];
 }

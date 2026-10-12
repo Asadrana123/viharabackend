@@ -36,7 +36,7 @@ const pickUpdate = (body) => {
     }
   }
   if (body.fonts !== undefined) {
-    for (const slot of ["heading", "body"]) {
+    for (const slot of ["display", "heading", "body"]) {
       const font = body.fonts?.[slot];
       if (font === undefined) continue;
       if (!ALLOWED_FONTS.includes(font)) return { error: `"${font}" is not an allowed font` };

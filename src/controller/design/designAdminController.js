@@ -12,7 +12,8 @@ const ErrorHandler = require("../../utils/errorhandler");
 const DesignRequest = require("../../model/design/designRequestModel");
 const jobs = require("../../services/design/designJobService");
 const github = require("../../services/design/githubService");
-const { DESIGN_PAGES, NEW_PAGE, toSlug } = require("../../config/designPages");
+const { discoverPages, findPage } = require("../../services/design/pageDiscovery");
+const { NEW_PAGE, toSlug } = require("../../config/designPages");
 
 const MAX_INSTRUCTION = 4000;
 
@@ -58,13 +59,23 @@ const explainMiss = async (id, action, next) => {
   return next(new ErrorHandler(`Can't ${action} while it is "${doc.status}"`, 409));
 };
 
+// Every page on the site (found from the website's code), plus "New page".
 exports.listPages = catchAsyncError(async (req, res) => {
+  let pages = [];
+  let pagesError = "";
+  try {
+    // The first scan after a restart can take a minute: don't keep the admin waiting.
+    const found = await Promise.race([discoverPages(), new Promise((r) => setTimeout(() => r(null), 15000))]);
+    if (found) pages = found.map(({ key, label, path, group }) => ({ key, label, path, group }));
+    else pagesError = "Still reading the list of pages from the website. Refresh in a minute.";
+  } catch (err) {
+    console.error("[design] page discovery failed:", err.message);
+    pagesError = "Couldn't read the list of pages from GitHub. You can still make a new page.";
+  }
   res.status(200).json({
     success: true,
-    pages: [
-      ...Object.entries(DESIGN_PAGES).map(([key, p]) => ({ key, label: p.label, path: p.path })),
-      { key: NEW_PAGE.key, label: NEW_PAGE.label, path: NEW_PAGE.path("your-page-name") },
-    ],
+    pages: [{ key: NEW_PAGE.key, label: NEW_PAGE.label, path: NEW_PAGE.path("your-page-name"), group: "Create" }, ...pages],
+    pagesError,
     canApprove: canApprove(req.user),
     configured: {
       github: Boolean(process.env.DESIGN_GITHUB_TOKEN),
@@ -110,11 +121,11 @@ exports.createRequest = catchAsyncError(async (req, res, next) => {
     if (onSite) return next(new ErrorHandler(`A page called "${slug}" already exists on the site`, 409));
     page = { pageKey, pageLabel: `New page: ${String(req.body.newPageName).trim()}`, pagePath: NEW_PAGE.path(slug), newPageSlug: slug };
   } else {
-    const config = DESIGN_PAGES[pageKey];
-    if (!config) return next(new ErrorHandler("Pick a page", 400));
+    const found = await findPage(String(pageKey || ""));
+    if (!found) return next(new ErrorHandler("Pick a page from the list", 400));
     const busy = await DesignRequest.exists({ pageKey, status: { $in: ["working", "building", "approving"] } });
-    if (busy) return next(new ErrorHandler(`The ${config.label} page is already being worked on. Wait for it to finish first.`, 409));
-    page = { pageKey, pageLabel: config.label, pagePath: config.path };
+    if (busy) return next(new ErrorHandler(`The ${found.label} page is already being worked on. Wait for it to finish first.`, 409));
+    page = { pageKey, pageLabel: found.label, pagePath: found.previewPath, editable: found.editable, newFilesIn: found.newFilesIn };
   }
 
   const request = await jobs.startRequest({ ...page, instruction, byName: adminName(req.user) });

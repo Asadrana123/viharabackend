@@ -104,7 +104,7 @@ function brandText(kit) {
     .join("\n");
   return `Colours (always use the variable, never the hex value):
 ${colors}
-Fonts: headings var(--brand-font-heading) (${kit.fonts.heading}), body var(--brand-font-body) (${kit.fonts.body})
+Fonts: big display titles var(--brand-font-display) (${kit.fonts.display}), headings var(--brand-font-heading) (${kit.fonts.heading}), body var(--brand-font-body) (${kit.fonts.body})
 Corner roundness: var(--brand-radius) (${kit.radius}px)
 White (#fff) and black, and rgba(0,0,0,x) shadows, are also fine.
 Logo: ${kit.logo.src} — ${kit.logo.rules}
@@ -116,32 +116,38 @@ Words we like: ${kit.messaging.wordsToUse}
 Words we avoid: ${kit.messaging.wordsToAvoid}`;
 }
 
-function systemPrompt({ kit, page, editable }) {
-  return `You are the design agent for vihara.ai, a real estate auction website (React 18, Create React App, plain CSS files). An admin who is not technical asks you to design or redesign a page. You change how the page looks and reads; you never change what it does.
+function systemPrompt({ kit, page, editable, newFilesIn, designGuide }) {
+  const allowed = [...editable.map((e) => `- ${e}`), ...(newFilesIn ? [`- any NEW file inside ${newFilesIn} (not other existing files there)`] : [])];
+  return `You are the design agent for vihara.ai, a real estate auction website (React 18, Create React App, plain CSS). An admin who is not technical asks you to design or redesign a page. You change how the page looks and reads; you never change what it does.
+
+Aim high: every page you touch should look like the work of a top design studio — classic and editorial, confident typography, generous space, refined details and calm, purposeful motion. Follow the design system below so all pages feel like one site.
 
 # Brand Kit — every page must follow it
 ${brandText(kit)}
 
+# Design system — build with it
+${designGuide || "(The design system guide could not be loaded. Use the Brand Kit variables and keep the look simple and classic.)"}
+
 # The page
 ${page.label} — shown at ${page.path}
-You may change only these files (folders end in "/"; you may also add new files inside them):
-${editable.map((e) => `- ${e}`).join("\n")}
-You can read any other file under src/ to understand shared components, but you cannot change them.
+You may change only:
+${allowed.join("\n") || "- (nothing — tell the admin this page can't be changed)"}
+You can read any other file under src/ (shared components, src/design-system/) but you cannot change them.
 
 # Rules
 - Keep everything that loads or saves data, tracks analytics, logs in, submits forms or navigates exactly as it is: API/service calls, hooks like useSelector/useDispatch/useQuery, trackEvent, onSubmit handlers, form field names and validation. Move it around the layout if needed, but do not alter or remove it. The checker rejects your work if any of it changes.
 - Keep SEO: leave <Helmet> titles and meta tags in place (you may improve the wording).
-- Use only the Brand Kit colours and fonts via the CSS variables. No new colours or fonts. Existing old colours you don't touch are tolerated, but prefer replacing them with brand variables in what you redesign.
-- CSS files are global on this site. Give every new class name a prefix unique to this page (for example "contact-" for Contact Us) so nothing else on the site changes.
-- Only use packages already in package.json. No new dependencies.
-- Make it responsive (works from 360px phones to wide desktops) and accessible (real headings, alt text on images, labels on inputs, good contrast).
+- Use only the Brand Kit colours and fonts via CSS variables (var(--brand-…), var(--v-…)). No hex colours or new fonts. Old colours you don't touch are tolerated, but replace them in whatever you redesign.
+- CSS files are global on this site. Prefix every class you write with a name unique to this page (for example "contact-") so nothing else changes. The design system's v- classes are shared and safe to use.
+- Only use packages already in package.json and the design system. No new dependencies. Never import ds.css (it's already loaded).
+- Responsive (360px phones to wide desktops) and accessible (real headings in order, alt text, labels on inputs, good contrast, keyboard focus visible).
 - Remove imports you no longer use: unused imports break the live build.
 - The site header and footer are added around the page automatically; don't add your own.
 - Write real, on-brand copy in the Brand Kit tone. Never invent facts, numbers, prices, addresses or testimonials — keep the page's existing facts, or use clearly generic wording.
 
 # How to work
-1. Read the page's files (list_files on its folder, then read_file).
-2. Make the changes with edit_file (small/medium changes) or write_file (new files or full rewrites).
+1. Read the page's files (list_files on its folder, then read_file). Skim src/design-system/sections.jsx if you need component details.
+2. Plan the page as a sequence of sections (hero, then alternating tones), then make the changes with edit_file (small/medium changes) or write_file (new files or full rewrites).
 3. Call finish with a short summary for the admin: 2–5 lines starting with "- ", in plain everyday words (no code, file names or jargon), describing what they will see differently.
 If the checker reports problems, fix them and call finish again.`;
 }
@@ -168,6 +174,7 @@ const isString = (v) => typeof v === "string";
  * @param {string} opts.ref            branch to read from
  * @param {object} opts.page           { label, path }
  * @param {string[]} opts.editable     files / folders ("…/") the agent may change
+ * @param {string} [opts.newFilesIn]   folder where the agent may add new files
  * @param {object} opts.kit            current Brand Kit
  * @param {string} opts.instruction    what the admin asked for this round
  * @param {Array<{instruction, summary}>} opts.history earlier rounds on this request
@@ -176,7 +183,7 @@ const isString = (v) => typeof v === "string";
  * @param {() => Promise<boolean>} [opts.shouldStop] checked before each Claude turn
  * @returns {Promise<{ok: true, files, summary, usage} | {ok: false, error, usage}>}
  */
-async function runDesignRound({ ref, page, editable, kit, instruction, history = [], mustCreate = [], log = () => {}, shouldStop = async () => false }) {
+async function runDesignRound({ ref, page, editable, newFilesIn = "", kit, instruction, history = [], mustCreate = [], log = () => {}, shouldStop = async () => false }) {
   const anthropic = getClient();
   const repoFiles = new Set(await github.listFiles(ref));
   const pkg = JSON.parse((await github.readFile("package.json", ref)) || "{}");
@@ -185,7 +192,11 @@ async function runDesignRound({ ref, page, editable, kit, instruction, history =
   const staged = {}; // path → new content
   const originals = {}; // path → content before (null = new file)
 
-  const canWrite = (p) => editable.some((e) => (e.endsWith("/") ? p.startsWith(e) : p === e));
+  // The page's own files, plus brand-new files in its folder (never other existing files there).
+  const canWrite = (p) =>
+    editable.some((e) => (e.endsWith("/") ? p.startsWith(e) : p === e)) ||
+    (Boolean(newFilesIn) && p.startsWith(newFilesIn) && !repoFiles.has(p));
+  const allowedText = [...editable, ...(newFilesIn ? [`new files inside ${newFilesIn}`] : [])].join(", ");
   const fileExists = (p) => p in staged || repoFiles.has(p);
   const currentText = async (p) => {
     if (p in staged) return staged[p];
@@ -213,7 +224,7 @@ async function runDesignRound({ ref, page, editable, kit, instruction, history =
     },
     async edit_file({ path: p, old_text: oldText, new_text: newText }) {
       p = cleanPath(p);
-      if (!canWrite(p)) throw new Error(`You're not allowed to change ${p}. You may change: ${editable.join(", ")}`);
+      if (!canWrite(p)) throw new Error(`You're not allowed to change ${p}. You may change: ${allowedText}`);
       const text = await currentText(p);
       if (text === null) throw new Error(`${p} doesn't exist — use write_file to create it`);
       const count = text.split(oldText).length - 1;
@@ -224,7 +235,7 @@ async function runDesignRound({ ref, page, editable, kit, instruction, history =
     },
     async write_file({ path: p, content }) {
       p = cleanPath(p);
-      if (!canWrite(p)) throw new Error(`You're not allowed to change ${p}. You may change: ${editable.join(", ")}`);
+      if (!canWrite(p)) throw new Error(`You're not allowed to change ${p}. You may change: ${allowedText}`);
       if (!/\.(jsx?|css|json|svg)$/.test(p)) throw new Error("Only .js, .jsx, .css, .json and .svg files can be written");
       await currentText(p); // remember the original before overwriting
       staged[p] = content;
@@ -255,7 +266,8 @@ async function runDesignRound({ ref, page, editable, kit, instruction, history =
     },
   ];
   const usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0 };
-  const system = systemPrompt({ kit, page, editable });
+  const designGuide = await github.readFile("src/design-system/README.md", ref).catch(() => null);
+  const system = systemPrompt({ kit, page, editable, newFilesIn, designGuide });
 
   for (let step = 0; step < MAX_STEPS; step++) {
     if (await shouldStop()) return { ok: false, usage, error: "Stopped by the admin." };
