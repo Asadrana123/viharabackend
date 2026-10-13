@@ -47,9 +47,9 @@ const BLOCKED_FIELDS = [
   'bidderEmails',            // other people's PII
   'sellerIds',               // internal seller references
   'brevoListId',             // internal marketing config
-  // Listing-agent private contact (name / company / phone ARE allowed — see builder)
-  'listingAgent.email',
-  'listingAgent.licenseNumber',
+  // Listing agent: nothing about them is embedded (name, company, phone, email, licence).
+  // Vihara decision, 2026-10-13: not shown in any way for now.
+  'listingAgent',
   // Public-record but no value on a call
   'apn',
   'trusteeSaleNumber',
@@ -60,6 +60,89 @@ const BLOCKED_FIELDS = [
   'coordinates', 'slug', 'createdAt', 'updatedAt', 'auctionEventLabel',
   'availableAreas',
 ];
+
+// ── The ALLOWED list (the rule) ───────────────────────────────────────────────
+// Only these fields are ever copied out of a property before the topic builders
+// run, so a builder physically cannot read anything else. Adding a field to a
+// chunk means adding it here first, in a reviewed change. `x[]` is a list; with
+// a remainder (`schools.public[].name`) it is a list of objects and only that
+// sub-field is copied; with no remainder it is a list of plain strings.
+// scripts/ragChunkAudit.js checks real properties against this list.
+const IDENTITY_FIELDS = ['_id', 'slug']; // used for keys and filters; never written into chunk text
+const ALLOWED_FIELDS = [
+  // basics
+  'productName', 'street', 'city', 'state', 'zipCode', 'county', 'beds', 'baths',
+  'assetType', 'propertyType', 'occupancyStatus', 'squareFootage', 'lotSize', 'yearBuilt',
+  // auction terms
+  'startBid', 'minIncrement', 'emd', 'commission', 'onlineOrInPerson', 'auctionStartDate', 'auctionEndDate',
+  // description (free text: also passes through scrubText below)
+  'propertyDescription',
+  // interior / exterior / community
+  'propertyDetails.interiorDetails.bedroomsBathrooms[]', 'propertyDetails.interiorDetails.masterBathroom[]',
+  'propertyDetails.interiorDetails.rooms[]', 'propertyDetails.interiorDetails.heating[]',
+  'propertyDetails.interiorDetails.cooling[]', 'propertyDetails.interiorDetails.interiorFeatures[]',
+  'propertyDetails.exteriorDetails.parking[]', 'propertyDetails.exteriorDetails.lotFeatures[]',
+  'propertyDetails.exteriorDetails.exteriorFeatures[]', 'propertyDetails.exteriorDetails.constructionFeatures[]',
+  'propertyDetails.community.communityInfo[]', 'propertyDetails.community.hoa[]', 'monthlyHOADues',
+  // valuation (the public Vihara value, never the reserve)
+  'investmentData.valuation.ViharaValue', 'investmentData.valuation.lowRange', 'investmentData.valuation.highRange',
+  'investmentData.valuation.confidenceScore', 'investmentData.valuation.evaluatedDate',
+  // rental
+  'investmentData.rental.estimatedMonthlyRent', 'investmentData.rental.rentalValue',
+  'investmentData.rental.estimatedAnnualRent', 'investmentData.rental.lowRange', 'investmentData.rental.highRange',
+  'investmentData.rental.vacancyRate', 'investmentData.rental.averageRentalTrend',
+  // taxes
+  'investmentData.taxData.annualPropertyTax', 'investmentData.taxData.assessedValue',
+  'investmentData.taxData.assessmentYear', 'investmentData.taxData.landValue', 'investmentData.taxData.improvementValue',
+  'investmentData.taxHistory[].year', 'investmentData.taxHistory[].propertyTax', 'investmentData.taxHistory[].taxAssessment',
+  // comparables and price history
+  'investmentData.comparables[].address', 'investmentData.comparables[].salePrice', 'investmentData.comparables[].soldPrice',
+  'investmentData.comparables[].beds', 'investmentData.comparables[].baths', 'investmentData.comparables[].sqft',
+  'comparableMarket[].address', 'comparableMarket[].salePrice', 'comparableMarket[].soldPrice',
+  'comparableMarket[].beds', 'comparableMarket[].baths', 'comparableMarket[].sqft',
+  'investmentData.priceHistory[].year', 'investmentData.priceHistory[].event', 'investmentData.priceHistory[].price',
+  // market insights
+  'marketInsights.medianListPrice', 'marketInsights.medianSoldPrice', 'marketInsights.daysOnMarket',
+  'marketInsights.salesListPrice', 'marketInsights.trends.listPrice', 'marketInsights.trends.soldPrice',
+  'marketInsights.trends.daysOnMarket',
+  // schools, walkability, area statistics
+  'schools.public[].name', 'schools.public[].rating', 'schools.public[].grades', 'schools.public[].distance',
+  'schools.private[].name', 'schools.private[].rating', 'schools.private[].grades', 'schools.private[].distance',
+  'walkScores.walkScore', 'walkScores.transitScore', 'walkScores.bikeScore',
+  'areaStatistics.areaStats.zip.population', 'areaStatistics.areaStats.zip.medianAge', 'areaStatistics.areaStats.zip.medianHouseholdIncome',
+  'areaStatistics.areaStats.city.population', 'areaStatistics.areaStats.city.medianAge', 'areaStatistics.areaStats.city.medianHouseholdIncome',
+];
+
+function copyPath(src, dst, segs) {
+  if (src == null || typeof src !== 'object') return;
+  const [head, ...rest] = segs;
+  const isList = head.endsWith('[]');
+  const key = isList ? head.slice(0, -2) : head;
+  const val = src[key];
+  if (val === undefined) return;
+  if (isList) {
+    if (!Array.isArray(val)) return;
+    if (rest.length === 0) {
+      dst[key] = val.filter((v) => v == null || typeof v !== 'object'); // plain values only
+      return;
+    }
+    if (!Array.isArray(dst[key])) dst[key] = val.map(() => ({}));
+    val.forEach((el, i) => copyPath(el, dst[key][i], rest));
+  } else if (rest.length === 0) {
+    dst[key] = val;
+  } else {
+    if (val == null || typeof val !== 'object') return;
+    if (!dst[key]) dst[key] = {};
+    copyPath(val, dst[key], rest);
+  }
+}
+
+/** A copy of the property holding ONLY the allowed fields (and the identity fields). */
+function pickAllowed(property) {
+  const out = {};
+  for (const path of [...IDENTITY_FIELDS, ...ALLOWED_FIELDS]) copyPath(property, out, path.split('.'));
+  return out;
+}
 
 // ── Value helpers — the null rules live here ──────────────────────────────────
 
@@ -369,20 +452,6 @@ function buildAreaStats(p, ctx) {
   return makeChunk(ctx, 'areaStats', parts.length ? ['Neighborhood demographics.', ...parts] : []);
 }
 
-function buildListingAgent(p, ctx) {
-  const a = p.listingAgent || {};
-  // name / company / phone allowed; email + licenseNumber are BLOCKED and never read.
-  const parts = [];
-  if (has(a.name)) {
-    const at = has(a.company) ? ` at ${a.company}` : '';
-    parts.push(`The listing agent is ${a.name}${at}.`);
-  } else if (has(a.company)) {
-    parts.push(`The listing company is ${a.company}.`);
-  }
-  if (has(a.phone)) parts.push(`Listing agent phone: ${a.phone}.`);
-  return makeChunk(ctx, 'listingAgent', parts);
-}
-
 // Order matters only for readability of the output; retrieval is per-topic.
 const BUILDERS = [
   buildBasics,
@@ -400,8 +469,42 @@ const BUILDERS = [
   buildSchools,
   buildWalkability,
   buildAreaStats,
-  buildListingAgent,
 ];
+
+// ── Free-text scrub — keeps secrets out of the words people wrote ────────────
+// A property description (or any list of text) is written by a person, and could
+// say "the seller will take 450k", give an email address or mention bidders.
+// The leak guard below only knows the reserve price and current bid VALUES, so
+// this drops, sentence by sentence, anything that looks like negotiation,
+// bidding, or contact details. Dropped sentences are logged so they can be
+// reviewed; the rest of the chunk is kept.
+const SENSITIVE_SENTENCE = [
+  /[\w.+-]+@[\w-]+\.[\w.-]+/,                                              // email address
+  /(?:\+?1[\s.-]?)?\(?\b\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}\b/,                    // phone number
+  /\breserve\s+(?:price|amount|bid)\b/i,
+  /\b(?:highest|current|top|winning)\s+bid(?:der)?s?\b/i,
+  /\bbidders?\b/i,
+  /\b(?:seller|owner|lender|bank)\b[^.]{0,60}\b(?:accept|take|entertain|consider|counter)\b/i,
+  /\b(?:minimum|floor|bottom|lowest)\s+(?:acceptable\s+)?(?:price|offer|bid)\b(?!\s+increment)/i,
+];
+
+function scrubText(text) {
+  const sentences = String(text).split(/(?<=[.!?])\s+/);
+  const kept = sentences.filter((sentence) => !SENSITIVE_SENTENCE.some((re) => re.test(sentence)));
+  return { text: kept.join(' ').trim(), dropped: sentences.length - kept.length };
+}
+
+function scrubChunks(chunks) {
+  const out = [];
+  for (const c of chunks) {
+    const { text, dropped } = scrubText(c.text);
+    if (dropped) {
+      console.warn(`[rag-chunker] scrubbed ${dropped} sentence(s) from chunk "${c.key}" (looked like negotiation, bidding or contact details).`);
+    }
+    if (has(text)) out.push(dropped ? { ...c, text } : c);
+  }
+  return out;
+}
 
 // ── Leak guard — second line of defence for the catastrophic fields ───────────
 // Structural enforcement already guarantees reservePrice / currentBid are never
@@ -468,17 +571,20 @@ function chunkProperty(property) {
     return [];
   }
 
+  // Builders only ever see the allowed fields (see ALLOWED_FIELDS above).
+  const safe = pickAllowed(property);
+
   const ctx = {
     slug,
-    propertyId: has(property._id) ? String(property._id) : '',
-    propertyName: has(property.productName) ? String(property.productName).trim() : '',
-    address: addressOf(property),
+    propertyId: has(safe._id) ? String(safe._id) : '',
+    propertyName: has(safe.productName) ? String(safe.productName).trim() : '',
+    address: addressOf(safe),
   };
 
   const chunks = BUILDERS
     .map((build) => {
       try {
-        return build(property, ctx);
+        return build(safe, ctx);
       } catch (err) {
         // One bad topic must never sink the whole property.
         console.error(`[rag-chunker] builder failed for slug "${slug}":`, err.message);
@@ -487,10 +593,14 @@ function chunkProperty(property) {
     })
     .filter(Boolean);
 
-  return stripLeaks(chunks, property);
+  // The leak guard still checks against the ORIGINAL property (it needs the reserve and bid values).
+  return stripLeaks(scrubChunks(chunks), property);
 }
 
 module.exports = {
   chunkProperty,
   BLOCKED_FIELDS, // exported so a test / audit can assert the list hasn't drifted
+  ALLOWED_FIELDS,
+  pickAllowed,
+  scrubText,
 };
