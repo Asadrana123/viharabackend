@@ -16,6 +16,7 @@
 const PropertyLead = require("../../model/leads/propertyLeadModel");
 const NorCalLead = require("../../model/leads/norCalLeadModel");
 const Product = require("../../model/property/productModel");
+const VtextConversation = require("../../model/vtext/vtextConversationModel");
 const { PRODUCT_TEMPLATE_FIELDS, resolvePropertyVariables } = require("./vtextTemplateService");
 const { embedQuery } = require("../rag/embeddingService");
 const { search } = require("../rag/qdrantService");
@@ -44,33 +45,54 @@ function withTimeout(promise, ms, label) {
 }
 
 /**
- * The lead's property leads (newest first, capped), each with its property. A
- * contact can have signed up for several; the lead's own data (quote, buyer
- * type) stays attached to the property it was given for.
- * @returns {Promise<Array<{ slug: string, quotePrice: number|null, buyerType: string, product: object }>>}
+ * The properties this lead has dealt with, with the one this conversation is about first.
+ *
+ * A contact's own lead links are set once, when the contact is created, and keep only the first
+ * property lead found, so a later signup for another property was never seen. The leads are
+ * therefore also looked up by the contact's phone number. The property the conversation is about
+ * (the one the latest text sent was about, copied onto the conversation; else the follow-up's
+ * property) goes first and is marked `current`; the rest follow, newest first. Capped.
+ * @returns {Promise<Array<{ slug: string, quotePrice: number|null, buyerType: string, current: boolean, product: object }>>}
  */
-async function loadProperties(contact) {
+async function loadProperties(contact, conversationId) {
   const ids = (contact?.leadRefs || []).filter((r) => r.leadType === "property").map((r) => r.leadId);
-  if (!ids.length) return [];
+  const or = [];
+  if (ids.length) or.push({ _id: { $in: ids } });
+  if (contact?.phoneE164) or.push({ phoneNormalized: contact.phoneE164 });
 
-  const leads = await PropertyLead.find({ _id: { $in: ids } })
-    .select("propertySlug quotePrice buyerType createdAt")
-    .sort({ createdAt: -1 })
-    .lean();
+  const leads = or.length
+    ? await PropertyLead.find({ $or: or }).select("propertySlug quotePrice buyerType createdAt").sort({ createdAt: -1 }).lean()
+    : [];
+
+  // The property the conversation is about, when known.
+  let currentId = null;
+  if (conversationId) {
+    const conversation = await VtextConversation.findById(conversationId).select("propertyId").lean();
+    currentId = conversation?.propertyId || null;
+  }
+  if (!currentId && contact?.followUp?.propertyId) currentId = contact.followUp.propertyId;
+  const currentProduct = currentId ? await Product.findById(currentId).select(PRODUCT_TEMPLATE_FIELDS).lean() : null;
 
   const bySlug = new Map();
+  if (currentProduct?.slug) bySlug.set(currentProduct.slug, { slug: currentProduct.slug, quotePrice: null, buyerType: "" });
   for (const lead of leads) {
-    if (lead.propertySlug && !bySlug.has(lead.propertySlug)) bySlug.set(lead.propertySlug, lead);
-    if (bySlug.size >= MAX_PROPERTIES) break;
+    if (!lead.propertySlug) continue;
+    const have = bySlug.get(lead.propertySlug);
+    if (have) { // the current property: keep its place, add what the lead told us
+      if (have.quotePrice == null) have.quotePrice = lead.quotePrice;
+      if (!have.buyerType) have.buyerType = lead.buyerType;
+    } else if (bySlug.size < MAX_PROPERTIES) {
+      bySlug.set(lead.propertySlug, { slug: lead.propertySlug, quotePrice: lead.quotePrice, buyerType: lead.buyerType });
+    }
   }
   if (!bySlug.size) return [];
 
   const products = await Product.find({ slug: { $in: [...bySlug.keys()] } }).select(PRODUCT_TEMPLATE_FIELDS).lean();
   const productBySlug = new Map(products.map((p) => [p.slug, p]));
 
-  return [...bySlug.entries()]
-    .filter(([slug]) => productBySlug.has(slug))
-    .map(([slug, lead]) => ({ slug, quotePrice: lead.quotePrice, buyerType: lead.buyerType, product: productBySlug.get(slug) }));
+  return [...bySlug.values()]
+    .filter((e) => productBySlug.has(e.slug))
+    .map((e) => ({ slug: e.slug, quotePrice: e.quotePrice, buyerType: e.buyerType, current: !!currentProduct && e.slug === currentProduct.slug, product: productBySlug.get(e.slug) }));
 }
 
 /** What a NorCal lead told us on the form. Empty when the contact is not a NorCal lead. */
@@ -173,6 +195,7 @@ async function reportRagFailure(reason, contact) {
  * @param {object} params.contact - vtextContactModel document (leadRefs)
  * @param {object[]} params.messages - recent messages, chronological, the one being answered last
  * @param {string} params.replyToBody
+ * @param {string} [params.conversationId] - lets the property this conversation is about go first
  * @returns {Promise<{
  *   properties: Array<{ slug: string, name: string, facts: object, quotePrice: number|null }>,
  *   leadDetails: string[],
@@ -182,7 +205,7 @@ async function reportRagFailure(reason, contact) {
  *   propertyContext: object|null,
  * }>} propertyContext is the first property's key facts, the same shape buildPropertyContext returns (the Slack alert uses it).
  */
-async function buildReplyKnowledge({ contact, messages, replyToBody }) {
+async function buildReplyKnowledge({ contact, messages, replyToBody, conversationId }) {
   const out = {
     properties: [],
     leadDetails: [],
@@ -193,14 +216,15 @@ async function buildReplyKnowledge({ contact, messages, replyToBody }) {
   };
 
   try {
-    const [properties, norCalDetails] = await Promise.all([loadProperties(contact), loadNorCalDetails(contact)]);
+    const [properties, norCalDetails] = await Promise.all([loadProperties(contact, conversationId), loadNorCalDetails(contact)]);
     out.properties = properties.map((p) => ({
       slug: p.slug,
       name: p.product.productName || p.slug,
       facts: resolvePropertyVariables(p.product),
       quotePrice: p.quotePrice,
+      current: p.current,
     }));
-    out.propertyContext = out.properties[0]?.facts || null;
+    out.propertyContext = (out.properties.find((p) => p.current) || out.properties[0])?.facts || null;
 
     for (const p of properties) {
       if (money(p.quotePrice)) out.leadDetails.push(`They quoted ${money(p.quotePrice)} for ${p.product.productName || p.slug} (a price they would like to pay, not a formal offer)`);

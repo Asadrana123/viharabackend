@@ -52,7 +52,7 @@ async function processDraftReplyJob(job) {
 
   // With the knowledge lookup on, the AI also gets what this lead told us and the property details that
   // match the question (vtextKnowledgeService.js, which never throws). Off, nothing changes.
-  const knowledge = isRagEnabled() ? await buildReplyKnowledge({ contact, messages: history, replyToBody: inboundMessage.body }) : null;
+  const knowledge = isRagEnabled() ? await buildReplyKnowledge({ contact, messages: history, replyToBody: inboundMessage.body, conversationId }) : null;
   const propertyContext = knowledge ? knowledge.propertyContext : await buildPropertyContext(contact);
   let draft = await generateDraftReply({ contact, messages: history, replyToBody: inboundMessage.body, propertyContext, knowledge });
   if (!draft) {
