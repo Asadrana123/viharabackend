@@ -9,7 +9,7 @@
 //
 // Pure: no DB, no network. Works on text, so a wrong guess is caught however the
 // model arrived at it. It checks amounts only; dates, counts and words are not
-// checked here.
+// checked here. Rounded amounts ($649K for $649,254) are accepted when a real figure is within one unit of them.
 
 // "$40,000", "$525K", "$1.2M", "$2 million", or a bare "42k" / "1.5m".
 const AMOUNT = /\$\s?(\d[\d,]*(?:\.\d+)?)\s?(k|m|thousand|million)?(?![a-z0-9])|(?<![\w$.])(\d[\d,]*(?:\.\d+)?)\s?(k|m)(?![a-z0-9])/gi;
@@ -24,12 +24,24 @@ function toNumber(digits, unit) {
   return Math.round(value);
 }
 
-/** Every dollar amount in `text`, as { raw, value }. */
+// How coarse a written amount is: "$649K" is only exact to the nearest 1,000, "$1.2M" to the nearest 100,000,
+// "$40,000" is exact. Used so a real figure rounded for a text ("$649K" for $649,254) is not mistaken for an invented one.
+function precisionOf(digits, unit) {
+  const u = String(unit || "").toLowerCase();
+  const step = u === "k" || u === "thousand" ? 1e3 : u === "m" || u === "million" ? 1e6 : 0;
+  if (!step) return 0;
+  const decimals = (String(digits).split(".")[1] || "").length;
+  return step / Math.pow(10, decimals);
+}
+
+/** Every dollar amount in `text`, as { raw, value, precision } (precision 0 means exact). */
 function amountsIn(text) {
   const found = [];
   for (const m of String(text || "").matchAll(AMOUNT)) {
-    const value = m[1] !== undefined ? toNumber(m[1], m[2]) : toNumber(m[3], m[4]);
-    if (value !== null) found.push({ raw: m[0].trim(), value });
+    const digits = m[1] !== undefined ? m[1] : m[3];
+    const unit = m[1] !== undefined ? m[2] : m[4];
+    const value = toNumber(digits, unit);
+    if (value !== null) found.push({ raw: m[0].trim(), value, precision: precisionOf(digits, unit) });
   }
   return found;
 }
@@ -41,9 +53,13 @@ function amountsIn(text) {
  * @returns {{ ok: boolean, unsupported: string[] }} unsupported lists the amounts in the reply that no source contains
  */
 function checkReplyAmounts({ reply, sourceTexts }) {
-  const known = new Set(amountsIn((sourceTexts || []).join("\n")).map((a) => a.value));
+  const known = amountsIn((sourceTexts || []).join("\n")).map((a) => a.value);
+  const knownSet = new Set(known);
+  // An exact amount must appear as written. An amount written with K or M ("$649K") is a rounding, so a
+  // source amount within one unit of it supports it; a guessed number ("$45K" against a $40,000 fact) still does not.
+  const supported = (a) => knownSet.has(a.value) || (a.precision > 0 && known.some((k) => Math.abs(k - a.value) < a.precision));
   const unsupported = amountsIn(reply)
-    .filter((a) => !known.has(a.value))
+    .filter((a) => !supported(a))
     .map((a) => a.raw);
   return { ok: unsupported.length === 0, unsupported: [...new Set(unsupported)] };
 }
