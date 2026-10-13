@@ -12,6 +12,7 @@ const {
     updateProductBasicDetails,
     updateMarketSyncSettings
 } =require("../../controller/property/productController");
+const { deleteProduct } = require("../../controller/property/productDeleteController");
 const { isAuthenticated, authorizeRoles, optionalAuth } = require("../../middleware/auth");
 const router = express.Router();
 
@@ -24,6 +25,7 @@ router.get('/admin/all', isAuthenticated, authorizeRoles("admin"), getAllProduct
 router.put('/admin/:id/listing-settings', isAuthenticated, authorizeRoles("admin"), updateListingSettings);
 router.put('/admin/:id/basic-details', isAuthenticated, authorizeRoles("admin"), updateProductBasicDetails);
 router.put('/admin/:id/market-sync', isAuthenticated, authorizeRoles("admin"), updateMarketSyncSettings);
+router.delete('/admin/:id', isAuthenticated, authorizeRoles("admin"), deleteProduct);
 
 // Public slug fetch (detail + landing pages). optionalAuth only so admins get
 // the internal fields too; visitors get the public view.

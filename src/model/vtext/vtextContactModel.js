@@ -73,9 +73,9 @@ const vtextContactSchema = new mongoose.Schema(
       leadId: { type: mongoose.Schema.Types.ObjectId },
       propertyId: { type: mongoose.Schema.Types.ObjectId },
       timezone: { type: String },
-      sequenceVersion: { type: Number }, // 2 = the 4-step, auction-dated sequence; unset = the old 7-step one, which is ended on sight
+      sequenceVersion: { type: Number }, // 3 = the 7-step daily sequence; 2 (4-step, auction-dated) and unset (first 7-step) are ended on sight
       step: { type: Number }, // follow-ups sent so far (set to 0 at enrollment)
-      doneSteps: [{ type: Number }], // step numbers (1-4) already sent or skipped
+      doneSteps: [{ type: Number }], // step numbers (1-7) already sent or skipped
       startedAt: { type: Date },
       nextAt: { type: Date }, // null while no send is scheduled
       lastSentAt: { type: Date },

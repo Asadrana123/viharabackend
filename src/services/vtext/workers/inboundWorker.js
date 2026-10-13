@@ -157,7 +157,12 @@ async function handleMessageReceived(event, line) {
   conversation = await VtextConversation.findOneAndUpdate(
     { contactId: contact._id, lineId: line._id },
     {
-      $setOnInsert: { channelType: line.channelType, contactPhone: contact.phoneE164, lineAddress: line.address },
+      $setOnInsert: {
+        channelType: line.channelType,
+        contactPhone: contact.phoneE164,
+        lineAddress: line.address,
+        ...(contact.followUp?.propertyId ? { propertyId: contact.followUp.propertyId } : {}),
+      },
       $set: {
         lastMessageAt: event.receivedAt || new Date(),
         lastMessagePreview: String(event.body || "").slice(0, 120),

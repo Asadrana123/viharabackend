@@ -144,6 +144,7 @@ const registerNorCalLead = catchAsyncError(async (req, res, next) => {
     email: lead.email,
     phone: lead.phone,
     consent: lead.consent,
+    smsConsent: lead.smsConsent,
     source: "norcal-lp",
     extraFields: [
       { label: "Market", value: lead.market },

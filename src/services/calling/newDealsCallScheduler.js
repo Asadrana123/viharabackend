@@ -31,6 +31,9 @@ const SWEEP_BATCH = 200;
 const BURST_OPTS = {
   noPickupReasons: DID_NOT_CONNECT_REASONS,
   treatErrorsAsNoPickup: true,
+  // A quick "hello?" / "I'm busy" isn't a pickup — keep calling until there's
+  // a real conversation (registrationCallService.hadMeaningfulConversation).
+  requireConversation: true,
 };
 
 /** Payload the dispatcher expects — buy-box answers in a form Maya can speak. */

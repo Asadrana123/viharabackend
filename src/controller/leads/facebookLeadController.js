@@ -4,6 +4,7 @@ const {
   resolveFbPitch,
 } = require("../../services/leads/facebookLeadService");
 const { runSingleCall } = require("../../services/calling/vapiCampaignService");
+const { processCommentWebhook } = require("../../services/social/commentReplyService");
 
 const FB_APP_SECRET = process.env.FB_APP_SECRET;
 const FB_VERIFY_TOKEN = process.env.FB_VERIFY_TOKEN;
@@ -68,20 +69,25 @@ const extractLeadgenIds = (body) => {
 /**
  * POST /api/facebook/webhook
  * Acknowledge Meta immediately, then fetch each lead and dispatch Maya's call
- * in the background.
+ * in the background. New post comments go to the AI auto-reply.
  */
 const receiveWebhook = (req, res) => {
   if (!isValidSignature(req)) {
     return res.sendStatus(403);
   }
 
+  // Instagram comments arrive here too (object "instagram"); they carry no leads.
   if (req.body?.object !== "page") {
-    return res.sendStatus(200);
+    res.sendStatus(200);
+    processCommentWebhook(req.body);
+    return;
   }
 
   const leadgenIds = extractLeadgenIds(req.body);
 
   res.sendStatus(200);
+
+  processCommentWebhook(req.body);
 
   for (const id of leadgenIds) {
     processLead(id).catch((err) =>

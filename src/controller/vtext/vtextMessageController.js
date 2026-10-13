@@ -31,6 +31,7 @@ const sendMessage = catchAsyncError(async (req, res) => {
     if (problem) return res.status(400).json({ success: false, message: `This template can't be sent from here: ${problem}` });
     body = rendered.body;
     origin.campaignId = templateId;
+    origin.propertyId = propertyId;
   }
 
   const result = await enqueueOutbound({
@@ -78,6 +79,7 @@ const sendBulkMessages = catchAsyncError(async (req, res) => {
       return { to: phone, body: rendered, name, problem: checkRendered(template.body, rendered, values, ["quote_price"]) };
     });
     origin.campaignId = templateId;
+    origin.propertyId = propertyId;
   }
 
   const resolvedBatchId = batchId || `bulk-${Date.now()}`;

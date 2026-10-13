@@ -17,6 +17,7 @@ const VtextTemplate = require("../../model/vtext/vtextTemplateModel");
 const { enqueueOutbound } = require("./vtextMessageService");
 const { renderTemplateForProperty, checkRendered } = require("./vtextTemplateService");
 const { startFollowUp } = require("./vtextFollowUpService");
+const { getSettings, isConsentRequired } = require("./vtextSettingsService");
 
 // The text is never sent without the price, street and city it names, or with a {{placeholder}} left in it.
 const QUOTE_REQUIRED = ["quote_price", "property_short", "city"];
@@ -42,11 +43,15 @@ async function maybeSendSignupQuoteText({ lead, property }) {
       return;
     }
     if (lead.smsConsent !== true) {
-      // Same gate Brevo's own automation uses. Expected/normal when the
-      // form's separate SMS opt-in checkbox wasn't ticked — not a bug, but
-      // still logged at error level so it's never missed while scanning logs.
-      console.error(`[vtext auto-signup] SKIPPED lead ${lead._id} — smsConsent is not true`);
-      return;
+      // Expected/normal when the form's separate SMS opt-in checkbox wasn't
+      // ticked. Skipped only while the admin consent check is ON; with it
+      // OFF the text goes through, and enqueueOutbound's canSend() still
+      // blocks opted-out contacts and bad numbers.
+      if (isConsentRequired(await getSettings())) {
+        console.error(`[vtext auto-signup] SKIPPED lead ${lead._id} — smsConsent is not true`);
+        return;
+      }
+      console.warn(`[vtext auto-signup] lead ${lead._id} has no SMS consent, continuing because the consent check is OFF`);
     }
 
     // The two texts differ by whether the quote reaches the starting bid. No quote
@@ -79,7 +84,7 @@ async function maybeSendSignupQuoteText({ lead, property }) {
     const { message, blocked, reason } = await enqueueOutbound({
       to: lead.phone,
       body,
-      origin: { kind: "automation", templateKey: "property-signup-quote", campaignId: template._id },
+      origin: { kind: "automation", templateKey: "property-signup-quote", campaignId: template._id, propertyId: property._id },
       contactName: lead.fullName,
       isReplyToInbound: false,
     });

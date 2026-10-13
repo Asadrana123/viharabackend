@@ -1,4 +1,5 @@
 // corsConfig.js - Centralized CORS configuration
+const Errorhandler = require("../utils/errorhandler");
 
 const allowedOrigins = [
   "https://www.vihara.ai",
@@ -8,13 +9,21 @@ const allowedOrigins = [
   "https://vihara-new-website-nodifys-projects.vercel.app"
 ];
 
+// Every Vercel preview of the website (one per design-agent change) gets its
+// own address. Allow any preview from our own Vercel team, and nothing else.
+const VERCEL_PREVIEW_ORIGIN = /^https:\/\/vihara-new-website-[a-z0-9-]+-nodifys-projects\.vercel\.app$/;
+
+const isAllowedOrigin = (origin) =>
+  !origin || allowedOrigins.includes(origin) || VERCEL_PREVIEW_ORIGIN.test(origin);
+
 // CORS options for Express
 const expressCorsOptions = {
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (isAllowedOrigin(origin)) {
       callback(null, true);
     } else {
-      callback(new Error("CORS not allowed"));
+      // Name the origin so blocked callers can be identified in the logs.
+      callback(new Errorhandler(`CORS not allowed for origin ${origin}`, 403));
     }
   },
   credentials: true,
@@ -26,10 +35,10 @@ const expressCorsOptions = {
 const socketIOCorsOptions = {
   cors: {
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (isAllowedOrigin(origin)) {
         callback(null, true);
       } else {
-        callback(new Error("CORS not allowed"));
+        callback(new Error(`CORS not allowed for origin ${origin}`));
       }
     },
     methods: ["GET", "POST"],

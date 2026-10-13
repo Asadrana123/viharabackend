@@ -29,6 +29,10 @@ const vtextConversationSchema = new mongoose.Schema(
     firstOutboundAt: { type: Date },
     firstInboundAt: { type: Date }, // set on first inbound reply — makes the thread "warm"
 
+    // The property this thread is currently about: the latest one a text was sent for, or the one
+    // the contact signed up through. Drives the property pill and the inbox property filter.
+    propertyId: { type: mongoose.Schema.Types.ObjectId, ref: "productModel", index: true },
+
     // The AI told the customer "a team member will follow up" (draftReplyWorker.js). Cleared when an
     // admin replies by hand, or with "Mark handled" in the Inbox.
     needsHuman: { type: Boolean, default: false },
