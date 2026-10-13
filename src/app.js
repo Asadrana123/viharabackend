@@ -85,6 +85,9 @@ const brandKitRoutes = require("./routes/brand/brandKitRoutes");
 // Design agent (admin-only): Claude redesigns pages → Vercel preview → approve to go live.
 const designAdminRoutes = require("./routes/design/designAdminRoutes");
 const { recoverDesignJobs } = require("./services/design/designJobService");
+// Meta Ads Loop: Slack approvals (events, buttons, /adsloop), health, admin endpoints.
+const adsLoopRoutes = require("./routes/adsLoop/adsLoopRoutes");
+const { recoverAdsLoop } = require("./jobs/adsLoopJob");
 // Middleware
 app.use(cookieParser());
 app.use(cors(expressCorsOptions));
@@ -104,6 +107,8 @@ mongoose.connect(process.env.DB_URI, {
     startRenovationCleanupJob();
     // Pick up design requests that were mid-way when the server last stopped.
     recoverDesignJobs();
+    // Ads loop: restart cut-off creative builds and replay missed Slack replies / ✅.
+    recoverAdsLoop().catch((err) => console.error("[adsLoop] recovery:", err.message));
     // Read the website's page list now so Design Studio opens quickly.
     if (process.env.DESIGN_GITHUB_TOKEN) {
       require("./services/design/pageDiscovery").discoverPages().catch((err) => console.error("[design] page discovery:", err.message));
@@ -173,6 +178,7 @@ app.use("/api/v1/qa-agent", qaAgentRoutes);
 app.use("/api/v1/admin-ask", adminAskRoutes);
 app.use("/api/v1/brand-kit", brandKitRoutes);
 app.use("/api/v1/design", designAdminRoutes);
+app.use("/api/v1/ads-loop", adsLoopRoutes);
 
 // D7 (sendify-infra.md §2): fail loudly at boot if CHANNEL_TYPES has an enum
 // entry with no registered adapter, rather than discovering it the first

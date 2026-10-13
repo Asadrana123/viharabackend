@@ -21,6 +21,7 @@ const { syncPropertyLead } = require("../../services/integrations/brevoService")
 const { notifyNewLead } = require("../../services/shared/slackService");
 const { onPropertyLeadSignup } = require("../../services/propertyEmail/propertyEmailService");
 const { auctionPageUrl, listingPageUrl } = require("../../config/siteUrls");
+const { touchesFrom } = require("../../services/leads/buyBox");
 
 // Single note discriminator for all property-auction leads. Lead ids are unique,
 // so one type is enough to keep notes from bleeding into other lead systems.
@@ -93,6 +94,9 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
   // literal `true` counts as opting in. Brevo's automation sends the texts.
   const smsOptedIn = smsConsent === true;
 
+  // UTM first/last touch from the page (utm_content = the ad's LT-ID).
+  const { firstTouch, lastTouch } = touchesFrom(req.body);
+
   // ── Create the lead — compound unique (propertySlug, phoneNormalized) gate ──
   let lead;
   try {
@@ -113,6 +117,8 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       smsConsentAt: smsOptedIn ? new Date() : null,
       eventId: eventId || "",
       source: `auction-${slug}`,
+      firstTouch,
+      lastTouch,
       isQaTest: req.isQaTest === true,
     });
   } catch (err) {

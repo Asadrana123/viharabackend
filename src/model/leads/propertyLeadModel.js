@@ -15,6 +15,22 @@
 // consent, enrichment) so the shared scheduler behaves identically.
 const mongoose = require("mongoose");
 
+// One UTM "touch" (first or last), as sent by the page. utm_content carries the
+// Meta Ads Loop creative id (LT-0004) for leads that came from an ad.
+const touchSchema = new mongoose.Schema(
+  {
+    utm_source: { type: String, default: "", trim: true },
+    utm_medium: { type: String, default: "", trim: true },
+    utm_campaign: { type: String, default: "", trim: true },
+    utm_term: { type: String, default: "", trim: true },
+    utm_content: { type: String, default: "", trim: true },
+    gclid: { type: String, default: "", trim: true },
+    fbclid: { type: String, default: "", trim: true },
+    ts: { type: Date, default: null },
+  },
+  { _id: false }
+);
+
 const propertyLeadSchema = new mongoose.Schema(
   {
     // Which property this lead registered for. Set from the URL slug by the
@@ -86,6 +102,11 @@ const propertyLeadSchema = new mongoose.Schema(
 
     // Tag for analytics/debugging. Controller sets "auction-<slug>".
     source: { type: String, default: "" },
+
+    // Where the lead came from (UTM params). firstTouch = first visit in the
+    // page's attribution window, lastTouch = the visit that registered.
+    firstTouch: { type: touchSchema, default: () => ({}) },
+    lastTouch: { type: touchSchema, default: () => ({}) },
 
     // Created by the QA agent (request carried the QA agent token). Such leads
     // never get calls, Slack posts, enrichment, Brevo sync or texts, are hidden
