@@ -96,7 +96,7 @@ async function main() {
     // 2. Real-value test: confidential and listing-agent values must be absent.
     const realText = chunkProperty(doc).map((c) => c.text).join('\n');
     const money = (v) => (Number.isFinite(Number(v)) && Number(v) > 0 ? `$${Math.round(Number(v)).toLocaleString('en-US')}` : '');
-    const publicAmounts = new Set([doc.startBid, doc.minIncrement, doc.emd, doc.commission, doc.investmentData?.valuation?.ViharaValue].map(money).filter(Boolean));
+    const publicAmounts = new Set([doc.startBid, doc.minIncrement, doc.emd, doc.investmentData?.valuation?.ViharaValue].map(money).filter(Boolean));
     for (const [name, value] of [['reservePrice', doc.reservePrice], ['currentBid', doc.currentBid]]) {
       const m = money(value);
       if (m && !publicAmounts.has(m) && realText.includes(m)) failures.push(`${label}: ${name} value ${m} appears in a chunk`);

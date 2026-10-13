@@ -75,8 +75,10 @@ const ALLOWED_FIELDS = [
   // basics
   'productName', 'street', 'city', 'state', 'zipCode', 'county', 'beds', 'baths',
   'assetType', 'propertyType', 'occupancyStatus', 'squareFootage', 'lotSize', 'yearBuilt',
-  // auction terms
-  'startBid', 'minIncrement', 'emd', 'commission', 'onlineOrInPerson', 'auctionStartDate', 'auctionEndDate',
+  // auction terms. NOT commission: the admin form labels it 'Commission (%)', a percentage that was being
+  // printed as dollars and as the buyer's premium. Vihara's published premium is 3% or $2,000, whichever is
+  // greater, so the AI told a buyer there was none. Fee questions are handed to a person instead.
+  'startBid', 'minIncrement', 'emd', 'onlineOrInPerson', 'auctionStartDate', 'auctionEndDate',
   // description (free text: also passes through scrubText below)
   'propertyDescription',
   // interior / exterior / community
@@ -251,7 +253,6 @@ function buildAuction(p, ctx) {
   if (has(p.startBid)) parts.push(`The auction starting bid is ${money(p.startBid)}.`);
   if (has(p.minIncrement)) parts.push(`The minimum bid increment is ${money(p.minIncrement)}.`);
   if (has(p.emd)) parts.push(`The earnest money deposit (EMD) required is ${money(p.emd)}.`);
-  if (has(p.commission)) parts.push(`Buyer's premium / commission is ${money(p.commission)}.`);
   if (has(p.onlineOrInPerson)) parts.push(`The auction is held ${p.onlineOrInPerson}.`);
   if (has(p.auctionStartDate)) parts.push(`The auction starts on ${fullDate(p.auctionStartDate)}.`);
   if (has(p.auctionEndDate)) parts.push(`The auction ends on ${fullDate(p.auctionEndDate)}.`);
@@ -539,7 +540,7 @@ function scrubChunks(chunks) {
 // valid chunk.
 //
 // The same applies to every amount the chunks state ON PURPOSE: starting bid,
-// minimum increment, EMD, commission and the public valuation. An auction with
+// minimum increment, EMD and the public valuation. An auction with
 // no bids yet has currentBid === startBid, so without this the guard mistook
 // the public starting bid for the live bid and dropped the whole auction chunk
 // (EMD, increment, dates). A confidential value that differs from all of these
@@ -548,7 +549,7 @@ function stripLeaks(chunks, p) {
   const publicOk = new Set();
   const vhVal = p.investmentData && p.investmentData.valuation && p.investmentData.valuation.ViharaValue;
   if (has(vhVal)) publicOk.add(money(vhVal));
-  for (const v of [p.startBid, p.minIncrement, p.emd, p.commission]) {
+  for (const v of [p.startBid, p.minIncrement, p.emd]) {
     if (has(v) && Number(v) > 0) publicOk.add(money(v));
   }
 
