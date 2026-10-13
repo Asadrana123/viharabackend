@@ -252,7 +252,10 @@ function buildAuction(p, ctx) {
   const parts = [];
   if (has(p.startBid)) parts.push(`The auction starting bid is ${money(p.startBid)}.`);
   if (has(p.minIncrement)) parts.push(`The minimum bid increment is ${money(p.minIncrement)}.`);
-  if (has(p.emd)) parts.push(`The earnest money deposit (EMD) required is ${money(p.emd)}.`);
+  // EMD is 0 on almost every listing, which may mean "none required" or "never filled in". Until Vihara says
+  // which, a 0 is not stated as fact: the chunk says it is not confirmed and the AI hands off.
+  if (has(p.emd) && Number(p.emd) > 0) parts.push(`The earnest money deposit (EMD) required is ${money(p.emd)}.`);
+  else parts.push('The earnest money deposit (EMD) for this property is not confirmed.');
   if (has(p.onlineOrInPerson)) parts.push(`The auction is held ${p.onlineOrInPerson}.`);
   if (has(p.auctionStartDate)) parts.push(`The auction starts on ${fullDate(p.auctionStartDate)}.`);
   if (has(p.auctionEndDate)) parts.push(`The auction ends on ${fullDate(p.auctionEndDate)}.`);
