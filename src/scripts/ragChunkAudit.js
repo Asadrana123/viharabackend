@@ -6,8 +6,13 @@
 //
 //   node src/scripts/ragChunkAudit.js            -> every property in the local database
 //   node src/scripts/ragChunkAudit.js <slug>     -> one property
+//   add --strict to also fail (exit 1) when any listing contradicts itself
 //
 // Exits 1 on any failure, so it can be run before a deploy or in CI.
+//
+// It also lists listings that contradict themselves (the number fields against the listing text,
+// for example beds 5 but "4 Bedrooms"), for whoever owns the listing data to correct. The chunker
+// keeps both versions out of what the AI reads; the data itself still needs fixing.
 //
 // How: every field of a property is replaced with a unique marker, the chunker
 // runs, and each marker found in the chunk text is a field that reaches the
@@ -19,6 +24,7 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
 const { chunkProperty, ALLOWED_FIELDS } = require('../services/rag/propertyChunker');
+const { findConflicts } = require('../services/rag/propertyDataConflicts');
 
 const ALLOWED = new Set(ALLOWED_FIELDS);
 const fullDate = (d) => d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
@@ -64,13 +70,15 @@ async function main() {
   if (!process.env.DB_URI) throw new Error('DB_URI is not set.');
   await mongoose.connect(process.env.DB_URI);
 
-  const slug = process.argv[2];
+  const strict = process.argv.includes('--strict');
+  const slug = process.argv.slice(2).find((a) => !a.startsWith('--'));
   const query = slug ? { slug: slug.toLowerCase() } : { slug: { $type: 'string', $ne: '' } };
   const docs = await mongoose.connection.db.collection('productmodels').find(query).toArray();
   if (!docs.length) throw new Error('No properties found to audit.');
 
   const failures = [];
   const reached = new Set();
+  const conflicts = []; // { slug, items }
 
   for (const doc of docs) {
     const label = doc.slug;
@@ -100,11 +108,31 @@ async function main() {
       }
     }
     if (/[\w.+-]+@[\w-]+\.[\w.-]+/.test(realText)) failures.push(`${label}: an email address appears in a chunk`);
+
+    // 3. Contradictions inside the record: listed for the data owners, and the contradicting text must not reach a chunk.
+    const found = findConflicts(doc);
+    if (found.length) {
+      conflicts.push({ slug: label, items: found });
+      for (const c of found) {
+        const text = c.line || c.textValue;
+        if (typeof text === 'string' && text.length >= 4 && realText.includes(text)) failures.push(`${label}: the contradicting text "${text}" (${c.field}) still reaches a chunk`);
+      }
+    }
   }
 
   console.log(`Audited ${docs.length} propert${docs.length === 1 ? 'y' : 'ies'}. ${reached.size} distinct fields reach the knowledge base; ${ALLOWED.size} are allowed.`);
   const sensitive = [...reached].filter((p) => /reserve|bidder|seller|email|licen|apn|trustee|listingAgent|brevo/i.test(p));
   console.log(`Sensitive-looking fields that reach it: ${sensitive.length ? sensitive.join(', ') : 'none'}`);
+
+  if (conflicts.length) {
+    console.log(`\nListings that contradict themselves (${conflicts.length} of ${docs.length}). The number field is used by the AI; the listing text needs correcting:`);
+    for (const { slug: sl, items } of conflicts) {
+      for (const c of items) console.log(`  - ${sl}: ${c.field} is ${c.fieldValue} in the fields but ${JSON.stringify(c.textValue)} in the listing text`);
+    }
+    if (strict) failures.push(`${conflicts.length} listing(s) contradict themselves (--strict)`);
+  } else {
+    console.log('\nNo listing contradicts itself.');
+  }
 
   if (failures.length) {
     console.error(`\nFAILED (${failures.length}):\n- ${failures.join('\n- ')}`);

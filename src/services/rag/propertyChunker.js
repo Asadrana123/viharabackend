@@ -35,6 +35,8 @@
 
 'use strict';
 
+const { conflictingRoomLines, hoaConflict, areaConflict } = require('./propertyDataConflicts');
+
 // ── The never-embed list (audit record + spec) ────────────────────────────────
 // The topic builders never read these, so nothing here can reach a chunk. Listed
 // explicitly so the rule is reviewable in one place. Enforced structurally; the
@@ -262,13 +264,20 @@ function buildDescription(p, ctx) {
 
 function buildInterior(p, ctx) {
   const i = (p.propertyDetails && p.propertyDetails.interiorDetails) || {};
+  // The number fields (beds, baths, squareFootage) are the source of truth: they are what the auction
+  // page shows, and the basics chunk states them. A listing-text line that contradicts them is left out,
+  // so the AI never reads two different numbers for the same fact.
+  const wrongRooms = new Set(conflictingRoomLines(p).map((c) => c.line));
+  const wrongArea = areaConflict(p);
+  const rooms = clean(i.bedroomsBathrooms).filter((l) => !wrongRooms.has(l));
+  const features = clean(i.interiorFeatures).filter((l) => !(wrongArea && l === wrongArea.line));
   const parts = [];
-  if (list(i.bedroomsBathrooms)) parts.push(`Bedrooms and bathrooms: ${list(i.bedroomsBathrooms)}.`);
+  if (rooms.join(', ')) parts.push(`Bedrooms and bathrooms: ${rooms.join(', ')}.`);
   if (list(i.masterBathroom)) parts.push(`Master bathroom: ${list(i.masterBathroom)}.`);
   if (list(i.rooms)) parts.push(`Rooms: ${list(i.rooms)}.`);
   if (list(i.heating)) parts.push(`Heating: ${list(i.heating)}.`);
   if (list(i.cooling)) parts.push(`Cooling: ${list(i.cooling)}.`);
-  if (list(i.interiorFeatures)) parts.push(`Interior features: ${list(i.interiorFeatures)}.`);
+  if (features.join(', ')) parts.push(`Interior features: ${features.join(', ')}.`);
   return makeChunk(ctx, 'interior', parts.length ? ['Interior details.', ...parts] : []);
 }
 
@@ -286,14 +295,20 @@ function buildCommunity(p, ctx) {
   const c = (p.propertyDetails && p.propertyDetails.community) || {};
   const parts = [];
   if (list(c.communityInfo)) parts.push(`Community: ${list(c.communityInfo)}.`);
-  if (list(c.hoa)) parts.push(`HOA: ${list(c.hoa)}.`);
-  // monthlyHOADues: a real 0 is meaningful ("no monthly HOA dues") - unless the HOA text itself names
-  // a fee. A listing had "$922 monthly HOA fee" alongside dues of 0, and the chunk said both. When the
-  // text names a fee, the 0 is not trusted and is left out.
-  if (has(p.monthlyHOADues)) {
-    const textNamesFee = /\$\s?\d/.test(list(c.hoa));
-    if (Number(p.monthlyHOADues) !== 0) parts.push(`Monthly HOA dues are ${money(p.monthlyHOADues)}.`);
-    else if (!textNamesFee) parts.push('There are no monthly HOA dues.');
+  // The dues field and the HOA text can disagree (dues 0 with "$922 monthly HOA fee" in the text). Neither
+  // can be trusted then, so neither amount is written and the chunk says it is unconfirmed; the AI hands off.
+  if (hoaConflict(p)) {
+    parts.push('The monthly HOA fee for this property is not confirmed.');
+  } else {
+    if (list(c.hoa)) parts.push(`HOA: ${list(c.hoa)}.`);
+    // monthlyHOADues: a real 0 is meaningful ("no monthly HOA dues").
+    if (has(p.monthlyHOADues)) {
+      parts.push(
+        Number(p.monthlyHOADues) === 0
+          ? 'There are no monthly HOA dues.'
+          : `Monthly HOA dues are ${money(p.monthlyHOADues)}.`
+      );
+    }
   }
   return makeChunk(ctx, 'community', parts.length ? ['Community and HOA.', ...parts] : []);
 }
