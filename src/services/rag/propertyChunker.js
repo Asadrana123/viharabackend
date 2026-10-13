@@ -287,13 +287,13 @@ function buildCommunity(p, ctx) {
   const parts = [];
   if (list(c.communityInfo)) parts.push(`Community: ${list(c.communityInfo)}.`);
   if (list(c.hoa)) parts.push(`HOA: ${list(c.hoa)}.`);
-  // monthlyHOADues: a real 0 is meaningful ("no monthly HOA dues").
+  // monthlyHOADues: a real 0 is meaningful ("no monthly HOA dues") - unless the HOA text itself names
+  // a fee. A listing had "$922 monthly HOA fee" alongside dues of 0, and the chunk said both. When the
+  // text names a fee, the 0 is not trusted and is left out.
   if (has(p.monthlyHOADues)) {
-    parts.push(
-      Number(p.monthlyHOADues) === 0
-        ? 'There are no monthly HOA dues.'
-        : `Monthly HOA dues are ${money(p.monthlyHOADues)}.`
-    );
+    const textNamesFee = /\$\s?\d/.test(list(c.hoa));
+    if (Number(p.monthlyHOADues) !== 0) parts.push(`Monthly HOA dues are ${money(p.monthlyHOADues)}.`);
+    else if (!textNamesFee) parts.push('There are no monthly HOA dues.');
   }
   return makeChunk(ctx, 'community', parts.length ? ['Community and HOA.', ...parts] : []);
 }
@@ -378,17 +378,26 @@ function buildComparables(p, ctx) {
   return makeChunk(ctx, 'comparables', ['Comparable sales nearby:', rows.join('; ') + '.']);
 }
 
+// Stored newest first (checked on every listing). A flat list reads as oldest to newest, which made the
+// AI say a property "started at" its latest price. So the chunk is written oldest to newest, says so,
+// and states the latest entry and the last sale outright.
+const PRICE_HISTORY_ENTRIES = 10;
 function buildPriceHistory(p, ctx) {
   const hist = Array.isArray(p.investmentData && p.investmentData.priceHistory)
     ? p.investmentData.priceHistory.filter((h) => h && has(h.year))
     : [];
   if (!hist.length) return null;
-  const rows = hist.slice(0, 6).map((h) => {
-    const ev = has(h.event) ? h.event : '';
-    const pr = has(h.price) ? money(h.price) : '';
-    return [h.year, ev, pr].filter(has).join(' ');
-  });
-  return makeChunk(ctx, 'priceHistory', ['Price history:', rows.join('; ') + '.']);
+  const say = (h) => [h.year, has(h.event) ? h.event : '', has(h.price) ? money(h.price) : ''].filter(has).join(' ');
+  const recent = hist.slice(0, PRICE_HISTORY_ENTRIES).reverse(); // oldest to newest
+  const parts = [
+    'Price history, oldest to newest:',
+    recent.map(say).join('; ') + '.',
+    `The most recent entry is: ${say(hist[0])}.`,
+  ];
+  if (hist.length > PRICE_HISTORY_ENTRIES) parts.push('Older entries are not shown.');
+  const lastSale = hist.find((h) => /sold/i.test(String(h.event || '')) && has(h.price));
+  if (lastSale) parts.push(`The most recent recorded sale was in ${lastSale.year} for ${money(lastSale.price)}.`);
+  return makeChunk(ctx, 'priceHistory', parts);
 }
 
 function buildMarketInsights(p, ctx) {
