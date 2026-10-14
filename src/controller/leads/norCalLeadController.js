@@ -11,6 +11,7 @@ const { listView, scopeQuery, unlessSummary, shapeLeads } = require("../../servi
 const { getVtextMessagesForPhones } = require("../../services/vtext/vtextLeadMessagesService");
 const { syncNorCalLead } = require("../../services/integrations/brevoService");
 const { notifyNewLead } = require("../../services/shared/slackService");
+const { needsFinancingFrom, needsFinancingLabel } = require("../../services/leads/buyBox");
 const { norCalPageUrl } = require("../../config/siteUrls");
 
 // Note discriminator for NorCal leads (matches leadNoteModel.LEAD_TYPES + the
@@ -43,6 +44,7 @@ const registerNorCalLead = catchAsyncError(async (req, res, next) => {
     budget,
     bedrooms,
     when,
+    needsFinancing,
     timezone,
     consent,
     consentText,
@@ -89,6 +91,7 @@ const registerNorCalLead = catchAsyncError(async (req, res, next) => {
       budget: budget || "",
       bedrooms: bedrooms || "",
       when: when || "",
+      needsFinancing: needsFinancingFrom(needsFinancing),
       timezone: timezone || "",
       consent: consent === true,
       consentText: consentText || "",
@@ -153,6 +156,7 @@ const registerNorCalLead = catchAsyncError(async (req, res, next) => {
       { label: "Budget", value: lead.budget || "—" },
       { label: "Bedrooms", value: lead.bedrooms || "—" },
       { label: "When", value: lead.when || "—" },
+      { label: "Needs Financing", value: needsFinancingLabel(lead.needsFinancing) },
     ],
   }).catch((e) => console.error("[slack] nor-cal notify failed:", e.message));
 

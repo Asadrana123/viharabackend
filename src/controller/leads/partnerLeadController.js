@@ -10,6 +10,7 @@ const { getNotesForLeads } = require("../../services/leads/leadNotesService");
 const { listView, scopeQuery, unlessSummary, shapeLeads } = require("../../services/leads/leadListView");
 const { getVtextMessagesForPhones } = require("../../services/vtext/vtextLeadMessagesService");
 const { notifyNewLead } = require("../../services/shared/slackService");
+const { needsFinancingFrom, needsFinancingLabel } = require("../../services/leads/buyBox");
 
 // Discriminator stamped on each note so notes never bleed across lead types.
 const LEAD_NOTE_TYPE = "partner";
@@ -34,7 +35,7 @@ const { partnerPageUrl } = require("../../config/siteUrls");
  */
 const registerAndCall = catchAsyncError(async (req, res, next) => {
   const {
-    firstName, lastName, email, phone, primaryMarket, persona, timezone,
+    firstName, lastName, email, phone, primaryMarket, persona, needsFinancing, timezone,
     consent, consentText, consentTimestamp, eventId,
     smsConsent, smsConsentText,
   } = req.body;
@@ -69,6 +70,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       phoneNormalized,              // canonical, for dialing
       primaryMarket: (primaryMarket || "").trim(),
       persona: (persona || "").trim(),
+      needsFinancing: needsFinancingFrom(needsFinancing),
       timezone: timezone || "",
       consent: consent === true,
       consentText: consentText || "",
@@ -124,6 +126,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
     extraFields: [
       { label: "Primary Market", value: lead.primaryMarket },
       { label: "Persona", value: lead.persona },
+      { label: "Needs Financing", value: needsFinancingLabel(lead.needsFinancing) },
     ],
   }).catch((e) => console.error("[slack] partner notify failed:", e.message));
 

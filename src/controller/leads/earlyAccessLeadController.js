@@ -11,6 +11,7 @@ const { getNotesForLeads } = require("../../services/leads/leadNotesService");
 const { listView, scopeQuery, unlessSummary, shapeLeads } = require("../../services/leads/leadListView");
 const { getVtextMessagesForPhones } = require("../../services/vtext/vtextLeadMessagesService");
 const { notifyNewLead } = require("../../services/shared/slackService");
+const { needsFinancingFrom, needsFinancingLabel } = require("../../services/leads/buyBox");
 
 // Discriminator stamped on each note so notes never bleed across lead types.
 const LEAD_NOTE_TYPE = "earlyAccess";
@@ -41,7 +42,7 @@ const EARLY_ACCESS_REGISTERING_AS = {
  */
 const registerAndCall = catchAsyncError(async (req, res, next) => {
   const {
-    fullName, email, phone, markets, buyerType, dealSize, timezone,
+    fullName, email, phone, markets, buyerType, dealSize, needsFinancing, timezone,
     consent, consentText, consentTimestamp, eventId,
   } = req.body;
 
@@ -68,6 +69,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       markets: markets || "",
       buyerType: buyerType || "",
       dealSize: dealSize || "",
+      needsFinancing: needsFinancingFrom(needsFinancing),
       timezone: timezone || "",
       consent: consent === true,
       consentText: consentText || "",
@@ -121,6 +123,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       { label: "Markets", value: lead.markets },
       { label: "Buyer Type", value: EARLY_ACCESS_REGISTERING_AS[lead.buyerType] || lead.buyerType },
       { label: "Deal Size", value: lead.dealSize },
+      { label: "Needs Financing", value: needsFinancingLabel(lead.needsFinancing) },
     ],
   }).catch((e) => console.error("[slack] early-access notify failed:", e.message));
 
