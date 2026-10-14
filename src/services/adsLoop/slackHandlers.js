@@ -141,6 +141,20 @@ async function statusText() {
         .join("\n");
 }
 
+/**
+ * A property slug as typed in Slack: strips code formatting (`...`), quotes,
+ * Slack link brackets (<url|text>) and takes the last part of a pasted page
+ * link (https://www.vihara.ai/auction/<slug>).
+ */
+function cleanSlug(raw) {
+    let s = String(raw || "").trim();
+    s = s.replace(/^<([^|>]+)(\|[^>]*)?>$/, "$1"); // <https://...|text> -> https://...
+    s = s.replace(/[`'"*_​]/g, "").trim();
+    s = s.split(/[?#]/)[0].replace(/\/+$/, "");
+    if (s.includes("/")) s = s.split("/").pop();
+    return s.toLowerCase();
+}
+
 /** @returns {Promise<string>} the reply shown to the person who typed the command */
 async function handleCommand({ text, userId, runInBackground }) {
     const [sub = "help", ...rest] = String(text || "").trim().split(/\s+/);
@@ -161,14 +175,16 @@ async function handleCommand({ text, userId, runInBackground }) {
             return statusText();
         case "build": {
             guard.assertApprover(userId);
-            const property = await productModel.findOne({ slug: arg.toLowerCase() }).select("_id slug").lean();
-            if (!property) return `No property with slug "${arg}".`;
+            const slug = cleanSlug(arg);
+            if (!slug) return "Add the property: `/adsloop build <property slug or auction page link>`.";
+            const property = await productModel.findOne({ slug }).select("_id slug").lean();
+            if (!property) return `No property with slug "${slug}". Copy it from the auction page link (the part after /auction/).`;
             const creative = await startCreative({ propertyId: property._id });
             return `🛠️ Building *${creative.ltId}* for ${property.slug}. It will appear in <#${getAdsLoopConfig().slack.creativeReviewChannel}>.`;
         }
         case "retry": {
             guard.assertApprover(userId);
-            const updated = await retryCreative(arg.toUpperCase());
+            const updated = await retryCreative(arg.replace(/[`'"*_]/g, "").trim().toUpperCase());
             return updated ? `🛠️ Retrying ${updated.ltId} v${updated.version}.` : `${arg} is not a failed build.`;
         }
         case "pull":
@@ -230,4 +246,4 @@ async function replayMissed() {
     }
 }
 
-module.exports = { handleEvent, handleInteraction, handleCommand, replayMissed, statusText };
+module.exports = { handleEvent, handleInteraction, handleCommand, replayMissed, statusText, cleanSlug };
