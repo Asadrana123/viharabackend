@@ -31,17 +31,21 @@ const isQualified = (lead) => Boolean(String(lead.phone || "").trim()) && (lead.
 // utm_content carries the core id (BB449-S01).
 const CORE_ID_REGEX = /[A-Z0-9]{2,16}-[SC]\d{2}/i;
 
-/** Every lead source as [{ utm_source, utm_medium, utm_content, phone, consent, smsConsent }]. */
-async function leadsCreatedBetween(start, end) {
+/**
+ * Every lead source as [{ utm_source, utm_medium, utm_content, phone, consent, smsConsent }].
+ * Only leads whose utm_content carries a core id, unless `anyContent`.
+ */
+async function leadsCreatedBetween(start, end, { anyContent = false } = {}) {
     const range = { createdAt: { $gte: start, $lt: end } };
-    const touchQuery = { ...range, "lastTouch.utm_content": CORE_ID_REGEX };
+    const touchQuery = anyContent ? range : { ...range, "lastTouch.utm_content": CORE_ID_REGEX };
+    const landingQuery = anyContent ? range : { ...range, utm_content: CORE_ID_REGEX };
     const touchFields = "lastTouch phone consent smsConsent";
 
     const [property, buyerList, newDeals, landing] = await Promise.all([
         PropertyLead.find({ ...touchQuery, isQaTest: { $ne: true } }).select(touchFields).lean(),
         BuyerListLead.find(touchQuery).select(touchFields).lean(),
         NewDealsLead.find(touchQuery).select(touchFields).lean(),
-        LandingPageLead.find({ ...range, utm_content: CORE_ID_REGEX }).select("utm_source utm_medium utm_content phone").lean(),
+        LandingPageLead.find(landingQuery).select("utm_source utm_medium utm_content phone").lean(),
     ]);
 
     const fromTouch = (l) => ({ ...l.lastTouch, phone: l.phone, consent: l.consent, smsConsent: l.smsConsent });
@@ -66,4 +70,10 @@ async function leadCountsBetween(start, end) {
     return out;
 }
 
-module.exports = { leadCountsBetween, isQualified, channelOf };
+/** Sign-ups saved between start and end that came from a paid Meta ad (any utm_content). */
+async function metaAdSignupsBetween(start, end) {
+    const leads = await leadsCreatedBetween(start, end, { anyContent: true });
+    return leads.filter((l) => channelOf(l.utm_source, l.utm_medium) === "meta_ad").length;
+}
+
+module.exports = { leadCountsBetween, metaAdSignupsBetween, isQualified, channelOf };

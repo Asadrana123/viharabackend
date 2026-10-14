@@ -38,6 +38,7 @@ const norCalLeadSchema = new mongoose.Schema(
     // Self-ID pill from the page: Individual Investor | Buy & Hold |
     // Volume Flipper | Fund Operator.
     buyerType: { type: String, default: "", trim: true },
+    needsFinancing: { type: String, default: "", trim: true }, // yes | no | not_sure
 
     // Market is fixed for this page but stored explicitly for reporting.
     market: { type: String, default: "Northern California", trim: true },

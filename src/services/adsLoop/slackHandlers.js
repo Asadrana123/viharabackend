@@ -2,8 +2,8 @@
 //
 // Everything that arrives from Slack, after the route checked its signature:
 //   events        thread replies (#creative-review notes, "go" in #ads-weekly) and ✅ reactions
-//   interactions  Approve / Reject / Go / Activate buttons
-//   /adsloop      stop | resume | status | build <property slug> | retry <core id> | pull | weekly
+//   interactions  Approve / Reject / Go / Activate buttons (and the repair agent's buttons)
+//   /adsloop      stop | resume | status | build <property slug> | retry <core id> | pull | weekly | repair
 //
 // Every message / reaction / click is claimed once (processedSlackMessages)
 // before it is handled, so Slack retries and restart replays never act twice.
@@ -26,6 +26,7 @@ const proposals = require("./proposalService");
 const { startCreative, retryCreative } = require("./creativePipeline");
 const { parseCoreId } = require("./creativeId");
 const { getState, setKillSwitch, setLastHandledTs, getLastHandledTs } = require("./loopState");
+const repair = require("../repair/incidentService");
 
 const REPLAY_FALLBACK_S = 24 * 3600;
 
@@ -94,6 +95,11 @@ const ACTIONS = {
     proposal_go: (v, ctx) => proposals.handleGo({ proposalId: v, userId: ctx.userId, triggerKey: ctx.triggerKey }),
     proposal_reject: (v, ctx) => proposals.handleReject({ proposalId: v, userId: ctx.userId }),
     launch_activate: (v, ctx) => proposals.handleActivate({ proposalId: v, userId: ctx.userId, triggerKey: ctx.triggerKey }),
+    // Repair agent (same Slack app)
+    repair_go: (v, ctx) => repair.handleGo({ incidentId: v, userId: ctx.userId }),
+    repair_reject: (v, ctx) => repair.handleReject({ incidentId: v, userId: ctx.userId }),
+    repair_retry: (v, ctx) => repair.handleRetry({ incidentId: v, userId: ctx.userId }),
+    repair_recheck: (v, ctx) => repair.handleRecheck({ incidentId: v, userId: ctx.userId }),
 };
 
 async function handleInteraction(payload) {
@@ -124,6 +130,7 @@ const HELP = [
     "`/adsloop retry <core id>` · retry a failed build (approvers only)",
     "`/adsloop pull` · run the daily metrics pull now (approvers only)",
     "`/adsloop weekly` · post the weekly list now (approvers only)",
+    "`/adsloop repair` · run the repair agent's tracking and landing page checks now (approvers only)",
 ].join("\n");
 
 async function statusText() {
@@ -202,6 +209,10 @@ async function handleCommand({ text, userId, runInBackground }) {
             guard.assertApprover(userId);
             runInBackground(() => require("./weeklyAnalysis").runWeeklyAnalysis());
             return "Building the weekly list now; it will be posted in #ads-weekly.";
+        case "repair":
+            guard.assertApprover(userId);
+            runInBackground(() => repair.runChecks());
+            return "Running the repair checks now; anything broken is posted to the repair channel.";
         default:
             return HELP;
     }
