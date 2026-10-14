@@ -22,7 +22,7 @@ const adProposalSchema = new mongoose.Schema(
         proposalId: { type: String, required: true, unique: true }, // "2026-W42-03"
         week: { type: String, required: true }, // ISO week "2026-W42"
         kind: { type: String, enum: PROPOSAL_KINDS, required: true },
-        ltId: { type: String, default: null, index: true },
+        coreId: { type: String, default: null, index: true },
         payload: { type: mongoose.Schema.Types.Mixed, required: true },
         status: { type: String, enum: Object.values(PROPOSAL_STATUS), default: PROPOSAL_STATUS.PROPOSED, index: true },
         decidedBy: { type: String, default: null }, // Slack user id

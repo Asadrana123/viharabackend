@@ -22,7 +22,8 @@ const { META_CTA } = require("../../config/adsLoop/attributeTags");
 const guard = require("./guardrails");
 const zernio = require("./zernioClient");
 const slack = require("./slackBot");
-const { adName, landingUrl } = require("./ltId");
+const { adName, landingUrl, STAGES } = require("./creativeId");
+const { usesGeneratedImage } = require("./sourceRecord");
 const { startCreative, propertyLabel, assertCopyClean } = require("./creativePipeline");
 
 const { blocks: B } = slack;
@@ -33,12 +34,12 @@ const isoWeek = (date = new Date()) => DateTime.fromJSDate(date).setZone("Asia/K
 // ---------------------------------------------------------------------------
 // Create + post
 // ---------------------------------------------------------------------------
-async function createProposal({ kind, ltId = null, payload, week = isoWeek() }) {
+async function createProposal({ kind, coreId = null, payload, week = isoWeek() }) {
     for (let attempt = 0; attempt < 5; attempt++) {
         const n = (await AdProposal.countDocuments({ week })) + 1 + attempt;
         const proposalId = `${week}-${String(n).padStart(2, "0")}`;
         try {
-            return (await AdProposal.create({ proposalId, week, kind, ltId, payload })).toObject();
+            return (await AdProposal.create({ proposalId, week, kind, coreId, payload })).toObject();
         } catch (error) {
             if (error?.code !== 11000) throw error;
         }
@@ -50,13 +51,13 @@ function describe(p) {
     const x = p.payload || {};
     switch (p.kind) {
         case "launch":
-            return `Launch *${p.ltId}* at *$${x.dailyBudget}/day*, ${x.locationLabel}, automatic placements, Housing category. Created PAUSED, then you activate it.`;
+            return `Launch *${p.coreId}* at *$${x.dailyBudget}/day*, ${x.locationLabel}, automatic placements, Housing category. Created PAUSED, then you activate it.`;
         case "budget":
-            return `Change *${p.ltId}* daily budget from *$${x.fromDaily}* to *$${x.toDaily}*.`;
+            return `Change *${p.coreId}* daily budget from *$${x.fromDaily}* to *$${x.toDaily}*.`;
         case "pause":
-            return `Pause *${p.ltId}*.`;
+            return `Pause *${p.coreId}*.`;
         default:
-            return `${p.kind === "try" ? "Try a new creative" : `${p.kind === "vary" ? "Vary" : "Refresh"} *${x.baseLtId || p.ltId}*`} for *${x.propertyName || "the property"}*${
+            return `${p.kind === "try" ? "Try a new creative" : `${p.kind === "vary" ? "Vary" : "Refresh"} *${x.baseCoreId || p.coreId}*`} for *${x.propertyName || "the property"}*${
                 x.attributes ? ` (${Object.entries(x.attributes).map(([k, v]) => `${k}: ${v}`).join(", ")})` : ""
             }.`;
     }
@@ -64,7 +65,7 @@ function describe(p) {
 
 function proposalBlocks(p) {
     return [
-        B.section(`*${p.proposalId} · ${p.kind}${p.ltId ? ` · ${p.ltId}` : ""}*\n${describe(p)}`),
+        B.section(`*${p.proposalId} · ${p.kind}${p.coreId ? ` · ${p.coreId}` : ""}*\n${describe(p)}`),
         ...(p.payload?.rationale ? [B.context(`Why: ${p.payload.rationale}`)] : []),
         B.actions([
             B.button("Go", "proposal_go", p.proposalId, "primary"),
@@ -83,7 +84,7 @@ async function postProposal(p) {
 /** Replace the buttons with the outcome (or a "Try again" button). */
 async function closeProposal(p, statusLine, { retry = false } = {}) {
     if (!p.slackTs) return;
-    const blocks = [B.section(`*${p.proposalId} · ${p.kind}${p.ltId ? ` · ${p.ltId}` : ""}*\n${describe(p)}`), B.context(statusLine)];
+    const blocks = [B.section(`*${p.proposalId} · ${p.kind}${p.coreId ? ` · ${p.coreId}` : ""}*\n${describe(p)}`), B.context(statusLine)];
     if (retry) {
         blocks.push(B.actions([B.button("Try again", "proposal_go", p.proposalId, "primary"), B.button("Reject", "proposal_reject", p.proposalId, "danger")]));
     }
@@ -140,22 +141,22 @@ async function resolveLocation(property) {
 }
 
 /** Called when a creative is approved: proposes its launch in #ads-weekly. */
-async function proposeLaunch(ltId) {
-    const creative = await AdCreative.findOne({ ltId }).lean();
+async function proposeLaunch(coreId) {
+    const creative = await AdCreative.findOne({ coreId }).lean();
     const property = await productModel.findById(creative.property).lean();
     const { defaultDailyBudget } = getAdsLoopConfig().ads;
     const location = await resolveLocation(property);
 
     const p = await createProposal({
         kind: "launch",
-        ltId,
+        coreId,
         payload: {
-            ltId,
+            coreId,
             propertyName: propertyLabel(property),
             dailyBudget: defaultDailyBudget,
             targeting: location.targeting,
             locationLabel: location.locationLabel,
-            rationale: `${ltId} was approved in #creative-review.`,
+            rationale: `${coreId} was approved in #creative-review.`,
         },
     });
     return postProposal(p);
@@ -164,16 +165,18 @@ async function proposeLaunch(ltId) {
 function launchBody(creative, payload) {
     const config = getAdsLoopConfig();
     const a = creative.attributes || {};
-    const link = landingUrl({ propertySlug: creative.propertySlug, campaignSlug: config.ads.campaignSlug, ltId: creative.ltId });
-    const name = adName(creative.ltId, creative.propertySlug, a.layout);
+    const link = landingUrl({ propertySlug: creative.propertySlug, campaignSlug: config.ads.campaignSlug, coreId: creative.coreId });
+    const ratio = a.format === "carousel" ? config.creative.carouselRatio : config.creative.staticAdRatio;
+    // AP-BB449-S01_<hook>_<icp>_<direction>_static-4x5
+    const name = adName({ coreId: creative.coreId, attributes: a, sourceRecord: creative.sourceRecord, ratio });
     const urls = (c) => (c.assetUrls instanceof Map ? Object.fromEntries(c.assetUrls) : c.assetUrls || {});
 
     const body = {
         accountId: config.zernio.adsAccountId,
         adAccountId: config.zernio.adAccountId,
         name,
-        campaignName: `${config.ads.campaignSlug} | ${creative.ltId}`,
-        adSetName: `${creative.ltId} | ${creative.propertySlug}`,
+        campaignName: `${config.ads.campaignSlug} | ${creative.coreId}`,
+        adSetName: `${creative.coreId} | ${creative.propertySlug}`,
         adName: name,
         goal: config.ads.goal,
         budgetAmount: payload.dailyBudget,
@@ -191,13 +194,15 @@ function launchBody(creative, payload) {
         specialAdCategoryCountry: ["US"],
         targeting: payload.targeting,
         advantageAudience: 0,
+        // Meta's "Ad includes media created or edited with AI" label, from the Creative OS record.
+        ...(usesGeneratedImage(creative) ? { aiDisclosure: "OPT_IN" } : {}),
         ...(config.ads.pixelId ? { tracking: { pixelId: config.ads.pixelId } } : {}),
     };
 
     if (a.format === "carousel") {
-        body.carouselCards = creative.cards.map((c) => ({ imageUrl: urls(c)["1x1"], headline: c.headline, description: c.description, linkUrl: link }));
+        body.carouselCards = creative.cards.map((c) => ({ imageUrl: urls(c)[ratio] || urls(c)["1x1"], headline: c.headline, description: c.description, linkUrl: link }));
     } else {
-        body.imageUrl = urls(creative.cards[0])["1x1"];
+        body.imageUrl = urls(creative.cards[0])[ratio] || urls(creative.cards[0])["1x1"];
     }
     return { body, link, name };
 }
@@ -209,21 +214,21 @@ async function runCreativeProposal(p, { userId }) {
     const x = p.payload;
     const creative = await startCreative({
         propertyId: x.propertyId,
-        parentLtId: p.kind === "try" ? null : x.baseLtId || p.ltId,
+        parentCoreId: p.kind === "try" ? null : x.baseCoreId || p.coreId,
         brief: { kind: p.kind, rationale: x.rationale, attributes: x.attributes || null },
         proposalId: p.proposalId,
     });
-    await AdProposal.updateOne({ proposalId: p.proposalId }, { $set: { status: PROPOSAL_STATUS.BUILT, ltId: creative.ltId } });
-    return `🛠️ <@${userId}> said go: building *${creative.ltId}*. It will appear in <#${getAdsLoopConfig().slack.creativeReviewChannel}>.`;
+    await AdProposal.updateOne({ proposalId: p.proposalId }, { $set: { status: PROPOSAL_STATUS.BUILT, coreId: creative.coreId } });
+    return `🛠️ <@${userId}> said go: building *${creative.coreId}*. It will appear in <#${getAdsLoopConfig().slack.creativeReviewChannel}>.`;
 }
 
 async function runLaunch(p, { userId, triggerKey }) {
-    const creative = await AdCreative.findOne({ ltId: p.ltId }).lean();
-    if (!creative) throw new Error(`${p.ltId} not found`);
-    if (![CREATIVE_STATUS.APPROVED, CREATIVE_STATUS.SCHEDULED].includes(creative.status)) {
-        throw new guard.GuardrailError(`${p.ltId} is "${creative.status}"; only approved creatives can be launched.`);
+    const creative = await AdCreative.findOne({ coreId: p.coreId }).lean();
+    if (!creative) throw new Error(`${p.coreId} not found`);
+    if (![CREATIVE_STATUS.APPROVED, CREATIVE_STATUS.SCHEDULED].includes(creative.status) || creative.stage !== STAGES.AP) {
+        throw new guard.GuardrailError(`${creative.name || p.coreId} is "${creative.status}"; only approved (AP-) creatives can be launched.`);
     }
-    if (creative.meta?.zernioAdId) throw new guard.GuardrailError(`${p.ltId} already has an ad (${creative.meta.adId}).`);
+    if (creative.meta?.zernioAdId) throw new guard.GuardrailError(`${p.coreId} already has an ad (${creative.meta.adId}).`);
     await assertCopyClean(creative);
 
     // The ad starts paused, but count its budget now so activating it can't break the ceilings.
@@ -237,7 +242,7 @@ async function runLaunch(p, { userId, triggerKey }) {
         triggerKey,
         channel: p.slackChannel,
         proposalId: p.proposalId,
-        ltId: p.ltId,
+        coreId: p.coreId,
         request: body,
         run: () => zernio.createAd(body, `launch-${p.proposalId}`),
     });
@@ -245,7 +250,7 @@ async function runLaunch(p, { userId, triggerKey }) {
     const ad = response?.ad || response?.ads?.[0];
     if (!ad) throw new Error("Zernio did not return the new ad");
     await AdCreative.updateOne(
-        { ltId: p.ltId },
+        { coreId: p.coreId },
         {
             $set: {
                 "meta.zernioAdId": ad._id,
@@ -264,9 +269,9 @@ async function runLaunch(p, { userId, triggerKey }) {
     await slack.postMessage({
         channel: p.slackChannel,
         threadTs: p.slackTs,
-        text: `${p.ltId} created PAUSED`,
+        text: `${p.coreId} created PAUSED`,
         blocks: [
-            B.section(`✅ *${p.ltId}* created on Meta, *PAUSED* (ad ${ad.platformAdId}, Housing category). Check it in Ads Manager, then activate.`),
+            B.section(`✅ *${p.coreId}* created on Meta, *PAUSED* (ad ${ad.platformAdId}, Housing category). Check it in Ads Manager, then activate.`),
             B.actions([B.button("Activate", "launch_activate", p.proposalId, "primary")]),
         ],
     });
@@ -274,9 +279,9 @@ async function runLaunch(p, { userId, triggerKey }) {
 }
 
 async function runBudget(p, { userId, triggerKey }) {
-    const creative = await AdCreative.findOne({ ltId: p.ltId }).lean();
+    const creative = await AdCreative.findOne({ coreId: p.coreId }).lean();
     const adSetId = p.payload.adSetId || creative?.meta?.adSetId;
-    if (!adSetId) throw new guard.GuardrailError(`${p.ltId} has no ad set on Meta yet.`);
+    if (!adSetId) throw new guard.GuardrailError(`${p.coreId} has no ad set on Meta yet.`);
 
     const adSet = await zernio.getAdSet(adSetId);
     guard.assertNotLearning(adSet);
@@ -284,7 +289,7 @@ async function runBudget(p, { userId, triggerKey }) {
     const toDaily = Number(p.payload.toDaily);
     await guard.checkBudgetChange({ adSetId, currentDaily, newDaily: toDaily });
     if (creative?.status === CREATIVE_STATUS.LIVE) {
-        await guard.checkSpendCeilings({ addDaily: toDaily, excludeLtId: p.ltId });
+        await guard.checkSpendCeilings({ addDaily: toDaily, excludeCoreId: p.coreId });
     }
 
     const request = { budget: { amount: toDaily, type: "daily" } };
@@ -294,20 +299,20 @@ async function runBudget(p, { userId, triggerKey }) {
         triggerKey,
         channel: p.slackChannel,
         proposalId: p.proposalId,
-        ltId: p.ltId,
+        coreId: p.coreId,
         adSetId,
         request: { adSetId, ...request },
         run: () => zernio.updateAdSet(adSetId, request),
     });
-    await AdCreative.updateOne({ ltId: p.ltId }, { $set: { "meta.dailyBudget": toDaily } });
+    await AdCreative.updateOne({ coreId: p.coreId }, { $set: { "meta.dailyBudget": toDaily } });
     await AdProposal.updateOne({ proposalId: p.proposalId }, { $set: { status: PROPOSAL_STATUS.EXECUTED } });
     return `💰 Budget changed from $${currentDaily} to $${toDaily}/day by <@${userId}>.`;
 }
 
 async function runPause(p, { userId, triggerKey }) {
-    const creative = await AdCreative.findOne({ ltId: p.ltId }).lean();
+    const creative = await AdCreative.findOne({ coreId: p.coreId }).lean();
     const adId = creative?.meta?.zernioAdId || creative?.meta?.adId;
-    if (!adId) throw new guard.GuardrailError(`${p.ltId} has no ad on Meta.`);
+    if (!adId) throw new guard.GuardrailError(`${p.coreId} has no ad on Meta.`);
 
     await guard.executeWrite({
         action: "pause",
@@ -315,12 +320,12 @@ async function runPause(p, { userId, triggerKey }) {
         triggerKey,
         channel: p.slackChannel,
         proposalId: p.proposalId,
-        ltId: p.ltId,
+        coreId: p.coreId,
         adSetId: creative.meta.adSetId,
         request: { adId, status: "paused" },
         run: () => zernio.setAdStatus(adId, "paused"),
     });
-    await AdCreative.updateOne({ ltId: p.ltId }, { $set: { status: CREATIVE_STATUS.PAUSED } });
+    await AdCreative.updateOne({ coreId: p.coreId }, { $set: { status: CREATIVE_STATUS.PAUSED } });
     await AdProposal.updateOne({ proposalId: p.proposalId }, { $set: { status: PROPOSAL_STATUS.EXECUTED } });
     return `⏸️ Paused by <@${userId}>.`;
 }
@@ -385,8 +390,8 @@ async function handleActivate({ proposalId, userId, triggerKey }) {
     if (!p) return;
 
     try {
-        const creative = await AdCreative.findOne({ ltId: p.ltId }).lean();
-        await guard.checkSpendCeilings({ addDaily: creative.meta.dailyBudget || 0, excludeLtId: p.ltId });
+        const creative = await AdCreative.findOne({ coreId: p.coreId }).lean();
+        await guard.checkSpendCeilings({ addDaily: creative.meta.dailyBudget || 0, excludeCoreId: p.coreId });
         const adId = creative.meta.zernioAdId || creative.meta.adId;
         await guard.executeWrite({
             action: "activate",
@@ -394,14 +399,14 @@ async function handleActivate({ proposalId, userId, triggerKey }) {
             triggerKey,
             channel: p.slackChannel,
             proposalId: p.proposalId,
-            ltId: p.ltId,
+            coreId: p.coreId,
             adSetId: creative.meta.adSetId,
             request: { adId, status: "active" },
             run: () => zernio.setAdStatus(adId, "active"),
         });
-        await AdCreative.updateOne({ ltId: p.ltId }, { $set: { status: CREATIVE_STATUS.LIVE } });
+        await AdCreative.updateOne({ coreId: p.coreId }, { $set: { status: CREATIVE_STATUS.LIVE } });
         await AdProposal.updateOne({ proposalId }, { $set: { status: PROPOSAL_STATUS.EXECUTED } });
-        await slack.replyInThread(p.slackChannel, p.slackTs, `🚀 *${p.ltId}* is live, activated by <@${userId}>.`);
+        await slack.replyInThread(p.slackChannel, p.slackTs, `🚀 *${p.coreId}* is live, activated by <@${userId}>.`);
     } catch (error) {
         await AdProposal.updateOne({ proposalId }, { $set: { "payload.activating": false, note: error.message } });
         await slack.replyInThread(p.slackChannel, p.slackTs, `${error instanceof guard.GuardrailError ? "🛑 Blocked" : "⚠️ Failed"}: ${error.message}`);

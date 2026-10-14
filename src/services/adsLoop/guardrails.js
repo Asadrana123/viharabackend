@@ -99,11 +99,11 @@ function assertNotLearning(adSet) {
 }
 
 /** Daily budget of every loop ad that is running now. */
-async function runningDailyBudget({ excludeLtId } = {}) {
+async function runningDailyBudget({ excludeCoreId } = {}) {
     const live = await AdCreative.find({
         status: CREATIVE_STATUS.LIVE,
         "meta.dailyBudget": { $gt: 0 },
-        ...(excludeLtId ? { ltId: { $ne: excludeLtId } } : {}),
+        ...(excludeCoreId ? { coreId: { $ne: excludeCoreId } } : {}),
     })
         .select("meta.dailyBudget")
         .lean();
@@ -112,13 +112,13 @@ async function runningDailyBudget({ excludeLtId } = {}) {
 
 /**
  * Would the loop's spend stay under both ceilings if `addDaily` more per day
- * started now (and `excludeLtId`'s budget were replaced)?
+ * started now (and `excludeCoreId`'s budget were replaced)?
  */
-async function checkSpendCeilings({ addDaily = 0, excludeLtId } = {}) {
+async function checkSpendCeilings({ addDaily = 0, excludeCoreId } = {}) {
     const config = getAdsLoopConfig();
     const { dailySpendCeiling, monthlySpendCeiling } = config.guardrails;
 
-    const daily = (await runningDailyBudget({ excludeLtId })) + addDaily;
+    const daily = (await runningDailyBudget({ excludeCoreId })) + addDaily;
     if (daily > dailySpendCeiling + 1e-9) {
         throw new GuardrailError(`This would bring daily budgets to $${daily.toFixed(2)}, over the $${dailySpendCeiling} daily ceiling.`);
     }
@@ -173,15 +173,57 @@ function allowedDollarAmounts(property) {
         .filter((n) => Number.isFinite(n) && n > 0);
 }
 
+const PERCENT_RE = /(\d+(?:\.\d+)?)\s*%/g;
+const MONEY_RE = /\$\s?(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(k|m|thousand|million)?\b/gi;
+const MONEY_UNIT = { k: 1e3, thousand: 1e3, m: 1e6, million: 1e6 };
+
+/**
+ * Supported figures from the creative's Creative OS record. The record lists
+ * every figure with its source; only those may appear besides the property's
+ * own numbers. Accepts { figures: [{ text: "12%" } | { kind: "percent", value: 12 }
+ * | "$525K" ...] }.
+ * @returns {{ percents: number[], dollars: number[] }}
+ */
+function recordFigures(record) {
+    const percents = [];
+    const dollars = [];
+    for (const f of Array.isArray(record?.figures) ? record.figures : []) {
+        if (f && typeof f === "object" && Number.isFinite(Number(f.value)) && f.kind) {
+            if (/percent/i.test(f.kind)) percents.push(Number(f.value));
+            else if (/dollar|usd|money|price/i.test(f.kind)) dollars.push(Math.round(Number(f.value)));
+            continue;
+        }
+        const text = typeof f === "string" ? f : String(f?.text ?? f?.display ?? "");
+        for (const m of text.matchAll(PERCENT_RE)) percents.push(Number(m[1]));
+        for (const m of text.matchAll(MONEY_RE)) {
+            dollars.push(Math.round(Number(m[1].replace(/,/g, "")) * (MONEY_UNIT[(m[2] || "").toLowerCase()] || 1)));
+        }
+    }
+    return { percents, dollars };
+}
+
+/** True when the text has numeric percentages and every one is a supported figure. */
+function percentsAllSupported(text, supported) {
+    const found = [...String(text).matchAll(PERCENT_RE)].map((m) => Number(m[1]));
+    if (!found.length) return false; // "per cent" wording without a number stays refused
+    return found.every((p) => supported.some((s) => Math.abs(s - p) < 0.051));
+}
+
 /**
  * @param {string[]} texts  every piece of copy (headline, primary text, on-image text, card text)
+ * @param {object} property
+ * @param {object} [record]  the creative's Creative OS record: its supported
+ *   percentages and dollar figures are allowed; everything else is still refused,
+ *   and guaranteed returns and Fair Housing words are always refused
  * @returns {string[]} readable problems, [] when clean
  */
-function copyPolicyProblems(texts, property) {
-    const ctx = { allowedDollarAmounts: allowedDollarAmounts(property) };
+function copyPolicyProblems(texts, property, record = null) {
+    const figures = recordFigures(record);
+    const ctx = { allowedDollarAmounts: [...allowedDollarAmounts(property), ...figures.dollars] };
     const problems = [];
     for (const text of texts.filter(Boolean)) {
         for (const flag of checkLine(text, ctx)) {
+            if (flag.rule === "no-percentages" && percentsAllSupported(text, figures.percents)) continue;
             problems.push(`${flag.label}: "${flag.match}" in "${text.slice(0, 80)}"`);
         }
     }
@@ -199,7 +241,7 @@ function copyPolicyProblems(texts, property) {
  * @param {object} p.request       what is sent (stored in the change log)
  * @param {Function} p.run         async () => response
  */
-async function executeWrite({ action, approvedBy, triggerKey, channel, proposalId = null, ltId = null, adSetId = null, request, run }) {
+async function executeWrite({ action, approvedBy, triggerKey, channel, proposalId = null, coreId = null, adSetId = null, request, run }) {
     assertApprover(approvedBy);
     await assertWritesAllowed();
 
@@ -207,7 +249,7 @@ async function executeWrite({ action, approvedBy, triggerKey, channel, proposalI
         throw new GuardrailError("This was already done (the same Slack action can't run twice).");
     }
 
-    const base = { proposalId, ltId, action, adSetId, request, approvedBy, triggerKey, executedAt: new Date() };
+    const base = { proposalId, coreId, action, adSetId, request, approvedBy, triggerKey, executedAt: new Date() };
     try {
         const response = await run();
         await AdChangeLog.create({ ...base, response, ok: true });
@@ -230,5 +272,6 @@ module.exports = {
     checkSpendCeilings,
     assertHousingCompliant,
     copyPolicyProblems,
+    recordFigures,
     executeWrite,
 };

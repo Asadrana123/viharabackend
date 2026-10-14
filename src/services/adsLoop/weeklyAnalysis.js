@@ -41,12 +41,12 @@ const fmt = (x, d = 2) => (x === null || x === undefined ? "–" : Number(x).toF
 // ---------------------------------------------------------------------------
 // Numbers
 // ---------------------------------------------------------------------------
-async function totalsByLtId(fromDate, toDate, channel = "meta_ad") {
+async function totalsByCoreId(fromDate, toDate, channel = "meta_ad") {
     const rows = await AdResult.aggregate([
         { $match: { channel, date: { $gte: fromDate, $lte: toDate } } },
         {
             $group: {
-                _id: "$ltId",
+                _id: "$coreId",
                 spend: { $sum: { $ifNull: ["$spend", 0] } },
                 impressions: { $sum: { $ifNull: ["$impressions", 0] } },
                 clicks: { $sum: { $ifNull: ["$clicks", 0] } },
@@ -75,7 +75,7 @@ function attributePerformance(creatives, totals) {
         out[key] = {};
         for (const c of creatives) {
             const value = c.attributes?.[key];
-            const t = totals.get(c.ltId);
+            const t = totals.get(c.coreId);
             if (!value || !t) continue;
             const agg = (out[key][value] = out[key][value] || { creatives: 0, spend: 0, impressions: 0, clicks: 0, qualifiedLeads: 0 });
             agg.creatives += 1;
@@ -114,10 +114,10 @@ async function trainingMetrics(zone) {
     // New creatives this month vs last month (median per creative).
     const monthAgo = new Date(Date.now() - 30 * 864e5);
     const twoMonthsAgo = new Date(Date.now() - 60 * 864e5);
-    const totals = await totalsByLtId(daysAgo(zone, 60), daysAgo(zone, 1));
+    const totals = await totalsByCoreId(daysAgo(zone, 60), daysAgo(zone, 1));
     const cohort = async (from, to) => {
-        const list = await AdCreative.find({ createdAt: { $gte: from, $lt: to } }).select("ltId").lean();
-        const t = list.map((c) => totals.get(c.ltId)).filter(Boolean);
+        const list = await AdCreative.find({ createdAt: { $gte: from, $lt: to } }).select("coreId").lean();
+        const t = list.map((c) => totals.get(c.coreId)).filter(Boolean);
         return { ctr: median(t.map((x) => x.ctr)), cpql: median(t.map((x) => x.cpql)) };
     };
     const [recent, previous] = await Promise.all([cohort(monthAgo, new Date()), cohort(twoMonthsAgo, monthAgo)]);
@@ -138,7 +138,7 @@ async function trainingMetrics(zone) {
 
 /** Label the best and worst creatives with enough spend as winner / loser in the library. */
 async function labelWinnersAndLosers(zone) {
-    const totals = await totalsByLtId(daysAgo(zone, 28), daysAgo(zone, 1));
+    const totals = await totalsByCoreId(daysAgo(zone, 28), daysAgo(zone, 1));
     const ranked = [...totals.values()]
         .filter((t) => t.spend >= MIN_SPEND_FOR_LABEL)
         .map((t) => ({ ...t, score: t.cpql ?? (t.ctr ? 1000 / t.ctr : Infinity) }))
@@ -150,11 +150,11 @@ async function labelWinnersAndLosers(zone) {
     const losers = ranked.slice(-cut);
     for (const [label, list] of [["winner", winners], ["loser", losers]]) {
         for (const t of list) {
-            const c = await AdCreative.findOne({ ltId: t._id }).lean();
+            const c = await AdCreative.findOne({ coreId: t._id }).lean();
             const imageUrl = c && reviewImageUrls(c)[0];
             if (!imageUrl) continue;
             await learning.addExample({
-                ltId: t._id,
+                coreId: t._id,
                 label,
                 attributes: c.attributes,
                 why: `${label === "winner" ? "Top" : "Bottom"} 20% by cost per qualified lead over 4 weeks ($${fmt(t.spend)} spend).`,
@@ -189,13 +189,13 @@ const WEEKLY_SCHEMA = {
                 type: "object",
                 properties: {
                     kind: { type: "string", enum: ["refresh", "vary", "try", "budget", "pause"] },
-                    ltId: { type: "string", description: "The creative this is about; \"\" for try." },
+                    coreId: { type: "string", description: "The creative this is about; \"\" for try." },
                     propertyId: { type: "string", description: "Property id for try (and refresh/vary); \"\" otherwise." },
                     attributes: { ...attributeOrEmpty, description: "Tags to use or test; \"\" = let the planner choose." },
                     toDaily: { type: "number", description: "New daily budget in USD for budget proposals; 0 otherwise." },
                     rationale: { type: "string", description: "One or two sentences citing the numbers." },
                 },
-                required: ["kind", "ltId", "propertyId", "attributes", "toDaily", "rationale"],
+                required: ["kind", "coreId", "propertyId", "attributes", "toDaily", "rationale"],
                 additionalProperties: false,
             },
         },
@@ -211,12 +211,12 @@ const WEEKLY_SCHEMA = {
 
 async function gatherInput(zone) {
     const [last7, prev7, last42] = await Promise.all([
-        totalsByLtId(daysAgo(zone, 7), daysAgo(zone, 1)),
-        totalsByLtId(daysAgo(zone, 14), daysAgo(zone, 8)),
-        totalsByLtId(daysAgo(zone, 42), daysAgo(zone, 1)),
+        totalsByCoreId(daysAgo(zone, 7), daysAgo(zone, 1)),
+        totalsByCoreId(daysAgo(zone, 14), daysAgo(zone, 8)),
+        totalsByCoreId(daysAgo(zone, 42), daysAgo(zone, 1)),
     ]);
     const creatives = await AdCreative.find({ status: { $nin: [CREATIVE_STATUS.FAILED] } })
-        .select("ltId property propertySlug parentLtId attributes status meta.dailyBudget meta.adSetId createdAt")
+        .select("coreId property propertySlug parentCoreId attributes status meta.dailyBudget meta.adSetId createdAt")
         .lean();
     const properties = await productModel
         .find({ status: "active", slug: { $exists: true, $ne: null }, $or: [{ auctionEndDate: null }, { auctionEndDate: { $gte: new Date() } }] })
@@ -225,15 +225,15 @@ async function gatherInput(zone) {
         .lean();
 
     const creativeRows = creatives.map((c) => ({
-        ltId: c.ltId,
+        coreId: c.coreId,
         propertyId: String(c.property),
-        parent: c.parentLtId,
+        parent: c.parentCoreId,
         status: c.status,
         attributes: c.attributes,
         dailyBudget: c.meta?.dailyBudget ?? null,
         hasAdSet: Boolean(c.meta?.adSetId),
-        last7: last7.get(c.ltId) || null,
-        prev7: prev7.get(c.ltId) || null,
+        last7: last7.get(c.coreId) || null,
+        prev7: prev7.get(c.coreId) || null,
         ageDays: Math.round((Date.now() - new Date(c.createdAt)) / 864e5),
     }));
     const propertyRows = properties.map((p) => ({
@@ -241,27 +241,27 @@ async function gatherInput(zone) {
         name: p.street || p.productName,
         city: `${p.city}, ${p.state}`,
         auctionEnds: p.auctionEndDate,
-        creatives: creatives.filter((c) => String(c.property) === String(p._id)).map((c) => `${c.ltId} (${c.status})`),
+        creatives: creatives.filter((c) => String(c.property) === String(p._id)).map((c) => `${c.coreId} (${c.status})`),
     }));
     return { creativeRows, propertyRows, attributes: attributePerformance(creatives, last42) };
 }
 
 /** Keep only proposals the code can act on. */
 async function validProposals(proposals, creativeRows, propertyRows) {
-    const byLt = new Map(creativeRows.map((c) => [c.ltId, c]));
+    const byLt = new Map(creativeRows.map((c) => [c.coreId, c]));
     const props = new Set(propertyRows.map((p) => p.propertyId));
     const out = [];
     for (const p of proposals) {
-        const c = byLt.get(p.ltId);
+        const c = byLt.get(p.coreId);
         const attributes = Object.fromEntries(Object.entries(p.attributes || {}).filter(([, v]) => v));
         if (p.kind === "try" && props.has(p.propertyId)) {
-            out.push({ kind: "try", ltId: null, payload: { propertyId: p.propertyId, attributes, rationale: p.rationale } });
+            out.push({ kind: "try", coreId: null, payload: { propertyId: p.propertyId, attributes, rationale: p.rationale } });
         } else if (["refresh", "vary"].includes(p.kind) && c) {
-            out.push({ kind: p.kind, ltId: c.ltId, payload: { propertyId: c.propertyId, baseLtId: c.ltId, attributes, rationale: p.rationale } });
+            out.push({ kind: p.kind, coreId: c.coreId, payload: { propertyId: c.propertyId, baseCoreId: c.coreId, attributes, rationale: p.rationale } });
         } else if (p.kind === "budget" && c?.status === CREATIVE_STATUS.LIVE && c.hasAdSet && c.dailyBudget > 0 && p.toDaily > 0) {
-            out.push({ kind: "budget", ltId: c.ltId, payload: { fromDaily: c.dailyBudget, toDaily: +p.toDaily.toFixed(2), rationale: p.rationale } });
+            out.push({ kind: "budget", coreId: c.coreId, payload: { fromDaily: c.dailyBudget, toDaily: +p.toDaily.toFixed(2), rationale: p.rationale } });
         } else if (p.kind === "pause" && c && [CREATIVE_STATUS.LIVE].includes(c.status)) {
-            out.push({ kind: "pause", ltId: c.ltId, payload: { rationale: p.rationale } });
+            out.push({ kind: "pause", coreId: c.coreId, payload: { rationale: p.rationale } });
         } else {
             console.warn("[adsLoop] weekly: skipped a proposal that can't be acted on:", JSON.stringify(p));
         }
@@ -321,14 +321,17 @@ Rules: use only the numbers given; treat little spend as not enough data; 3-8 pr
 
         const proposals = await validProposals(answer.proposals || [], input.creativeRows, input.propertyRows);
         for (const p of proposals) {
-            const created = await createProposal({ kind: p.kind, ltId: p.ltId, payload: p.payload, week });
+            const created = await createProposal({ kind: p.kind, coreId: p.coreId, payload: p.payload, week });
             await postProposal(created);
         }
 
         for (const text of (answer.performanceRules || []).slice(0, 2)) {
             const rule = await learning.proposeRule({ text, source: `results ${week}` });
             if (!rule) continue;
-            const posted = await slack.postMessage({ channel, text: `📏 Proposed performance rule: *${text}*\nAn approver reacts ✅ to add it to design-rules.md.` });
+            const posted = await slack.postMessage({
+                channel,
+                text: `📏 Suggested performance rule: *${text}*\nAn approver reacts ✅ to send it to the Creative OS rules queue. It is only used once someone records it there.`,
+            });
             rule.slackChannel = posted.channel;
             rule.slackTs = posted.ts;
             await rule.save();

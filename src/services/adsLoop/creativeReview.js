@@ -2,12 +2,14 @@
 //
 // Gate 1, #creative-review:
 //   - a reply in a creative's thread = change requests -> next version
-//   - "Approve + post organically" / "Approve (ads only)" -> approved; the
-//     organic post is scheduled through Zernio, the launch is proposed in
-//     #ads-weekly, the creative joins the example library, and Claude reads
-//     the thread and proposes design rules in it
-//   - "Reject" -> retired; the latest reply in the thread is the reason
-//   - ✅ by an approver on a proposed rule -> the rule becomes active
+//   - "Approve + post organically" / "Approve (ads only)" -> approved and
+//     renamed AP-<core id> (the only name used in ads); the organic post is
+//     scheduled through Zernio, the launch is proposed in #ads-weekly, the
+//     creative joins the example library, and Claude reads the thread and
+//     proposes design rules in it
+//   - "Reject" -> retired, keeping its last name; the latest reply is the reason
+//   - ✅ by an approver on a proposed rule -> queued for the Creative OS
+//     (it is not used until a person records it in the repo)
 //
 // Approving and rejecting need an approver (SLACK_APPROVER_IDS).
 
@@ -17,7 +19,8 @@ const guard = require("./guardrails");
 const slack = require("./slackBot");
 const learning = require("./learningStore");
 const { extractReviewRules } = require("./creativeAi");
-const { reviseCreative, reviewImageUrls } = require("./creativePipeline");
+const { reviseCreative, reviewImageUrls, rename } = require("./creativePipeline");
+const { STAGES } = require("./creativeId");
 const { scheduleOrganicPost } = require("./organicPublisher");
 const { proposeLaunch } = require("./proposalService");
 
@@ -43,14 +46,14 @@ async function threadText(channel, threadTs) {
 // ---------------------------------------------------------------------------
 async function proposeRulesFromThread(creative) {
     const { channel, threadTs } = creative.slack;
-    const rules = await extractReviewRules({ ltId: creative.ltId, threadText: await threadText(channel, threadTs) });
+    const rules = await extractReviewRules({ coreId: creative.coreId, threadText: await threadText(channel, threadTs) });
     for (const text of rules) {
-        const rule = await learning.proposeRule({ text, source: `review ${creative.ltId}` });
+        const rule = await learning.proposeRule({ text, source: `review ${creative.coreId}` });
         if (!rule) continue;
         const posted = await slack.postMessage({
             channel,
             threadTs,
-            text: `📏 Proposed design rule: *${text}*\nAn approver reacts ✅ to add it to design-rules.md.`,
+            text: `📏 Suggested design rule: *${text}*\nAn approver reacts ✅ to send it to the Creative OS rules queue. It is only used once someone records it there.`,
         });
         rule.slackChannel = posted.channel;
         rule.slackTs = posted.ts;
@@ -62,25 +65,36 @@ async function proposeRulesFromThread(creative) {
 // ---------------------------------------------------------------------------
 // Buttons
 // ---------------------------------------------------------------------------
-async function handleApprove({ ltId, userId, postOrganically, triggerKey }) {
+async function handleApprove({ coreId, userId, postOrganically, triggerKey }) {
     guard.assertApprover(userId);
     const creative = await AdCreative.findOneAndUpdate(
-        { ltId, status: CREATIVE_STATUS.IN_REVIEW },
-        { $set: { status: CREATIVE_STATUS.APPROVED, approvedBy: userId, approvedAt: new Date(), postOrganically } },
+        { coreId, status: CREATIVE_STATUS.IN_REVIEW },
+        [
+            {
+                $set: {
+                    status: CREATIVE_STATUS.APPROVED,
+                    approvedBy: userId,
+                    approvedAt: new Date(),
+                    approvedVersion: "$version",
+                    postOrganically,
+                },
+            },
+        ],
         { new: true }
     ).lean();
     if (!creative) return;
     const { channel, threadTs } = creative.slack;
+    const name = await rename(coreId, STAGES.AP, { by: userId, version: creative.version });
 
     await slack.replyInThread(
         channel,
         threadTs,
-        `✅ *${ltId}* v${creative.version} approved by <@${userId}> after ${creative.revisionCount} revision round${creative.revisionCount === 1 ? "" : "s"}.`
+        `✅ *${name}* (v${creative.version}) approved by <@${userId}> after ${creative.revisionCount} revision round${creative.revisionCount === 1 ? "" : "s"}.`
     );
 
     await learning
         .addExample({
-            ltId,
+            coreId,
             label: "approved",
             attributes: creative.attributes,
             why: `Approved on v${creative.version} (${creative.revisionCount} rounds). ${creative.concept}`,
@@ -91,7 +105,7 @@ async function handleApprove({ ltId, userId, postOrganically, triggerKey }) {
 
     if (postOrganically) {
         try {
-            const { postId, scheduledFor } = await scheduleOrganicPost({ ltId, approvedBy: userId, triggerKey, channel });
+            const { postId, scheduledFor } = await scheduleOrganicPost({ coreId, approvedBy: userId, triggerKey, channel });
             await slack.replyInThread(channel, threadTs, `📅 Organic post scheduled${scheduledFor ? ` for ${scheduledFor.slice(0, 16).replace("T", " ")} UTC` : ""} (Zernio post ${postId}).`);
         } catch (error) {
             await slack.replyInThread(channel, threadTs, `${error instanceof guard.GuardrailError ? "🛑" : "⚠️"} Organic post not scheduled: ${error.message}`);
@@ -99,7 +113,7 @@ async function handleApprove({ ltId, userId, postOrganically, triggerKey }) {
     }
 
     try {
-        const p = await proposeLaunch(ltId);
+        const p = await proposeLaunch(coreId);
         await slack.replyInThread(channel, threadTs, `Launch proposed in <#${p.slackChannel}> as ${p.proposalId}.`);
     } catch (error) {
         await slack.replyInThread(channel, threadTs, `⚠️ Could not propose the launch: ${error.message}`);
@@ -108,13 +122,13 @@ async function handleApprove({ ltId, userId, postOrganically, triggerKey }) {
     try {
         await proposeRulesFromThread(creative);
     } catch (error) {
-        console.error(`[adsLoop] rule extraction for ${ltId} failed:`, error.message);
+        console.error(`[adsLoop] rule extraction for ${coreId} failed:`, error.message);
     }
 }
 
-async function handleReject({ ltId, userId }) {
+async function handleReject({ coreId, userId }) {
     guard.assertApprover(userId);
-    const creative = await AdCreative.findOne({ ltId, status: CREATIVE_STATUS.IN_REVIEW }).lean();
+    const creative = await AdCreative.findOne({ coreId, status: CREATIVE_STATUS.IN_REVIEW }).lean();
     if (!creative) return;
     const { channel, threadTs } = creative.slack;
 
@@ -122,7 +136,7 @@ async function handleReject({ ltId, userId }) {
     const reason = replies.length ? replies[replies.length - 1].text : "";
 
     const updated = await AdCreative.findOneAndUpdate(
-        { ltId, status: CREATIVE_STATUS.IN_REVIEW },
+        { coreId, status: CREATIVE_STATUS.IN_REVIEW },
         { $set: { status: CREATIVE_STATUS.RETIRED, rejectionReason: reason } },
         { new: true }
     ).lean();
@@ -130,7 +144,7 @@ async function handleReject({ ltId, userId }) {
 
     await learning
         .addExample({
-            ltId,
+            coreId,
             label: "rejected",
             attributes: creative.attributes,
             why: reason || "Rejected without a written reason",
@@ -142,7 +156,7 @@ async function handleReject({ ltId, userId }) {
     await slack.replyInThread(
         channel,
         threadTs,
-        `❌ *${ltId}* rejected by <@${userId}>.${reason ? ` Reason saved for the library: "${reason.slice(0, 200)}"` : " Tip: reply with the reason before rejecting, so the library learns from it."}`
+        `❌ *${creative.name || coreId}* rejected by <@${userId}>.${reason ? ` Reason saved for the library: "${reason.slice(0, 200)}"` : " Tip: reply with the reason before rejecting, so the library learns from it."}`
     );
 }
 
@@ -160,7 +174,7 @@ async function handleThreadReply({ channel, threadTs, text, user }) {
     if (!notes) return true;
 
     if (creative.status === CREATIVE_STATUS.IN_REVIEW) {
-        const updated = await reviseCreative({ ltId: creative.ltId, notes });
+        const updated = await reviseCreative({ coreId: creative.coreId, notes });
         if (updated) await slack.replyInThread(channel, threadTs, `🛠️ Got it <@${user}>, building v${updated.version}.`);
     } else if (creative.status === CREATIVE_STATUS.BUILDING) {
         await slack.replyInThread(channel, threadTs, `⏳ v${creative.version} is still being built. Send this again once it's posted.`);
@@ -168,12 +182,12 @@ async function handleThreadReply({ channel, threadTs, text, user }) {
     return true;
 }
 
-/** ✅ on a proposed rule. */
+/** ✅ on a suggested rule: queue it for the Creative OS. */
 async function handleReaction({ channel, ts, reaction, user }) {
     if (!ACCEPT_REACTIONS.has(reaction)) return;
     if (!guard.isApprover(user)) return;
-    const rule = await learning.acceptRuleByMessage({ channel, ts, userId: user });
-    if (rule) await slack.addReaction(channel, ts, "pushpin").catch(() => {});
+    const rule = await learning.endorseRuleByMessage({ channel, ts, userId: user });
+    if (rule) await slack.addReaction(channel, ts, "inbox_tray").catch(() => {});
 }
 
 module.exports = { handleApprove, handleReject, handleThreadReply, handleReaction };

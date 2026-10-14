@@ -27,9 +27,11 @@ router.get("/health", c.health);
 router.use(isAuthenticated, authorizeRoles("admin"));
 
 router.get("/creatives", c.listCreatives);
-router.get("/creatives/:ltId", c.getCreative);
+router.get("/creatives/:coreId", c.getCreative);
 router.post("/creatives", c.createCreative);
 router.get("/design-rules.md", c.designRulesMarkdown);
+router.get("/design-rules/queue.md", c.designRulesQueue);
+router.post("/design-rules/:id/recorded", c.markDesignRuleRecorded);
 router.delete("/design-rules/:id", c.removeDesignRule);
 router.post("/library/reference", c.addReferenceExample);
 router.post("/run/pull", c.runPull);

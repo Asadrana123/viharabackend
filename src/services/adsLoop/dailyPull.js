@@ -1,8 +1,10 @@
 // services/adsLoop/dailyPull.js
 //
 // Step 1 / step 8 of the loop, every day at 06:00 IST:
-//   1. List ads through Zernio; parse the LT-ID from each ad name. Ads
-//      without an LT-ID are reported to Slack as "unmatched", never dropped silently.
+//   1. List ads through Zernio; parse the stage and core id from each ad name
+//      (AP-BB449-S01_...). Ads with no match that ran that day are reported as
+//      "unmatched", never dropped silently. Only AP- names belong in ads: a
+//      running CR- or R<n>- name means an unapproved creative was launched by hand.
 //   2. Fetch yesterday's analytics per ad; upsert into results with the raw response.
 //   3. Fetch organic post metrics for creatives with a zernio_post_id.
 //   4. Join backend leads by utm_content to fill leads and qualified_leads.
@@ -16,7 +18,7 @@ const { CREATIVE_STATUS } = require("../../model/adsLoop/adCreativeModel");
 const { getAdsLoopConfig } = require("../../config/adsLoop/adsLoopConfig");
 const zernio = require("./zernioClient");
 const slack = require("./slackBot");
-const { parseLtId } = require("./ltId");
+const { parseName, STAGES } = require("./creativeId");
 const { leadCountsBetween } = require("./leadJoin");
 const { updateState } = require("./loopState");
 
@@ -48,7 +50,7 @@ function adRow(day) {
     };
 }
 
-/** Several ads can share an LT-ID (e.g. duplicated in Ads Manager): sum them. */
+/** Several ads can share a core id (e.g. duplicated in Ads Manager): sum them. */
 function addRows(a, b) {
     if (!a) return b;
     const sum = (k) => (a[k] === null && b[k] === null ? null : (a[k] || 0) + (b[k] || 0));
@@ -64,27 +66,31 @@ const STATUS_FROM_AD = { active: CREATIVE_STATUS.LIVE, paused: CREATIVE_STATUS.P
 
 async function pullAds(date) {
     const ads = await zernio.listAds({ fromDate: date, toDate: date });
-    const byLtId = new Map();
+    const byCoreId = new Map();
     const unmatched = [];
+    const unapproved = [];
 
     for (const ad of ads) {
-        const ltId = parseLtId(ad.name);
-        if (!ltId) {
-            // Only ads that ran that day are worth an alert (old paused ads are ignored).
-            if (ad.status === "active" || n(ad.metrics?.spend) > 0) unmatched.push(ad);
+        // Only ads that ran that day are worth an alert (old paused ads are ignored).
+        const ran = ad.status === "active" || n(ad.metrics?.spend) > 0;
+        const parsed = parseName(ad.name);
+        if (!parsed) {
+            if (ran) unmatched.push(ad);
             continue;
         }
+        const { coreId, stage } = parsed;
+        if (stage !== STAGES.AP && ran) unapproved.push(ad);
         const analytics = await zernio.getAdAnalytics(ad._id, { fromDate: date, toDate: date });
         const day = (analytics?.analytics?.daily || []).find((d) => d.date === date);
-        const entry = byLtId.get(ltId) || { row: null, raw: [] };
+        const entry = byCoreId.get(coreId) || { row: null, raw: [] };
         if (day) entry.row = addRows(entry.row, adRow(day));
         entry.raw.push({ adId: ad._id, platformAdId: ad.platformAdId, status: ad.status, day: day || null, currency: analytics?.ad?.currency });
-        byLtId.set(ltId, entry);
+        byCoreId.set(coreId, entry);
 
         // Ads made in Ads Manager with the naming spec get linked to their creative.
         const status = STATUS_FROM_AD[ad.status];
         await AdCreative.updateOne(
-            { ltId, status: { $ne: CREATIVE_STATUS.RETIRED }, $or: [{ "meta.adId": null }, { "meta.adId": ad.platformAdId }] },
+            { coreId, status: { $ne: CREATIVE_STATUS.RETIRED }, $or: [{ "meta.adId": null }, { "meta.adId": ad.platformAdId }] },
             {
                 $set: {
                     "meta.zernioAdId": ad._id,
@@ -99,12 +105,12 @@ async function pullAds(date) {
     }
 
     const unknown = [];
-    for (const [ltId, { row, raw }] of byLtId) {
-        if (!(await AdCreative.exists({ ltId }))) unknown.push(ltId);
+    for (const [coreId, { row, raw }] of byCoreId) {
+        if (!(await AdCreative.exists({ coreId }))) unknown.push(coreId);
         if (!row) continue;
-        await AdResult.updateOne({ ltId, date, channel: "meta_ad" }, { $set: { ...row, raw } }, { upsert: true });
+        await AdResult.updateOne({ coreId, date, channel: "meta_ad" }, { $set: { ...row, raw } }, { upsert: true });
     }
-    return { matched: byLtId.size, unmatched, unknown };
+    return { matched: byCoreId.size, unmatched, unapproved, unknown };
 }
 
 // ---------------------------------------------------------------------------
@@ -114,14 +120,14 @@ const ORGANIC_CHANNEL = { facebook: "fb_post", instagram: "ig_post" };
 const LIFETIME_KEYS = ["impressions", "reach", "clicks", "likes", "comments", "shares", "saves"];
 
 async function pullOrganic(date) {
-    const creatives = await AdCreative.find({ zernioPostId: { $ne: null } }).select("ltId zernioPostId").lean();
+    const creatives = await AdCreative.find({ zernioPostId: { $ne: null } }).select("coreId zernioPostId").lean();
     let rows = 0;
     for (const c of creatives) {
         let data;
         try {
             data = await zernio.getPostAnalytics(c.zernioPostId);
         } catch (error) {
-            console.error(`[adsLoop] post analytics for ${c.ltId} failed:`, error.message);
+            console.error(`[adsLoop] post analytics for ${c.coreId} failed:`, error.message);
             continue;
         }
         for (const pa of data?.platformAnalytics || []) {
@@ -130,12 +136,12 @@ async function pullOrganic(date) {
             const lifetime = Object.fromEntries(LIFETIME_KEYS.map((k) => [k, n(pa.analytics[k]) || 0]));
 
             // Results are daily: store today's change since the last stored total.
-            const prev = await AdResult.findOne({ ltId: c.ltId, channel, date: { $lt: date } }).sort({ date: -1 }).lean();
+            const prev = await AdResult.findOne({ coreId: c.coreId, channel, date: { $lt: date } }).sort({ date: -1 }).lean();
             const before = prev?.raw?.lifetime || {};
             const delta = (k) => Math.max(0, lifetime[k] - (before[k] || 0));
 
             await AdResult.updateOne(
-                { ltId: c.ltId, date, channel },
+                { coreId: c.coreId, date, channel },
                 {
                     $set: {
                         impressions: delta("impressions"),
@@ -163,8 +169,8 @@ async function joinLeads({ date, start, end }) {
     const counts = await leadCountsBetween(start, end);
     // Reset first, so a re-run of the same day never double counts.
     await AdResult.updateMany({ date }, { $set: { leads: 0, qualifiedLeads: 0 } });
-    for (const { ltId, channel, leads, qualifiedLeads } of counts.values()) {
-        await AdResult.updateOne({ ltId, date, channel }, { $set: { leads, qualifiedLeads } }, { upsert: true });
+    for (const { coreId, channel, leads, qualifiedLeads } of counts.values()) {
+        await AdResult.updateOne({ coreId, date, channel }, { $set: { leads, qualifiedLeads } }, { upsert: true });
     }
     return counts.size;
 }
@@ -193,17 +199,26 @@ async function runDailyPull() {
             await slack
                 .postMessage({
                     channel: adsWeeklyChannel,
-                    text: `🔎 *unmatched*: ${ads.unmatched.length} Meta ad${ads.unmatched.length === 1 ? " has" : "s have"} no LT-ID in the name, so their results can't be joined to a creative:\n${list}${ads.unmatched.length > 20 ? "\n…" : ""}\nRename them "LT-0000 | property-slug | layout" to include them.`,
+                    text: `🔎 *unmatched*: ${ads.unmatched.length} Meta ad${ads.unmatched.length === 1 ? " has" : "s have"} no creative name, so their results can't be joined to a creative:\n${list}${ads.unmatched.length > 20 ? "\n…" : ""}\nName approved ads "AP-<core id>_..." (e.g. AP-BB449-S01_price_hero-photo_static-4x5) to include them.`,
                 })
                 .catch((e) => console.error("[adsLoop] unmatched alert failed:", e.message));
         }
+        if (ads.unapproved.length) {
+            const list = ads.unapproved.map((ad) => `• ${ad.name} (${ad.status}, ad ${ad.platformAdId})`).join("\n");
+            await slack
+                .postMessage({
+                    channel: adsWeeklyChannel,
+                    text: `🚩 ${ads.unapproved.length} running ad${ads.unapproved.length === 1 ? " is" : "s are"} not named AP-, so an unapproved creative may have been launched by hand:\n${list}`,
+                })
+                .catch((e) => console.error("[adsLoop] unapproved alert failed:", e.message));
+        }
         if (ads.unknown.length) {
             await slack
-                .postMessage({ channel: adsWeeklyChannel, text: `🔎 Ads use LT-IDs that aren't in the creatives list yet: ${ads.unknown.join(", ")}.` })
+                .postMessage({ channel: adsWeeklyChannel, text: `🔎 Ads use core ids that aren't in the creatives list yet: ${ads.unknown.join(", ")}.` })
                 .catch(() => {});
         }
 
-        const summary = `${window.date}: ${ads.matched} creatives with ads, ${ads.unmatched.length} unmatched ads, ${organicRows} organic rows, ${leadRows} LT-ID lead groups`;
+        const summary = `${window.date}: ${ads.matched} creatives with ads, ${ads.unmatched.length} unmatched ads, ${organicRows} organic rows, ${leadRows} creative lead groups`;
         await updateState({ $set: { lastPullAt: new Date(), lastPullSummary: summary } });
         console.log(`[adsLoop] daily pull: ${summary}`);
         return summary;

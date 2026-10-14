@@ -83,17 +83,20 @@ const HOUSING_RULES = `Meta Housing special ad category and Fair Housing rules (
 // ---------------------------------------------------------------------------
 // 1. Plan
 // ---------------------------------------------------------------------------
-const attributeSchema = {
+/** Attribute tags from the fixed lists; the format is fixed by the core id (S / C). */
+const attributeSchema = (format) => ({
     type: "object",
-    properties: Object.fromEntries(ATTRIBUTE_KEYS.map((k) => [k, { type: "string", enum: ATTRIBUTE_TAGS[k] }])),
+    properties: Object.fromEntries(
+        ATTRIBUTE_KEYS.map((k) => [k, { type: "string", enum: k === "format" ? [format] : ATTRIBUTE_TAGS[k] }])
+    ),
     required: ATTRIBUTE_KEYS,
     additionalProperties: false,
-};
+});
 
-const PLAN_SCHEMA = {
+const planSchema = (format) => ({
     type: "object",
     properties: {
-        attributes: attributeSchema,
+        attributes: attributeSchema(format),
         concept: { type: "string", description: "The idea in one sentence." },
         headline: { type: "string", description: "Meta headline under the image, max 40 characters." },
         primaryText: { type: "string", description: "Meta primary text above the image, max 300 characters." },
@@ -117,18 +120,19 @@ const PLAN_SCHEMA = {
     },
     required: ["attributes", "concept", "headline", "primaryText", "overlayText", "photoIndexes", "cards"],
     additionalProperties: false,
-};
+});
 
 /**
  * @param {object} p
  * @param {object} p.property
  * @param {object} [p.brief]        what the proposal asked for ({ kind, rationale, attributes, ... })
  * @param {object} [p.base]         the creative this one varies / refreshes
- * @returns {Promise<object>} plan matching PLAN_SCHEMA
+ * @param {"static"|"carousel"} [p.format]  fixed by the core id
+ * @returns {Promise<object>} plan matching planSchema
  */
-async function planCreative({ property, brief = null, base = null }) {
+async function planCreative({ property, brief = null, base = null, format = "static" }) {
     const photos = propertyPhotos(property).slice(0, MAX_PHOTOS_SHOWN);
-    const seedAttributes = brief?.attributes || base?.attributes || {};
+    const seedAttributes = { ...(brief?.attributes || base?.attributes || {}), format };
     const { maxCarouselCards, minCarouselCards } = getAdsLoopConfig().creative;
 
     const system = `You plan Meta (Facebook/Instagram) ad creatives for Vihara (vihara.ai), a US real estate auction platform. Your plan is built as an HTML/CSS ad and reviewed by the team before anything goes live.
@@ -148,16 +152,17 @@ ${HOUSING_RULES}`;
             [
                 brief ? `What the team asked for (${brief.kind}): ${brief.rationale || ""}\nRequested attributes: ${JSON.stringify(brief.attributes || {})}` : "",
                 base
-                    ? `This is a ${brief?.kind === "refresh" ? "refresh" : "variant"} of ${base.ltId}: attributes ${JSON.stringify(base.attributes)}, headline "${base.copy?.headline}", overlay "${base.copy?.overlayText}". ${brief?.kind === "refresh" ? "Keep the idea, make it look new." : "Change what the brief asks to test and keep the rest."}`
+                    ? `This is a ${brief?.kind === "refresh" ? "refresh" : "variant"} of ${base.coreId}: attributes ${JSON.stringify(base.attributes)}, headline "${base.copy?.headline}", overlay "${base.copy?.overlayText}". ${brief?.kind === "refresh" ? "Keep the idea, make it look new." : "Change what the brief asks to test and keep the rest."}`
                     : "",
-                "Plan the creative.",
+                `Plan the creative. Its format is fixed: ${format}.`,
             ]
                 .filter(Boolean)
                 .join("\n\n")
         ),
     ];
 
-    const plan = await claudeJson({ system, content, schema: PLAN_SCHEMA, effort: "high", maxTokens: 16000 });
+    const plan = await claudeJson({ system, content, schema: planSchema(format), effort: "high", maxTokens: 16000 });
+    plan.attributes.format = format;
     const clampIndex = (i) => (Number.isInteger(i) && i >= 0 && i < photos.length ? i : 0);
     plan.photoIndexes = (plan.photoIndexes || []).map(clampIndex);
     plan.cards = plan.attributes.format === "carousel" ? (plan.cards || []).slice(0, maxCarouselCards) : [];
@@ -332,11 +337,11 @@ const RULES_SCHEMA = {
     additionalProperties: false,
 };
 
-async function extractReviewRules({ ltId, threadText }) {
+async function extractReviewRules({ coreId, threadText }) {
     const system = `You turn creative review feedback into design rules for future Vihara ads. A good rule is short, testable on any creative and general (not about this one property), for example "Price text >= 64px on a 1080 canvas." or "Max 12 words of overlay text on statics.". Do not repeat an existing rule. Propose nothing if the feedback was specific to this creative.`;
     const content = [
         textBlock(`Existing rules:\n${await activeRulesText()}`),
-        textBlock(`Review thread for ${ltId} (oldest first):\n${threadText}`),
+        textBlock(`Review thread for ${coreId} (oldest first):\n${threadText}`),
     ];
     const out = await claudeJson({ system, content, schema: RULES_SCHEMA, effort: "medium", maxTokens: 8000 });
     return (out.rules || []).map((r) => String(r).trim()).filter(Boolean).slice(0, 3);

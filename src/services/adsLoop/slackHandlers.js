@@ -3,7 +3,7 @@
 // Everything that arrives from Slack, after the route checked its signature:
 //   events        thread replies (#creative-review notes, "go" in #ads-weekly) and ✅ reactions
 //   interactions  Approve / Reject / Go / Activate buttons
-//   /adsloop      stop | resume | status | build <property slug> | retry <LT-ID> | pull | weekly
+//   /adsloop      stop | resume | status | build <property slug> | retry <core id> | pull | weekly
 //
 // Every message / reaction / click is claimed once (processedSlackMessages)
 // before it is handled, so Slack retries and restart replays never act twice.
@@ -24,6 +24,7 @@ const slack = require("./slackBot");
 const review = require("./creativeReview");
 const proposals = require("./proposalService");
 const { startCreative, retryCreative } = require("./creativePipeline");
+const { parseCoreId } = require("./creativeId");
 const { getState, setKillSwitch, setLastHandledTs, getLastHandledTs } = require("./loopState");
 
 const REPLAY_FALLBACK_S = 24 * 3600;
@@ -87,9 +88,9 @@ async function respondEphemeral(responseUrl, text) {
 }
 
 const ACTIONS = {
-    creative_approve_post: (v, ctx) => review.handleApprove({ ltId: v, userId: ctx.userId, postOrganically: true, triggerKey: ctx.triggerKey }),
-    creative_approve: (v, ctx) => review.handleApprove({ ltId: v, userId: ctx.userId, postOrganically: false, triggerKey: ctx.triggerKey }),
-    creative_reject: (v, ctx) => review.handleReject({ ltId: v, userId: ctx.userId }),
+    creative_approve_post: (v, ctx) => review.handleApprove({ coreId: v, userId: ctx.userId, postOrganically: true, triggerKey: ctx.triggerKey }),
+    creative_approve: (v, ctx) => review.handleApprove({ coreId: v, userId: ctx.userId, postOrganically: false, triggerKey: ctx.triggerKey }),
+    creative_reject: (v, ctx) => review.handleReject({ coreId: v, userId: ctx.userId }),
     proposal_go: (v, ctx) => proposals.handleGo({ proposalId: v, userId: ctx.userId, triggerKey: ctx.triggerKey }),
     proposal_reject: (v, ctx) => proposals.handleReject({ proposalId: v, userId: ctx.userId }),
     launch_activate: (v, ctx) => proposals.handleActivate({ proposalId: v, userId: ctx.userId, triggerKey: ctx.triggerKey }),
@@ -119,8 +120,8 @@ const HELP = [
     "`/adsloop status` · loop health, kill switch, last pull",
     "`/adsloop stop [reason]` · kill switch: stop all writes to Meta/Zernio",
     "`/adsloop resume` · turn writes back on (approvers only)",
-    "`/adsloop build <property slug>` · build a new creative for a property (approvers only)",
-    "`/adsloop retry <LT-ID>` · retry a failed build (approvers only)",
+    "`/adsloop build <property slug> [static|carousel]` · build a new creative for a property (approvers only)",
+    "`/adsloop retry <core id>` · retry a failed build (approvers only)",
     "`/adsloop pull` · run the daily metrics pull now (approvers only)",
     "`/adsloop weekly` · post the weekly list now (approvers only)",
 ].join("\n");
@@ -175,17 +176,23 @@ async function handleCommand({ text, userId, runInBackground }) {
             return statusText();
         case "build": {
             guard.assertApprover(userId);
-            const slug = cleanSlug(arg);
-            if (!slug) return "Add the property: `/adsloop build <property slug or auction page link>`.";
+            // "/adsloop build <slug> [static|carousel]"
+            const words = arg.split(/\s+/).filter(Boolean);
+            const last = cleanSlug(words[words.length - 1] || "");
+            const format = ["static", "carousel"].includes(last) ? last : "static";
+            if (["static", "carousel"].includes(last)) words.pop();
+            const slug = cleanSlug(words.join(" "));
+            if (!slug) return "Add the property: `/adsloop build <property slug or auction page link> [static|carousel]`.";
             const property = await productModel.findOne({ slug }).select("_id slug").lean();
             if (!property) return `No property with slug "${slug}". Copy it from the auction page link (the part after /auction/).`;
-            const creative = await startCreative({ propertyId: property._id });
-            return `🛠️ Building *${creative.ltId}* for ${property.slug}. It will appear in <#${getAdsLoopConfig().slack.creativeReviewChannel}>.`;
+            const creative = await startCreative({ propertyId: property._id, format });
+            return `🛠️ Building *${creative.coreId}* (${format}) for ${property.slug}. It will appear in <#${getAdsLoopConfig().slack.creativeReviewChannel}> as CR-${creative.coreId}.`;
         }
         case "retry": {
             guard.assertApprover(userId);
-            const updated = await retryCreative(arg.replace(/[`'"*_]/g, "").trim().toUpperCase());
-            return updated ? `🛠️ Retrying ${updated.ltId} v${updated.version}.` : `${arg} is not a failed build.`;
+            // Accepts the core id or any stage name (CR-BB449-S01).
+            const updated = await retryCreative(parseCoreId(arg.replace(/[`'"*_]/g, "")) || arg.trim().toUpperCase());
+            return updated ? `🛠️ Retrying ${updated.coreId} v${updated.version}.` : `${arg} is not a failed build.`;
         }
         case "pull":
             guard.assertApprover(userId);

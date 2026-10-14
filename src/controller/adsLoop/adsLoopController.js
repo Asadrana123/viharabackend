@@ -21,6 +21,7 @@ const { runDailyPull } = require("../../services/adsLoop/dailyPull");
 const { runWeeklyAnalysis } = require("../../services/adsLoop/weeklyAnalysis");
 const { listAccounts } = require("../../services/adsLoop/zernioClient");
 const { getState } = require("../../services/adsLoop/loopState");
+const { parseCoreId } = require("../../services/adsLoop/creativeId");
 
 const background = (name, fn) =>
     setImmediate(() =>
@@ -106,17 +107,19 @@ const listCreatives = catchAsyncError(async (req, res) => {
 });
 
 const getCreative = catchAsyncError(async (req, res, next) => {
-    const creative = await AdCreative.findOne({ ltId: String(req.params.ltId).toUpperCase() }).lean();
+    // Accepts the core id or any stage name (AP-BB449-S01).
+    const coreId = parseCoreId(req.params.coreId) || String(req.params.coreId).toUpperCase();
+    const creative = await AdCreative.findOne({ coreId }).lean();
     if (!creative) return next(new ErrorHandler("Creative not found", 404));
-    const results = await AdResult.find({ ltId: creative.ltId }).select("-raw").sort({ date: -1 }).limit(120).lean();
+    const results = await AdResult.find({ coreId: creative.coreId }).select("-raw").sort({ date: -1 }).limit(120).lean();
     res.json({ success: true, creative, results });
 });
 
 const createCreative = catchAsyncError(async (req, res, next) => {
-    const { propertyId, parentLtId } = req.body || {};
+    const { propertyId, parentCoreId, format } = req.body || {};
     if (!propertyId) return next(new ErrorHandler("propertyId is required", 400));
     try {
-        const creative = await startCreative({ propertyId, parentLtId: parentLtId || null });
+        const creative = await startCreative({ propertyId, parentCoreId: parentCoreId || null, format: format || null });
         res.status(201).json({ success: true, creative });
     } catch (error) {
         next(new ErrorHandler(error.message, 400));
@@ -125,6 +128,21 @@ const createCreative = catchAsyncError(async (req, res, next) => {
 
 const designRulesMarkdown = catchAsyncError(async (req, res) => {
     res.type("text/markdown").send(await learning.designRulesMarkdown());
+});
+
+/** Rules endorsed with ✅ in Slack, waiting to be recorded in the Creative OS repo. */
+const designRulesQueue = catchAsyncError(async (req, res) => {
+    res.type("text/markdown").send(await learning.endorsedQueueMarkdown());
+});
+
+/** A person recorded the rule as a decision in the Creative OS repo. Body: { recordedAs } */
+const markDesignRuleRecorded = catchAsyncError(async (req, res, next) => {
+    const rule = await learning.markRuleRecorded(req.params.id, {
+        userId: String(req.user?._id || ""),
+        recordedAs: req.body?.recordedAs,
+    });
+    if (!rule) return next(new ErrorHandler("Rule not found, or already recorded or removed", 404));
+    res.json({ success: true, rule });
 });
 
 const removeDesignRule = catchAsyncError(async (req, res, next) => {
@@ -179,6 +197,8 @@ module.exports = {
     getCreative,
     createCreative,
     designRulesMarkdown,
+    designRulesQueue,
+    markDesignRuleRecorded,
     removeDesignRule,
     addReferenceExample,
     runPull,

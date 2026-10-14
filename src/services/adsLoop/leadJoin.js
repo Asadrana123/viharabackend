@@ -1,6 +1,6 @@
 // services/adsLoop/leadJoin.js
 //
-// Backend leads per LT-ID per channel for one day, joined by utm_content.
+// Backend leads per core id per channel for one day, joined by utm_content.
 // A lead is QUALIFIED when it has a phone number AND call or SMS consent.
 //
 // Channel from the lead's UTM source/medium:
@@ -15,7 +15,7 @@ const PropertyLead = require("../../model/leads/propertyLeadModel");
 const BuyerListLead = require("../../model/leads/buyerListLeadModel");
 const NewDealsLead = require("../../model/leads/newDealsLeadModel");
 const LandingPageLead = require("../../model/leads/landingPageLeadModel");
-const { parseLtId } = require("./ltId");
+const { parseCoreId } = require("./creativeId");
 
 function channelOf(source, medium) {
     const s = String(source || "").toLowerCase();
@@ -28,19 +28,20 @@ function channelOf(source, medium) {
 
 const isQualified = (lead) => Boolean(String(lead.phone || "").trim()) && (lead.consent === true || lead.smsConsent === true);
 
-const LT_REGEX = /LT-\d{4,}/i;
+// utm_content carries the core id (BB449-S01).
+const CORE_ID_REGEX = /[A-Z0-9]{2,16}-[SC]\d{2}/i;
 
 /** Every lead source as [{ utm_source, utm_medium, utm_content, phone, consent, smsConsent }]. */
 async function leadsCreatedBetween(start, end) {
     const range = { createdAt: { $gte: start, $lt: end } };
-    const touchQuery = { ...range, "lastTouch.utm_content": LT_REGEX };
+    const touchQuery = { ...range, "lastTouch.utm_content": CORE_ID_REGEX };
     const touchFields = "lastTouch phone consent smsConsent";
 
     const [property, buyerList, newDeals, landing] = await Promise.all([
         PropertyLead.find({ ...touchQuery, isQaTest: { $ne: true } }).select(touchFields).lean(),
         BuyerListLead.find(touchQuery).select(touchFields).lean(),
         NewDealsLead.find(touchQuery).select(touchFields).lean(),
-        LandingPageLead.find({ ...range, utm_content: LT_REGEX }).select("utm_source utm_medium utm_content phone").lean(),
+        LandingPageLead.find({ ...range, utm_content: CORE_ID_REGEX }).select("utm_source utm_medium utm_content phone").lean(),
     ]);
 
     const fromTouch = (l) => ({ ...l.lastTouch, phone: l.phone, consent: l.consent, smsConsent: l.smsConsent });
@@ -48,16 +49,16 @@ async function leadsCreatedBetween(start, end) {
 }
 
 /**
- * @returns {Promise<Map<string, { ltId, channel, leads, qualifiedLeads }>>} keyed "LT-0004|meta_ad"
+ * @returns {Promise<Map<string, { coreId, channel, leads, qualifiedLeads }>>} keyed "BB449-S01|meta_ad"
  */
 async function leadCountsBetween(start, end) {
     const out = new Map();
     for (const lead of await leadsCreatedBetween(start, end)) {
-        const ltId = parseLtId(lead.utm_content);
+        const coreId = parseCoreId(lead.utm_content);
         const channel = channelOf(lead.utm_source, lead.utm_medium);
-        if (!ltId || !channel) continue;
-        const key = `${ltId}|${channel}`;
-        const row = out.get(key) || { ltId, channel, leads: 0, qualifiedLeads: 0 };
+        if (!coreId || !channel) continue;
+        const key = `${coreId}|${channel}`;
+        const row = out.get(key) || { coreId, channel, leads: 0, qualifiedLeads: 0 };
         row.leads += 1;
         if (isQualified(lead)) row.qualifiedLeads += 1;
         out.set(key, row);

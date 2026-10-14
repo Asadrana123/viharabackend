@@ -8,7 +8,7 @@ const CHANGE_ACTIONS = Object.freeze(["schedule_post", "create_ad", "update_budg
 const adChangeLogSchema = new mongoose.Schema(
     {
         proposalId: { type: String, default: null, index: true },
-        ltId: { type: String, default: null },
+        coreId: { type: String, default: null },
         action: { type: String, enum: CHANGE_ACTIONS, required: true },
         // Meta ad set the change touched (budget / status changes).
         adSetId: { type: String, default: null, index: true },

@@ -1,9 +1,13 @@
 const mongoose = require("mongoose");
 
-// One document per creative concept or variant of the Meta Ads Loop
-// (spec table `creatives`). The LT-ID (LT-0004, LT-0004-a) stays with the
-// creative from planning through Meta and back, so every result row can be
-// joined to it and its design attributes.
+// One document per creative of the Meta Ads Loop (spec table `creatives`).
+// The core id (BB449-S01) never changes and stays with the creative from
+// planning through Meta and back, so every result row can be joined to it and
+// its design attributes. The name (CR- / R1- / AP-BB449-S01) shows its review
+// stage and changes at three events only: first post, each revision built
+// from thread feedback, and Approve (services/adsLoop/creativeId.js).
+
+const STAGE_PATTERN = /^(CR|R[1-9]\d?|AP)$/;
 
 const CREATIVE_STATUS = Object.freeze({
     PLANNED: "planned",
@@ -17,10 +21,10 @@ const CREATIVE_STATUS = Object.freeze({
     FAILED: "failed",
 });
 
-// One carousel card (LT-0005-c1 ...) or the single static image.
+// One carousel card (BB449-C01-c1 ...) or the single static image.
 const cardSchema = new mongoose.Schema(
     {
-        cardId: { type: String, required: true }, // "LT-0005-c1", or the lt id for a static
+        cardId: { type: String, required: true }, // "BB449-C01-c1", or the core id for a static
         headline: { type: String, default: "" },
         description: { type: String, default: "" },
         html: { type: String, default: "" },
@@ -42,12 +46,33 @@ const criticSchema = new mongoose.Schema(
     { _id: false }
 );
 
+// One rename (CR -> R1 -> ... -> AP).
+const nameHistorySchema = new mongoose.Schema(
+    {
+        name: { type: String, required: true },
+        stage: { type: String, required: true },
+        version: { type: Number, default: null },
+        at: { type: Date, default: Date.now },
+        by: { type: String, default: "" }, // Slack user id, "" for the pipeline
+    },
+    { _id: false }
+);
+
 const adCreativeSchema = new mongoose.Schema(
     {
-        ltId: { type: String, required: true, unique: true, trim: true },
+        coreId: { type: String, required: true, unique: true, trim: true },
+        // Current name, e.g. "R1-BB449-S01"; "" until first posted for review.
+        name: { type: String, default: "" },
+        stage: { type: String, default: "", validate: (v) => v === "" || STAGE_PATTERN.test(v) },
+        nameHistory: { type: [nameHistorySchema], default: [] },
+        propertyCode: { type: String, default: "", index: true }, // "BB449"
         property: { type: mongoose.Schema.Types.ObjectId, ref: "productModel", required: true, index: true },
         propertySlug: { type: String, default: "" },
-        parentLtId: { type: String, default: null, index: true },
+        parentCoreId: { type: String, default: null, index: true },
+        // The Creative OS record for this creative, when it was built there: every
+        // figure with its source, hook id, ICP, direction and the generated-image flag.
+        // Supported percentages and dollar figures in it pass the copy policy check.
+        sourceRecord: { type: mongoose.Schema.Types.Mixed, default: null },
         // format, layout, hook, photo_type, cta, text_density (config/adsLoop/attributeTags.js)
         attributes: { type: mongoose.Schema.Types.Mixed, required: true },
         status: { type: String, enum: Object.values(CREATIVE_STATUS), default: CREATIVE_STATUS.PLANNED, index: true },
@@ -78,6 +103,7 @@ const adCreativeSchema = new mongoose.Schema(
         rejectionReason: { type: String, default: "" },
         approvedBy: { type: String, default: null }, // Slack user id
         approvedAt: { type: Date, default: null },
+        approvedVersion: { type: Number, default: null },
         postOrganically: { type: Boolean, default: false },
         // Slack review thread in #creative-review.
         slack: {
@@ -105,3 +131,4 @@ adCreativeSchema.index({ "slack.threadTs": 1 });
 const AdCreative = mongoose.model("adCreative", adCreativeSchema);
 module.exports = AdCreative;
 module.exports.CREATIVE_STATUS = CREATIVE_STATUS;
+module.exports.STAGE_PATTERN = STAGE_PATTERN;

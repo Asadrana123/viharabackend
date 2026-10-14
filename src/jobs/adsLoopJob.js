@@ -69,7 +69,28 @@ function startAdsLoopJob() {
 }
 
 /** Run once MongoDB is connected. */
+/**
+ * Make the loop's own collections' indexes match the models, dropping old
+ * ones (the ltId indexes from before the core id naming). Only touches
+ * ads-loop collections.
+ */
+async function syncAdsLoopIndexes() {
+    const models = [
+        require("../model/adsLoop/adCreativeModel"),
+        require("../model/adsLoop/adResultModel"),
+        require("../model/adsLoop/adProposalModel"),
+        require("../model/adsLoop/adChangeLogModel"),
+        require("../model/adsLoop/creativeExampleModel"),
+        require("../model/adsLoop/designRuleModel"),
+    ];
+    for (const model of models) {
+        const dropped = await model.syncIndexes().catch((e) => (console.error(`[adsLoop] index sync ${model.modelName}:`, e.message), []));
+        if (dropped?.length) console.log(`[adsLoop] ${model.modelName}: dropped old indexes ${dropped.join(", ")}`);
+    }
+}
+
 async function recoverAdsLoop() {
+    await syncAdsLoopIndexes();
     if (!getAdsLoopConfig().enabled) return;
     const restarted = await recoverBuilds().catch((e) => (console.error("[adsLoop] build recovery:", e.message), 0));
     if (restarted) console.log(`[adsLoop] restarted ${restarted} interrupted build(s).`);

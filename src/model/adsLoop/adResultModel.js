@@ -8,7 +8,7 @@ const RESULT_CHANNELS = Object.freeze(["meta_ad", "fb_post", "ig_post"]);
 
 const adResultSchema = new mongoose.Schema(
     {
-        ltId: { type: String, required: true },
+        coreId: { type: String, required: true },
         date: { type: String, required: true }, // YYYY-MM-DD, ad account time zone
         channel: { type: String, enum: RESULT_CHANNELS, required: true },
         spend: { type: Number, default: null },
@@ -29,7 +29,7 @@ const adResultSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
-adResultSchema.index({ ltId: 1, date: 1, channel: 1 }, { unique: true });
+adResultSchema.index({ coreId: 1, date: 1, channel: 1 }, { unique: true });
 adResultSchema.index({ date: 1 });
 
 module.exports = mongoose.model("adResult", adResultSchema);

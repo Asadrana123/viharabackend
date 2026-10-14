@@ -9,6 +9,10 @@
 // A reply in the review thread starts the next version (v2, v3 ...) with the
 // reply as notes. Builds run in the background; the Slack thread shows
 // progress and errors. Each version keeps its own image URLs.
+//
+// Naming: the core id (BB449-S01) is fixed when the creative is started. The
+// name gets its stage prefix when posted: CR- for the first post, R1-, R2- ...
+// for each version built from thread feedback (AP- is set on Approve).
 
 const mongoose = require("mongoose");
 const productModel = require("../../model/property/productModel");
@@ -16,8 +20,8 @@ const AdCreative = require("../../model/adsLoop/adCreativeModel");
 const { CREATIVE_STATUS } = require("../../model/adsLoop/adCreativeModel");
 const { getAdsLoopConfig } = require("../../config/adsLoop/adsLoopConfig");
 const { validateAttributes } = require("../../config/adsLoop/attributeTags");
-const { nextConceptLtId } = require("./loopState");
-const { conceptOf, nextVariantId, cardId, threadTitle } = require("./ltId");
+const { nextCoreId } = require("./loopState");
+const { cardId, nameOf, revisionStage, STAGES } = require("./creativeId");
 const { planCreative, buildCreative, critiqueCreative, propertyPhotos } = require("./creativeAi");
 const { renderAndUpload, newFolder } = require("./creativeRender");
 const { copyPolicyProblems, GuardrailError } = require("./guardrails");
@@ -45,7 +49,7 @@ function allCopy(creative) {
     ];
 }
 
-/** Statics: { "1x1": url, "4x5": url }; carousels: { "LT-0005-c1": { "1x1": url } ... } */
+/** Statics: { "1x1": url, "4x5": url }; carousels: { "BB449-C01-c1": { "1x1": url } ... } */
 function flatAssetUrls(format, rendered) {
     if (format !== "carousel") return rendered[0]?.assetUrls || {};
     return Object.fromEntries(rendered.map((r) => [r.cardId, r.assetUrls]));
@@ -63,15 +67,32 @@ function reviewImageUrls(creative) {
     return urls;
 }
 
-const setCreative = (ltId, update) => AdCreative.updateOne({ ltId }, update);
+const setCreative = (coreId, update) => AdCreative.updateOne({ coreId }, update);
+
+/**
+ * Give the creative its stage name (CR-, R1-, AP-) and record the rename.
+ * @returns {Promise<string>} the new name
+ */
+async function rename(coreId, stage, { by = "", version = null } = {}) {
+    const name = nameOf(stage, coreId);
+    await AdCreative.updateOne(
+        { coreId },
+        { $set: { name, stage }, $push: { nameHistory: { name, stage, version, at: new Date(), by } } }
+    );
+    return name;
+}
 
 // ---------------------------------------------------------------------------
 // Slack review message
 // ---------------------------------------------------------------------------
 function reviewBlocks(creative, property) {
-    const title = threadTitle(creative.ltId, propertyLabel(property), creative.version);
+    // The post's text is the current name only (R1-BB449-S01).
+    const title = creative.name || creative.coreId;
     const a = creative.attributes || {};
-    const blocks = [B.section(`*${title}*\n${creative.concept || ""}`)];
+    const blocks = [
+        B.section(`*${title}*`),
+        B.context(`${propertyLabel(property)} · v${creative.version}${creative.concept ? ` · ${creative.concept}` : ""}`),
+    ];
 
     for (const card of creative.cards || []) {
         const urls = card.assetUrls instanceof Map ? Object.fromEntries(card.assetUrls) : card.assetUrls || {};
@@ -90,16 +111,21 @@ function reviewBlocks(creative, property) {
         ),
         B.context("Reply in this thread with changes to get the next version."),
         B.actions([
-            B.button("Approve + post organically", "creative_approve_post", creative.ltId, "primary"),
-            B.button("Approve (ads only)", "creative_approve", creative.ltId),
-            B.button("Reject", "creative_reject", creative.ltId, "danger"),
+            B.button("Approve + post organically", "creative_approve_post", creative.coreId, "primary"),
+            B.button("Approve (ads only)", "creative_approve", creative.coreId),
+            B.button("Reject", "creative_reject", creative.coreId, "danger"),
         ])
     );
     return { text: title, blocks };
 }
 
-async function postForReview(ltId) {
-    const creative = await AdCreative.findOne({ ltId }).lean();
+async function postForReview(coreId) {
+    const before = await AdCreative.findOne({ coreId }).select("slack revisionCount version").lean();
+    // First post -> CR-; a version built from thread feedback -> R<round>-.
+    const stage = before.slack?.threadTs && before.revisionCount > 0 ? revisionStage(before.revisionCount) : STAGES.CR;
+    await rename(coreId, stage, { version: before.version });
+
+    const creative = await AdCreative.findOne({ coreId }).lean();
     const property = await loadProperty(creative.property);
     const { creativeReviewChannel } = getAdsLoopConfig().slack;
     const message = reviewBlocks(creative, property);
@@ -108,31 +134,33 @@ async function postForReview(ltId) {
         await slack.postMessage({ channel: creative.slack.channel, threadTs: creative.slack.threadTs, ...message });
     } else {
         const posted = await slack.postMessage({ channel: creativeReviewChannel, ...message });
-        await setCreative(ltId, { $set: { "slack.channel": posted.channel, "slack.threadTs": posted.ts } });
+        await setCreative(coreId, { $set: { "slack.channel": posted.channel, "slack.threadTs": posted.ts } });
     }
-    await setCreative(ltId, { $set: { status: CREATIVE_STATUS.IN_REVIEW, error: "" } });
+    await setCreative(coreId, { $set: { status: CREATIVE_STATUS.IN_REVIEW, error: "" } });
 }
 
 // ---------------------------------------------------------------------------
 // Build one version (with critic and one automatic revision)
 // ---------------------------------------------------------------------------
 async function buildVersion({ creative, property, plan, notes, previous }) {
+    const record = creative.sourceRecord || null;
     const photos = propertyPhotos(property);
     const ordered = plan.photoIndexes.length ? plan.photoIndexes.map((i) => photos[i]).filter(Boolean) : photos;
     // Carousel cards point at their own photo; give them all, in index order.
     const photoUrls = plan.attributes.format === "carousel" ? photos.slice(0, 6) : ordered.length ? ordered : photos;
     const format = plan.attributes.format;
-    const ids = format === "carousel" ? plan.cards.map((_, i) => cardId(creative.ltId, i + 1)) : [creative.ltId];
+    const ids = format === "carousel" ? plan.cards.map((_, i) => cardId(creative.coreId, i + 1)) : [creative.coreId];
 
     const renderOnce = async (build, version) =>
-        renderAndUpload({ ltId: creative.ltId, format, build, photos: photoUrls, folder: creative.cloudinaryFolder, version, cardIds: ids });
+        renderAndUpload({ coreId: creative.coreId, format, build, photos: photoUrls, folder: creative.cloudinaryFolder, version, cardIds: ids });
     const urlsOf = (r) => r.flatMap((c) => (format === "carousel" ? [c.assetUrls["1x1"]] : [c.assetUrls["1x1"], c.assetUrls["4x5"]])).filter(Boolean);
 
     // Copy policy (QA) on every word: Meta copy, card copy and the text on the image.
     const policyOf = (build) =>
         copyPolicyProblems(
             [build.headline, build.primaryText, ...plan.cards.flatMap((c) => [c.headline, c.description]), ...build.canvases.map(visibleText)],
-            property
+            property,
+            record
         );
 
     const buildAndReview = async (revision, version) => {
@@ -204,20 +232,20 @@ function visibleText(html) {
 }
 
 /** Background job: build the creative's current version and post it. Never throws. */
-async function processCreative(ltId) {
+async function processCreative(coreId) {
     let creative;
     try {
-        creative = await AdCreative.findOne({ ltId }).lean();
+        creative = await AdCreative.findOne({ coreId }).lean();
         if (!creative || creative.status !== CREATIVE_STATUS.BUILDING) return;
         const property = await loadProperty(creative.property);
 
         let plan = creative.plan;
         if (!plan) {
-            const base = creative.parentLtId ? await AdCreative.findOne({ ltId: creative.parentLtId }).lean() : null;
-            plan = await planCreative({ property, brief: creative.brief, base });
+            const base = creative.parentCoreId ? await AdCreative.findOne({ coreId: creative.parentCoreId }).lean() : null;
+            plan = await planCreative({ property, brief: creative.brief, base, format: creative.attributes?.format || "static" });
             const { problems } = validateAttributes(plan.attributes);
             if (problems.length) throw new Error(`Plan used unknown tags: ${problems.join("; ")}`);
-            await setCreative(ltId, {
+            await setCreative(coreId, {
                 $set: {
                     plan,
                     attributes: plan.attributes,
@@ -239,7 +267,7 @@ async function processCreative(ltId) {
 
         const version = await buildVersion({ creative, property, plan, notes: creative.pendingNotes, previous });
 
-        await setCreative(ltId, {
+        await setCreative(coreId, {
             $set: {
                 css: version.css,
                 cards: version.cards,
@@ -249,66 +277,77 @@ async function processCreative(ltId) {
                 pendingNotes: "",
             },
         });
-        await postForReview(ltId);
+        await postForReview(coreId);
     } catch (error) {
         const message = error?.message || "Build failed";
-        console.error(`[adsLoop] build ${ltId} failed:`, message);
-        await setCreative(ltId, { $set: { status: CREATIVE_STATUS.FAILED, error: message } }).catch(() => {});
+        console.error(`[adsLoop] build ${coreId} failed:`, message);
+        await setCreative(coreId, { $set: { status: CREATIVE_STATUS.FAILED, error: message } }).catch(() => {});
         const channel = creative?.slack?.channel || getAdsLoopConfig().slack.creativeReviewChannel;
-        await slack.replyInThread(channel, creative?.slack?.threadTs, `⚠️ ${ltId}: the build failed: ${message}`);
+        await slack.replyInThread(channel, creative?.slack?.threadTs, `⚠️ ${coreId}: the build failed: ${message}`);
     }
 }
 
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
+const FORMATS = ["static", "carousel"];
+const CORE_ID_RETRIES = 3;
+
 /**
- * Start a new creative for a property. With `parentLtId` it becomes a variant
- * (LT-0004-a); otherwise a new concept (LT-0005).
+ * Start a new creative for a property. It gets the next free core id for the
+ * property and format (BB449-S02). With `parentCoreId` it is a variant or
+ * refresh of that creative: a new core id, linked to its parent.
  *
  * @param {object} p
  * @param {string} p.propertyId
- * @param {string} [p.parentLtId]
+ * @param {"static"|"carousel"} [p.format]  default: the brief's format, the parent's, else static
+ * @param {string} [p.parentCoreId]
  * @param {object} [p.brief]       { kind, rationale, attributes } from a proposal
  * @param {string} [p.proposalId]
- * @param {string} [p.requestedBy]
  */
-async function startCreative({ propertyId, parentLtId = null, brief = null, proposalId = null }) {
+async function startCreative({ propertyId, format = null, parentCoreId = null, brief = null, proposalId = null }) {
     if (!mongoose.isValidObjectId(propertyId)) throw new Error("Invalid property id");
     const property = await loadProperty(propertyId);
     if (!property.slug) throw new Error("The property has no slug, so it has no auction page to send ads to");
     if (!propertyPhotos(property).length) throw new Error("The property has no photos to build an ad from");
 
-    let ltId;
-    if (parentLtId) {
-        const siblings = await AdCreative.find({ ltId: new RegExp(`^${conceptOf(parentLtId)}(-[a-z])?$`) }).select("ltId").lean();
-        if (!siblings.length) throw new Error(`${parentLtId} not found`);
-        ltId = nextVariantId(parentLtId, siblings.map((s) => s.ltId));
-    } else {
-        ltId = await nextConceptLtId();
+    let parent = null;
+    if (parentCoreId) {
+        parent = await AdCreative.findOne({ coreId: parentCoreId }).select("attributes").lean();
+        if (!parent) throw new Error(`${parentCoreId} not found`);
     }
+    const chosen = format || brief?.attributes?.format || parent?.attributes?.format || "static";
+    if (!FORMATS.includes(chosen)) throw new Error(`Format must be static or carousel (got "${chosen}")`);
 
-    const creative = await AdCreative.create({
-        ltId,
-        property: property._id,
-        propertySlug: property.slug,
-        parentLtId,
-        attributes: brief?.attributes || {},
-        status: CREATIVE_STATUS.BUILDING,
-        proposalId,
-        brief,
-        cloudinaryFolder: newFolder(),
-        version: 1,
-    });
-
-    setImmediate(() => processCreative(ltId));
-    return creative.toObject();
+    for (let attempt = 1; ; attempt++) {
+        const { coreId, propertyCode } = await nextCoreId(property, chosen);
+        try {
+            const creative = await AdCreative.create({
+                coreId,
+                propertyCode,
+                property: property._id,
+                propertySlug: property.slug,
+                parentCoreId,
+                attributes: { ...(brief?.attributes || {}), format: chosen },
+                status: CREATIVE_STATUS.BUILDING,
+                proposalId,
+                brief,
+                cloudinaryFolder: newFolder(coreId),
+                version: 1,
+            });
+            setImmediate(() => processCreative(coreId));
+            return creative.toObject();
+        } catch (error) {
+            // Two builds took the same number at once: take the next one.
+            if (error?.code !== 11000 || attempt >= CORE_ID_RETRIES) throw error;
+        }
+    }
 }
 
 /** A reviewer replied in the thread: build the next version with their notes. */
-async function reviseCreative({ ltId, notes }) {
+async function reviseCreative({ coreId, notes }) {
     const updated = await AdCreative.findOneAndUpdate(
-        { ltId, status: CREATIVE_STATUS.IN_REVIEW },
+        { coreId, status: CREATIVE_STATUS.IN_REVIEW },
         {
             $set: { status: CREATIVE_STATUS.BUILDING, pendingNotes: notes },
             $inc: { version: 1, revisionCount: 1 },
@@ -317,32 +356,36 @@ async function reviseCreative({ ltId, notes }) {
         { new: true }
     ).lean();
     if (!updated) return null;
-    setImmediate(() => processCreative(ltId));
+    setImmediate(() => processCreative(coreId));
     return updated;
 }
 
 /** Restart a failed build (same version and notes). */
-async function retryCreative(ltId) {
+async function retryCreative(coreId) {
     const updated = await AdCreative.findOneAndUpdate(
-        { ltId, status: CREATIVE_STATUS.FAILED },
+        { coreId, status: CREATIVE_STATUS.FAILED },
         { $set: { status: CREATIVE_STATUS.BUILDING, error: "" } },
         { new: true }
     ).lean();
-    if (updated) setImmediate(() => processCreative(ltId));
+    if (updated) setImmediate(() => processCreative(coreId));
     return updated;
 }
 
 /** Throws a GuardrailError when any copy of the creative (Meta copy, card copy, image text) fails the policy check. */
 async function assertCopyClean(creative) {
     const property = await loadProperty(creative.property);
-    const problems = copyPolicyProblems([...allCopy(creative), ...(creative.cards || []).map((c) => visibleText(c.html))], property);
-    if (problems.length) throw new GuardrailError(`${creative.ltId} fails the copy policy check: ${problems.join("; ")}`);
+    const problems = copyPolicyProblems(
+        [...allCopy(creative), ...(creative.cards || []).map((c) => visibleText(c.html))],
+        property,
+        creative.sourceRecord
+    );
+    if (problems.length) throw new GuardrailError(`${creative.coreId} fails the copy policy check: ${problems.join("; ")}`);
 }
 
 /** After a restart, builds that were cut off are run again. */
 async function recoverBuilds() {
-    const stuck = await AdCreative.find({ status: CREATIVE_STATUS.BUILDING }).select("ltId").lean();
-    for (const c of stuck) setImmediate(() => processCreative(c.ltId));
+    const stuck = await AdCreative.find({ status: CREATIVE_STATUS.BUILDING }).select("coreId").lean();
+    for (const c of stuck) setImmediate(() => processCreative(c.coreId));
     return stuck.length;
 }
 
@@ -354,6 +397,7 @@ module.exports = {
     processCreative,
     buildVersion,
     assertCopyClean,
+    rename,
     reviewImageUrls,
     allCopy,
     propertyLabel,

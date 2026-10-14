@@ -7,7 +7,7 @@
 // blocks every script. Image placeholders ({{photo.N}}, {{logo}}) are filled
 // with checked URLs, and the renderer only lets the page load those exact
 // URLs plus Google Fonts. Files are uploaded under an unguessable folder:
-//   ads-loop/<random>/LT-0004_static_1x1.png
+//   ads-loop/<core id>/<random>/BB449-S01_static_1x1_v1.png
 
 const crypto = require("crypto");
 const cloudinary = require("cloudinary").v2;
@@ -16,7 +16,7 @@ const { CREATIVE_CONFIG, IMAGE_PROVIDERS } = require("../../config/marketing/cre
 const { getAdsLoopConfig } = require("../../config/adsLoop/adsLoopConfig");
 const { getCurrentBrandKit } = require("../brand/brandKitService");
 const { escapeHtml, safeImageUrl } = require("../marketing/creativeTemplates");
-const { fileName } = require("./ltId");
+const { fileName } = require("./creativeId");
 
 cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -87,7 +87,9 @@ ${body}
 </html>`;
 }
 
-const newFolder = () => `${getAdsLoopConfig().creative.cloudinaryFolder}/${crypto.randomBytes(12).toString("hex")}`;
+/** ads-loop/<core id>/<random>: keyed by the core id, still unguessable. */
+const newFolder = (coreId) =>
+    `${getAdsLoopConfig().creative.cloudinaryFolder}/${coreId}/${crypto.randomBytes(12).toString("hex")}`;
 
 async function uploadPng(png, folder, name) {
     const upload = await cloudinary.uploader.upload(`data:image/png;base64,${png.toString("base64")}`, {
@@ -103,16 +105,16 @@ async function uploadPng(png, folder, name) {
  * Render every canvas at every size it needs and upload the PNGs.
  *
  * @param {object} p
- * @param {string} p.ltId
+ * @param {string} p.coreId
  * @param {"static"|"carousel"} p.format
  * @param {{ css: string, canvases: string[] }} p.build
  * @param {string[]} p.photos         photo URLs in placeholder order
  * @param {string} p.folder           Cloudinary folder of this creative
  * @param {number} p.version          added to file names so every version keeps its own URL
- * @param {string[]} p.cardIds        LT-0005-c1 ... (carousels) or [ltId] (statics)
+ * @param {string[]} p.cardIds        BB449-C01-c1 ... (carousels) or [coreId] (statics)
  * @returns {Promise<Array<{ cardId: string, assetUrls: object }>>}
  */
-async function renderAndUpload({ ltId, format, build, photos, folder, version, cardIds }) {
+async function renderAndUpload({ coreId, format, build, photos, folder, version, cardIds }) {
     const { ratios, carouselRatio } = getAdsLoopConfig().creative;
     const logo = CREATIVE_CONFIG.logoUrl;
     const allowedUrls = [...photos, logo].filter((u) => typeof u === "string" && u.startsWith("https://"));
@@ -120,7 +122,7 @@ async function renderAndUpload({ ltId, format, build, photos, folder, version, c
 
     const out = [];
     for (let i = 0; i < build.canvases.length; i++) {
-        const id = cardIds[i] || ltId;
+        const id = cardIds[i] || coreId;
         const assetUrls = {};
         for (const ratio of useRatios) {
             const size = ratios[ratio];

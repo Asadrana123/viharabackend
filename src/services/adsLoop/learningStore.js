@@ -1,7 +1,8 @@
 // services/adsLoop/learningStore.js
 //
 // The learning store that the planning and build steps read every time:
-//   - design rules (design-rules.md): short, testable rules with a source and date
+//   - design rules: suggestions queued for the Creative OS repo (its rules/ and
+//     learning/ are the source of truth); recorded ones are shown to Claude
 //   - the example library: labelled creatives sent to Claude as images
 //
 // "Training" here means putting rules, labelled examples and scores into
@@ -18,31 +19,71 @@ const MAX_RULE_CHARS = 300;
 // ---------------------------------------------------------------------------
 // Design rules
 // ---------------------------------------------------------------------------
+// The Creative OS repo (rules/, learning/) is the source of truth. Here a
+// rule is only a suggestion until a person records it there; see
+// model/adsLoop/designRuleModel.js for the statuses.
 const day = (d) => new Date(d).toISOString().slice(0, 10);
 
-const formatRule = (r) => `- ${r.text} (${r.source}, ${day(r.acceptedAt || r.createdAt)})`;
+const formatRule = (r) => `- ${r.text} (${r.source}, ${day(r.recordedAt || r.endorsedAt || r.createdAt)})`;
 
+/** Rules recorded in the Creative OS: the only ones the interim builder follows. */
 async function activeRules() {
-    return DesignRule.find({ status: RULE_STATUS.ACTIVE }).sort({ acceptedAt: 1, createdAt: 1 }).lean();
+    return DesignRule.find({ status: RULE_STATUS.RECORDED }).sort({ recordedAt: 1, createdAt: 1 }).lean();
 }
 
-/** The active rules as the lines of design-rules.md. */
+/** The recorded rules as lines for Claude's context. */
 async function activeRulesText() {
     const rules = await activeRules();
     return rules.length ? rules.map(formatRule).join("\n") : "(no design rules yet)";
 }
 
+/** Recorded rules plus the queue waiting for the Creative OS. */
 async function designRulesMarkdown() {
-    const rules = await activeRules();
+    const [recorded, queue] = await Promise.all([activeRules(), endorsedQueue()]);
     return [
-        "# Design rules",
+        "# Design rules (ads loop copy)",
         "",
-        "Short, testable rules for Vihara ad creatives. Each has its source and date.",
-        "Added when a person reacts ✅ to a rule Claude proposed in Slack; removed by a person.",
+        "The source of truth is the Creative OS repo (rules/ and learning/).",
         "",
-        ...(rules.length ? rules.map(formatRule) : ["(none yet)"]),
+        "## Recorded in the Creative OS",
+        ...(recorded.length ? recorded.map((r) => `${formatRule(r)}${r.recordedAs ? ` → ${r.recordedAs}` : ""}`) : ["(none yet)"]),
+        "",
+        "## Waiting to be recorded (endorsed with ✅ in Slack)",
+        ...(queue.length ? queue.map((r) => `${formatRule(r)} [id ${r._id}]`) : ["(none)"]),
         "",
     ].join("\n");
+}
+
+async function endorsedQueue() {
+    return DesignRule.find({ status: RULE_STATUS.ENDORSED }).sort({ endorsedAt: 1 }).lean();
+}
+
+/**
+ * The queue for the Creative OS team: each endorsed rule with where it came
+ * from, so a person can record it as a decision in the repo.
+ */
+async function endorsedQueueMarkdown() {
+    const queue = await endorsedQueue();
+    return [
+        "# Design rule suggestions for the Creative OS",
+        "",
+        "Endorsed with ✅ in Slack by an approver. Record each one as a decision in rules/ or learning/",
+        "(or drop it), then mark it recorded: POST /api/v1/ads-loop/design-rules/<id>/recorded { recordedAs }.",
+        "",
+        ...(queue.length
+            ? queue.flatMap((r) => [
+                  `## ${r.text}`,
+                  `- id: ${r._id}`,
+                  `- source: ${r.source}`,
+                  `- endorsed: ${day(r.endorsedAt)} by Slack user ${r.endorsedBy}`,
+                  r.slackTs ? `- Slack message: ${r.slackChannel} / ${r.slackTs}` : "",
+                  "",
+              ])
+            : ["(nothing waiting)"]),
+        "",
+    ]
+        .filter((line, i, all) => line !== "" || all[i - 1] !== "")
+        .join("\n");
 }
 
 /** A proposed rule, before it is posted to Slack. */
@@ -52,11 +93,20 @@ async function proposeRule({ text, source }) {
     return DesignRule.create({ text: clean, source, status: RULE_STATUS.PROPOSED });
 }
 
-/** ✅ on the rule's Slack message by an approver. Returns the rule when it changed. */
-async function acceptRuleByMessage({ channel, ts, userId }) {
+/** ✅ on the rule's Slack message by an approver: queue it for the Creative OS. */
+async function endorseRuleByMessage({ channel, ts, userId }) {
     return DesignRule.findOneAndUpdate(
         { slackChannel: channel, slackTs: ts, status: RULE_STATUS.PROPOSED },
-        { $set: { status: RULE_STATUS.ACTIVE, acceptedBy: userId, acceptedAt: new Date() } },
+        { $set: { status: RULE_STATUS.ENDORSED, endorsedBy: userId, endorsedAt: new Date() } },
+        { new: true }
+    ).lean();
+}
+
+/** A person recorded the rule as a decision in the Creative OS repo. */
+async function markRuleRecorded(ruleId, { userId = "", recordedAs = "" } = {}) {
+    return DesignRule.findOneAndUpdate(
+        { _id: ruleId, status: { $in: [RULE_STATUS.PROPOSED, RULE_STATUS.ENDORSED] } },
+        { $set: { status: RULE_STATUS.RECORDED, recordedBy: userId, recordedAt: new Date(), recordedAs: String(recordedAs || "").slice(0, 300) } },
         { new: true }
     ).lean();
 }
@@ -73,11 +123,11 @@ async function removeRule(ruleId, userId) {
 // Example library
 // ---------------------------------------------------------------------------
 /** Add or relabel one creative in the library. */
-async function addExample({ ltId, label, attributes, why = "", imageUrl, ctr = null, qualifiedLeads = null, costPerQualifiedLead = null, addedBy = "" }) {
+async function addExample({ coreId, label, attributes, why = "", imageUrl, ctr = null, qualifiedLeads = null, costPerQualifiedLead = null, addedBy = "" }) {
     if (!imageUrl) return null;
-    if (!ltId) return CreativeExample.create({ label, attributes, why, imageUrl, addedBy });
+    if (!coreId) return CreativeExample.create({ label, attributes, why, imageUrl, addedBy });
     return CreativeExample.findOneAndUpdate(
-        { ltId, label },
+        { coreId, label },
         { $set: { attributes, why, imageUrl, ctr, qualifiedLeads, costPerQualifiedLead, addedBy } },
         { upsert: true, new: true }
     ).lean();
@@ -117,7 +167,7 @@ function describeExample(e) {
         .filter(Boolean)
         .join(", ");
     const note = e.label === "reference" ? " (outside ad: learn from it, never copy it)" : "";
-    return `${e.label.toUpperCase()}${e.ltId ? ` ${e.ltId}` : ""}${note}: ${attrs || "no tags"}${stats ? `; ${stats}` : ""}. Why: ${e.why || "not given"}`;
+    return `${e.label.toUpperCase()}${e.coreId ? ` ${e.coreId}` : ""}${note}: ${attrs || "no tags"}${stats ? `; ${stats}` : ""}. Why: ${e.why || "not given"}`;
 }
 
 module.exports = {
@@ -125,7 +175,9 @@ module.exports = {
     activeRulesText,
     designRulesMarkdown,
     proposeRule,
-    acceptRuleByMessage,
+    endorsedQueueMarkdown,
+    endorseRuleByMessage,
+    markRuleRecorded,
     removeRule,
     addExample,
     pickExamples,

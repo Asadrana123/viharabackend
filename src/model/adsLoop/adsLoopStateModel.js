@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 
 // One document (key "default") with the loop's running state: the kill
-// switch, the LT-ID counter, the last handled Slack message per channel (for
+// switch, the core id counter, the last handled Slack message per channel (for
 // replay after a restart) and the last heartbeat / pull times.
 
 const adsLoopStateSchema = new mongoose.Schema(
@@ -13,8 +13,6 @@ const adsLoopStateSchema = new mongoose.Schema(
             at: { type: Date, default: null },
             reason: { type: String, default: "" },
         },
-        // Last LT number handed out (LT-0004 -> 4).
-        ltCounter: { type: Number, default: 0 },
         // channel id -> last handled message ts
         lastHandledTs: { type: Map, of: String, default: {} },
         lastHeartbeatAt: { type: Date, default: null },

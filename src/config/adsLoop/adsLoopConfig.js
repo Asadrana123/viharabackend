@@ -80,19 +80,19 @@ function getAdsLoopConfig() {
 
         creative: {
             model: env.ADS_LOOP_MODEL || "claude-opus-5-5",
-            // Rendered sizes per format (file names use the ratio: LT-0004_static_1x1.png).
+            // Rendered sizes per format (file names use the ratio: BB449-S01_static_1x1.png).
             ratios: {
                 "1x1": { width: 1080, height: 1080 },
                 "4x5": { width: 1080, height: 1350 },
             },
             carouselRatio: "1x1",
+            // Image used in a static Meta ad (and in its ad name: static-4x5).
+            staticAdRatio: "4x5",
             minCarouselCards: 2,
             maxCarouselCards: 10,
             // Vision critic: below this score the build gets one automatic revision.
             criticThreshold: num(env.ADS_LOOP_CRITIC_THRESHOLD, 7),
             cloudinaryFolder: env.ADS_LOOP_CLOUDINARY_FOLDER || "ads-loop",
-            // LT-0001..LT-0003 already exist from the laptop pipeline, so new ids start after them.
-            firstLtNumber: num(env.ADS_LOOP_FIRST_LT_NUMBER, 4),
         },
 
         // Meta reports days in the ad account's time zone.
