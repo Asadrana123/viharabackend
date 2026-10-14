@@ -87,7 +87,10 @@ const designAdminRoutes = require("./routes/design/designAdminRoutes");
 const { recoverDesignJobs } = require("./services/design/designJobService");
 // Meta Ads Loop: Slack approvals (events, buttons, /adsloop), health, admin endpoints.
 const adsLoopRoutes = require("./routes/adsLoop/adsLoopRoutes");
+// Zernio webhooks (signed): comment.received drives the Instagram comment auto-reply.
+const zernioWebhookRoutes = require("./routes/social/zernioWebhookRoutes");
 const { recoverAdsLoop } = require("./jobs/adsLoopJob");
+const { recoverRepairJob } = require("./jobs/repairJob");
 // Middleware
 app.use(cookieParser());
 app.use(cors(expressCorsOptions));
@@ -109,6 +112,8 @@ mongoose.connect(process.env.DB_URI, {
     recoverDesignJobs();
     // Ads loop: restart cut-off creative builds and replay missed Slack replies / ✅.
     recoverAdsLoop().catch((err) => console.error("[adsLoop] recovery:", err.message));
+    // Repair agent: retry fixes cut off by a restart.
+    recoverRepairJob().catch((err) => console.error("[repair] recovery:", err.message));
     // Read the website's page list now so Design Studio opens quickly.
     if (process.env.DESIGN_GITHUB_TOKEN) {
       require("./services/design/pageDiscovery").discoverPages().catch((err) => console.error("[design] page discovery:", err.message));
@@ -179,6 +184,7 @@ app.use("/api/v1/admin-ask", adminAskRoutes);
 app.use("/api/v1/brand-kit", brandKitRoutes);
 app.use("/api/v1/design", designAdminRoutes);
 app.use("/api/v1/ads-loop", adsLoopRoutes);
+app.use("/api/webhooks/zernio", zernioWebhookRoutes);
 
 // D7 (sendify-infra.md §2): fail loudly at boot if CHANNEL_TYPES has an enum
 // entry with no registered adapter, rather than discovering it the first

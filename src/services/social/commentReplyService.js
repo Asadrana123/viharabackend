@@ -1,5 +1,7 @@
 const axios = require("axios");
+const crypto = require("crypto");
 const Anthropic = require("@anthropic-ai/sdk");
+const { request: zernioRequest } = require("../adsLoop/zernioClient");
 const SocialCommentReply = require("../../model/social/socialCommentReplyModel");
 const { postToSlack } = require("../shared/slackService");
 
@@ -10,6 +12,13 @@ const { postToSlack } = require("../shared/slackService");
 //
 // Off unless SOCIAL_AUTO_REPLY_ENABLED=true, so deploying this changes nothing
 // until the Meta permissions are approved and someone turns it on.
+//
+// Second route in: Zernio's `comment.received` webhook (POST /api/webhooks/zernio),
+// which also covers comments on Instagram ads. Those replies go out through
+// Zernio's inbox API with the connected Instagram account. Off unless
+// ZERNIO_AUTO_REPLY_ENABLED=true; platforms in ZERNIO_AUTO_REPLY_PLATFORMS
+// (default "instagram"). Both routes share the same prompt, rate limit and
+// per-comment claim, so a comment that arrives through both is answered once.
 
 const GRAPH_API_VERSION = process.env.FB_GRAPH_API_VERSION || "v21.0";
 const GRAPH = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
@@ -131,7 +140,9 @@ const extractInstagramComments = (body) => {
 const graphToken = () => process.env.FB_PAGE_ACCESS_TOKEN;
 
 /** The post's caption gives Claude context. Best-effort: a reply without it is fine. */
-const fetchPostCaption = async ({ platform, postId }) => {
+const fetchPostCaption = async ({ platform, postId, caption, source }) => {
+  // Zernio sends the caption with the comment; it has no Graph token here.
+  if (source === "zernio") return String(caption || "");
   if (!postId) return "";
   const field = platform === "instagram" ? "caption" : "message";
   try {
@@ -146,7 +157,8 @@ const fetchPostCaption = async ({ platform, postId }) => {
   }
 };
 
-const postReply = async ({ platform, commentId }, message) => {
+const postReply = async ({ platform, commentId, postId, source, accountId }, message) => {
+  if (source === "zernio") return postZernioReply({ commentId, postId, accountId }, message);
   const edge = platform === "instagram" ? "replies" : "comments";
   const { data } = await axios.post(`${GRAPH}/${commentId}/${edge}`, null, {
     params: { message, access_token: graphToken() },
@@ -155,11 +167,22 @@ const postReply = async ({ platform, commentId }, message) => {
   return String(data?.id || "");
 };
 
+/** Reply through Zernio (POST /v1/inbox/comments/{postId}); also works on ad media. */
+const postZernioReply = async ({ commentId, postId, accountId }, message) => {
+  const data = await zernioRequest("post", `/v1/inbox/comments/${encodeURIComponent(postId)}`, {
+    data: { accountId, message, commentId },
+    // Same key on a retry, so one comment never gets two replies.
+    idempotencyKey: `reply-${commentId}`,
+  });
+  return String(data?.data?.commentId || data?.commentId || data?.id || data?.comment?.id || "");
+};
+
 // ─── Claude ─────────────────────────────────────────────────────────────────
 
 const generateReply = async (comment, caption) => {
   const userContent = [
     `Platform: ${comment.platform}`,
+    ...(comment.isAd ? ["This comment is on one of our ads (the caption is the ad text)."] : []),
     `Post caption: ${caption || "(not available)"}`,
     `Commenter: ${comment.authorName || "(unknown)"}`,
     `Comment: ${comment.text.slice(0, MAX_COMMENT_CHARS)}`,
@@ -196,10 +219,13 @@ const generateReply = async (comment, caption) => {
 
 // ─── Slack ──────────────────────────────────────────────────────────────────
 
+// Where the log goes: SLACK_SOCIAL_WEBHOOK_URL, or the ads loop's Slack bot in
+// SLACK_SOCIAL_CHANNEL_ID. Neither set = no Slack log (the DB row is still kept).
 const notifySlack = async (comment, outcome) => {
   const webhookUrl = process.env.SLACK_SOCIAL_WEBHOOK_URL;
-  if (!webhookUrl) return;
-  const label = comment.platform === "instagram" ? "Instagram" : "Facebook";
+  const channel = process.env.SLACK_SOCIAL_CHANNEL_ID;
+  if (!webhookUrl && !channel) return;
+  const label = `${comment.platform === "instagram" ? "Instagram" : "Facebook"}${comment.isAd ? " ad" : ""}`;
   const lines = [
     `*${label} comment* from ${comment.authorName || "someone"}:`,
     `> ${comment.text.slice(0, 500)}`,
@@ -208,7 +234,8 @@ const notifySlack = async (comment, outcome) => {
       : `*No reply* (${outcome.status}): ${outcome.skipReason || outcome.error}`,
   ];
   try {
-    await postToSlack(webhookUrl, { text: lines.join("\n") });
+    if (webhookUrl) await postToSlack(webhookUrl, { text: lines.join("\n") });
+    else await require("../adsLoop/slackBot").postMessage({ channel, text: lines.join("\n") });
   } catch (err) {
     console.error("[social-reply] Slack notify failed:", err.message);
   }
@@ -226,6 +253,9 @@ const handleComment = async (comment) => {
       authorId: comment.authorId,
       authorName: comment.authorName,
       commentText: comment.text,
+      source: comment.source || "meta",
+      isAd: Boolean(comment.isAd),
+      adId: comment.adId || "",
     });
   } catch (err) {
     if (err.code === 11000) return;
@@ -276,4 +306,70 @@ const processCommentWebhook = (body) => {
   }
 };
 
-module.exports = { processCommentWebhook };
+// ─── Zernio ─────────────────────────────────────────────────────────────────
+
+const isZernioEnabled = () => process.env.ZERNIO_AUTO_REPLY_ENABLED === "true";
+
+const zernioPlatforms = () =>
+  String(process.env.ZERNIO_AUTO_REPLY_PLATFORMS || "instagram")
+    .split(",")
+    .map((p) => p.trim().toLowerCase())
+    .filter(Boolean);
+
+/**
+ * Zernio signs each delivery: X-Zernio-Signature = lowercase hex
+ * HMAC-SHA256(raw body, ZERNIO_WEBHOOK_SECRET).
+ */
+const verifyZernioSignature = (rawBody, signature) => {
+  const secret = process.env.ZERNIO_WEBHOOK_SECRET;
+  if (!secret || !rawBody || !signature) return false;
+  const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
+  const a = Buffer.from(expected);
+  const b = Buffer.from(String(signature).trim().toLowerCase());
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+};
+
+/**
+ * A comment.received payload -> the shape handleComment uses, or null when it
+ * should not get a reply: our own account, replies inside a thread (no
+ * back-and-forth), empty text, sample test events, or a platform not turned on.
+ */
+const extractZernioComment = (payload) => {
+  if (payload?.event !== "comment.received" || payload.test) return null;
+  const c = payload.comment || {};
+  if (!zernioPlatforms().includes(c.platform)) return null;
+  if (c.author?.isOwnAccount || c.isReply || c.parentCommentId) return null;
+  const text = String(c.text || "").trim();
+  if (!c.id || !text) return null;
+  const postId = c.platformPostId || payload.post?.platformPostId;
+  const accountId = payload.account?.accountId || payload.account?.id;
+  if (!postId || !accountId) return null;
+  return {
+    source: "zernio",
+    platform: c.platform,
+    commentId: String(c.id),
+    postId: String(postId),
+    accountId: String(accountId),
+    authorId: String(c.author?.id || ""),
+    authorName: c.author?.username || c.author?.name || "",
+    text,
+    caption: payload.post?.content || "",
+    isAd: Boolean(c.ad),
+    adId: c.ad?.id || "",
+  };
+};
+
+/**
+ * Entry point from POST /api/webhooks/zernio, after the 200 is sent and the
+ * signature is checked. Never throws.
+ */
+const processZernioWebhook = (payload) => {
+  if (!isZernioEnabled()) return;
+  const comment = extractZernioComment(payload);
+  if (!comment) return;
+  handleComment(comment).catch((err) =>
+    console.error(`[social-reply] zernio comment ${comment.commentId} crashed:`, err.message)
+  );
+};
+
+module.exports = { processCommentWebhook, processZernioWebhook, verifyZernioSignature, extractZernioComment };
