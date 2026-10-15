@@ -163,7 +163,7 @@
     },
     "faq-2816b879": {
       "decision": "edit",
-      "note": "Proxy bidding lets you place a bid before the auction begins on select properties. After you submit your bid from the Property Details Page, Vihara.ai will bid on your behalf during the live auction. You can set proxy bids on multiple properties in advance, and we will email you if you win.",
+      "note": "Proxy bidding lets you place a bid before the auction begins on select properties. After you submit your bid from the Property Details Page, Vihara.ai will bid on your behalf during the live auction, and we will email you if you win.",
       "question": "What is Proxy Bidding and how does it work?"
     },
     "faq-97724104": {

@@ -29,7 +29,7 @@ const MAX_CHARS = Number(process.env.RAG_VTEXT_MAX_CHARS || 1500);
 const TIMEOUT_MS = Number(process.env.VTEXT_RAG_TIMEOUT_MS || 6000);
 const REWRITE_MAX_MESSAGE_CHARS = 60; // longer messages already read as a full question
 const FAQ_TOP_K = Number(process.env.RAG_VTEXT_FAQ_TOP_K || 2);
-const FAQ_MIN_SCORE = Number(process.env.RAG_VTEXT_FAQ_MIN_SCORE || 0.5);
+const FAQ_MIN_SCORE = Number(process.env.RAG_VTEXT_FAQ_MIN_SCORE || 0.62);
 const FAQ_MAX_CHARS = Number(process.env.RAG_VTEXT_FAQ_MAX_CHARS || 1200);
 const RAG_FAILURE_ALERT_COOLDOWN_MS = 30 * 60_000;
 
