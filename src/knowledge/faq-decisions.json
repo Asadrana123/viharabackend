@@ -1,0 +1,265 @@
+{
+  "decidedBy": "Claude, following the instruction to use the suggestions and add what looks good",
+  "decisions": {
+    "faq-b9ebf5dd": {
+      "decision": "include",
+      "note": "Suggested include; nothing risky found.",
+      "question": "Why do I need an account?"
+    },
+    "faq-a9f8e2b1": {
+      "decision": "include",
+      "note": "Suggested include; nothing risky found.",
+      "question": "How do I create an account?"
+    },
+    "faq-06019c67": {
+      "decision": "include",
+      "note": "Suggested include; nothing risky found.",
+      "question": "Can I set up a joint account?"
+    },
+    "faq-991e1552": {
+      "decision": "include",
+      "note": "Suggested include; nothing risky found.",
+      "question": "I forgot my password. What should I do?"
+    },
+    "faq-317fa78a": {
+      "decision": "edit",
+      "note": "Yes, you can deactivate your account by contacting our team, and you can always create a new account in the future.",
+      "question": "Can I cancel or deactivate my account?"
+    },
+    "faq-4f5af8e7": {
+      "decision": "include",
+      "note": "Suggested include; nothing risky found.",
+      "question": "Is there an app I can use?"
+    },
+    "faq-6dbff0cd": {
+      "decision": "include",
+      "note": "Suggested include; nothing risky found.",
+      "question": "Why isn’t the Vihara.ai app working?"
+    },
+    "faq-aa0b8111": {
+      "decision": "exclude",
+      "note": "Registration limit rules (maximum of 3 assets) may change and apply to some customers only. A person should answer.",
+      "question": "Why is there a limit on the number of properties I can bid on?"
+    },
+    "faq-2c0cbd29": {
+      "decision": "exclude",
+      "note": "Part of the registration-limit rules. A person should answer.",
+      "question": "Can I get approval to bid on more properties?"
+    },
+    "faq-03867a30": {
+      "decision": "exclude",
+      "note": "Part of the registration-limit rules, which are left out.",
+      "question": "Will there always be limits on the number of properties I can bid on?"
+    },
+    "faq-6a8f2aed": {
+      "decision": "exclude",
+      "note": "Part of the registration-limit rules, and names a staff email address.",
+      "question": "What should I do if I register for a property by mistake and it impacts my limit?"
+    },
+    "faq-cd14a411": {
+      "decision": "exclude",
+      "note": "Match the Bid is a time-critical program with a 6-hour deadline. Wrong information could cost a buyer the property, so a person should answer.",
+      "question": "What does it mean when a property is labeled \"Match the Bid\"?"
+    },
+    "faq-b1ee4c75": {
+      "decision": "exclude",
+      "note": "Part of the Match the Bid rules (6-hour deadline).",
+      "question": "Why do I have only 6 hours to complete my contract information form?"
+    },
+    "faq-30b5bf7b": {
+      "decision": "exclude",
+      "note": "Part of the Match the Bid rules (completion times).",
+      "question": "I'm concerned I might not be able to complete my contract information form within the required timeline. What should I do?"
+    },
+    "faq-531c3876": {
+      "decision": "exclude",
+      "note": "Match the Bid process with commitments a buyer could rely on. A person should answer.",
+      "question": "I wasn’t the highest bidder in the auction, but I'm still interested in purchasing this property. How can I Match the Bid?"
+    },
+    "faq-ce8e2a64": {
+      "decision": "exclude",
+      "note": "Match the Bid eligibility rule.",
+      "question": "I didn't participate in bidding for this property in the auction, but can I still submit a Match the Bid request for consideration?"
+    },
+    "faq-f48365ea": {
+      "decision": "include",
+      "note": "Suggested include; nothing risky found.",
+      "question": "How can I participate in an online auction for bank-owned properties?"
+    },
+    "faq-ea4eadc3": {
+      "decision": "include",
+      "note": "Suggested include; nothing risky found.",
+      "question": "How can I register for an online bank-owned auction?"
+    },
+    "faq-171526f8": {
+      "decision": "include",
+      "note": "Flagged for a careful read; clear, hedged and stable enough for the assistant to repeat.",
+      "question": "Why am I restricted from having more than one account linked to my phone number?"
+    },
+    "faq-a2399078": {
+      "decision": "include",
+      "note": "Suggested include; nothing risky found.",
+      "question": "Why does my number need to be verified?"
+    },
+    "faq-da49fa79": {
+      "decision": "exclude",
+      "note": "Promises the number will only be used when necessary. Vihara also texts and calls leads, so the assistant should not repeat that promise.",
+      "question": "Will my phone number be used for other purposes?"
+    },
+    "faq-eb6d620d": {
+      "decision": "include",
+      "note": "Suggested include; nothing risky found.",
+      "question": "What is an auction event?"
+    },
+    "faq-355a949b": {
+      "decision": "exclude",
+      "note": "Direct Offer means making offers to sellers, which is the negotiation topic the assistant must not discuss.",
+      "question": "What is Direct Offer?"
+    },
+    "faq-cf8f0df4": {
+      "decision": "include",
+      "note": "Suggested include; nothing risky found.",
+      "question": "What should I do before I bid on a bank-owned property?"
+    },
+    "faq-cd9a40ec": {
+      "decision": "edit",
+      "note": "A “Cash only purchase” means the property must be paid for in full, without a mortgage. The funds can come from your own bank or financial accounts, or from private money, but they must be readily available when it is time to close.",
+      "question": "A property is listed as a “Cash only purchase.” What does that mean?"
+    },
+    "faq-8133ea3f": {
+      "decision": "exclude",
+      "note": "The assistant must not discuss the reserve price or whether sellers accept less. A person should answer.",
+      "question": "What is the Reserve Price?"
+    },
+    "faq-0ebf9462": {
+      "decision": "exclude",
+      "note": "The assistant must not discuss the reserve price or whether sellers accept less. A person should answer.",
+      "question": "What happens if the Reserve Price is not met?"
+    },
+    "faq-79790863": {
+      "decision": "exclude",
+      "note": "Says increments shrink near the end, which may not match a property's fixed minimum increment in the data.",
+      "question": "Why are the bid increments so high?"
+    },
+    "faq-a1b2acac": {
+      "decision": "exclude",
+      "note": "The assistant must not discuss the reserve price or whether sellers accept less. A person should answer.",
+      "question": "What is counterbidding?"
+    },
+    "faq-c633915e": {
+      "decision": "include",
+      "note": "Suggested include; nothing risky found.",
+      "question": "I won the auction. What should I do next?"
+    },
+    "faq-12af0e03": {
+      "decision": "include",
+      "note": "Flagged for a careful read; clear, hedged and stable enough for the assistant to repeat.",
+      "question": "What is a Purchase Profile?"
+    },
+    "faq-3790c147": {
+      "decision": "exclude",
+      "note": "Same: may not match a property's fixed minimum increment in the data.",
+      "question": "Why does the bid increment change?"
+    },
+    "faq-2816b879": {
+      "decision": "edit",
+      "note": "Proxy bidding lets you place a bid before the auction begins on select properties. After you submit your bid from the Property Details Page, Vihara.ai will bid on your behalf during the live auction. You can set proxy bids on multiple properties in advance, and we will email you if you win.",
+      "question": "What is Proxy Bidding and how does it work?"
+    },
+    "faq-97724104": {
+      "decision": "exclude",
+      "note": "The assistant must not discuss the reserve price or whether sellers accept less. A person should answer.",
+      "question": "Do Sellers accept bids that are below the Reserve Price?"
+    },
+    "faq-f8bc8d34": {
+      "decision": "exclude",
+      "note": "The assistant must not discuss the reserve price or whether sellers accept less. A person should answer.",
+      "question": "Is the Opening Bid also the Reserve?"
+    },
+    "faq-cd498dab": {
+      "decision": "include",
+      "note": "Flagged for a careful read; clear, hedged and stable enough for the assistant to repeat.",
+      "question": "Why is the auction time being extended?"
+    },
+    "faq-09e95a8c": {
+      "decision": "include",
+      "note": "Flagged for a careful read; clear, hedged and stable enough for the assistant to repeat.",
+      "question": "Can I use a mortgage?"
+    },
+    "faq-899ed6be": {
+      "decision": "include",
+      "note": "Flagged for a careful read; clear, hedged and stable enough for the assistant to repeat.",
+      "question": "Can I use financing to purchase the property?"
+    },
+    "faq-04a571bc": {
+      "decision": "include",
+      "note": "Suggested include; nothing risky found.",
+      "question": "Am I allowed to purchase a property with multiple separate entities?"
+    },
+    "faq-74e2a232": {
+      "decision": "exclude",
+      "note": "About live foreclosure auctions (state rules, courthouse venues), not the online auctions the texts are about.",
+      "question": "How can I participate in a foreclosure auction?"
+    },
+    "faq-61c3640b": {
+      "decision": "exclude",
+      "note": "About paying in full at a live foreclosure auction; depends on state rules.",
+      "question": "Do I have to pay the property in full at the auction?"
+    },
+    "faq-9d149edb": {
+      "decision": "exclude",
+      "note": "About liens on foreclosure properties. A lien question needs a property-specific answer from a person, not a general one.",
+      "question": "Are these properties free of liens?"
+    },
+    "faq-82f34b5f": {
+      "decision": "exclude",
+      "note": "About canceled or postponed live foreclosure sales.",
+      "question": "Why was this property sale canceled or postponed?"
+    },
+    "faq-28de16e8": {
+      "decision": "exclude",
+      "note": "About canceled or postponed live foreclosure sales.",
+      "question": "How do I know if a sale is canceled or postponed before I attend the auction?"
+    },
+    "faq-b5e392f3": {
+      "decision": "exclude",
+      "note": "About the live auctions calendar, which is not what the texts are about.",
+      "question": "Is there a calendar or upcoming auctions page that shows the dates and times of upcoming live auctions?"
+    },
+    "faq-25440b85": {
+      "decision": "exclude",
+      "note": "Specific agent requirements (24-hour registration, W-9, licenses) and commission claims that vary by listing.",
+      "question": "Can I use a real estate agent for an auction and how does it work?"
+    },
+    "faq-409cea07": {
+      "decision": "exclude",
+      "note": "About commissions, which vary by listing and are not in the data the assistant is given.",
+      "question": "How much commission is offered on properties?"
+    },
+    "faq-e9198108": {
+      "decision": "exclude",
+      "note": "About agent commissions, and the answer is garbled.",
+      "question": "What are some benefits of working with Vihara.ai on bank-owned properties as a buyer’s agent?"
+    },
+    "faq-ddbfb164": {
+      "decision": "exclude",
+      "note": "A long list of post-auction obligations with 1-business-day deadlines and legal steps. Too much for a text and too costly if wrong, and it conflicts with the earnest money deposit being unconfirmed. A person should answer.",
+      "question": "What happens after I win a bank-owned property auction?"
+    },
+    "faq-a02d84fd": {
+      "decision": "exclude",
+      "note": "About winning a live foreclosure auction (certificate of sale, recording the deed). Legal steps that vary by state.",
+      "question": "What happens if I win a live foreclosure auction?"
+    },
+    "faq-a9bb7c18": {
+      "decision": "include",
+      "note": "Suggested include; nothing risky found.",
+      "question": "Am I allowed to purchase a property as a separate entity?"
+    },
+    "faq-9462b8dc": {
+      "decision": "exclude",
+      "note": "About recording a deed after a live auction. Legal steps that vary by state.",
+      "question": "Do I receive a deed after I purchase a property at a live auction?"
+    }
+  }
+}
