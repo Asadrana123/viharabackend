@@ -78,11 +78,6 @@ const careerVideoEditorAssignmentEmail = (firstName) => {
         </p>
 
         <p style="margin:0 0 15px 0;font-size:14px;line-height:1.6;color:#555;">
-          <strong style="color:#333;">Compensation:</strong> If we like the output, we'll pay you for the assignment
-          regardless of whether we move forward with the role.
-        </p>
-
-        <p style="margin:0 0 15px 0;font-size:14px;line-height:1.6;color:#555;">
           We encourage you to give this assignment your 100%. If your submission meets our expectations, we will share an
           offer letter with you within 72 hours of reviewing it.
         </p>
