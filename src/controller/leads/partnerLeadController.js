@@ -29,7 +29,7 @@ const { partnerPageUrl } = require("../../config/siteUrls");
  *   2. Create the lead — the unique email index rejects a duplicate (409) before
  *      any call is scheduled.
  *   3. Schedule the Maya activation call (fire-and-forget, only with consent) —
- *      the 2-in-60s burst + daily callback loop.
+ *      the one signup call + daily callback loop.
  *   4. Respond.
  *   5. Enrich + Brevo sync in the background; update the lead in place.
  */

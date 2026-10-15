@@ -35,7 +35,7 @@ const EARLY_ACCESS_REGISTERING_AS = {
  *   2. Create the lead — the unique email index is the dedup gate. A duplicate
  *      email is rejected here (409) before any call is scheduled.
  *   3. Schedule the Maya call (fire-and-forget, only with consent). This runs
- *      the 2-in-60s burst and, on no-answer, starts the daily 1:32 PM callback
+ *      the one signup call and, on no-answer, starts the daily 1:32 PM callback
  *      loop that continues until the lead picks up.
  *   4. Respond.
  *   5. Enrich + Brevo sync in the background; update the lead in place.

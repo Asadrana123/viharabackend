@@ -26,6 +26,9 @@ const SWEEP_BATCH = 200; // max callbacks evaluated per minute
 const BURST_OPTS = {
   noPickupReasons: DID_NOT_CONNECT_REASONS,
   treatErrorsAsNoPickup: true,
+  // The person asked for this call, so it's the one exception to "one call a
+  // day": if they miss it, ring once more 60s later.
+  maxCalls: 2,
 };
 
 let sweeping = false; // prevent overlapping sweeps

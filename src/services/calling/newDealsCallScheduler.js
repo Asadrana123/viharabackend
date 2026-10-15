@@ -3,7 +3,7 @@
 // /new-deals call flow — same loop as the Northern California page:
 //
 //   Signup (with consent):
-//     → 2-in-60s burst
+//     → one signup call
 //         • picked up  → callStatus="connected", loop STOPS
 //         • no pickup  → callStatus="no-answer", nextCallAt = next daily slot
 //

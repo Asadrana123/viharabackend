@@ -2,13 +2,12 @@
 //
 // Shared registration-call primitives.
 //
-//   • runCallBurst(lead, opts)          — reusable "up to two calls in a row"
-//                                          burst. Used by BOTH the persona flow
+//   • runCallBurst(lead, opts)          — reusable call (one dial; callbacks
+//                                          may ring once more). Used by the persona flow
 //                                          (below) and the early-access daily
 //                                          scheduler.
-//   • scheduleRegistrationCall(lead)    — PERSONA-1 flow. Unchanged behaviour:
-//                                          at most two calls, ever, then stop.
-//                                          No daily loop.
+//   • scheduleRegistrationCall(lead)    — PERSONA-1 flow: one call,
+//                                          then stop. No daily loop.
 //
 // The early-access daily-callback loop lives in earlyAccessCallScheduler.js and
 // reuses runCallBurst — persona behaviour is therefore untouched.
@@ -153,7 +152,7 @@ async function pollCallOutcome(callId, noPickupReasons, treatErrorsAsNoPickup, r
 /**
  * Reusable burst for ONE lead:
  *   [optional initial wait] → call → if no pickup, wait 60s → call once more.
- * Resolves when the burst finishes. Places at most two calls.
+ * Resolves when the burst finishes. Places maxCalls dials at most.
  *
  * @param {object} lead
  * @param {object} [opts]
@@ -161,14 +160,16 @@ async function pollCallOutcome(callId, noPickupReasons, treatErrorsAsNoPickup, r
  * @param {Set<string>} [opts.noPickupReasons]    reasons meaning "no pickup"
  *                                                 (defaults to persona RETRY_REASONS)
  * @param {boolean} [opts.treatErrorsAsNoPickup=false]
- * @param {number} [opts.maxCalls=2]               1 = single call, no 60s retry
+ * @param {number} [opts.maxCalls=1]               2 = ring once more after 60s
+ *   on no pickup. Only requested callbacks use 2 — everyone else gets ONE call
+ *   (ringing straight back when someone is busy just annoys them).
  * @param {boolean} [opts.requireConversation=false] loops: only a real
  *   conversation counts as connected (see hadMeaningfulConversation)
  * @returns {{ connected: boolean, reached?: boolean }}
  */
 async function runCallBurst(
   lead = {},
-  { initialDelayMs = 0, noPickupReasons = RETRY_REASONS, treatErrorsAsNoPickup = false, maxCalls = 2, requireConversation = false } = {}
+  { initialDelayMs = 0, noPickupReasons = RETRY_REASONS, treatErrorsAsNoPickup = false, maxCalls = 1, requireConversation = false } = {}
 ) {
   const who = lead.fullName || lead.phone || "lead";
   if (initialDelayMs > 0) await delay(initialDelayMs);
@@ -200,8 +201,7 @@ async function runCallBurst(
 }
 
 /**
- * PERSONA-1 registration flow — unchanged behaviour: wait 60s, call, retry once
- * only on a genuine no-answer, then STOP. No daily loop.
+ * PERSONA-1 registration flow: wait 60s, call ONCE, then STOP. No daily loop.
  */
 const scheduleRegistrationCall = async (lead = {}) => {
   await runCallBurst(lead, {

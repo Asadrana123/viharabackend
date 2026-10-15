@@ -29,7 +29,7 @@ const TEST_NAME_REGEX = /\btest\b/i;
  *   2. Create the lead — the unique email index is the dedup gate (409 on dup)
  *      before any call is scheduled.
  *   3. Schedule Maya's signup call (fire-and-forget, only with consent) — the
- *      2-in-60s burst + daily callback loop.
+ *      one signup call + daily callback loop.
  *   4. Respond.
  *   5. Enrich (FullEnrich) + Brevo-sync in the background; update the lead in place.
  */
