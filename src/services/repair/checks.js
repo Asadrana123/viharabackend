@@ -33,7 +33,9 @@ async function checkTracking() {
     const { thresholds } = getRepairConfig();
     const findings = [];
     const range = window(14);
-    const days = await meta.dailyConversions(range.since, range.until);
+    // Through today (so far), so a fix shows up as soon as the first event arrives.
+    const today = DateTime.now().setZone(getRepairConfig().accountTimeZone).toISODate();
+    const days = await meta.dailyConversions(range.since, today);
     const table = days.map((d) => `${d.date}: ${d.registrations} registrations, ${d.leads} Leads`).join("\n");
 
     // Lead: every registration used to arrive with a Lead. Count registrations since the last Lead.
