@@ -118,6 +118,7 @@ const vtextMessageSchema = new mongoose.Schema(
         used: { type: Boolean },
         query: { type: String },
         topScore: { type: Number },
+        faqTopScore: { type: Number },
         ms: { type: Number },
         error: { type: String },
       },

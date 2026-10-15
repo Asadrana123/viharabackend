@@ -28,9 +28,13 @@ const MIN_SCORE = Number(process.env.RAG_VTEXT_MIN_SCORE || 0.4);
 const MAX_CHARS = Number(process.env.RAG_VTEXT_MAX_CHARS || 1500);
 const TIMEOUT_MS = Number(process.env.VTEXT_RAG_TIMEOUT_MS || 6000);
 const REWRITE_MAX_MESSAGE_CHARS = 60; // longer messages already read as a full question
+const FAQ_TOP_K = Number(process.env.RAG_VTEXT_FAQ_TOP_K || 2);
+const FAQ_MIN_SCORE = Number(process.env.RAG_VTEXT_FAQ_MIN_SCORE || 0.5);
+const FAQ_MAX_CHARS = Number(process.env.RAG_VTEXT_FAQ_MAX_CHARS || 1200);
 const RAG_FAILURE_ALERT_COOLDOWN_MS = 30 * 60_000;
 
 const isRagEnabled = () => process.env.VTEXT_RAG_ENABLED === "true";
+const hasFaq = () => process.env.VTEXT_RAG_FAQ !== "false"; // the FAQ search can be switched off on its own
 const isRewriteEnabled = () => process.env.VTEXT_RAG_REWRITE !== "false";
 
 const money = (n) => (typeof n === "number" && Number.isFinite(n) && n > 0 ? `$${Math.round(n).toLocaleString("en-US")}` : "");
@@ -148,16 +152,47 @@ async function rewriteQuery({ messages, replyToBody }) {
   }
 }
 
-/** Searches the knowledge base, limited to the lead's own property or properties. */
+/**
+ * Searches the knowledge base twice from one embedding: the lead's own property or properties, and the
+ * approved FAQ (general "how do auctions work" answers, true for every property). A lead with no property
+ * (a Northern California lead) still gets the FAQ. A FAQ problem never takes the property facts down with it.
+ */
 async function searchKnowledge(query, slugs) {
   const vector = await embedQuery(query);
-  const filter = {
-    must: [
-      { key: "type", match: { value: "property" } },
-      { key: "slug", match: { any: slugs.map((s) => String(s).toLowerCase()) } },
-    ],
-  };
-  return search(vector, { filter, limit: TOP_K, scoreThreshold: MIN_SCORE });
+  const propertySearch = slugs.length
+    ? search(vector, {
+        filter: {
+          must: [
+            { key: "type", match: { value: "property" } },
+            { key: "slug", match: { any: slugs.map((s) => String(s).toLowerCase()) } },
+          ],
+        },
+        limit: TOP_K,
+        scoreThreshold: MIN_SCORE,
+      })
+    : Promise.resolve([]);
+  const faqSearch = !hasFaq() ? Promise.resolve([]) : search(vector, { filter: { must: [{ key: "type", match: { value: "faq" } }] }, limit: FAQ_TOP_K, scoreThreshold: FAQ_MIN_SCORE }).catch((err) => {
+    console.warn("[vtext rag] FAQ search failed, continuing without it:", err.message);
+    return [];
+  });
+  const [property, faq] = await Promise.all([propertySearch, faqSearch]);
+  return { property, faq };
+}
+
+/** The matched FAQ entries as one block for the prompt, capped. */
+function formatFaq(results) {
+  const seen = new Set();
+  const parts = [];
+  let length = 0;
+  for (const r of results) {
+    const text = String(r.payload?.text || "").trim();
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    if (length + text.length > FAQ_MAX_CHARS && parts.length) break;
+    parts.push(text);
+    length += text.length;
+  }
+  return parts.join("\n\n");
 }
 
 /** Joins the matched chunks into one block for the prompt: no repeats, labelled by property when there is more than one, capped. */
@@ -210,8 +245,9 @@ async function buildReplyKnowledge({ contact, messages, replyToBody, conversatio
     properties: [],
     leadDetails: [],
     retrievedText: "",
+    faqText: "",
     sources: [],
-    retrieval: { used: false, query: "", topScore: null, ms: 0 },
+    retrieval: { used: false, query: "", topScore: null, faqTopScore: null, ms: 0 },
     propertyContext: null,
   };
 
@@ -235,18 +271,22 @@ async function buildReplyKnowledge({ contact, messages, replyToBody, conversatio
     console.error("[vtext rag] could not load the lead's details:", err.message);
   }
 
-  if (!out.properties.length || !replyToBody) return out;
+  if (!replyToBody) return out;
+  // A lead with no property can still ask how the auctions work, so the search runs for them too.
+  if (!out.properties.length && out.leadDetails.length === 0 && !hasFaq()) return out;
 
   const started = Date.now();
   try {
     const query = await rewriteQuery({ messages, replyToBody });
     out.retrieval.query = query;
-    const results = await withTimeout(searchKnowledge(query, out.properties.map((p) => p.slug)), TIMEOUT_MS, "knowledge search");
+    const { property, faq } = await withTimeout(searchKnowledge(query, out.properties.map((p) => p.slug)), TIMEOUT_MS, "knowledge search");
 
     out.retrieval.used = true;
-    out.retrieval.topScore = results.length ? results[0].score : null;
-    out.retrievedText = formatRetrieved(results, out.properties.length > 1);
-    out.sources = results.map((r) => r.payload?.key).filter(Boolean);
+    out.retrieval.topScore = property.length ? property[0].score : null;
+    out.retrieval.faqTopScore = faq.length ? faq[0].score : null;
+    out.retrievedText = formatRetrieved(property, out.properties.length > 1);
+    out.faqText = formatFaq(faq);
+    out.sources = [...property, ...faq].map((r) => r.payload?.key).filter(Boolean);
   } catch (err) {
     out.retrieval.error = err.message;
     console.error("[vtext rag] search failed, writing the reply from the basic facts only:", err.message);
@@ -256,4 +296,4 @@ async function buildReplyKnowledge({ contact, messages, replyToBody, conversatio
   return out;
 }
 
-module.exports = { isRagEnabled, buildReplyKnowledge, formatRetrieved, rewriteQuery };
+module.exports = { isRagEnabled, buildReplyKnowledge, formatRetrieved, formatFaq, rewriteQuery };

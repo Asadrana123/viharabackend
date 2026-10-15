@@ -199,6 +199,18 @@ async function deleteByProperty(slug) {
   );
 }
 
+/**
+ * Delete every point of one type (for example "faq"), so a re-sync replaces the whole set and
+ * an entry that was withdrawn does not linger.
+ */
+async function deleteByType(type) {
+  const filter = { must: [{ key: 'type', match: { value: String(type) } }] };
+  await withRetry(
+    () => client().post(`/collections/${COLLECTION}/points/delete?wait=true`, { filter }),
+    `deleteByType(${type})`
+  );
+}
+
 // ── Read (search) ─────────────────────────────────────────────────────────────
 
 /**
@@ -238,6 +250,7 @@ module.exports = {
   ensureCollection,
   upsertChunks,
   deleteByProperty,
+  deleteByType,
   search,
   buildPropertyFilter,
   deterministicId, // exported for tests / debugging

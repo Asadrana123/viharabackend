@@ -366,6 +366,13 @@ async function runRagSync() {
   // Same selection as the default (every property with a slug), minus test properties.
   const summary = await syncAllProperties({ query: { slug: { $type: "string", $ne: "" }, isTestProperty: { $ne: true } } });
   await setAlertWatermark(RAG_SYNC_KEY, startedAt);
+  try {
+    const { syncFaq } = require("../../rag/faqSyncService");
+    const faq = await syncFaq();
+    console.log(`[vtext rag-sync] FAQ: ${faq.status}, ${faq.chunks} entries`);
+  } catch (err) {
+    console.error("[vtext rag-sync] FAQ refresh failed:", err.message); // the property refresh above already succeeded
+  }
 
   if (summary.errors.length) {
     await notifyVtextAlert({

@@ -70,6 +70,7 @@ function collectSourceTexts({ knowledge, messages, replyToBody }) {
   for (const p of knowledge?.properties || []) texts.push(...Object.values(p.facts || {}).map(String));
   texts.push(...(knowledge?.leadDetails || []));
   if (knowledge?.retrievedText) texts.push(knowledge.retrievedText);
+  if (knowledge?.faqText) texts.push(knowledge.faqText);
   for (const m of messages || []) if (m?.body) texts.push(m.body);
   if (replyToBody) texts.push(replyToBody);
   return texts;
