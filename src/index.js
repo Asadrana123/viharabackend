@@ -20,6 +20,7 @@ const { startVtextWorkersInProcess } = require('./workers/vtextWorker');
 const { startVtextSocketBridge } = require('./socket/vtextSocketBridge');
 const { startVtextWatchdog } = require('./services/vtext/vtextWatchdogService');
 const { startMetaAdsReportJob } = require('./jobs/metaAdsReportJob');
+const { startGaReportJob } = require('./jobs/gaReportJob');
 const { startAdsLoopJob } = require('./jobs/adsLoopJob');
 const { startRepairJob } = require('./jobs/repairJob');
 require('./passport');
@@ -94,6 +95,8 @@ server.listen(PORT, () => {
   // Daily 9:00 AM IST Meta Ads performance report + AI suggestions to Slack.
   startMetaAdsReportJob();
 
+  // Daily 4:00 PM IST website report (Google Analytics 4 numbers + AI summary) to Slack.
+  startGaReportJob();
   // Meta Ads Loop (Zernio + Slack approvals): daily pull, heartbeat, weekly list.
   // Off unless ADS_LOOP_ENABLED=true.
   startAdsLoopJob();
