@@ -31,7 +31,7 @@ const { syncPropertyLead } = require("../../services/integrations/brevoService")
  *   2. Create the lead — the unique phoneNormalized index is the dedup gate.
  *      A duplicate phone is rejected here (409) before any call is scheduled.
  *   3. Schedule the Maya call for THIS property (fire-and-forget, only with
- *      consent) — the 2-in-60s burst + daily callback loop.
+ *      consent) — the one signup call + daily callback loop.
  *   4. Respond.
  *   5. Enrich in the background; update the lead in place.
  */

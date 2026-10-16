@@ -7,7 +7,7 @@
 // propertyVoicePromptBuilder) and hands the burst to the shared callDispatchQueue.
 //
 // Behaviour is identical to the old per-property schedulers:
-//   Signup (with consent): 2-in-60s burst → picked up = "connected" (STOP),
+//   Signup (with consent): one signup call → picked up = "connected" (STOP),
 //     no pickup = "no-answer" + next daily slot.
 //   Then ONE call a day for 7 days (followUpCadence.js), rotating 11:00 AM /
 //     2:30 PM / 6:00 PM local; picked up = STOP, after day 7 = "not-reached".

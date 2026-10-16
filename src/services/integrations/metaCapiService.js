@@ -13,6 +13,16 @@ const GRAPH_API_VERSION = "v20.0";
 const isValidEventName = (name) =>
   typeof name === "string" && /^[A-Za-z0-9 _-]{1,40}$/.test(name.trim());
 
+// Every sign-up also counts as a Meta "Lead", sent from the server with the
+// same event_id. Until Oct 2026 a GTM tag fired Lead in the browser; when that
+// tag stopped, ads optimising for Lead lost every conversion. Sending it here
+// means a broken browser tag can't silently zero the Lead count again (Meta
+// dedupes a browser Lead that uses the same event_id).
+// META_CAPI_MIRROR_LEAD=false turns this off.
+const ALSO_SEND_AS = { CompleteRegistration: ["Lead"] };
+const mirroredNames = (eventName) =>
+  process.env.META_CAPI_MIRROR_LEAD === "false" ? [] : ALSO_SEND_AS[eventName] || [];
+
 // Normalize + SHA-256 hash email. Meta requires all PII hashed.
 const hashEmail = (email) => {
   if (!email) return undefined;
@@ -69,18 +79,17 @@ const sendEvent = async ({ eventName, eventId, eventSourceUrl, userData = {}, cu
   // Strip undefined so Meta never receives empty fields.
   Object.keys(user_data).forEach((k) => user_data[k] === undefined && delete user_data[k]);
 
+  const eventTime = Math.floor(Date.now() / 1000);
   const payload = {
-    data: [
-      {
-        event_name: eventName,
-        event_time: Math.floor(Date.now() / 1000),
-        event_id: eventId,
-        action_source: "website",
-        event_source_url: eventSourceUrl,
-        user_data,
-        custom_data: customData,
-      },
-    ],
+    data: [eventName, ...mirroredNames(eventName)].map((name) => ({
+      event_name: name,
+      event_time: eventTime,
+      event_id: eventId,
+      action_source: "website",
+      event_source_url: eventSourceUrl,
+      user_data,
+      custom_data: customData,
+    })),
   };
 
   // Only attached while a test code is in env. Remove the env var to go live — no code change.

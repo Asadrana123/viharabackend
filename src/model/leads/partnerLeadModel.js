@@ -43,6 +43,7 @@ const partnerLeadSchema = new mongoose.Schema(
     // ── Partner buy-box ───────────────────────────────────────────────────
     primaryMarket: { type: String, trim: true, default: "" },
     persona:       { type: String, trim: true, default: "" }, // exact page label
+    needsFinancing: { type: String, trim: true, default: "" }, // yes | no | not_sure
 
     // Silent IANA timezone read from the browser — drives the local callback
     // scheduling (1:32 PM in the applicant's own zone).

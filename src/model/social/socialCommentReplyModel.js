@@ -11,6 +11,11 @@ const socialCommentReplySchema = new mongoose.Schema(
     authorId: { type: String, default: "" },
     authorName: { type: String, default: "" },
     commentText: { type: String, default: "" },
+    // "meta" = Meta's own webhook + Graph API; "zernio" = Zernio's comment.received webhook + inbox API.
+    source: { type: String, enum: ["meta", "zernio"], default: "meta" },
+    // Comment on an ad (Instagram ads come with the Meta ad id).
+    isAd: { type: Boolean, default: false },
+    adId: { type: String, default: "" },
     // pending → replied | skipped | failed
     status: {
       type: String,

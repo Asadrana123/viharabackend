@@ -61,6 +61,13 @@ const touchesFrom = (body, now = new Date()) => {
   return { firstTouch, lastTouch };
 };
 
+// "Do you need financing?" on the auction / Early Access / NorCal / Partner forms.
+// Anything else (missing, old clients) is stored as "".
+const NEEDS_FINANCING = ["yes", "no", "not_sure"];
+const NEEDS_FINANCING_LABELS = { yes: "Yes", no: "No, paying cash", not_sure: "Not sure yet" };
+const needsFinancingFrom = (v) => (NEEDS_FINANCING.includes(v) ? v : "");
+const needsFinancingLabel = (v) => NEEDS_FINANCING_LABELS[v] || "—";
+
 /**
  * Sanitize the buy box and recompute the match range server-side.
  * @param {object} raw            body.buy_box
@@ -200,6 +207,8 @@ module.exports = {
   tolerance,
   marketList,
   touchesFrom,
+  needsFinancingFrom,
+  needsFinancingLabel,
   buildBuyBox,
   attributionFrom,
   clientIp,

@@ -3,7 +3,7 @@
 // Northern California early-access call flow with a 7-day follow-up loop:
 //
 //   Signup (with consent):
-//     → 2-in-60s burst
+//     → one signup call
 //         • picked up  → callStatus="connected", loop STOPS
 //         • no pickup  → callStatus="no-answer", nextCallAt = next daily slot
 //

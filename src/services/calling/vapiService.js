@@ -2,6 +2,7 @@ const axios = require("axios");
 const { buildVariableValues } = require("./vapiPromptService");
 const { buildPriorContext } = require("./callMemoryService");
 const { pickCallerNumberId } = require("./callerNumberPoolService");
+const { claimDailyDial, ALREADY_CALLED_TODAY } = require("./dailyDialGuard");
 // Shared *script* blocks — single source of truth in config/voicePromptShared.js.
 // These are the blocks common to EVERY funnel; they get appended to every call
 // below (idempotently), so editing one there — or adding a new one to the table
@@ -359,8 +360,21 @@ const buildAssistantOverrides = (contact, researchSummary, property, promptConfi
 const dispatchCall = async (
   phoneNumber,
   person,
-  { researchSummary = "", property = PROPERTY, promptConfig = null, source = "" } = {}
+  { researchSummary = "", property = PROPERTY, promptConfig = null, source = "", oncePerDay = true } = {}
 ) => {
+  // One call per number per day (dailyDialGuard). oncePerDay=false is for calls
+  // the person asked for (callbacks, a fresh sign-up) and the admin single-call
+  // form — they still count as today's call.
+  const dial = await claimDailyDial(phoneNumber, {
+    timezone: person.timezone,
+    source: source || "vihara-voice",
+    enforce: oncePerDay,
+  });
+  if (!dial.allowed) {
+    console.log(`⏭️  Call skipped (${ALREADY_CALLED_TODAY}): ${person.fullName} → ${phoneNumber}`);
+    return { success: false, phone: phoneNumber, error: ALREADY_CALLED_TODAY };
+  }
+
   try {
     const metadata = {
       // Funnel tag from the caller (e.g. "nor-cal", "early-access",
@@ -378,6 +392,7 @@ const dispatchCall = async (
     // daily cap — in that case we skip the dial to protect number reputation.
     const phoneNumberId = await pickCallerNumberId();
     if (!phoneNumberId) {
+      await dial.release(); // not dialed — doesn't count as today's call
       console.warn(`⏭️  Call skipped (all caller numbers hit daily cap): ${person.fullName} → ${phoneNumber}`);
       return { success: false, phone: phoneNumber, error: "daily call cap reached on all caller numbers" };
     }
@@ -420,6 +435,7 @@ const dispatchCall = async (
     console.log(`✅ Call dispatched: ${person.fullName} → ${phoneNumber} | from ${phoneNumberId} | Call ID: ${response.data.id}`);
     return { success: true, callId: response.data.id, phone: phoneNumber };
   } catch (err) {
+    await dial.release(); // VAPI never placed the call
     const reason =
       err.response?.data?.message ||
       (Array.isArray(err.response?.data?.error) ? err.response.data.error.join(", ") : err.response?.data?.error) ||

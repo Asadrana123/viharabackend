@@ -3,7 +3,7 @@
 // ONE follow-up cadence for every landing-page call scheduler (early access,
 // NorCal, new deals, partner, property auctions, Georgia St, Rensselaer Ave).
 //
-//   Signup day   → the signup burst (2 calls, 60s apart) is that day's call.
+//   Signup day   → the single signup call is that day's call.
 //   Days 1..N    → ONE call per day, rotating 11:00 AM → 2:30 PM → 6:00 PM in
 //                  the lead's timezone so we don't keep missing the same person
 //                  at the same hour.
@@ -23,7 +23,7 @@ const CALL_SLOTS = [
 const FALLBACK_TZ = "America/New_York";
 const FOLLOW_UP_DAYS = Math.max(1, parseInt(process.env.CALL_FOLLOW_UP_DAYS, 10) || 7);
 
-// Follow-up days place a single call (the 2-call burst is for the signup only).
+// Every call is a single dial — no 60s re-ring (only requested callbacks do that).
 const FOLLOW_UP_CALL_OPTS = { maxCalls: 1 };
 
 /** "now" in the lead's timezone, falling back to the page's, then Eastern. */

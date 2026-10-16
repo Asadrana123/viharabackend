@@ -21,6 +21,7 @@ const { syncPropertyLead } = require("../../services/integrations/brevoService")
 const { notifyNewLead } = require("../../services/shared/slackService");
 const { onPropertyLeadSignup } = require("../../services/propertyEmail/propertyEmailService");
 const { auctionPageUrl, listingPageUrl } = require("../../config/siteUrls");
+const { touchesFrom, needsFinancingFrom, needsFinancingLabel } = require("../../services/leads/buyBox");
 
 // Single note discriminator for all property-auction leads. Lead ids are unique,
 // so one type is enough to keep notes from bleeding into other lead systems.
@@ -66,7 +67,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
   if (!property) return; // resolveLandingProperty already called next(err)
 
   const {
-    fullName, phone, email, buyerType, timezone,
+    fullName, phone, email, buyerType, needsFinancing, timezone,
     consent, consentText, consentTimestamp, eventId, quotePrice,
     smsConsent, smsConsentText,
   } = req.body;
@@ -93,6 +94,9 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
   // literal `true` counts as opting in. Brevo's automation sends the texts.
   const smsOptedIn = smsConsent === true;
 
+  // UTM first/last touch from the page (utm_content = the ad's LT-ID).
+  const { firstTouch, lastTouch } = touchesFrom(req.body);
+
   // ── Create the lead — compound unique (propertySlug, phoneNormalized) gate ──
   let lead;
   try {
@@ -103,6 +107,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       phoneNormalized,
       email: normalizedEmail,
       buyerType: buyerType || "",
+      needsFinancing: needsFinancingFrom(needsFinancing),
       quotePrice: hasQuote ? quoteNum : null,
       timezone: timezone || "",
       consent: consent === true,
@@ -113,6 +118,8 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       smsConsentAt: smsOptedIn ? new Date() : null,
       eventId: eventId || "",
       source: `auction-${slug}`,
+      firstTouch,
+      lastTouch,
       isQaTest: req.isQaTest === true,
     });
   } catch (err) {
@@ -171,6 +178,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       { label: "Property", value: property.city || property.productName || slug },
       { label: "Slug", value: slug },
       { label: "Buyer Type", value: lead.buyerType },
+      { label: "Needs Financing", value: needsFinancingLabel(lead.needsFinancing) },
       { label: "Quote", value: hasQuote ? `$${quoteNum.toLocaleString("en-US")}` : "—" },
     ],
   }).catch((e) => console.error(`[slack] property notify failed (${slug}):`, e.message));
