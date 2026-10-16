@@ -100,21 +100,46 @@ const ACTIONS = {
     repair_reject: (v, ctx) => repair.handleReject({ incidentId: v, userId: ctx.userId }),
     repair_retry: (v, ctx) => repair.handleRetry({ incidentId: v, userId: ctx.userId }),
     repair_recheck: (v, ctx) => repair.handleRecheck({ incidentId: v, userId: ctx.userId }),
+    repair_change: (v, ctx) => repair.openChangeModal({ incidentId: v, userId: ctx.userId, triggerId: ctx.triggerId }),
     // Sign-up doctor
     doctor_fix: (v, ctx) => require("../conversion/conversionService").handleFix({ value: v, userId: ctx.userId }),
     doctor_details: (v, ctx) => require("../conversion/conversionService").handleDetails({ value: v, userId: ctx.userId }),
 };
 
+// Forms (modals) sent from Slack, by callback_id.
+const SUBMISSIONS = {
+    // ✏️ Change on a repair fix
+    repair_change: (view, ctx) =>
+        repair.handleChange({ incidentId: view.private_metadata, userId: ctx.userId, text: view.state?.values?.feedback?.text?.value || "" }),
+};
+
+async function handleSubmission(payload) {
+    const view = payload.view || {};
+    const run = SUBMISSIONS[view.callback_id];
+    if (!run) return;
+    const userId = payload.user?.id;
+    if (!(await guard.claimOnce(`submit:${view.id}:${view.hash}`, view.private_metadata))) return;
+    try {
+        await run(view, { userId });
+    } catch (error) {
+        // A modal has no response_url: tell the person directly.
+        console.error(`[adsLoop] ${view.callback_id} failed:`, error.message);
+        await slack.postMessage({ channel: userId, text: `${error instanceof guard.GuardrailError ? "🛑" : "⚠️"} ${error.message}` }).catch(() => {});
+    }
+}
+
 async function handleInteraction(payload) {
+    if (payload?.type === "view_submission") return handleSubmission(payload);
     if (payload?.type !== "block_actions") return;
     const userId = payload.user?.id;
+    const triggerId = payload.trigger_id;
     for (const action of payload.actions || []) {
         const run = ACTIONS[action.action_id];
         if (!run) continue;
         const triggerKey = `${action.action_id}:${action.value}:${action.action_ts}`;
         if (!(await guard.claimOnce(`click:${triggerKey}`, payload.channel?.id))) continue;
         try {
-            await run(action.value, { userId, triggerKey });
+            await run(action.value, { userId, triggerKey, triggerId });
         } catch (error) {
             console.error(`[adsLoop] ${action.action_id} failed:`, error.message);
             await respondEphemeral(payload.response_url, `${error instanceof guard.GuardrailError ? "🛑" : "⚠️"} ${error.message}`);

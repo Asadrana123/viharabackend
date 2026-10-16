@@ -69,6 +69,25 @@ const repairIncidentSchema = new mongoose.Schema(
         slackTs: { type: String, default: "" },
         // Set when the incident lives inside another thread (a sign-up doctor report).
         slackThreadTs: { type: String, default: "" },
+        // "✏️ Change" requests on a proposed fix, oldest first. The next attempt
+        // gets the latest one with the fix it was about.
+        feedback: {
+            type: [
+                new mongoose.Schema(
+                    {
+                        by: String, // Slack user id
+                        text: String,
+                        at: { type: Date, default: Date.now },
+                        previousCause: String,
+                        previousFix: String,
+                        previousDiff: String,
+                        previousManualSteps: String,
+                    },
+                    { _id: false }
+                ),
+            ],
+            default: [],
+        },
     },
     { timestamps: true }
 );

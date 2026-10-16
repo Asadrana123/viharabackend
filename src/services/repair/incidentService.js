@@ -61,12 +61,22 @@ function incidentBlocks(inc) {
     if (inc.manualSteps) blocks.push(section(`*To do by hand*\n${inc.manualSteps}`));
     if (inc.note) blocks.push(context(inc.note));
 
+    const last = inc.feedback?.[inc.feedback.length - 1];
+    if (last && [S.OPEN, S.FIXING].includes(inc.status)) blocks.push(context(`✏️ <@${last.by}> asked: "${last.text}"`));
+
     const id = inc.incidentId;
     if (inc.status === S.AWAITING_APPROVAL) {
-        blocks.push(actions([button("Go: make it live", "repair_go", id, "primary"), button("Reject", "repair_reject", id, "danger")]));
+        blocks.push(
+            actions([
+                button("Go: make it live", "repair_go", id, "primary"),
+                button("✏️ Change", "repair_change", id),
+                button("Reject", "repair_reject", id, "danger"),
+            ])
+        );
     } else if ([S.NEEDS_MANUAL, S.REJECTED, S.FAILED, S.MERGED].includes(inc.status)) {
         const elements = [button("Re-check now", "repair_recheck", id)];
         if (inc.status !== S.MERGED) elements.push(button("Try a fix again", "repair_retry", id));
+        if (inc.status === S.NEEDS_MANUAL) elements.push(button("✏️ Change", "repair_change", id));
         blocks.push(actions(elements));
     }
     return blocks;
@@ -392,6 +402,81 @@ async function handleRetry({ incidentId, userId }) {
     runInQueue([inc]);
 }
 
+const CHANGE_STATUSES = [S.AWAITING_APPROVAL, S.NEEDS_MANUAL];
+const MAX_CHANGE_ROUNDS = 5;
+
+/** ✏️ Change: a small Slack form asking what to change. Slack's trigger expires in 3 s, so no lookups first. */
+async function openChangeModal({ incidentId, userId, triggerId }) {
+    guard.assertApprover(userId);
+    await slack.call("views.open", {
+        trigger_id: triggerId,
+        view: {
+            type: "modal",
+            callback_id: "repair_change",
+            private_metadata: incidentId,
+            title: { type: "plain_text", text: "Change this fix" },
+            submit: { type: "plain_text", text: "Redo the fix" },
+            close: { type: "plain_text", text: "Cancel" },
+            blocks: [
+                {
+                    type: "input",
+                    block_id: "feedback",
+                    label: { type: "plain_text", text: `What should be different in ${incidentId}?` },
+                    element: {
+                        type: "plain_text_input",
+                        action_id: "text",
+                        multiline: true,
+                        min_length: 5,
+                        max_length: 2000,
+                        placeholder: { type: "plain_text", text: "e.g. Keep the slider, but also show the list price under the headline" },
+                    },
+                },
+            ],
+        },
+    });
+}
+
+/** The form was sent: the repair agent redoes the fix with the request, and posts a new preview for Go / Change / Reject. */
+async function handleChange({ incidentId, userId, text }) {
+    guard.assertApprover(userId);
+    const inc = await loadIncident(incidentId);
+    if (!inc.active || !CHANGE_STATUSES.includes(inc.status)) {
+        throw new guard.GuardrailError(`${incidentId} can't be changed now (${inc.status}).`);
+    }
+    if ((inc.feedback || []).length >= MAX_CHANGE_ROUNDS) {
+        throw new guard.GuardrailError(`${incidentId} has been changed ${MAX_CHANGE_ROUNDS} times. Reject it and fix it by hand, or ask a developer.`);
+    }
+
+    // The fix they reviewed, so the agent can keep what was right.
+    const gh = repoClients();
+    let previousDiff = "";
+    for (const c of inc.changes) {
+        try {
+            const commit = await gh[c.repo].getCommit(c.commitSha);
+            for (const f of commit.files || []) previousDiff += `--- ${c.repo}: ${f.filename}\n${f.patch || "(no diff shown)"}\n\n`;
+        } catch (error) {
+            previousDiff += `--- ${c.repo}: couldn't read the change (${error.message})\n`;
+        }
+    }
+    await deleteBranches(inc);
+
+    const feedback = [
+        ...(inc.feedback || []).map((f) => (f.toObject ? f.toObject() : f)),
+        {
+            by: userId,
+            text: String(text).trim(),
+            at: new Date(),
+            previousCause: inc.cause,
+            previousFix: inc.fixSummary,
+            previousDiff: previousDiff.slice(0, 30000),
+            previousManualSteps: inc.manualSteps,
+        },
+    ];
+    await save(inc, { status: S.OPEN, feedback, note: "" });
+    await threadNote(inc, `✏️ <@${userId}> asked for changes to ${incidentId}: "${String(text).trim()}". Redoing the fix; a new preview will follow.`);
+    runInQueue([inc]);
+}
+
 async function handleRecheck({ incidentId, userId }) {
     const inc = await loadIncident(incidentId);
     await threadNote(inc, `🔄 <@${userId}> asked for a re-check. Running the checks now.`);
@@ -414,4 +499,18 @@ async function recoverRepairs() {
     if (stuck.length) runInQueue(stuck);
 }
 
-module.exports = { runChecks, runReportIssues, startFix, startSignupFix, resolveSignupFixes, handleGo, handleReject, handleRetry, handleRecheck, recoverRepairs };
+module.exports = {
+    runChecks,
+    runReportIssues,
+    startFix,
+    startSignupFix,
+    resolveSignupFixes,
+    handleGo,
+    handleReject,
+    handleRetry,
+    handleRecheck,
+    openChangeModal,
+    handleChange,
+    recoverRepairs,
+    render,
+};

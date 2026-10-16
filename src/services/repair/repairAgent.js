@@ -210,7 +210,25 @@ function incidentText(incident) {
     const evidence = Object.entries(incident.evidence || {})
         .map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`)
         .join("\n");
-    return `Incident ${incident.incidentId}: ${incident.title}\nFirst seen ${incident.firstSeenAt.toISOString().slice(0, 10)}.\n\nEvidence:\n${evidence}`;
+    let text = `Incident ${incident.incidentId}: ${incident.title}\nFirst seen ${incident.firstSeenAt.toISOString().slice(0, 10)}.\n\nEvidence:\n${evidence}`;
+
+    // A person looked at the last fix and pressed "✏️ Change".
+    const feedback = incident.feedback || [];
+    const last = feedback[feedback.length - 1];
+    if (last) {
+        const earlier = feedback.slice(0, -1).map((f) => `- "${f.text}"`).join("\n");
+        text += `
+
+A person reviewed your previous fix and asked for changes. Your edits start again from the live code, so make a NEW complete fix: keep what was right in the previous one and change what they asked for.
+
+Previous cause: ${last.previousCause || "(none)"}
+Previous fix: ${last.previousFix || "(no code change)"}${last.previousManualSteps ? `\nPrevious manual steps: ${last.previousManualSteps}` : ""}
+Previous change:
+${last.previousDiff || "(no code change)"}
+
+They asked: "${last.text}"${earlier ? `\n\nTheir earlier requests (still apply unless the new one says otherwise):\n${earlier}` : ""}`;
+    }
+    return text;
 }
 
 function addUsage(totals, usage) {
