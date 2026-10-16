@@ -36,6 +36,11 @@ const changeSchema = new mongoose.Schema(
         previewUrl: { type: String, default: "" },
         prNumber: { type: Number, default: null },
         mergeSha: { type: String, default: "" },
+        // After Go: "pending" until the deploy is seen, then "live" or "failed".
+        liveState: { type: String, default: "" },
+        // Website: the live site's build files when Go was pressed; new ones mean the fix is out.
+        liveBaseline: { type: String, default: "" },
+        liveAt: { type: Date, default: null },
     },
     { _id: false }
 );

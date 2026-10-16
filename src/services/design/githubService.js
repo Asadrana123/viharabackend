@@ -180,6 +180,12 @@ function createGithubClient({ repo, token, baseBranch, label = "the agent", toke
     return { state: "pending" };
   }
 
+  /** True when `head` is `base` or comes after it (i.e. `head` contains `base`). */
+  async function includesCommit(head, base) {
+    const result = await call("get", `/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`);
+    return result.status === "identical" || result.status === "ahead";
+  }
+
   // Opens a pull request for `branch` and squash-merges it into the live branch.
   // @returns {Promise<{prNumber: number, mergeSha: string}>}
   async function mergeBranch(branch, title, body) {
@@ -221,6 +227,7 @@ function createGithubClient({ repo, token, baseBranch, label = "the agent", toke
     deleteBranch,
     commitFiles,
     previewForCommit,
+    includesCommit,
     mergeBranch,
     commitFilesChanged,
     listCommits,

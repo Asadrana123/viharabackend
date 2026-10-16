@@ -14,6 +14,7 @@
 //
 // Nothing reaches the live site without an approver's Go.
 
+const axios = require("axios");
 const RepairIncident = require("../../model/repair/repairIncidentModel");
 const { INCIDENT_STATUS: S } = require("../../model/repair/repairIncidentModel");
 const { getRepairConfig, missingRepairSettings } = require("../../config/repair/repairConfig");
@@ -357,13 +358,15 @@ async function handleGo({ incidentId, userId }) {
     const gh = repoClients();
     const changes = inc.changes.map((c) => c.toObject());
     const errors = [];
+    // The site's build before the merge, so watchLive can tell when the new one is out.
+    const siteBefore = changes.some((c) => c.repo === "website") ? await siteBuildId() : "";
     // Backend first: when a fix spans both, the website must not call something the backend doesn't have yet.
     const backendFirst = (c) => (c.repo === "backend" ? 0 : 1);
     for (const c of [...changes].sort((x, y) => backendFirst(x) - backendFirst(y))) {
         try {
             const body = `${inc.title}\n\n**Cause:** ${inc.cause}\n\n**Fix:** ${inc.fixSummary}\n\nApproved in Slack by ${userId}. Opened by the repair agent.`;
             const merged = await gh[c.repo].mergeBranch(c.branch, `Repair ${inc.incidentId}: ${inc.title}`.slice(0, 200), body);
-            Object.assign(c, { prNumber: merged.prNumber, mergeSha: merged.mergeSha });
+            Object.assign(c, { prNumber: merged.prNumber, mergeSha: merged.mergeSha, liveState: "pending", liveBaseline: c.repo === "website" ? siteBefore : "" });
             await gh[c.repo].deleteBranch(c.branch).catch(() => {});
         } catch (error) {
             errors.push(`${c.repo}: ${error.message}`);
@@ -379,9 +382,92 @@ async function handleGo({ incidentId, userId }) {
             ...(mergedAny ? { status: S.MERGED, mergedAt: new Date() } : {}),
             note: `⚠️ Merge problem: ${errors.join("; ")}${mergedAny ? ". Part of the fix went live; check the other repo by hand." : ""}`,
         });
+        if (mergedAny) watchLive(inc._id);
         return;
     }
-    await save(inc, { status: S.MERGED, mergedAt: new Date(), decidedBy: userId, decidedAt: new Date(), changes, note: `Go by <@${userId}>. Deploying now.` });
+    await save(inc, { status: S.MERGED, mergedAt: new Date(), decidedBy: userId, decidedAt: new Date(), changes, note: `Go by <@${userId}>. Deploying now; a ✅ follows here when it's live.` });
+    watchLive(inc._id);
+}
+
+// ---------------------------------------------------------------------------
+// After Go: say in the thread when the fix is actually live
+// ---------------------------------------------------------------------------
+const LIVE_WAIT_MS = 25 * 60 * 1000;
+const watchingLive = new Set();
+
+/**
+ * The live website's build, named by its file hashes (main.<hash>.js / .css).
+ * Every deploy publishes new names, so a change means a new version is live,
+ * however the site is deployed. "" when the site can't be read.
+ */
+async function siteBuildId() {
+    try {
+        const { data } = await axios.get(`${getRepairConfig().siteUrl}/?_=${Date.now()}`, {
+            timeout: 20000,
+            responseType: "text",
+            headers: { "Cache-Control": "no-cache", "User-Agent": "ViharaRepairCheck/1.0" },
+        });
+        return [...new Set(String(data).match(/\/static\/(js|css)\/main\.[\w-]+\.(js|css)/g) || [])].sort().join(" ");
+    } catch {
+        return "";
+    }
+}
+
+async function markLive(incId, repo, set, message) {
+    const inc = await RepairIncident.findById(incId);
+    if (!inc) return;
+    const changes = inc.changes.map((c) => (c.repo === repo ? { ...c.toObject(), ...set } : c.toObject()));
+    await save(inc, { changes, ...(message && { note: message }) });
+    if (message) await threadNote(inc, message);
+}
+
+/**
+ * Website: waits for Vercel's production deploy of the merge and posts ✅ (or a warning).
+ * Backend: Render restarts this server to deploy, so it's checked on startup:
+ * if the running version (RENDER_GIT_COMMIT) contains the merge, it's live.
+ */
+async function watchLive(incId) {
+    if (watchingLive.has(String(incId))) return;
+    watchingLive.add(String(incId));
+    try {
+        const gh = repoClients();
+        const inc = await RepairIncident.findById(incId);
+        if (!inc) return;
+        const page = inc.evidence?.page || inc.evidence?.url || getRepairConfig().siteUrl;
+        for (const c of inc.changes.filter((x) => x.mergeSha && x.liveState === "pending")) {
+            if (c.repo === "backend") {
+                const running = process.env.RENDER_GIT_COMMIT;
+                if (running && (await gh.backend.includesCommit(running, c.mergeSha).catch(() => false))) {
+                    await markLive(incId, "backend", { liveState: "live", liveAt: new Date() }, `✅ ${inc.incidentId}: the backend fix is live.`);
+                }
+                continue; // otherwise the next restart (the deploy) checks again
+            }
+            // Without the build from before Go (e.g. merged before this check existed) there's nothing to compare.
+            if (!c.liveBaseline) {
+                await markLive(incId, "website", { liveState: "unknown" }, "");
+                continue;
+            }
+            const deadline = Date.now() + LIVE_WAIT_MS;
+            let live = false;
+            while (Date.now() < deadline) {
+                const now = await siteBuildId();
+                if (now && now !== c.liveBaseline) {
+                    live = true;
+                    break;
+                }
+                await new Promise((r) => setTimeout(r, 30000));
+            }
+            if (live) {
+                await markLive(incId, "website", { liveState: "live", liveAt: new Date() }, `✅ ${inc.incidentId} is live on the website: ${page}`);
+            } else {
+                await markLive(incId, "website", { liveState: "failed" }, `⚠️ ${inc.incidentId}: the website still shows the old version 25 minutes after Go. Check the deploy on Vercel.`);
+            }
+        }
+    } catch (error) {
+        console.error(`[repair] live check for ${incId} failed:`, error.message);
+    } finally {
+        watchingLive.delete(String(incId));
+    }
 }
 
 async function handleReject({ incidentId, userId }) {
@@ -497,6 +583,20 @@ async function recoverRepairs() {
         }
     }
     if (stuck.length) runInQueue(stuck);
+
+    // Fixes merged in the last day whose deploy hasn't been confirmed yet (including a
+    // backend fix whose deploy is this restart). Fixes merged before this check existed
+    // have no liveState: they get one check too.
+    const recent = await RepairIncident.find({ status: S.MERGED, mergedAt: { $gt: new Date(Date.now() - 24 * 3600 * 1000) } });
+    for (const inc of recent) {
+        const unconfirmed = inc.changes.filter((c) => c.mergeSha && (c.liveState === "pending" || !c.liveState));
+        if (!unconfirmed.length) continue;
+        if (unconfirmed.some((c) => !c.liveState)) {
+            const changes = inc.changes.map((c) => (c.mergeSha && !c.liveState ? { ...c.toObject(), liveState: "pending" } : c.toObject()));
+            await RepairIncident.updateOne({ _id: inc._id }, { $set: { changes } });
+        }
+        watchLive(inc._id);
+    }
 }
 
 module.exports = {
