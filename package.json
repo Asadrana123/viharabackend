@@ -8,6 +8,7 @@
  "dependencies": {
   "@anthropic-ai/sdk": "^0.131.0",
   "@babel/parser": "^7.29.9",
+  "@google-analytics/data": "^7.2.1",
   "@google/genai": "^2.8.0",
   "@google/generative-ai": "^0.24.1",
   "@higgsfield/client": "^0.2.1",
@@ -23,6 +24,7 @@
   "dotenv": "^16.4.5",
   "exceljs": "^4.4.0",
   "express": "^4.19.2",
+  "google-auth-library": "^10.9.1",
   "ioredis": "^6.0.0",
   "jsonwebtoken": "^9.0.2",
   "luxon": "^3.7.2",
