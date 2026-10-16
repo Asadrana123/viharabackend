@@ -15,6 +15,8 @@ const NEW_EVENTS_START = "2026-10-07";
 
 // Below this count on either side, a percent change is noise. Show the old number instead.
 const MIN_FOR_PERCENT = 20;
+// A zero day only counts as a tracking problem for events that normally happen this often per day.
+const MIN_DAILY_AVG_FOR_TRACKING_CHECK = 5;
 
 const nf = new Intl.NumberFormat("en-US");
 const fmt = (n) => nf.format(Math.round(n));
@@ -134,7 +136,7 @@ function buildReportModel(data) {
         checks.push("GA4 returned no sessions for the report day. Check that the site is sending data.");
     }
     for (const e of events) {
-        if (e.historyReady && e.count === 0 && e.avg >= 1) {
+        if (e.historyReady && e.count === 0 && e.avg >= MIN_DAILY_AVG_FOR_TRACKING_CHECK) {
             checks.push(`${e.name} had 0 events, against about ${e.avg.toFixed(1)} a day in the week before. Check the tracking.`);
         }
     }
@@ -174,7 +176,7 @@ function buildReportModel(data) {
             engagementSeconds: p.activeUsers ? p.userEngagementDuration / p.activeUsers : 0,
         })),
         landing: data.landing.map((p) => ({
-            path: p.landingPage,
+            path: p.landingPage || "(not set)", // GA4 can return an empty landing page
             sessions: p.sessions,
             engagementRate: p.sessions ? p.engagedSessions / p.sessions : 0,
         })),

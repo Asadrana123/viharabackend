@@ -5,12 +5,18 @@
 //
 // Env:
 //   GA_PROPERTY_ID            GA4 property id, digits only (549331956)
-//   GA_SERVICE_ACCOUNT_JSON   the service account key file, pasted as one line of JSON.
-//                             If unset, the client falls back to GOOGLE_APPLICATION_CREDENTIALS.
 //
-// The service account needs the Viewer role on the GA4 property.
+// Credentials, first match wins:
+//   1. OAuth login (used while service account keys are blocked by the org policy)
+//        GA_OAUTH_CLIENT_ID, GA_OAUTH_CLIENT_SECRET, GA_OAUTH_REFRESH_TOKEN
+//      Get the refresh token once with: node src/scripts/gaOAuthLogin.js
+//      The report runs as the Google user who logged in, so that user needs access to the property.
+//   2. GA_SERVICE_ACCOUNT_JSON   the service account key file, pasted as one line of JSON.
+//      The service account needs the Viewer role on the GA4 property.
+//   3. GOOGLE_APPLICATION_CREDENTIALS (key file path), through the library default.
 
 const { BetaAnalyticsDataClient } = require("@google-analytics/data");
+const { OAuth2Client } = require("google-auth-library");
 const { DateTime } = require("luxon");
 
 // GA4 days follow the property's reporting time zone, which is India time.
@@ -36,6 +42,16 @@ let client;
 
 function getClient() {
     if (client) return client;
+    const { GA_OAUTH_CLIENT_ID, GA_OAUTH_CLIENT_SECRET, GA_OAUTH_REFRESH_TOKEN } = process.env;
+    if (GA_OAUTH_REFRESH_TOKEN) {
+        if (!GA_OAUTH_CLIENT_ID || !GA_OAUTH_CLIENT_SECRET) {
+            throw new Error("GA_OAUTH_REFRESH_TOKEN is set but GA_OAUTH_CLIENT_ID or GA_OAUTH_CLIENT_SECRET is missing");
+        }
+        const authClient = new OAuth2Client(GA_OAUTH_CLIENT_ID, GA_OAUTH_CLIENT_SECRET);
+        authClient.setCredentials({ refresh_token: GA_OAUTH_REFRESH_TOKEN });
+        client = new BetaAnalyticsDataClient({ authClient });
+        return client;
+    }
     const raw = process.env.GA_SERVICE_ACCOUNT_JSON;
     if (!raw) {
         client = new BetaAnalyticsDataClient();
@@ -105,8 +121,9 @@ async function eventSplit({ eventName, dimension, dateRanges }) {
             limit: TOP_ROWS,
         });
     } catch (error) {
-        // GA4 rejects a custom dimension that was never registered (or has no data yet).
-        if (/not a valid dimension|invalid.*dimension|customEvent/i.test(error.message)) return null;
+        // GA4 rejects a custom dimension that was never registered (or has no data yet) with
+        // gRPC code 3 (INVALID_ARGUMENT), and the message can come back empty.
+        if (error.code === 3 || /not a valid dimension|invalid.*dimension|customEvent/i.test(error.message)) return null;
         throw error;
     }
 }
