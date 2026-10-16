@@ -91,16 +91,16 @@ const TOOLS = [
         name: "finish",
         description: "Give your diagnosis: the likely reasons this page gets visitors but few sign-ups, most likely first.",
         input_schema: obj({
-            headline: str("One sentence a marketer understands: the main reason, or 'no clear cause' if the evidence doesn't point anywhere."),
+            headline: str("At most 20 words: the main reason, or 'no clear cause' if the evidence doesn't point anywhere."),
             reasons: {
                 type: "array",
-                description: "1-6 reasons, most likely first.",
+                description: "1-5 reasons, most likely first. Only real ones: leave out weak guesses.",
                 items: obj({
-                    reason: str("Short plain-English reason, e.g. 'On phones the form starts below 2 full screens of photos'."),
+                    reason: str("At most 12 words, e.g. 'Ad says $65,900; page won't accept quotes below $68K'."),
                     category: { type: "string", enum: CATEGORIES },
                     confidence: { type: "string", enum: ["high", "medium", "low"], description: "high only when you saw it yourself or the numbers show it clearly" },
-                    evidence: str("The numbers / what you saw that point to it, with sources (Meta, Clarity, database, browser, code)."),
-                    suggested_fix: str("What to change, concretely, in plain language."),
+                    evidence: str("The details: numbers and what you saw, with sources (Meta, Clarity, database, browser, code). Shown only when someone asks for details, and given to the repair agent if someone asks for a fix, so be complete and specific (files, element text, values)."),
+                    suggested_fix: str("At most 15 words: the change to make, e.g. 'Let the slider go down to the list price'."),
                 }),
             },
             checked: str("One or two sentences: what you looked at, and anything you couldn't check and why."),
@@ -132,7 +132,7 @@ Rules:
 - Small numbers mislead: 0 sign-ups from 15 visits is not proof of anything. Say when the sample is too small.
 - Don't stop at the first problem: rank all real reasons.
 - Clarity data covers the 3 days before each pull, in UTC; Meta dates are in the ad account's time zone. Some data may be missing; work with what there is and say what you couldn't check.
-- Write for a non-technical marketing team: short, plain English, no code. Name files only if the fix is in the code.
+- Write for a non-technical marketing team: plain English, no code. The headline, reasons and fixes are read in Slack at a glance, so keep them very short; put everything else in evidence.
 - When done, call finish.`;
 }
 
@@ -396,7 +396,7 @@ ${json(ads)}`;
                 return {
                     ok: true,
                     headline: finished.headline.trim(),
-                    reasons: finished.reasons.slice(0, 6).map((r) => ({
+                    reasons: finished.reasons.slice(0, 5).map((r) => ({
                         reason: r.reason,
                         category: CATEGORIES.includes(r.category) ? r.category : "other",
                         confidence: ["high", "medium", "low"].includes(r.confidence) ? r.confidence : "medium",

@@ -31,6 +31,13 @@ const PRICE = { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5 };
 // can't drift into redesigns, refactors or new features.
 const MAX_FILES_CHANGED = 5;
 const MAX_LINES_CHANGED = 150;
+// A sign-up fix (from the sign-up doctor, asked for in Slack) may also change a
+// landing page's wording, layout and styling, so it gets a little more room.
+const SIGNUP_LIMITS = { files: 6, lines: 250 };
+const isSignupFix = (incident) => incident?.kind === "signup_issue";
+const limitsFor = (incident) => (isSignupFix(incident) ? SIGNUP_LIMITS : { files: MAX_FILES_CHANGED, lines: MAX_LINES_CHANGED });
+// Styling a sign-up fix may touch: the website's own stylesheets, never assets.
+const SIGNUP_STYLES = /^src\/.+\.(css|scss)$/;
 const TEXT_FILE = /\.(jsx?|tsx?|mjs|cjs|css|scss|html|json|md)$/;
 
 // What each repo is, and what the agent may change in it.
@@ -170,9 +177,20 @@ const TOOLS = [
     },
 ];
 
-function systemPrompt() {
+function systemPrompt(incident) {
     const { siteUrl } = getRepairConfig();
-    return `You are Vihara's repair agent. A daily check, or a technical action item in the daily Meta Ads report, found a broken technical thing (Meta tracking, an ad's landing page, a link, an ad that isn't delivering). When the item comes from the report, its suggestion ("audit the page", "confirm the event fires") is your task: do that audit yourself with the tools, then fix what is broken. Your job: find the real cause and fix it with the smallest safe change, or explain exactly what a person must do when the cause is outside the code.
+    const signup = isSignupFix(incident);
+    const { files: maxFiles, lines: maxLines } = limitsFor(incident);
+    const intro = signup
+        ? "The sign-up doctor found a likely reason an ad landing page gets visitors but few sign-ups, and a person asked in Slack for it to be fixed. Its evidence and suggested fix are below: check them against the code and the live page, then make the change that removes this reason, or explain exactly what a person must do when the fix is outside the code."
+        : "A daily check, or a technical action item in the daily Meta Ads report, found a broken technical thing (Meta tracking, an ad's landing page, a link, an ad that isn't delivering). When the item comes from the report, its suggestion (\"audit the page\", \"confirm the event fires\") is your task: do that audit yourself with the tools, then fix what is broken. Your job: find the real cause and fix it with the smallest safe change, or explain exactly what a person must do when the cause is outside the code.";
+    const scope = signup
+        ? `2. Fix only this one reason. You may change the landing page's wording, layout, styling (the website's .css files) and form behaviour, but nothing unrelated: no refactors, no new packages, no redesign. Keep Vihara's brand (main colour #0c4bea). When the code is shared by every landing page (e.g. PropertyAuctionPage.jsx, landing.helpers.js), make sure the change is right for all of them, or limit it to the pages that need it. A fix may change at most ${maxFiles} files and ${maxLines} lines.`
+        : `2. You only repair broken technical things. Fix only the cause of this incident: no refactors, no unrelated cleanups, no new packages, no new features, no changes to design, styling, layout or wording. You can't change CSS or assets, and a fix may change at most ${maxFiles} files and ${maxLines} lines.`;
+    const outside = signup
+        ? "4. Some fixes are outside the code: the ad's text, image, targeting or budget in Ads Manager, or a property's details (type, price, dates, photos) entered in the admin panel. Then make no edits for that part; write manual_steps a non-technical person can follow (where to click, what to change it to), and say how to confirm it worked."
+        : "4. Some causes are outside the code: Google Tag Manager tags/triggers, Meta Events Manager settings, ad links, review status or delivery settings in Ads Manager, DNS/hosting. Then make no edits; write manual_steps a non-technical person can follow (where to click, what to check), and say how to confirm it worked.";
+    return `You are Vihara's repair agent. ${intro}
 
 You have two repos:
 - website: ${REPOS.website.about}
@@ -181,9 +199,9 @@ The live site is ${siteUrl}.
 
 How to work:
 1. Start from the evidence. Find when it started, then use recent_commits around that date and commit_diff to see what changed. Read the code that is involved. Don't guess.
-2. You only repair broken technical things. Fix only the cause of this incident: no refactors, no unrelated cleanups, no new packages, no new features, no changes to design, styling, layout or wording. You can't change CSS or assets, and a fix may change at most ${MAX_FILES_CHANGED} files and ${MAX_LINES_CHANGED} lines.
-3. Never remove tracking, consent, or lead-saving code to make a check pass, and never weaken validation.
-4. Some causes are outside the code: Google Tag Manager tags/triggers, Meta Events Manager settings, ad links, review status or delivery settings in Ads Manager, DNS/hosting. Then make no edits; write manual_steps a non-technical person can follow (where to click, what to check), and say how to confirm it worked.
+${scope}
+3. Never remove tracking, consent, or lead-saving code to make a check pass, and never weaken validation of contact details or consent.
+${outside}
 5. Everything you change waits for a person's Go in Slack before it goes live, and the next day's check confirms it. Still, be certain: a wrong fix to sign-up or tracking code loses real leads.
 6. Write cause, fix_summary and manual_steps in short, plain English for a non-technical reader. No code in them; name files only where needed.`;
 }
@@ -225,15 +243,15 @@ function linesChanged(before, after) {
 }
 
 /** Changes too big to be a repair ([] when within limits). */
-function scopeProblems(changed, originals) {
+function scopeProblems(changed, originals, limits) {
     const problems = [];
     const files = Object.keys(changed);
-    if (files.length > MAX_FILES_CHANGED) {
-        problems.push(`You changed ${files.length} files; a repair may change at most ${MAX_FILES_CHANGED}. Fix only the cause of this incident.`);
+    if (files.length > limits.files) {
+        problems.push(`You changed ${files.length} files; a repair may change at most ${limits.files}. Fix only the cause of this incident.`);
     }
     const lines = files.reduce((sum, k) => sum + linesChanged(originals[k], changed[k]), 0);
-    if (lines > MAX_LINES_CHANGED) {
-        problems.push(`You changed about ${lines} lines; a repair may change at most ${MAX_LINES_CHANGED}. Undo anything that isn't needed to fix this incident (re-write the files with their original text where needed).`);
+    if (lines > limits.lines) {
+        problems.push(`You changed about ${lines} lines; a repair may change at most ${limits.lines}. Undo anything that isn't needed to fix this incident (re-write the files with their original text where needed).`);
     }
     return problems;
 }
@@ -288,7 +306,8 @@ async function investigate(incident, { log = () => {} } = {}) {
         return originals[k];
     };
     const assertWritable = (repo, p) => {
-        if (!REPOS[repo].writable.test(p)) throw new Error(`You're not allowed to change ${p} in ${repo}.`);
+        const styling = isSignupFix(incident) && repo === "website" && SIGNUP_STYLES.test(p);
+        if (!REPOS[repo].writable.test(p) && !styling) throw new Error(`You're not allowed to change ${p} in ${repo}.`);
     };
 
     const tools = {
@@ -412,7 +431,7 @@ async function investigate(incident, { log = () => {} } = {}) {
 
     const messages = [{ role: "user", content: incidentText(incident) }];
     const usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0 };
-    const system = systemPrompt();
+    const system = systemPrompt(incident);
 
     for (let step = 0; step < MAX_STEPS; step++) {
         if (usage.costUsd > config.agent.maxCostUsd) {
@@ -459,7 +478,7 @@ async function investigate(incident, { log = () => {} } = {}) {
             }
             if (block.name === "finish") {
                 const changed = Object.fromEntries(Object.entries(staged).filter(([k, t]) => t !== originals[k]));
-                const problems = [...syntaxProblems(changed), ...scopeProblems(changed, originals)];
+                const problems = [...syntaxProblems(changed), ...scopeProblems(changed, originals, limitsFor(incident))];
                 if (Object.keys(changed).length && !input.fix_summary.trim()) problems.push("You changed files, so fix_summary can't be empty.");
                 if (!Object.keys(changed).length && !input.manual_steps.trim()) {
                     problems.push("You made no edits, so give manual_steps (or make the fix in the code).");

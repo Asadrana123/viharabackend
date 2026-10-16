@@ -80,7 +80,7 @@ async function render(inc) {
         if (inc.slackTs) {
             await slack.updateMessage({ channel, ts: inc.slackTs, text, blocks: incidentBlocks(inc) });
         } else {
-            const { ts, channel: ch } = await slack.postMessage({ channel, text: `🚨 ${text}`, blocks: incidentBlocks(inc) });
+            const { ts, channel: ch } = await slack.postMessage({ channel, threadTs: inc.slackThreadTs || undefined, text: `🚨 ${text}`, blocks: incidentBlocks(inc) });
             await RepairIncident.updateOne({ _id: inc._id }, { $set: { slackTs: ts, slackChannel: ch } });
             inc.slackTs = ts;
             inc.slackChannel = ch;
@@ -90,7 +90,7 @@ async function render(inc) {
     }
 }
 
-const threadNote = (inc, text) => slack.replyInThread(inc.slackChannel, inc.slackTs, text);
+const threadNote = (inc, text) => slack.replyInThread(inc.slackChannel, inc.slackThreadTs || inc.slackTs, text);
 
 async function save(inc, set) {
     Object.assign(inc, set);
@@ -205,6 +205,43 @@ function runReportIssues(report) {
         console.log(`[repair] report: ${summaryLine(summary)}`);
         return summaryLine(summary);
     });
+}
+
+/**
+ * A sign-up doctor reason someone asked to fix: becomes an incident inside the
+ * report's Slack thread, and the repair agent starts on it.
+ * An earlier incident for the same reason that is finished (rejected, failed,
+ * needs a person, live) is closed first; one still in progress is returned as is.
+ * @returns {Promise<{incident, existing: boolean}>}
+ */
+function startSignupFix({ key, title, evidence, slackChannel, slackThreadTs }) {
+    return serially(async () => {
+        const current = await RepairIncident.findOne({ key, active: true });
+        if (current && [S.OPEN, S.FIXING, S.AWAITING_APPROVAL].includes(current.status)) return { incident: current, existing: true };
+        if (current) await RepairIncident.updateOne({ _id: current._id }, { $set: { active: false, resolvedAt: new Date() } });
+        const inc = await RepairIncident.create({
+            incidentId: await nextIncidentId(),
+            key,
+            kind: "signup_issue",
+            title,
+            evidence,
+            slackChannel,
+            slackThreadTs,
+        });
+        await render(inc);
+        runInQueue([inc]);
+        return { incident: inc, existing: false };
+    });
+}
+
+/** Sign-up fixes that went live a while ago, on pages the sign-up doctor no longer flags: resolved. */
+async function resolveSignupFixes(stillFlaggedPageKeys) {
+    const live = await RepairIncident.find({ active: true, kind: "signup_issue", status: S.MERGED, mergedAt: { $lt: new Date(Date.now() - CONFIRM_AFTER_MS) } });
+    for (const inc of live) {
+        if (stillFlaggedPageKeys.has(inc.evidence?.pageKey)) continue;
+        await save(inc, { status: S.RESOLVED, active: false, resolvedAt: new Date() });
+        await threadNote(inc, `✅ ${inc.incidentId}: the page's sign-up rate is back to normal since the fix went live.`);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -377,4 +414,4 @@ async function recoverRepairs() {
     if (stuck.length) runInQueue(stuck);
 }
 
-module.exports = { runChecks, runReportIssues, startFix, handleGo, handleReject, handleRetry, handleRecheck, recoverRepairs };
+module.exports = { runChecks, runReportIssues, startFix, startSignupFix, resolveSignupFixes, handleGo, handleReject, handleRetry, handleRecheck, recoverRepairs };

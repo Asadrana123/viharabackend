@@ -100,6 +100,9 @@ const ACTIONS = {
     repair_reject: (v, ctx) => repair.handleReject({ incidentId: v, userId: ctx.userId }),
     repair_retry: (v, ctx) => repair.handleRetry({ incidentId: v, userId: ctx.userId }),
     repair_recheck: (v, ctx) => repair.handleRecheck({ incidentId: v, userId: ctx.userId }),
+    // Sign-up doctor
+    doctor_fix: (v, ctx) => require("../conversion/conversionService").handleFix({ value: v, userId: ctx.userId }),
+    doctor_details: (v, ctx) => require("../conversion/conversionService").handleDetails({ value: v, userId: ctx.userId }),
 };
 
 async function handleInteraction(payload) {

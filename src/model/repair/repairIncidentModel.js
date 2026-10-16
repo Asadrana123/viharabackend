@@ -11,6 +11,7 @@ const INCIDENT_KINDS = Object.freeze([
     "page_slow",
     "page_dropoff", // ad clicks that never become page views
     "report_issue", // a technical action item from the daily Meta Ads report
+    "signup_issue", // a sign-up doctor reason someone pressed "Fix this" on in Slack
 ]);
 
 const INCIDENT_STATUS = Object.freeze({
@@ -66,6 +67,8 @@ const repairIncidentSchema = new mongoose.Schema(
         note: { type: String, default: "" },
         slackChannel: { type: String, default: "" },
         slackTs: { type: String, default: "" },
+        // Set when the incident lives inside another thread (a sign-up doctor report).
+        slackThreadTs: { type: String, default: "" },
     },
     { timestamps: true }
 );

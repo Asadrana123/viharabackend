@@ -12,6 +12,9 @@ const reasonSchema = new mongoose.Schema(
         confidence: { type: String, default: "medium" }, // high | medium | low
         evidence: { type: String, default: "" },
         suggestedFix: { type: String, default: "" },
+        // Set when someone pressed "Fix this": the repair incident working on it.
+        fixIncidentId: { type: String, default: "" },
+        fixRequestedBy: { type: String, default: "" },
     },
     { _id: false }
 );
@@ -30,7 +33,10 @@ const conversionDiagnosisSchema = new mongoose.Schema(
         screenshots: { type: [{ caption: String, url: String }], default: [] },
         error: { type: String, default: "" },
         costUsd: { type: Number, default: 0 },
-        slackTs: { type: String, default: "" },
+        slackChannel: { type: String, default: "" },
+        slackThreadTs: { type: String, default: "" }, // the day's summary message
+        slackTs: { type: String, default: "" }, // this page's reply in that thread
+        detailsPostedAt: { type: Date, default: null },
     },
     { timestamps: true }
 );
