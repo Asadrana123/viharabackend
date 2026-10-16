@@ -21,6 +21,7 @@ const MIN_DAILY_AVG_FOR_TRACKING_CHECK = 5;
 const nf = new Intl.NumberFormat("en-US");
 const fmt = (n) => nf.format(Math.round(n));
 const pct = (n) => `${(n * 100).toFixed(1)}%`;
+const plural = (n, word) => `${fmt(n)} ${word}${n === 1 ? "" : "s"}`;
 
 function fmtDuration(seconds) {
     const s = Math.round(seconds);
@@ -124,6 +125,63 @@ function channelRows(data) {
     });
 }
 
+/**
+ * Campaign names reach GA4 in different shapes: "Toorak+-+LA" and "Toorak - LA" are the same campaign,
+ * and some ad links send the campaign ID instead of a name. Merge the spellings and label the IDs.
+ * Built-in values such as (direct) and (organic) are channels, not campaigns, so they are skipped.
+ */
+function campaignLabel(raw) {
+    if (!raw || raw === "(not set)" || raw.startsWith("(")) return null;
+    let name = raw;
+    try {
+        name = decodeURIComponent(raw.replace(/\+/g, " "));
+    } catch (e) {
+        name = raw.replace(/\+/g, " ");
+    }
+    name = name.replace(/\s+/g, " ").trim();
+    return /^\d{10,}$/.test(name) ? `Campaign ID ${name}` : name;
+}
+
+const MAX_CAMPAIGNS = 12;
+
+function campaignRows(data) {
+    const byName = new Map();
+    const entry = (name) => {
+        if (!byName.has(name)) byName.set(name, { name, sessionsDay: 0, engagedDay: 0, sessionsWeek: 0, engagedWeek: 0, signUpsWeek: 0 });
+        return byName.get(name);
+    };
+    for (const r of data.campaignsDay || []) {
+        const name = campaignLabel(r.sessionCampaignName);
+        if (!name) continue;
+        const e = entry(name);
+        e.sessionsDay += r.sessions;
+        e.engagedDay += r.engagedSessions;
+    }
+    for (const r of data.campaignsWeek || []) {
+        const name = campaignLabel(r.sessionCampaignName);
+        if (!name) continue;
+        const e = entry(name);
+        e.sessionsWeek += r.sessions;
+        e.engagedWeek += r.engagedSessions;
+    }
+    for (const r of data.campaignSignUpsWeek || []) {
+        const name = campaignLabel(r.sessionCampaignName);
+        if (!name) continue;
+        entry(name).signUpsWeek += r.eventCount;
+    }
+    return [...byName.values()]
+        .sort((a, b) => b.sessionsWeek - a.sessionsWeek || b.sessionsDay - a.sessionsDay)
+        .slice(0, MAX_CAMPAIGNS)
+        .map((c) => ({
+            name: c.name,
+            sessionsDay: c.sessionsDay,
+            engagementDay: c.sessionsDay ? c.engagedDay / c.sessionsDay : null,
+            sessionsWeek: c.sessionsWeek,
+            engagementWeek: c.sessionsWeek ? c.engagedWeek / c.sessionsWeek : null,
+            signUpsWeek: c.signUpsWeek,
+        }));
+}
+
 /** Everything the Slack message and the summary are built from. */
 function buildReportModel(data) {
     const today = dailyTotals(data.daily, dayKey(data.reportDay));
@@ -182,6 +240,7 @@ function buildReportModel(data) {
         })),
         channels: channelRows(data),
         sources: data.sources.slice(0, 6).map((s) => ({ source: s.sessionSourceMedium, sessions: s.sessions })),
+        campaigns: campaignRows(data),
         signUpByForm: data.signUpByForm && data.signUpByForm.map((r) => ({ form: r["customEvent:form_location"] || "(not set)", count: r.eventCount })),
         viewByPageType: data.viewByPageType && data.viewByPageType.map((r) => ({ type: r["customEvent:page_type"] || "(not set)", count: r.eventCount })),
         ratios: {
@@ -202,9 +261,22 @@ function eventLine(e) {
 function buildSlackMessage(model, summary) {
     const date = DateTime.fromISO(model.day, { zone: PROPERTY_TIMEZONE }).toFormat("ccc d LLL yyyy");
     const blocks = [{ type: "header", text: { type: "plain_text", text: `Website report, ${date}` } }];
-    const section = (text) => blocks.push({ type: "section", text: { type: "mrkdwn", text: text.slice(0, 2900) } });
+    // Slack cuts a section off at 3,000 characters. Split long text on line breaks instead of truncating it.
+    const section = (text) => {
+        let chunk = "";
+        const flush = () => {
+            if (chunk) blocks.push({ type: "section", text: { type: "mrkdwn", text: chunk } });
+            chunk = "";
+        };
+        for (const line of text.split("\n")) {
+            const piece = line.slice(0, 2900);
+            if (chunk && chunk.length + piece.length + 1 > 2900) flush();
+            chunk = chunk ? `${chunk}\n${piece}` : piece;
+        }
+        flush();
+    };
 
-    if (summary) section(`*Summary*\n${summary}`);
+    if (summary) section(summary);
 
     if (model.headline.length) {
         section(
@@ -261,6 +333,19 @@ function buildSlackMessage(model, summary) {
     if (model.sources.length) {
         section("*Top sources*\n" + model.sources.map((s) => `• ${esc(s.source)}: ${fmt(s.sessions)}`).join("\n"));
     }
+    if (model.campaigns.length) {
+        const rate = (r) => (r === null ? "no sessions" : `${pct(r)} engaged`);
+        section(
+            "*Campaigns* (yesterday, last 7 days, sign-ups in the last 7 days)\n" +
+                model.campaigns
+                    .map(
+                        (c) =>
+                            `• ${esc(c.name)}: ${plural(c.sessionsDay, "session")} yesterday (${rate(c.engagementDay)}), ` +
+                            `${fmt(c.sessionsWeek)} in 7 days (${rate(c.engagementWeek)}), ${plural(c.signUpsWeek, "sign-up")}`
+                    )
+                    .join("\n")
+        );
+    }
     if (model.checks.length) {
         section("*Tracking check*\n" + model.checks.map((c) => `• ${esc(c)}`).join("\n"));
     }
@@ -280,4 +365,47 @@ function messageToText(message) {
         .join("\n\n");
 }
 
-module.exports = { buildReportModel, buildSlackMessage, messageToText, change, NEW_EVENTS_START };
+
+/**
+ * The figures Claude reads, as display-ready text and counts. Rates and durations are already formatted
+ * exactly as they appear in the Slack tables, so the written summary can quote them and be checked
+ * against this same data.
+ */
+function buildSummaryFacts(model) {
+    const rate = (r) => (r === null ? null : pct(r));
+    return {
+        day: model.day,
+        sameWeekdayLastWeek: model.weekAgo,
+        traffic: model.headline.map((h) => ({ metric: h.label, yesterday: h.value, vsSameWeekdayLastWeek: h.vsWeek, vsPrevious7DayAverage: h.vsAvg })),
+        events: model.events.map((e) => ({
+            event: e.name,
+            yesterday: e.count,
+            sameWeekdayLastWeek: e.historyReady ? e.weekAgo : "no comparison yet, tracking started 7 Oct",
+            vsSameWeekdayLastWeek: e.historyReady ? e.vsWeek : "no comparison yet",
+            previous7DayAverage: e.historyReady ? Number(e.avg.toFixed(1)) : "no comparison yet",
+        })),
+        // A breakdown that is not set up yet is a setup gap, not a finding. The Breakdowns table already
+        // says so, so the summary does not get it and cannot list it as a problem.
+        breakdowns: {
+            ...(model.signUpByForm === null ? {} : { signUpsByForm: model.signUpByForm.map((r) => ({ form: r.form, count: r.count })) }),
+            ...(model.viewByPageType === null ? {} : { propertyViewsByPageType: model.viewByPageType.map((r) => ({ pageType: r.type, count: r.count })) }),
+            renovationGenerateShareOfOpens: model.ratios.renovationGenerateOfOpen === null ? null : pct(model.ratios.renovationGenerateOfOpen),
+            signUpsPer100Sessions: model.ratios.signUpsPer100Sessions === null ? null : Number(model.ratios.signUpsPer100Sessions.toFixed(1)),
+        },
+        topPages: model.pages.map((p) => ({ path: p.path, views: p.views, visitors: p.visitors, engagementTimePerVisitor: fmtDuration(p.engagementSeconds) })),
+        topLandingPages: model.landing.map((p) => ({ path: p.path, sessions: p.sessions, engagementRate: pct(p.engagementRate) })),
+        channels: model.channels.map((c) => ({ channel: c.channel, sessions: c.sessions, vsSameWeekdayLastWeek: c.vsWeek, engagementRate: pct(c.engagementRate) })),
+        topSources: model.sources.map((s) => ({ source: s.source, sessions: s.sessions })),
+        campaigns: model.campaigns.map((c) => ({
+            campaign: c.name,
+            sessionsYesterday: c.sessionsDay,
+            engagementRateYesterday: rate(c.engagementDay),
+            sessionsLast7Days: c.sessionsWeek,
+            engagementRateLast7Days: rate(c.engagementWeek),
+            signUpsLast7Days: c.signUpsWeek,
+        })),
+        trackingChecks: model.checks,
+    };
+}
+
+module.exports = { buildReportModel, buildSlackMessage, buildSummaryFacts, messageToText, change, campaignLabel, NEW_EVENTS_START };

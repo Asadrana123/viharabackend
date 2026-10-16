@@ -33,6 +33,8 @@ const TRACKED_EVENTS = [
 ];
 
 const TOP_ROWS = 10;
+// Wide enough that the same campaign spelled two ways still lands in the top rows.
+const CAMPAIGN_ROWS = 40;
 const ADMIN_PATH_FILTER = {
     notExpression: { filter: { fieldName: "pagePath", stringFilter: { matchType: "BEGINS_WITH", value: "/admin" } } },
 };
@@ -140,8 +142,9 @@ async function fetchGaReportData(day) {
     const dayRange = { startDate: reportDay, endDate: reportDay };
     const weekAgoRange = { startDate: weekAgo, endDate: weekAgo };
     const dailyRange = { startDate: weekAgo, endDate: reportDay }; // 8 days: the report day plus the 7 before it
+    const last7Range = { startDate: dayDt.minus({ days: 6 }).toISODate(), endDate: reportDay }; // the report day plus the 6 before it
 
-    const [daily, events, pages, landing, channels, sources] = await Promise.all([
+    const [daily, events, pages, landing, channels, sources, campaignsDay, campaignsWeek, campaignSignUpsWeek] = await Promise.all([
         runReport({
             dimensions: ["date"],
             metrics: ["activeUsers", "sessions", "engagedSessions", "userEngagementDuration", "screenPageViews", "newUsers"],
@@ -182,6 +185,29 @@ async function fetchGaReportData(day) {
             orderBys: byMetricDesc("sessions"),
             limit: TOP_ROWS,
         }),
+        // Campaigns: the report day, the last 7 days, and sign-ups by campaign over the last 7 days.
+        runReport({
+            dimensions: ["sessionCampaignName"],
+            metrics: ["sessions", "engagedSessions"],
+            dateRanges: [dayRange],
+            orderBys: byMetricDesc("sessions"),
+            limit: CAMPAIGN_ROWS,
+        }),
+        runReport({
+            dimensions: ["sessionCampaignName"],
+            metrics: ["sessions", "engagedSessions"],
+            dateRanges: [last7Range],
+            orderBys: byMetricDesc("sessions"),
+            limit: CAMPAIGN_ROWS,
+        }),
+        runReport({
+            dimensions: ["sessionCampaignName"],
+            metrics: ["eventCount"],
+            dateRanges: [last7Range],
+            dimensionFilter: { filter: { fieldName: "eventName", stringFilter: { matchType: "EXACT", value: "sign_up" } } },
+            orderBys: byMetricDesc("eventCount"),
+            limit: CAMPAIGN_ROWS,
+        }),
     ]);
 
     const [signUpByForm, viewByPageType] = await Promise.all([
@@ -189,7 +215,7 @@ async function fetchGaReportData(day) {
         eventSplit({ eventName: "property_view", dimension: "customEvent:page_type", dateRanges: [dayRange] }),
     ]);
 
-    return { reportDay, weekAgo, daily, events, pages, landing, channels, sources, signUpByForm, viewByPageType };
+    return { reportDay, weekAgo, daily, events, pages, landing, channels, sources, campaignsDay, campaignsWeek, campaignSignUpsWeek, signUpByForm, viewByPageType };
 }
 
 module.exports = { fetchGaReportData, TRACKED_EVENTS, PROPERTY_TIMEZONE };
