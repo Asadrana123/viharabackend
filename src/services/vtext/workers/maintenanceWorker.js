@@ -349,6 +349,43 @@ async function runFailedSendDigest() {
   }
 }
 
+// Refreshes the property knowledge base (Qdrant) the AI replies search, so edits to a property reach it
+// within a day. Skipped quietly unless the knowledge lookup is on and Qdrant is configured. The
+// watermark keeps a restart (BullMQ may run a new scheduler once straight away) from re-embedding
+// every property again.
+const RAG_SYNC_KEY = "ragSyncAt";
+async function runRagSync() {
+  if (process.env.VTEXT_RAG_ENABLED !== "true" || !process.env.QDRANT_URL || !process.env.QDRANT_API_KEY) return;
+
+  const minGapMs = Number(process.env.VTEXT_RAG_SYNC_MIN_GAP_MS || 20 * 60 * 60_000);
+  const last = await getAlertWatermark(RAG_SYNC_KEY);
+  if (last && Date.now() - last.getTime() < minGapMs) return;
+  const startedAt = new Date();
+
+  const { syncAllProperties } = require("../../rag/ragSyncService");
+  // Same selection as the default (every property with a slug), minus test properties.
+  const summary = await syncAllProperties({ query: { slug: { $type: "string", $ne: "" }, isTestProperty: { $ne: true } } });
+  await setAlertWatermark(RAG_SYNC_KEY, startedAt);
+  try {
+    const { syncFaq } = require("../../rag/faqSyncService");
+    const faq = await syncFaq();
+    console.log(`[vtext rag-sync] FAQ: ${faq.status}, ${faq.chunks} entries`);
+  } catch (err) {
+    console.error("[vtext rag-sync] FAQ refresh failed:", err.message); // the property refresh above already succeeded
+  }
+
+  if (summary.errors.length) {
+    await notifyVtextAlert({
+      level: "warning",
+      title: "AI knowledge base refresh had errors",
+      fields: [
+        { label: "Refreshed", value: `${summary.synced.length} properties` },
+        { label: "Failed", value: summary.errors.slice(0, 5).map((e) => `${e.slug}: ${e.error}`).join("\n").slice(0, 600) },
+      ],
+    }).catch(() => {});
+  }
+}
+
 const JOB_HANDLERS = {
   "noop-heartbeat": runNoopHeartbeat,
   "stuck-message-sweep": runStuckMessageSweep,
@@ -357,6 +394,7 @@ const JOB_HANDLERS = {
   "backlog-alert": runBacklogAlert,
   "followup-sweep": runFollowUpSweep,
   "failed-send-digest": runFailedSendDigest,
+  "rag-sync": runRagSync,
 };
 
 async function processMaintenanceJob(job) {
@@ -420,6 +458,15 @@ async function ensureMaintenanceSchedulers() {
     { every: failedDigestIntervalMs() },
     { name: "failed-send-digest" },
   );
+  // The knowledge-base refresh only exists when the AI knowledge lookup is switched on, so a deploy
+  // without it adds no Redis ticks at all. Daily is plenty for property data.
+  if (process.env.VTEXT_RAG_ENABLED === "true") {
+    await queue.upsertJobScheduler(
+      "rag-sync",
+      { every: Number(process.env.VTEXT_RAG_SYNC_INTERVAL_MS || 24 * 60 * 60_000) },
+      { name: "rag-sync" },
+    );
+  }
 }
 
 let worker = null;

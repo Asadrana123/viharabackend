@@ -14,7 +14,7 @@ const { notifyAiReplySent } = require("./vtextAlertService");
  * deliberately does NOT touch the route queue (unlike enqueueOutbound).
  * @returns {Promise<object>} the created VtextMessage document
  */
-async function createDraftReply({ contactId, conversationId, lineId, channelType, inboundMessageId, body, model, needsHuman, topic }) {
+async function createDraftReply({ contactId, conversationId, lineId, channelType, inboundMessageId, body, model, needsHuman, topic, sources, retrieval, guard }) {
   return VtextMessage.create({
     direction: "out",
     contactId,
@@ -25,7 +25,7 @@ async function createDraftReply({ contactId, conversationId, lineId, channelType
     status: "pending-approval",
     origin: { kind: "automation", templateKey: "ai-reply-draft", replyToMessageId: inboundMessageId },
     isReplyToInbound: true,
-    aiDraft: { approvalStatus: "pending", model, generatedAt: new Date(), needsHuman: !!needsHuman, topic: topic || undefined },
+    aiDraft: { approvalStatus: "pending", model, generatedAt: new Date(), needsHuman: !!needsHuman, topic: topic || undefined, sources: sources?.length ? sources : undefined, retrieval: retrieval || undefined, guard: guard || undefined },
   });
 }
 
