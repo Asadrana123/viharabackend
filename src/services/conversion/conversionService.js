@@ -207,4 +207,15 @@ async function handleDetails({ value }) {
     await d.save();
 }
 
-module.exports = { runSignupDoctor, handleFix, handleDetails };
+/** Startup: a page cut off by a restart (e.g. the server ran out of memory) is marked failed, and its thread says so. */
+async function recoverSignupDoctor() {
+    const cut = await ConversionDiagnosis.find({ status: "running" });
+    for (const d of cut) {
+        await ConversionDiagnosis.updateOne({ _id: d._id }, { $set: { status: "failed", error: "The server restarted during the check." } });
+        if (d.slackChannel && d.slackThreadTs) {
+            await slack.replyInThread(d.slackChannel, d.slackThreadTs, `⚠️ Couldn't finish ${shortPath(d.url)}: the server restarted during the check. Run \`/adsloop why ${d.url}\` to try again.`);
+        }
+    }
+}
+
+module.exports = { runSignupDoctor, handleFix, handleDetails, recoverSignupDoctor };

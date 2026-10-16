@@ -114,6 +114,8 @@ mongoose.connect(process.env.DB_URI, {
     recoverAdsLoop().catch((err) => console.error("[adsLoop] recovery:", err.message));
     // Repair agent: retry fixes cut off by a restart.
     recoverRepairJob().catch((err) => console.error("[repair] recovery:", err.message));
+    // Sign-up doctor: reports cut off by a restart say so in their Slack thread.
+    require("./services/conversion/conversionService").recoverSignupDoctor().catch((err) => console.error("[signup-doctor] recovery:", err.message));
     // Read the website's page list now so Design Studio opens quickly.
     if (process.env.DESIGN_GITHUB_TOKEN) {
       require("./services/design/pageDiscovery").discoverPages().catch((err) => console.error("[design] page discovery:", err.message));

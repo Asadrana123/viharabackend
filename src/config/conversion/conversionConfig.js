@@ -11,6 +11,10 @@
 //   SLACK_SIGNUP_DOCTOR_CHANNEL_ID  Slack channel for reports (default: the repair channel)
 //   SIGNUP_DOCTOR_MAX_COST_USD  most one page's investigation may cost (default 3)
 //   SIGNUP_DOCTOR_MAX_PAGES     most pages investigated per day (default 5)
+//   SIGNUP_DOCTOR_MAX_MINUTES   most time spent on one page (default 12)
+//   SIGNUP_DOCTOR_BROWSER       "true" to let the agent use its own Chrome (needs a 2 GB+ server)
+//   PAGESPEED_API_KEY           Google key with the PageSpeed Insights API enabled
+//                               (falls back to GEMINI_API_KEY)
 // Also uses: META_ADS_ACCESS_TOKEN, META_AD_ACCOUNT_ID, META_PIXEL_ID,
 // ANTHROPIC_API_KEY, SLACK_BOT_TOKEN, REPAIR_GITHUB_TOKEN (read-only use).
 
@@ -29,7 +33,14 @@ function getConversionConfig() {
             model: env.SIGNUP_DOCTOR_MODEL || "claude-opus-5-5",
             effort: env.SIGNUP_DOCTOR_EFFORT || "high",
             maxCostUsd: num(env.SIGNUP_DOCTOR_MAX_COST_USD, 3),
+            // After this long on one page the agent must wrap up.
+            maxMinutes: num(env.SIGNUP_DOCTOR_MAX_MINUTES, 12),
         },
+        // Our own Chrome (screenshots after every step, test-filling the form) needs
+        // over 512 MB; the server crashed with it on the 512 MB Render plan. Off by
+        // default: Google PageSpeed gives speed + a screenshot without using our memory.
+        // Turn on only on a 2 GB+ server, or locally.
+        browser: env.SIGNUP_DOCTOR_BROWSER === "true",
         maxPagesPerDay: num(env.SIGNUP_DOCTOR_MAX_PAGES, 5),
         // Before the 08:30 repair checks and the 09:00 Meta Ads report.
         schedule: "45 7 * * *",
@@ -59,6 +70,7 @@ function missingConversionSettings(config = getConversionConfig()) {
     // Optional: without these the agent works with less evidence.
     if (!config.clarityToken) missing.push("CLARITY_API_TOKEN (optional)");
     if (!process.env.REPAIR_GITHUB_TOKEN) missing.push("REPAIR_GITHUB_TOKEN (optional, for reading website code)");
+    if (!process.env.PAGESPEED_API_KEY && !process.env.GEMINI_API_KEY) missing.push("PAGESPEED_API_KEY (optional, for speed + screenshots)");
     return missing;
 }
 
