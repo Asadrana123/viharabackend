@@ -133,6 +133,9 @@ const runSingleCall = async (
         researchSummary,
         property,
         promptConfig,
+        // A deliberate one-off (admin form / brand-new Facebook lead) — not held
+        // to "one call a day", but it still counts as today's call.
+        oncePerDay: false,
       })
     );
     if (i < contact.phones.length - 1) await delay(DELAY_BETWEEN_CALLS_MS);

@@ -1,8 +1,10 @@
 // services/callMemoryService.js
 const CallLog = require("../../model/calling/callLogModel");
 
-// How far back to scan, and how many meaningful calls to actually surface.
-const LOOKUP_LIMIT = 5; // most recent logs to read for this phone
+// How many meaningful calls to read and surface. The query only returns logs
+// that have a summary, so a run of missed calls (e.g. a restarted 7-day window
+// with no pickup) can't push the real conversations out of the lookup.
+const LOOKUP_LIMIT = 10; // most recent summarised logs to read for this phone
 const MAX_ENTRIES = 3; // meaningful calls to include in the prompt
 const MAX_SUMMARY_CHARS = 500; // clip each summary so the prompt stays lean
 
@@ -48,7 +50,7 @@ async function buildPriorContext(phone) {
   const number = String(phone || "").trim();
   if (!number) return "";
 
-  const logs = await CallLog.find({ phone: number })
+  const logs = await CallLog.find({ phone: number, summary: { $nin: [null, ""] } })
     .sort({ createdAt: -1 })
     .limit(LOOKUP_LIMIT)
     .lean();

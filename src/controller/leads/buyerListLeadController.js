@@ -202,7 +202,7 @@ const registerBuyerListLead = catchAsyncError(async (req, res, next) => {
     name: lead.fullName || lead.firstName,
     email: lead.email,
     phone: lead.phone,
-    consent: lead.smsConsent,
+    smsConsent: lead.smsConsent,
     source: `buyer-list · ${lead.firstTouch?.utm_source || "direct"}`,
     extraFields: [
       { label: "Tier", value: lead.tier },

@@ -604,6 +604,12 @@ productSchema.pre('save', async function (next) {
         this.coordinates.lastUpdated = Date.now();
     }
 
+    // Going live on /auctions turns the backend email sequence on. Admin can
+    // still switch it off afterwards in Manage Listings.
+    if (this.showOnAuctions && this.isModified('showOnAuctions')) {
+        this.emailSequenceEnabled = true;
+    }
+
     // Generate a stable, unique slug only when it's missing.
     // Once set it never changes, so landing-page URLs stay stable.
     if (!this.slug) {

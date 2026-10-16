@@ -7,6 +7,7 @@
 // "pending-approval"), so there's one cancel path, not two.
 const VtextMessage = require("../../model/vtext/vtextMessageModel");
 const { getRouteQueue } = require("./queue/queues");
+const { notifyAiReplySent } = require("./vtextAlertService");
 
 /**
  * Creates the draft as a VtextMessage with status "pending-approval" —
@@ -58,6 +59,9 @@ async function approveDraft(messageId, { body, approvedBy }) {
   await message.save();
 
   await getRouteQueue().add("route", { messageId: String(message._id) }, { jobId: `route-${message._id}-1` });
+
+  // Both ways a reply goes out (auto-approved and approved by an admin) end up here. Not awaited: never delays the send.
+  notifyAiReplySent({ message, approvedBy });
 
   return message;
 }

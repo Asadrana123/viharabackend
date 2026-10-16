@@ -99,7 +99,9 @@ function formatTimestamp(date) {
  * @param {string} [lead.name]        Display name.
  * @param {string} [lead.email]
  * @param {string} [lead.phone]       Display phone (raw, as entered).
- * @param {boolean} [lead.consent]    Rendered as ✅/❌ when provided.
+ * @param {boolean} [lead.consent]    Rendered as ✅/❌ when provided. The call/terms consent.
+ * @param {boolean} [lead.smsConsent] The separate text-message opt-in, rendered as ✅/❌ when
+ *   provided. When both are given they show as "Call consent" and "SMS consent".
  * @param {string} [lead.source]      Lead source string.
  * @param {Array<{label:string,value:*}>} [lead.extraFields]  Source-specific rows.
  */
@@ -110,6 +112,7 @@ function buildLeadMessage(lead) {
     email = "",
     phone = "",
     consent,
+    smsConsent,
     source = "",
     extraFields = [],
   } = lead || {};
@@ -126,7 +129,9 @@ function buildLeadMessage(lead) {
   for (const f of Array.isArray(extraFields) ? extraFields : []) {
     addField(f.label, f.value);
   }
-  if (consent !== undefined) addField("Consent", consent ? "✅ Yes" : "❌ No");
+  const yesNo = (v) => (v ? "✅ Yes" : "❌ No");
+  if (consent !== undefined) addField(smsConsent !== undefined ? "Call consent" : "Consent", yesNo(consent));
+  if (smsConsent !== undefined) addField("SMS consent", yesNo(smsConsent));
   addField("Source", source);
 
   const blocks = [

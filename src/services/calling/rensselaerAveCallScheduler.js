@@ -5,7 +5,7 @@
 // property's call script, built from its LIVE listing (see below). Same behaviour:
 //
 //   Signup (with consent):
-//     → 2-in-60s burst (60s initial wait to honour the "we'll call you" promise)
+//     → one signup call (60s initial wait to honour the "we'll call you" promise)
 //         • picked up  → callStatus="connected", loop STOPS
 //         • no pickup  → callStatus="no-answer", nextCallAt = next daily slot
 //
@@ -48,6 +48,9 @@ const SWEEP_BATCH = 200;                  // max leads evaluated per minute
 const BURST_OPTS = {
   noPickupReasons: DID_NOT_CONNECT_REASONS,
   treatErrorsAsNoPickup: true,
+  // A quick "hello?" / "I'm busy" isn't a pickup — keep calling until there's
+  // a real conversation (registrationCallService.hadMeaningfulConversation).
+  requireConversation: true,
 };
 
 /**

@@ -10,6 +10,7 @@ const { getNotesForLeads } = require("../../services/leads/leadNotesService");
 const { listView, scopeQuery, unlessSummary, shapeLeads } = require("../../services/leads/leadListView");
 const { getVtextMessagesForPhones } = require("../../services/vtext/vtextLeadMessagesService");
 const { notifyNewLead } = require("../../services/shared/slackService");
+const { needsFinancingFrom, needsFinancingLabel } = require("../../services/leads/buyBox");
 
 // Discriminator stamped on each note so notes never bleed across lead types.
 const LEAD_NOTE_TYPE = "partner";
@@ -28,13 +29,13 @@ const { partnerPageUrl } = require("../../config/siteUrls");
  *   2. Create the lead — the unique email index rejects a duplicate (409) before
  *      any call is scheduled.
  *   3. Schedule the Maya activation call (fire-and-forget, only with consent) —
- *      the 2-in-60s burst + daily callback loop.
+ *      the one signup call + daily callback loop.
  *   4. Respond.
  *   5. Enrich + Brevo sync in the background; update the lead in place.
  */
 const registerAndCall = catchAsyncError(async (req, res, next) => {
   const {
-    firstName, lastName, email, phone, primaryMarket, persona, timezone,
+    firstName, lastName, email, phone, primaryMarket, persona, needsFinancing, timezone,
     consent, consentText, consentTimestamp, eventId,
     smsConsent, smsConsentText,
   } = req.body;
@@ -69,6 +70,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       phoneNormalized,              // canonical, for dialing
       primaryMarket: (primaryMarket || "").trim(),
       persona: (persona || "").trim(),
+      needsFinancing: needsFinancingFrom(needsFinancing),
       timezone: timezone || "",
       consent: consent === true,
       consentText: consentText || "",
@@ -119,10 +121,12 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
     email: lead.email,
     phone: lead.phone,
     consent: lead.consent,
+    smsConsent: lead.smsConsent,
     source: "partner-program",
     extraFields: [
       { label: "Primary Market", value: lead.primaryMarket },
       { label: "Persona", value: lead.persona },
+      { label: "Needs Financing", value: needsFinancingLabel(lead.needsFinancing) },
     ],
   }).catch((e) => console.error("[slack] partner notify failed:", e.message));
 

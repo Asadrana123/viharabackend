@@ -1,14 +1,16 @@
 // services/buyerMatch/matchCallService.js
 //
 // Buyer Match calling: an admin presses "Start calls" on a buyer + property and
-// Maya calls that buyer about that property twice a day, at times people are
+// Maya calls that buyer about that property ONCE a day, at a time people are
 // usually free in THEIR timezone, until they pick up.
 //
-//   Schedule   12:30 PM and 6:00 PM local, every day (weekends too), for up to
-//              MAX_DAYS. The first call goes out right away if it's between
-//              9 AM and 8 PM for the buyer, otherwise at the next slot.
-//   One call   per slot (not a 2-call burst). Only the first unanswered call
-//              leaves a voicemail.
+//   Schedule   One call a day (weekends too), alternating 12:30 PM and 6:00 PM
+//              local day to day, for up to MAX_DAYS. The first call goes out
+//              right away if it's between 9 AM and 8 PM for the buyer,
+//              otherwise at the next slot.
+//   One call   per day, never re-rung (dailyDialGuard also skips the day if any
+//              other loop already called this number). Only the first
+//              unanswered call leaves a voicemail.
 //   Stops when they pick up · the property closes · MAX_DAYS pass · an admin
 //              presses Stop · another Buyer Match schedule replaces it.
 //   Takeover   One schedule per phone number. If the person is already in a
@@ -45,9 +47,8 @@ const CALL_SLOTS = [
   { hour: 12, minute: 30 }, // lunch
   { hour: 18, minute: 0 },  // after work
 ];
-const SLOTS_LABEL = "12:30 PM and 6:00 PM";
+const SLOTS_LABEL = "once a day, 12:30 PM or 6:00 PM";
 const MAX_DAYS = 7;
-const MIN_GAP_MS = 2 * 60 * 60 * 1000; // never two calls within 2 hours
 const CALL_WINDOW = { startHour: 9, endHour: 20 }; // first call "right away" only inside this
 const RESUMED_LOOP_HOUR = 11; // paused sign-up loops resume at 11 AM local (their first slot)
 const DEFAULT_TZ = "America/New_York";
@@ -87,7 +88,18 @@ function nextSlotAfter(tz, from = new Date()) {
   return start.plus({ days: 1 }).toUTC().toJSDate();
 }
 
-/** First slot tomorrow — used when every caller number is out of calls today. */
+/**
+ * Tomorrow's call — one a day, alternating the slot so we don't keep missing
+ * the buyer at the same hour. `attempts` = calls placed so far.
+ */
+function nextDayCallAt(tz, attempts = 0) {
+  const slot = CALL_SLOTS[attempts % CALL_SLOTS.length];
+  return DateTime.now().setZone(tz).plus({ days: 1 })
+    .set({ hour: slot.hour, minute: slot.minute, second: 0, millisecond: 0 })
+    .toUTC().toJSDate();
+}
+
+/** First slot tomorrow — used when a call couldn't go out today. */
 function firstSlotTomorrow(tz) {
   const tomorrow = DateTime.now().setZone(tz).plus({ days: 1 }).startOf("day");
   return nextSlotAfter(tz, tomorrow.minus({ minutes: 1 }).toJSDate());
@@ -491,13 +503,13 @@ async function placeCall(campaign) {
   });
 
   if (!res.success) {
-    const capped = /daily call cap/i.test(res.error || "");
+    // Out of caller numbers, or this person was already called today by
+    // another loop → try tomorrow, and don't count it as an attempt.
+    const capped = /daily call cap|already called today/i.test(res.error || "");
     await MatchCallCampaign.updateOne(
       { _id: campaign._id, status: "active" },
       {
         $push: { calls: { at: new Date(), connected: false, error: res.error || "call failed" } },
-        // Every caller number is out of calls today → try again tomorrow, and
-        // don't count it as an attempt.
         ...(capped ? { $set: { nextCallAt: firstSlotTomorrow(campaign.timezone) }, $inc: { attempts: -1 } } : {}),
       }
     );
@@ -510,7 +522,8 @@ async function placeCall(campaign) {
     { $push: { calls: { callId: res.callId, at: new Date(), connected: null } } }
   );
 
-  const outcome = await pollCallOutcome(res.callId, DID_NOT_CONNECT_REASONS, true);
+  // Only a real conversation ends the schedule — a quick "I'm busy" keeps it going.
+  const outcome = await pollCallOutcome(res.callId, DID_NOT_CONNECT_REASONS, true, true);
   await MatchCallCampaign.updateOne(
     { _id: campaign._id, "calls.callId": res.callId },
     {
@@ -551,12 +564,12 @@ async function sweepDueCampaigns() {
         continue;
       }
 
-      // Atomic claim: book the next slot now so an overlapping tick (or a
-      // restart mid-call) can't dial twice.
+      // Atomic claim: book tomorrow's call now so an overlapping tick (or a
+      // restart mid-call) can't dial twice. One call a day.
       const claimed = await MatchCallCampaign.findOneAndUpdate(
         { _id: c._id, status: "active", nextCallAt: { $lte: now } },
         {
-          $set: { nextCallAt: nextSlotAfter(c.timezone || DEFAULT_TZ, new Date(now.getTime() + MIN_GAP_MS)), lastCallAt: now },
+          $set: { nextCallAt: nextDayCallAt(c.timezone || DEFAULT_TZ, (c.attempts || 0) + 1), lastCallAt: now },
           $inc: { attempts: 1 },
         },
         { new: true }
@@ -587,6 +600,7 @@ module.exports = {
   getCallingStatus,
   startCampaign,
   stopCampaign,
+  endCampaign,
   buildCallbackPromptForCampaign,
   startMatchCallScheduler,
   sweepDueCampaigns,

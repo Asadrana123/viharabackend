@@ -1,0 +1,45 @@
+{
+    "display_information": {
+        "name": "Vihara Ads Loop",
+        "description": "Creative review and ad launch approvals for Vihara's Meta ads",
+        "background_color": "#0c4bea"
+    },
+    "features": {
+        "bot_user": { "display_name": "Ads Loop", "always_online": true },
+        "slash_commands": [
+            {
+                "command": "/adsloop",
+                "url": "https://api.vihara.ai/api/v1/ads-loop/slack/commands",
+                "description": "Ads loop: status, stop (kill switch), resume, build, retry",
+                "usage_hint": "status | stop [reason] | resume | build <property-slug> | retry <LT-ID>",
+                "should_escape": false
+            }
+        ]
+    },
+    "oauth_config": {
+        "scopes": {
+            "bot": [
+                "chat:write",
+                "channels:history",
+                "groups:history",
+                "reactions:read",
+                "reactions:write",
+                "commands",
+                "users:read"
+            ]
+        }
+    },
+    "settings": {
+        "event_subscriptions": {
+            "request_url": "https://api.vihara.ai/api/v1/ads-loop/slack/events",
+            "bot_events": ["message.channels", "message.groups", "reaction_added"]
+        },
+        "interactivity": {
+            "is_enabled": true,
+            "request_url": "https://api.vihara.ai/api/v1/ads-loop/slack/interactions"
+        },
+        "org_deploy_enabled": false,
+        "socket_mode_enabled": false,
+        "token_rotation_enabled": false
+    }
+}

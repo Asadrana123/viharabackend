@@ -85,7 +85,19 @@ async function processSendJob(lineId, job) {
 
   try {
     const adapter = getAdapter(line.channelType);
-    const result = await adapter.send({ line, to: contact.phoneE164, body: message.body, clientMessageId: String(message._id) });
+    // An image goes out alone, on a line whose channel can send images. Any other line (Android) sends
+    // the message's plain text instead, and the record is changed to match what was really sent.
+    if (message.media?.file && !adapter.capabilities.media) {
+      message.media = undefined;
+      await message.save();
+    }
+    const result = await adapter.send({
+      line,
+      to: contact.phoneE164,
+      body: message.body,
+      media: message.media?.file ? { file: message.media.file } : undefined,
+      clientMessageId: String(message._id),
+    });
 
     message.status = "accepted";
     message.provider = { messageId: result.providerMessageId };
@@ -105,7 +117,7 @@ async function processSendJob(lineId, job) {
     await VtextConversation.updateOne(
       { _id: message.conversationId },
       {
-        $set: { lastMessageAt: new Date(), lastMessagePreview: message.body.slice(0, 120), lastDirection: "out" },
+        $set: { lastMessageAt: new Date(), lastMessagePreview: (message.media?.label || message.body).slice(0, 120), lastDirection: "out" },
         $inc: { "counts.outbound": 1 },
       }
     );

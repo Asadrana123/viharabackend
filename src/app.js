@@ -52,6 +52,7 @@ const interestedLeadRoutes = require("./routes/leads/interestedLeadRoutes");
 const testLeadRoutes = require("./routes/leads/testLeadRoutes");
 const renovationContractorLeadRoutes = require("./routes/leads/renovationContractorLeadRoutes");
 const stopCallingRoutes = require("./routes/calling/stopCallingRoutes");
+const leadDeleteRoutes = require("./routes/leads/leadDeleteRoutes");
 const propertyImportRoutes = require("./routes/property/propertyImportRoutes");
 // Unified property auction landing pages (/auction/:slug) — one route for every property.
 const propertyLeadRoutes = require("./routes/leads/propertyLeadRoutes");
@@ -77,6 +78,19 @@ const vtextWebhookRoutes = require("./routes/vtext/vtextWebhookRoutes");
 const qaAdminRoutes = require("./routes/qa/qaAdminRoutes");
 // QA worker API — token-authenticated, inert until QA_AGENT_TOKEN is set.
 const qaAgentRoutes = require("./routes/qa/qaAgentRoutes");
+// Admin global search + "Ask AI" (Claude answering questions from the DB, read-only).
+const adminAskRoutes = require("./routes/adminAsk/adminAskRoutes");
+// Brand Kit: the colours, fonts and messaging every page uses (public read, admin edit).
+const brandKitRoutes = require("./routes/brand/brandKitRoutes");
+// Design agent (admin-only): Claude redesigns pages → Vercel preview → approve to go live.
+const designAdminRoutes = require("./routes/design/designAdminRoutes");
+const { recoverDesignJobs } = require("./services/design/designJobService");
+// Meta Ads Loop: Slack approvals (events, buttons, /adsloop), health, admin endpoints.
+const adsLoopRoutes = require("./routes/adsLoop/adsLoopRoutes");
+// Zernio webhooks (signed): comment.received drives the Instagram comment auto-reply.
+const zernioWebhookRoutes = require("./routes/social/zernioWebhookRoutes");
+const { recoverAdsLoop } = require("./jobs/adsLoopJob");
+const { recoverRepairJob } = require("./jobs/repairJob");
 // Middleware
 app.use(cookieParser());
 app.use(cors(expressCorsOptions));
@@ -94,6 +108,16 @@ mongoose.connect(process.env.DB_URI, {
     console.log('MongoDB Connected with pool size: 50');
     // Start the hourly cleanup of unsaved renovation records.
     startRenovationCleanupJob();
+    // Pick up design requests that were mid-way when the server last stopped.
+    recoverDesignJobs();
+    // Ads loop: restart cut-off creative builds and replay missed Slack replies / ✅.
+    recoverAdsLoop().catch((err) => console.error("[adsLoop] recovery:", err.message));
+    // Repair agent: retry fixes cut off by a restart.
+    recoverRepairJob().catch((err) => console.error("[repair] recovery:", err.message));
+    // Read the website's page list now so Design Studio opens quickly.
+    if (process.env.DESIGN_GITHUB_TOKEN) {
+      require("./services/design/pageDiscovery").discoverPages().catch((err) => console.error("[design] page discovery:", err.message));
+    }
   })
   .catch(err => console.log('MongoDB Connection Error:', err));
 
@@ -143,6 +167,7 @@ app.use("/api/v1/interested-leads", interestedLeadRoutes);
 app.use("/api/v1/test-leads", testLeadRoutes);
 app.use("/api/v1/renovation-contractor-leads", renovationContractorLeadRoutes);
 app.use("/api/v1/lead-calling", stopCallingRoutes);
+app.use("/api/v1/admin-leads", leadDeleteRoutes);
 app.use("/api/v1/property-import", propertyImportRoutes);
 // Unified property auction leads (every /auction/:slug page). One mount, forever.
 app.use("/api/v1/property-lead", propertyLeadRoutes);
@@ -155,6 +180,11 @@ app.use("/api/v1/vtext", vtextAdminRoutes);
 app.use("/api/webhooks/vtext", vtextWebhookRoutes);
 app.use("/api/v1/qa", qaAdminRoutes);
 app.use("/api/v1/qa-agent", qaAgentRoutes);
+app.use("/api/v1/admin-ask", adminAskRoutes);
+app.use("/api/v1/brand-kit", brandKitRoutes);
+app.use("/api/v1/design", designAdminRoutes);
+app.use("/api/v1/ads-loop", adsLoopRoutes);
+app.use("/api/webhooks/zernio", zernioWebhookRoutes);
 
 // D7 (sendify-infra.md §2): fail loudly at boot if CHANNEL_TYPES has an enum
 // entry with no registered adapter, rather than discovering it the first

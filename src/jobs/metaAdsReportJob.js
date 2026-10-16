@@ -2,6 +2,7 @@
 //
 // Daily Meta Ads report: pull the last 7 days of ad performance from Meta,
 // have Claude analyse it, and post the summary + suggested actions to Slack.
+// Its technical action items are then handed to the repair agent.
 // Schedule: every day at 9:00 AM IST.
 //
 // Env:
@@ -12,6 +13,8 @@ const cron = require("node-cron");
 const { fetchLast7DaysAdInsights } = require("../services/marketing/metaAdsInsightsService");
 const { analyzeMetaAds } = require("../services/marketing/metaAdsAnalystService");
 const { postToSlack } = require("../services/shared/slackService");
+const { getRepairConfig } = require("../config/repair/repairConfig");
+const { runReportIssues } = require("../services/repair/incidentService");
 
 const SCHEDULE = "0 9 * * *";
 const TIMEZONE = "Asia/Kolkata";
@@ -41,6 +44,11 @@ async function runMetaAdsReport() {
         const report = await analyzeMetaAds(rows);
         await postToSlack(webhookUrl, { text: `📊 *Meta Ads daily report — ${yesterday}*\n\n${report}` });
         console.log(`[metaAdsReport] Posted report for ${yesterday} (${rows.length} rows).`);
+
+        // The report's technical action items (tracking, landing pages, links) go to the repair agent.
+        if (getRepairConfig().enabled) {
+            runReportIssues(report).catch((e) => console.error("[metaAdsReport] repair hand-off failed:", e.message));
+        }
     } catch (error) {
         const detail = error.response?.data?.error?.message || error.message;
         console.error("[metaAdsReport] Run failed:", detail);

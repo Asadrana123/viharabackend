@@ -40,6 +40,21 @@ function buildClient({ serverUrl, password }) {
       return res.data;
     },
 
+    /**
+     * POST /message/attachment — send one file (an image) to a chat, with no text. Works without the
+     * Private API (tested live against the pilot Mac). The fields go in a multipart body, so the chat
+     * guid's ";" separators are safe here (curl -F would cut them off, which is why this is not a curl call).
+     */
+    async sendAttachment({ chatGuid, tempGuid, name, buffer, mimeType }) {
+      const form = new FormData();
+      form.append("chatGuid", chatGuid);
+      form.append("tempGuid", tempGuid);
+      form.append("name", name);
+      form.append("attachment", new Blob([buffer], { type: mimeType }), name);
+      const res = await http.post("/message/attachment", form, { params: withAuth() });
+      return res.data;
+    },
+
     /** GET /server/info — cheap liveness/auth check, used by healthCheck(). */
     async getServerInfo() {
       const res = await http.get("/server/info", { params: withAuth() });

@@ -7,7 +7,7 @@
 // propertyVoicePromptBuilder) and hands the burst to the shared callDispatchQueue.
 //
 // Behaviour is identical to the old per-property schedulers:
-//   Signup (with consent): 2-in-60s burst → picked up = "connected" (STOP),
+//   Signup (with consent): one signup call → picked up = "connected" (STOP),
 //     no pickup = "no-answer" + next daily slot.
 //   Then ONE call a day for 7 days (followUpCadence.js), rotating 11:00 AM /
 //     2:30 PM / 6:00 PM local; picked up = STOP, after day 7 = "not-reached".
@@ -32,6 +32,9 @@ const SWEEP_BATCH = 200; // max leads evaluated per minute
 const BURST_OPTS = {
   noPickupReasons: DID_NOT_CONNECT_REASONS,
   treatErrorsAsNoPickup: true,
+  // A quick "hello?" / "I'm busy" isn't a pickup — keep calling until there's
+  // a real conversation (registrationCallService.hadMeaningfulConversation).
+  requireConversation: true,
 };
 
 // Short-lived cache of { product, promptConfig } keyed by slug. Rebuilt on each

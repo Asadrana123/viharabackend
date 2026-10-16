@@ -3,7 +3,7 @@
 // Early-access call flow with a 7-day follow-up loop:
 //
 //   Signup (with consent):
-//     → 2-in-60s burst (same as persona "as we call now")
+//     → one signup call (same as persona "as we call now")
 //         • picked up  → callStatus="connected", loop STOPS
 //         • no pickup  → callStatus="no-answer", nextCallAt = next daily slot
 //
@@ -40,6 +40,9 @@ const SWEEP_BATCH = 200;               // max leads evaluated per minute
 const BURST_OPTS = {
   noPickupReasons: DID_NOT_CONNECT_REASONS,
   treatErrorsAsNoPickup: true,
+  // A quick "hello?" / "I'm busy" isn't a pickup — keep calling until there's
+  // a real conversation (registrationCallService.hadMeaningfulConversation).
+  requireConversation: true,
 };
 
 /**

@@ -28,6 +28,13 @@ const vtextMessageSchema = new mongoose.Schema(
     channelType: { type: String },
 
     body: { type: String, required: true },
+    // An image-only message: `file` is a name inside src/assets/vtext/memes, `label` is what the admin inbox
+    // shows in its place ("Meme 1 sent, day 3"). `body` then holds the plain text a line that can't send
+    // images (Android) sends instead; the send worker clears `media` when that happens.
+    media: {
+      file: { type: String },
+      label: { type: String },
+    },
     segments: { type: Number }, // iMessage has no carrier-style segment billing; logged for cost/debugging anyway
     encoding: { type: String }, // reserved for the SMS fallback channel (Phase 6)
 
@@ -55,6 +62,8 @@ const vtextMessageSchema = new mongoose.Schema(
       templateKey: { type: String },
       batchId: { type: String },
       campaignId: { type: mongoose.Schema.Types.ObjectId },
+      // The property this text is about; routeWorker copies it onto the conversation.
+      propertyId: { type: mongoose.Schema.Types.ObjectId, ref: "productModel" },
       replyToMessageId: { type: mongoose.Schema.Types.ObjectId, ref: "vtextMessageModel" },
       sentBy: {
         adminId: { type: mongoose.Schema.Types.ObjectId },

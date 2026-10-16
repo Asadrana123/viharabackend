@@ -81,7 +81,10 @@ const dispatchRegistrationCall = async (lead = {}) => {
     // into VAPI metadata so a callback booked mid-call can re-use the same
     // funnel prompt. Empty for property/universal calls — unchanged behaviour.
     source: (lead.source || "").toString().trim(),
+    // One call a day applies to follow-ups. A callback they asked for, or the
+    // sign-up call they just requested, always goes out.
+    oncePerDay: !!lead.isFollowUp && !lead.isCallback,
   });
 };
 
-module.exports = { dispatchRegistrationCall };
+module.exports = { dispatchRegistrationCall };
