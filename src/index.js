@@ -22,6 +22,7 @@ const { startVtextWatchdog } = require('./services/vtext/vtextWatchdogService');
 const { startMetaAdsReportJob } = require('./jobs/metaAdsReportJob');
 const { startAdsLoopJob } = require('./jobs/adsLoopJob');
 const { startRepairJob } = require('./jobs/repairJob');
+const { startSignupDoctorJob } = require('./jobs/signupDoctorJob');
 require('./passport');
 
 const PORT = process.env.PORT || 8000;
@@ -101,4 +102,9 @@ server.listen(PORT, () => {
   // Repair agent: daily 08:30 IST tracking + landing page checks; fixes wait for Go in Slack.
   // Off unless REPAIR_AGENT_ENABLED=true.
   startRepairJob();
+
+  // Sign-up doctor: daily 07:45 IST, finds ad landing pages with visitors but few
+  // sign-ups and posts the likely reasons to Slack. Report only.
+  // Off unless SIGNUP_DOCTOR_ENABLED=true.
+  startSignupDoctorJob();
 });

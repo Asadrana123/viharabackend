@@ -3,7 +3,7 @@
 // Everything that arrives from Slack, after the route checked its signature:
 //   events        thread replies (#creative-review notes, "go" in #ads-weekly) and ✅ reactions
 //   interactions  Approve / Reject / Go / Activate buttons (and the repair agent's buttons)
-//   /adsloop      stop | resume | status | build <property slug> | retry <core id> | pull | weekly | repair
+//   /adsloop      stop | resume | status | build <property slug> | retry <core id> | pull | weekly | repair | why [page]
 //
 // Every message / reaction / click is claimed once (processedSlackMessages)
 // before it is handled, so Slack retries and restart replays never act twice.
@@ -131,6 +131,7 @@ const HELP = [
     "`/adsloop pull` · run the daily metrics pull now (approvers only)",
     "`/adsloop weekly` · post the weekly list now (approvers only)",
     "`/adsloop repair` · run the repair agent's tracking and landing page checks now (approvers only)",
+    "`/adsloop why [page link]` · sign-up doctor: why ad landing pages get visitors but few sign-ups (one page, or all)",
 ].join("\n");
 
 async function statusText() {
@@ -213,6 +214,15 @@ async function handleCommand({ text, userId, runInBackground }) {
             guard.assertApprover(userId);
             runInBackground(() => repair.runChecks());
             return "Running the repair checks now; anything broken is posted to the repair channel.";
+        case "why": {
+            // Report only, so anyone may ask; it costs a few dollars of AI per page.
+            const link = arg.trim().replace(/^<([^|>]+)(\|[^>]*)?>$/, "$1");
+            if (link && !/^https?:\/\//.test(link)) return "Paste the full page link: `/adsloop why https://www.vihara.ai/auction/<slug>`";
+            runInBackground(() => require("../conversion/conversionService").runSignupDoctor({ only: link || undefined }));
+            return link
+                ? `🩺 Looking into ${link} now; the reasons will be posted in the sign-up doctor channel in a few minutes.`
+                : "🩺 Checking every ad landing page now; pages with few sign-ups will be posted in the sign-up doctor channel.";
+        }
         default:
             return HELP;
     }

@@ -91,4 +91,4 @@ async function activeAdsWithLinks() {
     return ads.map((ad) => ({ adId: ad.id, adName: ad.name, links: creativeLinks(ad.creative) }));
 }
 
-module.exports = { dailyConversions, adTraffic, activeAdsWithLinks };
+module.exports = { dailyConversions, adTraffic, activeAdsWithLinks, creativeLinks, getAll, account, actionValue, GRAPH };
