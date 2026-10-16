@@ -1,6 +1,6 @@
 // This utility function sends a JWT token in response and cookies
 const getCookieOptions = require("./cookieOptions");
-const sendToken = (user, statusCode, res) => {
+const sendToken = (user, statusCode, res, _message, extraUserFields = {}) => {
     // Generate JWT token
     const token = user.getJWTToken();
     const cookieExpire = parseInt(process.env.cookie_expire, 10) || 30;
@@ -23,7 +23,8 @@ const sendToken = (user, statusCode, res) => {
             businessPhone: user.businessPhone,
             city: user.city,
             state: user.state,
-            savedProperties: user.savedProperties
+            savedProperties: user.savedProperties,
+            ...extraUserFields
         }
     });
 };

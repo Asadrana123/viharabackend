@@ -126,7 +126,13 @@ exports.Login = catchAsyncError(
     //     </body>
     //     </html>`
     // );
-    sendToken(finduser, 200, res, "----");
+    // A user is a seller if they are assigned to any property (sellerIds), even
+    // when their role was never promoted to 'seller'. The frontend uses this to
+    // send sellers straight to their dashboard after login.
+    const isSeller =
+      finduser.role === "seller" ||
+      !!(await productModel.exists({ sellerIds: finduser._id }));
+    sendToken(finduser, 200, res, "----", { isSeller });
   }
 )
 exports.sendOTP = catchAsyncError(async (req, res) => {
@@ -279,7 +285,11 @@ exports.getUser = catchAsyncError(
     console.log(user_id);
     const findUser = await userModel.findById(user_id).populate("savedProperties");
     if (!findUser) return next(new Errorhandler("User not found", 404));
-    return res.status(200).json({ user: findUser });
+    // Same seller check as Login, so a page refresh keeps seller access.
+    const isSeller =
+      findUser.role === "seller" ||
+      !!(await productModel.exists({ sellerIds: findUser._id }));
+    return res.status(200).json({ user: { ...findUser.toObject(), isSeller } });
   }
 )
 exports.getAllEmails = catchAsyncError(
