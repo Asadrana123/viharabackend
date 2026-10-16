@@ -1,0 +1,141 @@
+{
+  "source": "faq",
+  "count": 22,
+  "entries": [
+    {
+      "id": "faq-b9ebf5dd",
+      "category": "Account Basics",
+      "question": "Why do I need an account?",
+      "answer": "To bid on bank-owned properties and certain foreclosure sales, you need an account. Even if an account isn't required for all bids, having one is highly beneficial. It provides access to a dashboard where you can save properties and receive messages, access important due diligence documents, and get notifications on property status."
+    },
+    {
+      "id": "faq-a9f8e2b1",
+      "category": "Account Basics",
+      "question": "How do I create an account?",
+      "answer": "- Click “Sign Up” from the navigation bar on the home page.\n\n- Enter your information in the form.\n\n- Check your email for the confirmation and confirm your new account."
+    },
+    {
+      "id": "faq-06019c67",
+      "category": "Account Basics",
+      "question": "Can I set up a joint account?",
+      "answer": "No, you must set up your own account with a unique login. This security measure allows us to track individual buyers effectively."
+    },
+    {
+      "id": "faq-991e1552",
+      "category": "Account Basics",
+      "question": "I forgot my password. What should I do?",
+      "answer": "- Click the “Log In” tab from the navigation bar on the home page.\n\n- Click “Forgot Password?”\n\n- Enter your email address and submit.\n\n- Follow the instructions sent to your email."
+    },
+    {
+      "id": "faq-317fa78a",
+      "category": "Account Basics",
+      "question": "Can I cancel or deactivate my account?",
+      "answer": "Yes, you can deactivate your account by contacting our team, and you can always create a new account in the future.",
+      "edited": true
+    },
+    {
+      "id": "faq-4f5af8e7",
+      "category": "Account Basics",
+      "question": "Is there an app I can use?",
+      "answer": "Yes, you can find us on the iTunes App Store and Google Play Store. Our app supports both iOS and Android."
+    },
+    {
+      "id": "faq-6dbff0cd",
+      "category": "Account Basics",
+      "question": "Why isn’t the Vihara.ai app working?",
+      "answer": "If your apps are no longer updating, you might have an old version and need to download the latest one. Please find our most recent version on the iTunes App Store or Google Play Store."
+    },
+    {
+      "id": "faq-f48365ea",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "How can I participate in an online auction for bank-owned properties?",
+      "answer": "To explore bank-owned properties, click on “Auctions” in the navigation bar. Then choose the “REO Bank Owned” section. It's advisable to create an account before browsing. This way, you can save properties to your dashboard and register to bid on them once you find one you like. Please note, registration requires having an account."
+    },
+    {
+      "id": "faq-ea4eadc3",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "How can I register for an online bank-owned auction?",
+      "answer": "To register for an online auction, do the following:\n- Log in with your email and password.\n\n- Next, find your property and click on the property photo or link for more information.\n\n- Click the “Register to Bid” button.\n\n- Your name and email address will be auto-populated.\n\n- We will confirm your registration details after your registration is complete. Be sure to check your email to confirm the date and time of the auction."
+    },
+    {
+      "id": "faq-171526f8",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "Why am I restricted from having more than one account linked to my phone number?",
+      "answer": "Each account must have a distinct verified phone number to place bids or offers. This measure upholds auction integrity and enhances the security of information exchanged between Vihara.ai and each responsible bidder. For those needing multiple vesting information options for purchases, we have conveniently included the Purchase Profiles tab in the Dashboard, enabling easy creation of multiple profiles."
+    },
+    {
+      "id": "faq-a2399078",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "Why does my number need to be verified?",
+      "answer": "We verify your phone number once to safeguard the integrity of our auctions and ensure the authenticity of all our bidders."
+    },
+    {
+      "id": "faq-eb6d620d",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "What is an auction event?",
+      "answer": "An auction event is a scheduled time period during which a group of similar properties are auctioned. To determine if properties belong to the same event, compare the Event ID number found on the Property Details Page. If the first six digits of the Event ID match those of other properties, they are part of the same event. Note that the remaining digits represent the Item number and may vary."
+    },
+    {
+      "id": "faq-cf8f0df4",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "What should I do before I bid on a bank-owned property?",
+      "answer": "Before bidding on a bank-owned property, you should conduct due diligence by estimating the property's value and renovation costs, inspecting the physical property, obtaining a title report, and researching the surrounding neighborhood."
+    },
+    {
+      "id": "faq-cd9a40ec",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "A property is listed as a “Cash only purchase.” What does that mean?",
+      "answer": "A “Cash only purchase” means the property must be paid for in full, without a mortgage. The funds can come from your own bank or financial accounts, or from private money, but they must be readily available when it is time to close.",
+      "edited": true
+    },
+    {
+      "id": "faq-c633915e",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "I won the auction. What should I do next?",
+      "answer": "If you are the highest bidder when an auction ends, you will receive a confirmation email. You must then complete the steps noted in the email to finalize your property purchase."
+    },
+    {
+      "id": "faq-12af0e03",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "What is a Purchase Profile?",
+      "answer": "A Purchase Profile is an online form that buyers fill out after winning a bank-owned property. It inquires about how they intend to use the property—such as for investment or as a primary residence—and includes a few other questions necessary to complete the purchase. You can create multiple profiles, but make sure to name them in an easily identifiable way for future use."
+    },
+    {
+      "id": "faq-2816b879",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "What is Proxy Bidding and how does it work?",
+      "answer": "Proxy bidding lets you place a bid before the auction begins on select properties. After you submit your bid from the Property Details Page, Vihara.ai will bid on your behalf during the live auction, and we will email you if you win.",
+      "edited": true
+    },
+    {
+      "id": "faq-cd498dab",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "Why is the auction time being extended?",
+      "answer": "Bids placed within the last 2 minutes extend the auction, ensuring fairness by allowing all bidders to place their final bids."
+    },
+    {
+      "id": "faq-09e95a8c",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "Can I use a mortgage?",
+      "answer": "Typically, you are not allowed to use a mortgage. Most properties on Vihara.ai are “Cash only” which means the property must be paid in full by the closing date."
+    },
+    {
+      "id": "faq-899ed6be",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "Can I use financing to purchase the property?",
+      "answer": "Usually, no. Please review the property listing to confirm financing options. Most properties on Vihara.ai are cash-only, requiring full payment by the closing date"
+    },
+    {
+      "id": "faq-04a571bc",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "Am I allowed to purchase a property with multiple separate entities?",
+      "answer": "Yes, you can enter up to three entities into your contract. To streamline the process, you can pre-enter your entities ahead of time, ensuring they are pre-populated into your contract when you win an auction in the future."
+    },
+    {
+      "id": "faq-a9bb7c18",
+      "category": "Winning the Auction",
+      "question": "Am I allowed to purchase a property as a separate entity?",
+      "answer": "Certainly! You have the option to purchase the property under a separate entity, such as a Limited Liability Company or a Trust, but you will need to provide specific documentation."
+    }
+  ]
+}

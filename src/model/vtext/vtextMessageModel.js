@@ -112,6 +112,22 @@ const vtextMessageSchema = new mongoose.Schema(
       // The AI said it could not answer and a team member will follow up (see draftReplyWorker.js).
       needsHuman: { type: Boolean },
       topic: { type: String },
+      // What the AI looked up to write this (vtextKnowledgeService.js): the knowledge-base chunks it was given and how the search went.
+      sources: { type: [String], default: undefined },
+      retrieval: {
+        used: { type: Boolean },
+        query: { type: String },
+        topScore: { type: Number },
+        faqTopScore: { type: Number },
+        ms: { type: Number },
+        error: { type: String },
+      },
+      // Set when the AI's own draft was swapped for a plain hand-off because it contained a dollar amount it was not given (vtextReplyGuard.js). originalReply is kept so a person can see what it wanted to say.
+      guard: {
+        replaced: { type: Boolean },
+        amounts: { type: [String], default: undefined },
+        originalReply: { type: String },
+      },
       approvedBy: {
         adminId: { type: mongoose.Schema.Types.ObjectId },
         adminName: { type: String },

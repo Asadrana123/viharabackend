@@ -1,0 +1,847 @@
+{
+  "source": "faq",
+  "exportedFrom": "../../vihara-new-website/src/components/Resources/Faqs/faqData.js",
+  "count": 52,
+  "entries": [
+    {
+      "id": "faq-b9ebf5dd",
+      "source": "faq",
+      "category": "Account Basics",
+      "question": "Why do I need an account?",
+      "answer": "To bid on bank-owned properties and certain foreclosure sales, you need an account. Even if an account isn't required for all bids, having one is highly beneficial. It provides access to a dashboard where you can save properties and receive messages, access important due diligence documents, and get notifications on property status.",
+      "flags": [
+        {
+          "id": "wording",
+          "level": "note",
+          "reason": "Uses \"bank-owned\" or \"foreclosure\" wording that the calling scripts deliberately dropped."
+        },
+        {
+          "id": "screens",
+          "level": "note",
+          "reason": "Refers to screens on the website. Fine if a text can say where to look."
+        }
+      ],
+      "suggestion": "include"
+    },
+    {
+      "id": "faq-a9f8e2b1",
+      "source": "faq",
+      "category": "Account Basics",
+      "question": "How do I create an account?",
+      "answer": "- Click “Sign Up” from the navigation bar on the home page.\n\n- Enter your information in the form.\n\n- Check your email for the confirmation and confirm your new account.",
+      "flags": [
+        {
+          "id": "screens",
+          "level": "note",
+          "reason": "Refers to screens on the website. Fine if a text can say where to look."
+        }
+      ],
+      "suggestion": "include"
+    },
+    {
+      "id": "faq-06019c67",
+      "source": "faq",
+      "category": "Account Basics",
+      "question": "Can I set up a joint account?",
+      "answer": "No, you must set up your own account with a unique login. This security measure allows us to track individual buyers effectively.",
+      "flags": [],
+      "suggestion": "include"
+    },
+    {
+      "id": "faq-991e1552",
+      "source": "faq",
+      "category": "Account Basics",
+      "question": "I forgot my password. What should I do?",
+      "answer": "- Click the “Log In” tab from the navigation bar on the home page.\n\n- Click “Forgot Password?”\n\n- Enter your email address and submit.\n\n- Follow the instructions sent to your email.",
+      "flags": [
+        {
+          "id": "screens",
+          "level": "note",
+          "reason": "Refers to screens on the website. Fine if a text can say where to look."
+        }
+      ],
+      "suggestion": "include"
+    },
+    {
+      "id": "faq-317fa78a",
+      "source": "faq",
+      "category": "Account Basics",
+      "question": "Can I cancel or deactivate my account?",
+      "answer": "Yes, you can deactivate your account by emailing trisha@vihara.ai. You can always create a new account in the future.",
+      "flags": [],
+      "suggestion": "include"
+    },
+    {
+      "id": "faq-4f5af8e7",
+      "source": "faq",
+      "category": "Account Basics",
+      "question": "Is there an app I can use?",
+      "answer": "Yes, you can find us on the iTunes App Store and Google Play Store. Our app supports both iOS and Android.",
+      "flags": [],
+      "suggestion": "include"
+    },
+    {
+      "id": "faq-6dbff0cd",
+      "source": "faq",
+      "category": "Account Basics",
+      "question": "Why isn’t the Vihara.ai app working?",
+      "answer": "If your apps are no longer updating, you might have an old version and need to download the latest one. Please find our most recent version on the iTunes App Store or Google Play Store.",
+      "flags": [],
+      "suggestion": "include"
+    },
+    {
+      "id": "faq-aa0b8111",
+      "source": "faq",
+      "category": "REO Registration Limits",
+      "question": "Why is there a limit on the number of properties I can bid on?",
+      "answer": "At Vihara.ai, our aim is to foster a fair and prosperous marketplace for all participants, empowering users to bid confidently and effectively. Recognizing the potential for overwhelm during the bidding and closing phases, we've implemented limits for some customers to support their success. This includes restricting bids to a maximum of 3 assets at a time, including properties that have been successfully won and are progressing through the contract stage.",
+      "flags": [
+        {
+          "id": "special-program",
+          "level": "review",
+          "reason": "A specific program or rule that may change. Confirm it is current."
+        }
+      ],
+      "suggestion": "review"
+    },
+    {
+      "id": "faq-2c0cbd29",
+      "source": "faq",
+      "category": "REO Registration Limits",
+      "question": "Can I get approval to bid on more properties?",
+      "answer": "To gain an extra registration chance, you can establish a purchase profile. This will expedite the initial step of the closing process in case you win a bid on a property.",
+      "flags": [
+        {
+          "id": "special-program",
+          "level": "review",
+          "reason": "A specific program or rule that may change. Confirm it is current."
+        }
+      ],
+      "suggestion": "review"
+    },
+    {
+      "id": "faq-03867a30",
+      "source": "faq",
+      "category": "REO Registration Limits",
+      "question": "Will there always be limits on the number of properties I can bid on?",
+      "answer": "No, once you successfully win and close a transaction on a property, your account will be updated to allow you to register for additional properties simultaneously.",
+      "flags": [],
+      "suggestion": "include"
+    },
+    {
+      "id": "faq-6a8f2aed",
+      "source": "faq",
+      "category": "REO Registration Limits",
+      "question": "What should I do if I register for a property by mistake and it impacts my limit?",
+      "answer": "We recommend conducting thorough due diligence before registering to bid on any properties. It's essential to register only for assets you are fully prepared to buy. If you mistakenly register for a property, you can email our Buyer Experience Team at trisha@vihara.ai.",
+      "flags": [],
+      "suggestion": "include"
+    },
+    {
+      "id": "faq-cd14a411",
+      "source": "faq",
+      "category": "REO Match the Bid",
+      "question": "What does it mean when a property is labeled \"Match the Bid\"?",
+      "answer": "For properties with a \"Match the Bid\" icon, the winning bidder has 6 hours to complete their contract information form and proceed with the closing process. During this period, other non-winning bidders can match the winning bid amount and be next in line to purchase the property if the winning bidder fails to meet their obligations within the 6-hour window.",
+      "flags": [
+        {
+          "id": "numbers",
+          "level": "review",
+          "reason": "Contains a specific amount, percentage, deadline or limit. Confirm it is current."
+        },
+        {
+          "id": "special-program",
+          "level": "review",
+          "reason": "A specific program or rule that may change. Confirm it is current."
+        }
+      ],
+      "suggestion": "review"
+    },
+    {
+      "id": "faq-b1ee4c75",
+      "source": "faq",
+      "category": "REO Match the Bid",
+      "question": "Why do I have only 6 hours to complete my contract information form?",
+      "answer": "Time is critical in any real estate transaction, and Vihara.ai sets specific milestones to ensure auctioned properties move into the closing process swiftly. Completing the contract information form is the first step in generating the purchase and sale agreement.",
+      "flags": [
+        {
+          "id": "numbers",
+          "level": "review",
+          "reason": "Contains a specific amount, percentage, deadline or limit. Confirm it is current."
+        }
+      ],
+      "suggestion": "review"
+    },
+    {
+      "id": "faq-30b5bf7b",
+      "source": "faq",
+      "category": "REO Match the Bid",
+      "question": "I'm concerned I might not be able to complete my contract information form within the required timeline. What should I do?",
+      "answer": "Completing the contract information form should take less than 15 minutes. However, you can expedite the process by completing your purchase profile before the auction. If your purchase profile is ready before you win the bid, you can simply select the relevant profile and click through to submit your answers, completing the form in 5 minutes or less.",
+      "flags": [
+        {
+          "id": "numbers",
+          "level": "review",
+          "reason": "Contains a specific amount, percentage, deadline or limit. Confirm it is current."
+        },
+        {
+          "id": "special-program",
+          "level": "review",
+          "reason": "A specific program or rule that may change. Confirm it is current."
+        },
+        {
+          "id": "screens",
+          "level": "note",
+          "reason": "Refers to screens on the website. Fine if a text can say where to look."
+        }
+      ],
+      "suggestion": "review"
+    },
+    {
+      "id": "faq-531c3876",
+      "source": "faq",
+      "category": "REO Match the Bid",
+      "question": "I wasn’t the highest bidder in the auction, but I'm still interested in purchasing this property. How can I Match the Bid?",
+      "answer": "For Match the Bid properties, there's still a chance for you to potentially acquire the property! To become a backup bidder after the auction ends, you must commit to matching the winning bid amount and upload the appropriate purchase profile you intend to use if you become the winning bidder. If you haven't yet created a purchase profile when matching a bid, you'll have the opportunity to do so before successfully submitting your Match the Bid request. The first person to complete both steps—agreeing to match the winning bid and selecting the relevant purchase profile—will be first in line to purchase the property if the original winner does not fulfill their obligations within the required timeframe.",
+      "flags": [
+        {
+          "id": "special-program",
+          "level": "review",
+          "reason": "A specific program or rule that may change. Confirm it is current."
+        }
+      ],
+      "suggestion": "review"
+    },
+    {
+      "id": "faq-ce8e2a64",
+      "source": "faq",
+      "category": "REO Match the Bid",
+      "question": "I didn't participate in bidding for this property in the auction, but can I still submit a Match the Bid request for consideration?",
+      "answer": "Unfortunately, no, you will not be eligible to participate in the Match the Bid period. Only participants who registered and bid on the property during the current auction will be invited to take part. We encourage you to always register and bid on properties you're interested in to ensure you have the opportunity to purchase them.",
+      "flags": [
+        {
+          "id": "special-program",
+          "level": "review",
+          "reason": "A specific program or rule that may change. Confirm it is current."
+        }
+      ],
+      "suggestion": "review"
+    },
+    {
+      "id": "faq-f48365ea",
+      "source": "faq",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "How can I participate in an online auction for bank-owned properties?",
+      "answer": "To explore bank-owned properties, click on “Auctions” in the navigation bar. Then choose the “REO Bank Owned” section. It's advisable to create an account before browsing. This way, you can save properties to your dashboard and register to bid on them once you find one you like. Please note, registration requires having an account.",
+      "flags": [
+        {
+          "id": "wording",
+          "level": "note",
+          "reason": "Uses \"bank-owned\" or \"foreclosure\" wording that the calling scripts deliberately dropped."
+        },
+        {
+          "id": "screens",
+          "level": "note",
+          "reason": "Refers to screens on the website. Fine if a text can say where to look."
+        }
+      ],
+      "suggestion": "include"
+    },
+    {
+      "id": "faq-ea4eadc3",
+      "source": "faq",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "How can I register for an online bank-owned auction?",
+      "answer": "To register for an online auction, do the following:\n- Log in with your email and password.\n\n- Next, find your property and click on the property photo or link for more information.\n\n- Click the “Register to Bid” button.\n\n- Your name and email address will be auto-populated.\n\n- We will confirm your registration details after your registration is complete. Be sure to check your email to confirm the date and time of the auction.",
+      "flags": [
+        {
+          "id": "wording",
+          "level": "note",
+          "reason": "Uses \"bank-owned\" or \"foreclosure\" wording that the calling scripts deliberately dropped."
+        },
+        {
+          "id": "screens",
+          "level": "note",
+          "reason": "Refers to screens on the website. Fine if a text can say where to look."
+        }
+      ],
+      "suggestion": "include"
+    },
+    {
+      "id": "faq-171526f8",
+      "source": "faq",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "Why am I restricted from having more than one account linked to my phone number?",
+      "answer": "Each account must have a distinct verified phone number to place bids or offers. This measure upholds auction integrity and enhances the security of information exchanged between Vihara.ai and each responsible bidder. For those needing multiple vesting information options for purchases, we have conveniently included the Purchase Profiles tab in the Dashboard, enabling easy creation of multiple profiles.",
+      "flags": [
+        {
+          "id": "special-program",
+          "level": "review",
+          "reason": "A specific program or rule that may change. Confirm it is current."
+        },
+        {
+          "id": "screens",
+          "level": "note",
+          "reason": "Refers to screens on the website. Fine if a text can say where to look."
+        }
+      ],
+      "suggestion": "review"
+    },
+    {
+      "id": "faq-a2399078",
+      "source": "faq",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "Why does my number need to be verified?",
+      "answer": "We verify your phone number once to safeguard the integrity of our auctions and ensure the authenticity of all our bidders.",
+      "flags": [],
+      "suggestion": "include"
+    },
+    {
+      "id": "faq-da49fa79",
+      "source": "faq",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "Will my phone number be used for other purposes?",
+      "answer": "No, your number will never be used for spam purposes, and we will only call if it's necessary to contact you.",
+      "flags": [],
+      "suggestion": "include"
+    },
+    {
+      "id": "faq-eb6d620d",
+      "source": "faq",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "What is an auction event?",
+      "answer": "An auction event is a scheduled time period during which a group of similar properties are auctioned. To determine if properties belong to the same event, compare the Event ID number found on the Property Details Page. If the first six digits of the Event ID match those of other properties, they are part of the same event. Note that the remaining digits represent the Item number and may vary.",
+      "flags": [],
+      "suggestion": "include"
+    },
+    {
+      "id": "faq-355a949b",
+      "source": "faq",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "What is Direct Offer?",
+      "answer": "The Direct Offer is a feature that lets you directly make offers to sellers for certain bank-owned properties outside of an auction. You can find Direct Offer properties under the \"Buying Type\" tab on the Search Results Page.",
+      "flags": [
+        {
+          "id": "special-program",
+          "level": "review",
+          "reason": "A specific program or rule that may change. Confirm it is current."
+        },
+        {
+          "id": "wording",
+          "level": "note",
+          "reason": "Uses \"bank-owned\" or \"foreclosure\" wording that the calling scripts deliberately dropped."
+        },
+        {
+          "id": "screens",
+          "level": "note",
+          "reason": "Refers to screens on the website. Fine if a text can say where to look."
+        }
+      ],
+      "suggestion": "review"
+    },
+    {
+      "id": "faq-cf8f0df4",
+      "source": "faq",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "What should I do before I bid on a bank-owned property?",
+      "answer": "Before bidding on a bank-owned property, you should conduct due diligence by estimating the property's value and renovation costs, inspecting the physical property, obtaining a title report, and researching the surrounding neighborhood.",
+      "flags": [
+        {
+          "id": "wording",
+          "level": "note",
+          "reason": "Uses \"bank-owned\" or \"foreclosure\" wording that the calling scripts deliberately dropped."
+        }
+      ],
+      "suggestion": "include"
+    },
+    {
+      "id": "faq-cd9a40ec",
+      "source": "faq",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "A property is listed as a “Cash only purchase.” What does that mean?",
+      "answer": "A “Cash only purchase” means the property must be paid in full immediately following the auction. The funds for the purchase must come from your bank accounts, securities, or other financial accounts. Some investors use private money from various sources, but regardless of the source, the funds need to be readily available to complete the purchase immediately.",
+      "flags": [
+        {
+          "id": "financing",
+          "level": "review",
+          "reason": "A payment or financing policy. Confirm it is current."
+        }
+      ],
+      "suggestion": "review"
+    },
+    {
+      "id": "faq-8133ea3f",
+      "source": "faq",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "What is the Reserve Price?",
+      "answer": "The Reserve Price is the minimum amount a seller will accept. While most properties have a set Reserve Price, there are instances where a winning bidder may be declared even if the Reserve Price isn't met. This happens when a property is sold \"subject to\" the seller's approval. Occasionally, sellers may choose to sell a property for less than the Reserve Price.",
+      "flags": [
+        {
+          "id": "reserve",
+          "level": "exclude",
+          "reason": "About the reserve price or whether sellers accept less. The AI is told never to discuss the reserve or negotiation."
+        }
+      ],
+      "suggestion": "exclude"
+    },
+    {
+      "id": "faq-0ebf9462",
+      "source": "faq",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "What happens if the Reserve Price is not met?",
+      "answer": "If the Reserve is not met, the Seller can either:\n- Decline all bids and re-auction the property\n\n- Sell the property to the highest bidder. These offers are typically considered “Subject to Seller Approval.”",
+      "flags": [
+        {
+          "id": "reserve",
+          "level": "exclude",
+          "reason": "About the reserve price or whether sellers accept less. The AI is told never to discuss the reserve or negotiation."
+        }
+      ],
+      "suggestion": "exclude"
+    },
+    {
+      "id": "faq-79790863",
+      "source": "faq",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "Why are the bid increments so high?",
+      "answer": "Bid increments are designed to keep the auction progressing efficiently toward an acceptable price. As the auction nears its end, bid increments decrease to allow bidders more flexibility in placing precise bids.",
+      "flags": [],
+      "suggestion": "include"
+    },
+    {
+      "id": "faq-a1b2acac",
+      "source": "faq",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "What is counterbidding?",
+      "answer": "Counter bidding is a common practice among major auction houses. Vihara.ai will place counter bids on behalf of the seller to bring the price closer to the Reserve Price, the minimum amount the seller will accept.",
+      "flags": [
+        {
+          "id": "reserve",
+          "level": "exclude",
+          "reason": "About the reserve price or whether sellers accept less. The AI is told never to discuss the reserve or negotiation."
+        },
+        {
+          "id": "below-offer",
+          "level": "exclude",
+          "reason": "Describes accepting or countering offers, which is negotiation."
+        }
+      ],
+      "suggestion": "exclude"
+    },
+    {
+      "id": "faq-c633915e",
+      "source": "faq",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "I won the auction. What should I do next?",
+      "answer": "If you are the highest bidder when an auction ends, you will receive a confirmation email. You must then complete the steps noted in the email to finalize your property purchase.",
+      "flags": [],
+      "suggestion": "include"
+    },
+    {
+      "id": "faq-12af0e03",
+      "source": "faq",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "What is a Purchase Profile?",
+      "answer": "A Purchase Profile is an online form that buyers fill out after winning a bank-owned property. It inquires about how they intend to use the property—such as for investment or as a primary residence—and includes a few other questions necessary to complete the purchase. You can create multiple profiles, but make sure to name them in an easily identifiable way for future use.",
+      "flags": [
+        {
+          "id": "special-program",
+          "level": "review",
+          "reason": "A specific program or rule that may change. Confirm it is current."
+        },
+        {
+          "id": "wording",
+          "level": "note",
+          "reason": "Uses \"bank-owned\" or \"foreclosure\" wording that the calling scripts deliberately dropped."
+        }
+      ],
+      "suggestion": "review"
+    },
+    {
+      "id": "faq-3790c147",
+      "source": "faq",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "Why does the bid increment change?",
+      "answer": "As the auction nears its end, the increments decrease to give bidders more flexibility in placing precise bids.",
+      "flags": [],
+      "suggestion": "include"
+    },
+    {
+      "id": "faq-2816b879",
+      "source": "faq",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "What is Proxy Bidding and how does it work?",
+      "answer": "- Proxy bid is a feature for bank-owned properties that lets you place a bid before the auction begins. After you submit your bid from the Property Details Page, Vihara.ai will bid on your behalf during the live auction.\n\n- You can set proxy bids on multiple properties in advance. Once the auctions conclude, we will notify you via email if you are the winner.",
+      "flags": [
+        {
+          "id": "live-foreclosure",
+          "level": "review",
+          "reason": "Describes live or courthouse foreclosure auctions, not the online auctions the texts are about."
+        },
+        {
+          "id": "special-program",
+          "level": "review",
+          "reason": "A specific program or rule that may change. Confirm it is current."
+        },
+        {
+          "id": "wording",
+          "level": "note",
+          "reason": "Uses \"bank-owned\" or \"foreclosure\" wording that the calling scripts deliberately dropped."
+        }
+      ],
+      "suggestion": "review"
+    },
+    {
+      "id": "faq-97724104",
+      "source": "faq",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "Do Sellers accept bids that are below the Reserve Price?",
+      "answer": "Yes, the seller might consider bids below the Reserve Price, so we recommend placing your highest and best bid in each auction",
+      "flags": [
+        {
+          "id": "reserve",
+          "level": "exclude",
+          "reason": "About the reserve price or whether sellers accept less. The AI is told never to discuss the reserve or negotiation."
+        },
+        {
+          "id": "below-offer",
+          "level": "exclude",
+          "reason": "Describes accepting or countering offers, which is negotiation."
+        }
+      ],
+      "suggestion": "exclude"
+    },
+    {
+      "id": "faq-f8bc8d34",
+      "source": "faq",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "Is the Opening Bid also the Reserve?",
+      "answer": "The Opening Bid is the starting amount for bidding; it does not represent the Reserve and may not reflect the seller's acceptable offer price.",
+      "flags": [
+        {
+          "id": "reserve",
+          "level": "exclude",
+          "reason": "About the reserve price or whether sellers accept less. The AI is told never to discuss the reserve or negotiation."
+        }
+      ],
+      "suggestion": "exclude"
+    },
+    {
+      "id": "faq-cd498dab",
+      "source": "faq",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "Why is the auction time being extended?",
+      "answer": "Bids placed within the last 2 minutes extend the auction, ensuring fairness by allowing all bidders to place their final bids.",
+      "flags": [
+        {
+          "id": "numbers",
+          "level": "review",
+          "reason": "Contains a specific amount, percentage, deadline or limit. Confirm it is current."
+        }
+      ],
+      "suggestion": "review"
+    },
+    {
+      "id": "faq-09e95a8c",
+      "source": "faq",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "Can I use a mortgage?",
+      "answer": "Typically, you are not allowed to use a mortgage. Most properties on Vihara.ai are “Cash only” which means the property must be paid in full by the closing date.",
+      "flags": [
+        {
+          "id": "financing",
+          "level": "review",
+          "reason": "A payment or financing policy. Confirm it is current."
+        }
+      ],
+      "suggestion": "review"
+    },
+    {
+      "id": "faq-899ed6be",
+      "source": "faq",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "Can I use financing to purchase the property?",
+      "answer": "Usually, no. Please review the property listing to confirm financing options. Most properties on Vihara.ai are cash-only, requiring full payment by the closing date",
+      "flags": [
+        {
+          "id": "financing",
+          "level": "review",
+          "reason": "A payment or financing policy. Confirm it is current."
+        }
+      ],
+      "suggestion": "review"
+    },
+    {
+      "id": "faq-04a571bc",
+      "source": "faq",
+      "category": "Buying a Bank-Owned Property Online",
+      "question": "Am I allowed to purchase a property with multiple separate entities?",
+      "answer": "Yes, you can enter up to three entities into your contract. To streamline the process, you can pre-enter your entities ahead of time, ensuring they are pre-populated into your contract when you win an auction in the future.",
+      "flags": [],
+      "suggestion": "include"
+    },
+    {
+      "id": "faq-74e2a232",
+      "source": "faq",
+      "category": "Buying a Foreclosure for Sale",
+      "question": "How can I participate in a foreclosure auction?",
+      "answer": "On the Vihara.ai website, you can explore foreclosure properties by navigating to the “Auctions” tab in the top navigation bar and selecting “Foreclosure Sales” from the dropdown menu. Once you find a foreclosure property of interest, save it to your dashboard and follow these steps:\n- Conduct thorough due diligence.\n\n- Prepare your funds as properties at foreclosure sales often require full payment on the auction day. Check your state's specific requirements.\n\n- Research the auction venue to confirm location and timing.\n\nThrough the mobile app, you may have the option to electronically bid on select properties before the auction or participate in real-time bidding. All remote bidders must prequalify beforehand. To do so:\n- Find a property and conduct your due diligence.\n\n- On the property details page or in the app's Settings, click on the “Qualify for a Remote Bid” button.\n\n- Complete the Bidder Profile and Remote Bid agreements using DocuSign within the app.\n\n- Upon approval, you will receive an email with instructions on funding your escrow account.\n\n- To place a bid, ensure your funds are available in your account by 2 p.m. (EST) the day before the auction.",
+      "flags": [
+        {
+          "id": "legal",
+          "level": "review",
+          "reason": "Touches legal or contract matters. The AI must not give legal advice."
+        },
+        {
+          "id": "wording",
+          "level": "note",
+          "reason": "Uses \"bank-owned\" or \"foreclosure\" wording that the calling scripts deliberately dropped."
+        },
+        {
+          "id": "screens",
+          "level": "note",
+          "reason": "Refers to screens on the website. Fine if a text can say where to look."
+        }
+      ],
+      "suggestion": "review"
+    },
+    {
+      "id": "faq-61c3640b",
+      "source": "faq",
+      "category": "Buying a Foreclosure for Sale",
+      "question": "Do I have to pay the property in full at the auction?",
+      "answer": "Typically, foreclosure sales require full payment on the auction day using cash or a cashier’s check. Verify your state’s guidelines to determine if partial payment at the auction with the remainder due within a specified period, like 30 days, is permitted.",
+      "flags": [
+        {
+          "id": "numbers",
+          "level": "review",
+          "reason": "Contains a specific amount, percentage, deadline or limit. Confirm it is current."
+        },
+        {
+          "id": "wording",
+          "level": "note",
+          "reason": "Uses \"bank-owned\" or \"foreclosure\" wording that the calling scripts deliberately dropped."
+        }
+      ],
+      "suggestion": "review"
+    },
+    {
+      "id": "faq-9d149edb",
+      "source": "faq",
+      "category": "Buying a Foreclosure for Sale",
+      "question": "Are these properties free of liens?",
+      "answer": "It varies. Certain properties may have existing liens, and specific state laws dictate whether these liens transfer to the new owner. It's essential to conduct thorough due diligence by obtaining a comprehensive title report for any property you intend to purchase.",
+      "flags": [],
+      "suggestion": "include"
+    },
+    {
+      "id": "faq-82f34b5f",
+      "source": "faq",
+      "category": "Buying a Foreclosure for Sale",
+      "question": "Why was this property sale canceled or postponed?",
+      "answer": "There are various reasons why a foreclosure sale might be delayed or canceled. When you save a property to your dashboard, you typically receive an email notification if the sale is postponed or canceled. You can also check the website before heading to the auction. Sales may be postponed or canceled due to reasons such as:\n- Agreement between the homeowner and lender to postpone the sale.\n\n- Bankruptcy filed by the homeowner, which often results in cancellation until the debt is resolved or the lender obtains court approval to proceed.\n\n- The lender is selling the property before the auction date.",
+      "flags": [
+        {
+          "id": "live-foreclosure",
+          "level": "review",
+          "reason": "Describes live or courthouse foreclosure auctions, not the online auctions the texts are about."
+        },
+        {
+          "id": "wording",
+          "level": "note",
+          "reason": "Uses \"bank-owned\" or \"foreclosure\" wording that the calling scripts deliberately dropped."
+        },
+        {
+          "id": "screens",
+          "level": "note",
+          "reason": "Refers to screens on the website. Fine if a text can say where to look."
+        }
+      ],
+      "suggestion": "review"
+    },
+    {
+      "id": "faq-28de16e8",
+      "source": "faq",
+      "category": "Buying a Foreclosure for Sale",
+      "question": "How do I know if a sale is canceled or postponed before I attend the auction?",
+      "answer": "As you browse properties, save the ones that interest you to your dashboard. You'll usually receive an email notification if there are any changes such as postponement or cancellation of the sale. It's also advisable to check the property status on the property details page before heading to the auction.",
+      "flags": [
+        {
+          "id": "live-foreclosure",
+          "level": "review",
+          "reason": "Describes live or courthouse foreclosure auctions, not the online auctions the texts are about."
+        },
+        {
+          "id": "screens",
+          "level": "note",
+          "reason": "Refers to screens on the website. Fine if a text can say where to look."
+        }
+      ],
+      "suggestion": "review"
+    },
+    {
+      "id": "faq-b5e392f3",
+      "source": "faq",
+      "category": "Buying a Foreclosure for Sale",
+      "question": "Is there a calendar or upcoming auctions page that shows the dates and times of upcoming live auctions?",
+      "answer": "Certainly! There is indeed a calendar available. Here's how you can access it:\n- Navigate to the \"Auctions calendar\" tab located under the “Auctions” section on the homepage's navigation bar.\n\n- Enter the desired auction dates, location, property type, and venue details. This will generate a list of upcoming auctions for you to view.",
+      "flags": [
+        {
+          "id": "live-foreclosure",
+          "level": "review",
+          "reason": "Describes live or courthouse foreclosure auctions, not the online auctions the texts are about."
+        },
+        {
+          "id": "screens",
+          "level": "note",
+          "reason": "Refers to screens on the website. Fine if a text can say where to look."
+        }
+      ],
+      "suggestion": "review"
+    },
+    {
+      "id": "faq-25440b85",
+      "source": "faq",
+      "category": "Using a Real Estate Agent for Auctions",
+      "question": "Can I use a real estate agent for an auction and how does it work?",
+      "answer": "Yes, we encourage agent/broker involvement with our bank-owned properties. Here's how you can proceed:\n- Review the property details page to check if a commission is available. Even if not initially offered, agents may earn commissions through subsequent property flips or rentals.\n\n- Ensure your agent or broker registers for the property at least 24 hours before the auction.\n\n- Specify your broker or agent during your auction registration process.\n\n- Agents and brokers must hold valid licenses in the state where the property is located.\n\n- Submit a completed Participation Form and IRS Form W-9 as required.",
+      "flags": [
+        {
+          "id": "numbers",
+          "level": "review",
+          "reason": "Contains a specific amount, percentage, deadline or limit. Confirm it is current."
+        },
+        {
+          "id": "agents",
+          "level": "review",
+          "reason": "About agents or commissions, which vary by listing."
+        },
+        {
+          "id": "wording",
+          "level": "note",
+          "reason": "Uses \"bank-owned\" or \"foreclosure\" wording that the calling scripts deliberately dropped."
+        }
+      ],
+      "suggestion": "review"
+    },
+    {
+      "id": "faq-409cea07",
+      "source": "faq",
+      "category": "Using a Real Estate Agent for Auctions",
+      "question": "How much commission is offered on properties?",
+      "answer": "Commission rates differ for each bank-owned property. Please review the property details page for specific information. It's important to note that, by law, commissions are not permitted on foreclosure sales.",
+      "flags": [
+        {
+          "id": "agents",
+          "level": "review",
+          "reason": "About agents or commissions, which vary by listing."
+        },
+        {
+          "id": "wording",
+          "level": "note",
+          "reason": "Uses \"bank-owned\" or \"foreclosure\" wording that the calling scripts deliberately dropped."
+        }
+      ],
+      "suggestion": "review"
+    },
+    {
+      "id": "faq-e9198108",
+      "source": "faq",
+      "category": "Using a Real Estate Agent for Auctions",
+      "question": "What are some benefits of working with Vihara.ai on bank-owned properties as a buyer’s agent?",
+      "answer": "Certain bank-owned properties provide commission opportunities. Additionally, many of our listings Vihara.ai also streamlines the closing process, and our transparent platform ensures fair competition among buyers.",
+      "flags": [
+        {
+          "id": "agents",
+          "level": "review",
+          "reason": "About agents or commissions, which vary by listing."
+        },
+        {
+          "id": "wording",
+          "level": "note",
+          "reason": "Uses \"bank-owned\" or \"foreclosure\" wording that the calling scripts deliberately dropped."
+        }
+      ],
+      "suggestion": "review"
+    },
+    {
+      "id": "faq-ddbfb164",
+      "source": "faq",
+      "category": "Winning the Auction",
+      "question": "What happens after I win a bank-owned property auction?",
+      "answer": "If you are the highest bidder at the end of an auction, here are your obligations after the auction:\n- Contract Information: You will receive an email confirming your highest bid. Log in to Vihara.ai and access your Saved Assets to fill out the Contract Information form by clicking on the blue “Submit Contract Information” button. Ensure all required details are provided within 1 business day.\n\n- Purchase Agreement: Once verified, the Purchase Agreement will be generated. Sign and return the document for seller review and signature.\n\n- Proof of Funds: Upload a copy of your Proof of Funds into your dashboard within 1 business day for approval before sending your contract to the seller.\n\n- Earnest Money Deposit: Unless stated otherwise in your purchase agreement, send the Earnest Money Deposit to the closing company within 1 business day after the auction. Upload a copy of your receipt confirmation into your dashboard on the same day for approval before sending your contract to the seller.\n\nIf the property is sold “subject to seller’s confirmation,” the seller must approve your bid before finalizing the sale. You will receive an email notification if applicable. Enter the escrow/closing process and work with a designated closing specialist to facilitate a smooth closing.\nPlease note that specific requirements may vary for each auction. It is important to carefully review all communications from our team to ensure timely and accurate submission of required documents.",
+      "flags": [
+        {
+          "id": "legal",
+          "level": "review",
+          "reason": "Touches legal or contract matters. The AI must not give legal advice."
+        },
+        {
+          "id": "wording",
+          "level": "note",
+          "reason": "Uses \"bank-owned\" or \"foreclosure\" wording that the calling scripts deliberately dropped."
+        },
+        {
+          "id": "screens",
+          "level": "note",
+          "reason": "Refers to screens on the website. Fine if a text can say where to look."
+        }
+      ],
+      "suggestion": "review"
+    },
+    {
+      "id": "faq-a02d84fd",
+      "source": "faq",
+      "category": "Winning the Auction",
+      "question": "What happens if I win a live foreclosure auction?",
+      "answer": "Here's what typically occurs after you win:\n- In most states, you are required to make full payment for the property immediately after the sale. Please verify your state's specific requirements. We recommend using a cashier’s check for payment.\n\n- In many states, you will receive a Certificate of Sale once payment is made. Refer to your state’s procedures for more information.\n\n- After acquiring the property, you are usually responsible for recording the deed with the county. This step is outside of the Vihara.ai process. Verify the recording requirements in your state for details.\n\n- Do not attempt to access the property, even if it appears vacant, until you have legal authorization to do so. If the property is occupied, consider seeking advice from a real estate attorney for assistance.",
+      "flags": [
+        {
+          "id": "live-foreclosure",
+          "level": "review",
+          "reason": "Describes live or courthouse foreclosure auctions, not the online auctions the texts are about."
+        },
+        {
+          "id": "legal",
+          "level": "review",
+          "reason": "Touches legal or contract matters. The AI must not give legal advice."
+        },
+        {
+          "id": "wording",
+          "level": "note",
+          "reason": "Uses \"bank-owned\" or \"foreclosure\" wording that the calling scripts deliberately dropped."
+        }
+      ],
+      "suggestion": "review"
+    },
+    {
+      "id": "faq-a9bb7c18",
+      "source": "faq",
+      "category": "Winning the Auction",
+      "question": "Am I allowed to purchase a property as a separate entity?",
+      "answer": "Certainly! You have the option to purchase the property under a separate entity, such as a Limited Liability Company or a Trust, but you will need to provide specific documentation.",
+      "flags": [],
+      "suggestion": "include"
+    },
+    {
+      "id": "faq-9462b8dc",
+      "source": "faq",
+      "category": "Winning the Auction",
+      "question": "Do I receive a deed after I purchase a property at a live auction?",
+      "answer": "Once you acquire the property, it's typically your responsibility to record the deed with the county. This task must be handled independently, as it is not included in the Vihara.ai process. Please review your state's guidelines, as requirements may vary.",
+      "flags": [
+        {
+          "id": "live-foreclosure",
+          "level": "review",
+          "reason": "Describes live or courthouse foreclosure auctions, not the online auctions the texts are about."
+        },
+        {
+          "id": "legal",
+          "level": "review",
+          "reason": "Touches legal or contract matters. The AI must not give legal advice."
+        }
+      ],
+      "suggestion": "review"
+    }
+  ]
+}

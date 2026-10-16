@@ -17,6 +17,8 @@ const { QUEUE_NAMES, QUEUE_PREFIX } = require("../queue/queues");
 const { getSettings } = require("../vtextSettingsService");
 const { buildPropertyContext, generateDraftReply, MODEL_NAME } = require("../vtextAiReplyService");
 const { createDraftReply, approveDraft } = require("../vtextDraftReplyService");
+const { isRagEnabled, buildReplyKnowledge } = require("../vtextKnowledgeService");
+const { SAFE_HANDOFF, checkReplyAmounts, collectSourceTexts } = require("../vtextReplyGuard");
 const { publishEvent } = require("../vtextEventsBus");
 const { notifyVtextAlert } = require("../../shared/slackService");
 const { sendAlertWithCooldown, inboxUrl, clip } = require("../vtextAlertService");
@@ -48,8 +50,11 @@ async function processDraftReplyJob(job) {
     .lean();
   history.reverse();
 
-  const propertyContext = await buildPropertyContext(contact);
-  const draft = await generateDraftReply({ contact, messages: history, replyToBody: inboundMessage.body, propertyContext });
+  // With the knowledge lookup on, the AI also gets what this lead told us and the property details that
+  // match the question (vtextKnowledgeService.js, which never throws). Off, nothing changes.
+  const knowledge = isRagEnabled() ? await buildReplyKnowledge({ contact, messages: history, replyToBody: inboundMessage.body, conversationId }) : null;
+  const propertyContext = knowledge ? knowledge.propertyContext : await buildPropertyContext(contact);
+  let draft = await generateDraftReply({ contact, messages: history, replyToBody: inboundMessage.body, propertyContext, knowledge });
   if (!draft) {
     // Generation unavailable or failed: the conversation just stays needs-reply, which used to be
     // completely silent. Tell the team once in a while that nobody is answering this customer.
@@ -66,6 +71,18 @@ async function processDraftReplyJob(job) {
     }).catch((err) => console.error("[vtext draft-reply] could not send the AI-failure alert:", err.message));
     return;
   }
+
+  // With the knowledge lookup on, a dollar amount the AI was never shown (a guess at the reserve price,
+  // say) must not go out. The draft is swapped for a plain hand-off and the original kept for review.
+  let guard;
+  if (knowledge) {
+    const check = checkReplyAmounts({ reply: draft.reply, sourceTexts: collectSourceTexts({ knowledge, messages: history, replyToBody: inboundMessage.body }) });
+    if (!check.ok) {
+      console.warn(`[vtext guard] reply replaced, it contained amount(s) the AI was not given: ${check.unsupported.join(", ")}`);
+      guard = { replaced: true, amounts: check.unsupported, originalReply: draft.reply };
+      draft = { reply: SAFE_HANDOFF, needsHuman: true, topic: "amount to check" };
+    }
+  }
   const { reply: body, needsHuman, topic } = draft;
 
   const message = await createDraftReply({
@@ -78,6 +95,9 @@ async function processDraftReplyJob(job) {
     model: MODEL_NAME,
     needsHuman,
     topic,
+    sources: knowledge?.sources,
+    retrieval: knowledge?.retrieval,
+    guard,
   });
   await publishEvent({ type: "message.updated", conversationId: String(conversationId), contactId: String(contactId) });
 
