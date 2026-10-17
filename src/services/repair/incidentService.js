@@ -4,7 +4,8 @@
 //   1. runChecks()  the daily checks; new problems become incidents (one Slack
 //                   message each), problems that are gone are marked resolved.
 //      runReportIssues() does the same for the technical action items of the
-//                   daily Meta Ads report (budget / creative advice is left to people)
+//                   daily Meta Ads report (budget / creative advice is left to people);
+//                   runGaReportIssues() does it for the daily website report
 //   2. startFix()   the repair agent investigates; a code fix is committed to a
 //                   repair/... branch in each repo it touched (the website one
 //                   gets a preview link), then Slack shows Go / Reject. A cause
@@ -20,6 +21,7 @@ const { INCIDENT_STATUS: S } = require("../../model/repair/repairIncidentModel")
 const { getRepairConfig, missingRepairSettings } = require("../../config/repair/repairConfig");
 const { CHECKS } = require("./checks");
 const { issuesFromReport } = require("./reportIssues");
+const { issuesFromGaReport } = require("./gaReportIssues");
 const { investigate, repoClients } = require("./repairAgent");
 const guard = require("../adsLoop/guardrails");
 const slack = require("../adsLoop/slackBot");
@@ -214,6 +216,21 @@ function runReportIssues(report) {
         const { findings, covers } = await issuesFromReport(report, open);
         const summary = await applyFindings(findings, covers, "✅ The daily report no longer mentions this. Closing it.");
         console.log(`[repair] report: ${summaryLine(summary)}`);
+        return summaryLine(summary);
+    });
+}
+
+/**
+ * Same for the daily website (Google Analytics) report: its technical problems
+ * become incidents, and ones the report no longer mentions are resolved.
+ * @param {string} report  the report as plain text
+ */
+function runGaReportIssues(report) {
+    return serially(async () => {
+        const open = await RepairIncident.find({ active: true }).select("incidentId key kind title").lean();
+        const { findings, covers } = await issuesFromGaReport(report, open);
+        const summary = await applyFindings(findings, covers, "✅ The daily website report no longer mentions this. Closing it.");
+        console.log(`[repair] website report: ${summaryLine(summary)}`);
         return summaryLine(summary);
     });
 }
@@ -602,6 +619,7 @@ async function recoverRepairs() {
 module.exports = {
     runChecks,
     runReportIssues,
+    runGaReportIssues,
     startFix,
     startSignupFix,
     resolveSignupFixes,
