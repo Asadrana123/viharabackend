@@ -106,6 +106,9 @@ exports.createManualBid = catchAsyncError(
     const now = new Date();
     const auctionEnd = auction.auctionEndTime || new Date(auction.auctionEndDate);
 
+    if (auction.auctionStartDate && now < new Date(auction.auctionStartDate)) {
+      return next(new ErrorHandler("This auction has not started yet", 400));
+    }
     if (now > auctionEnd) {
       return next(new ErrorHandler("This auction has ended", 400));
     }

@@ -535,6 +535,10 @@ function registerSocketHandlers(socket) {
       }
 
       const Timenow = new Date();
+      if (auction.auctionStartDate && Timenow < new Date(auction.auctionStartDate)) {
+        callback({ success: false, error: 'Auction has not started yet' });
+        return;
+      }
       if (Timenow > new Date(auction.auctionEndDate)) {
         callback({ success: false, error: 'Auction has ended' });
         return;
