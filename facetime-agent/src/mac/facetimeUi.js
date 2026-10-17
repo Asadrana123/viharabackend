@@ -134,6 +134,11 @@ let baseline = new Set();
 
 const textsOf = (els) => els.flatMap((e) => [e.name, e.desc, e.value]).map((t) => t.trim()).filter(Boolean);
 
+/** Remember what an idle FaceTime screen shows, so those words are ignored during the next call. */
+export function setBaseline(els) {
+  baseline = new Set(textsOf(els || []));
+}
+
 /**
  * Reads a call state from FaceTime's screen elements (null = not running).
  * Texts in `ignore` (the baseline) are skipped; buttons are always counted.
@@ -177,7 +182,7 @@ export async function dial(phone, { timeoutMs = 15000 } = {}) {
   await openUrl(`facetime-audio://${phone}`);
   await sleep(1500);
   // FaceTime's screen before the call starts: the Recents list and the prompt.
-  baseline = new Set(textsOf((await dumpUi("FaceTime")) || []));
+  setBaseline(await dumpUi("FaceTime"));
 
   const deadline = Date.now() + timeoutMs;
   let clicked = false;

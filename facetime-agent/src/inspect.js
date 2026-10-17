@@ -8,7 +8,7 @@
 //
 // Everything printed is also saved to inspect-log.txt, to send to whoever is tuning signals.json.
 import fs from "node:fs";
-import { dumpUi, readCallState } from "./mac/facetimeUi.js";
+import { dumpUi, classify, setBaseline } from "./mac/facetimeUi.js";
 import { signals } from "./mac/signals.js";
 
 const ALL = process.argv.includes("--all");
@@ -23,13 +23,19 @@ function out(line) {
 
 let last = "";
 out(`--- inspect started ${new Date().toISOString()} | signals: ${JSON.stringify(signals)}`);
-console.log("Watching FaceTime. Place a FaceTime audio call by hand. Ctrl+C to stop.\n");
+console.log("Watching FaceTime. Open the FaceTime app, then place a FaceTime audio call by hand. Ctrl+C to stop.\n");
 
 for (;;) {
   try {
     const parts = [];
+    // Same reading the agent makes. Like the agent, it ignores the words an idle FaceTime
+    // screen already showed (Recents), so an old "10:42" doesn't look like a call timer.
+    const facetimeEls = await dumpUi("FaceTime");
+    const { state } = classify(facetimeEls);
+    const inCall = (facetimeEls || []).some((e) => e.role === "AXButton" && (signals.endButtonLabels.includes(e.name) || signals.endButtonLabels.includes(e.desc)));
+    if (!inCall) setBaseline(facetimeEls); // no call on screen: these words are the "before" picture
     for (const proc of processes) {
-      const els = await dumpUi(proc);
+      const els = proc === "FaceTime" ? facetimeEls : await dumpUi(proc);
       if (!els) {
         parts.push(`[${proc}] not running`);
         continue;
@@ -37,7 +43,6 @@ for (;;) {
       const interesting = els.filter((e) => e.name || e.desc || e.value);
       parts.push(`[${proc}]\n` + interesting.map((e) => `   ${e.role.padEnd(16)} name="${e.name}" desc="${e.desc}" value="${e.value}"`).join("\n"));
     }
-    const { state } = await readCallState();
     const snapshot = parts.join("\n");
     if (snapshot !== last) {
       out(`\n${new Date().toLocaleTimeString()}  agent would read: ${state.toUpperCase()}\n${snapshot}`);

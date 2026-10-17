@@ -31,8 +31,8 @@ let saved = null;
 export async function wireFaceTimeToBlackHole() {
   const inputs = await listDevices("input");
   const outputs = await listDevices("output");
-  if (!inputs.includes(TO_FACETIME)) throw new Error(`Audio device "${TO_FACETIME}" not found. Install BlackHole 2ch (brew install blackhole-2ch).`);
-  if (!outputs.includes(FROM_FACETIME)) throw new Error(`Audio device "${FROM_FACETIME}" not found. Install BlackHole 16ch (brew install blackhole-16ch).`);
+  if (!inputs.includes(TO_FACETIME)) throw new Error(`Audio device "${TO_FACETIME}" not found. Install BlackHole 2ch (brew install --cask blackhole-2ch, then restart the Mac).`);
+  if (!outputs.includes(FROM_FACETIME)) throw new Error(`Audio device "${FROM_FACETIME}" not found. Install BlackHole 16ch (brew install --cask blackhole-16ch, then restart the Mac).`);
 
   if (!saved) saved = { input: await sas(["-c", "-t", "input"]), output: await sas(["-c", "-t", "output"]) };
   await sas(["-t", "input", "-s", TO_FACETIME]);

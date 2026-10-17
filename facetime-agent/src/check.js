@@ -40,8 +40,8 @@ if (!has("SwitchAudioSource")) {
   try {
     const inputs = await listDevices("input");
     const outputs = await listDevices("output");
-    inputs.includes(TO_FACETIME) ? pass(`Audio device "${TO_FACETIME}" found`) : fail(`Audio device "${TO_FACETIME}" not found`, "brew install blackhole-2ch, then restart the Mac");
-    outputs.includes(FROM_FACETIME) ? pass(`Audio device "${FROM_FACETIME}" found`) : fail(`Audio device "${FROM_FACETIME}" not found`, "brew install blackhole-16ch, then restart the Mac");
+    inputs.includes(TO_FACETIME) ? pass(`Audio device "${TO_FACETIME}" found`) : fail(`Audio device "${TO_FACETIME}" not found`, "brew install --cask blackhole-2ch, then restart the Mac");
+    outputs.includes(FROM_FACETIME) ? pass(`Audio device "${FROM_FACETIME}" found`) : fail(`Audio device "${FROM_FACETIME}" not found`, "brew install --cask blackhole-16ch, then restart the Mac");
   } catch (err) {
     fail("Could not list audio devices", err.message);
   }
