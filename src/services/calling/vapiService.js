@@ -3,6 +3,8 @@ const { buildVariableValues } = require("./vapiPromptService");
 const { buildPriorContext } = require("./callMemoryService");
 const { pickCallerNumberId } = require("./callerNumberPoolService");
 const { claimDailyDial, ALREADY_CALLED_TODAY } = require("./dailyDialGuard");
+const { pickFacetimeLine } = require("./facetime/facetimeRouter");
+const { queueFacetimeCall, isFacetimeCallId, getFacetimeCall } = require("./facetime/facetimeCallService");
 // Shared *script* blocks — single source of truth in config/voicePromptShared.js.
 // These are the blocks common to EVERY funnel; they get appended to every call
 // below (idempotently), so editing one there — or adding a new one to the table
@@ -387,6 +389,31 @@ const dispatchCall = async (
       timezone: person.timezone || "",
     };
 
+    // FaceTime test: a person in the test group, with a free Mac, gets the same
+    // Maya over FaceTime audio instead. Null (the answer whenever FACETIME_ENABLED
+    // is off, the admin switch is off, or anything is unsure) = call as usual.
+    const facetimeLine = await pickFacetimeLine(phoneNumber);
+    if (facetimeLine) {
+      try {
+        let ftPriorContext = "";
+        try {
+          ftPriorContext = await buildPriorContext(phoneNumber);
+        } catch (err) {
+          console.error("[cb-debug] buildPriorContext failed (non-fatal):", err.message);
+        }
+        return await queueFacetimeCall({
+          line: facetimeLine,
+          phone: phoneNumber,
+          person,
+          metadata,
+          assistantOverrides: buildAssistantOverrides(person, researchSummary, property, promptConfig, ftPriorContext),
+          release: dial.release,
+        });
+      } catch (err) {
+        console.error("[facetime] could not queue the FaceTime call, calling normally:", err.message);
+      }
+    }
+
     // Caller-ID rotation: pick the least-used-today number from the pool and
     // record the use. Returns null only when every pool number has hit its
     // daily cap — in that case we skip the dial to protect number reputation.
@@ -446,6 +473,13 @@ const dispatchCall = async (
 };
 
 const getCall = async (callId) => {
+  // FaceTime test: an "ft_" id is a FaceTime job. It answers in Vapi's shape, or
+  // points at the real Vapi call once Maya is on one (answered, or phone fallback).
+  if (isFacetimeCallId(callId)) {
+    const ft = await getFacetimeCall(callId);
+    if (!ft.vapiCallId) return ft;
+    callId = ft.vapiCallId;
+  }
   const { data } = await axios.get(`https://api.vapi.ai/call/${callId}`, {
     headers: { Authorization: `Bearer ${VAPI_API_KEY}` },
   });

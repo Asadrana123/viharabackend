@@ -76,6 +76,19 @@ const vtextLineSchema = new mongoose.Schema(
       purchasedAt: { type: Date },
     },
     notes: { type: String, default: "" },
+
+    // FaceTime test (services/calling/facetime): the same Mac and Apple ID can
+    // also place FaceTime audio calls for Maya. Separate from the texting
+    // status above: switching FaceTime off never touches texting, and back.
+    facetime: {
+      enabled: { type: Boolean, default: false },
+      agentKeyHash: { type: String, select: false }, // sha256 of the Mac agent's key; the key itself is shown once
+      lastHeartbeatAt: { type: Date },
+      agentVersion: { type: String },
+      consecutiveFailures: { type: Number, default: 0 },
+      offlineAlertedAt: { type: Date }, // set while we've told Slack this Mac went quiet
+      pausedReason: { type: String, default: "" }, // set when the system switched FaceTime off by itself
+    },
   },
   { timestamps: true }
 );

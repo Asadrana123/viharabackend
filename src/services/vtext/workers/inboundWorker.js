@@ -22,6 +22,7 @@ const { findLeadRefs } = require("../vtextLeadLookupService");
 const { endFollowUp } = require("../vtextFollowUpService");
 const { notifyVtextAlert } = require("../../shared/slackService");
 const { notifyInboundNoDraft } = require("../vtextAlertService");
+const { learnFromMessageStatus } = require("../../calling/facetime/iphoneLearning");
 
 const HELP_TEXT = process.env.VTEXT_HELP_TEXT || "This is Vihara. Reply STOP to opt out, or visit vihara.ai for more info.";
 const STOP_CONFIRM_TEXT = process.env.VTEXT_STOP_CONFIRM_TEXT || "You're unsubscribed and won't receive more messages from Vihara. Reply START to resubscribe.";
@@ -335,6 +336,7 @@ async function handleMessageStatus(event) {
     }
   }
   await message.save();
+  await learnFromMessageStatus(message, event); // FaceTime test: is this number on iPhone? Never throws.
   publishEvent({ type: "message.updated", messageId: String(message._id), conversationId: message.conversationId ? String(message.conversationId) : null, status: message.status });
 }
 

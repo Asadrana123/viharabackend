@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Starts the FaceTime agent when the Mac user logs in, and restarts it if it stops.
+  It must run as the logged-in user (a LaunchAgent, not a LaunchDaemon): FaceTime,
+  audio and Accessibility only work inside a logged-in session.
+
+  Install (replace YOUR_USER and the paths if yours differ):
+    cp launchd/com.vihara.facetime-agent.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.vihara.facetime-agent.plist
+  Stop:
+    launchctl unload ~/Library/LaunchAgents/com.vihara.facetime-agent.plist
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.vihara.facetime-agent</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/node</string>
+    <string>/Users/YOUR_USER/viharabackend/facetime-agent/src/macAgent.js</string>
+  </array>
+
+  <!-- .env is read from here -->
+  <key>WorkingDirectory</key>
+  <string>/Users/YOUR_USER/viharabackend/facetime-agent</string>
+
+  <!-- so it finds sox and SwitchAudioSource from Homebrew -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <!-- wait 30s before a restart, so a crash loop doesn't hammer FaceTime -->
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+
+  <key>StandardOutPath</key>
+  <string>/Users/YOUR_USER/viharabackend/facetime-agent/logs/agent.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/YOUR_USER/viharabackend/facetime-agent/logs/agent.log</string>
+</dict>
+</plist>

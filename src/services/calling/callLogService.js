@@ -115,10 +115,13 @@ async function saveEndOfCallReport(message = {}) {
   const analysis = message.analysis || {};
 
   const doc = {
-    phone: customer.number || "",
+    // A FaceTime (websocket) call may carry no customer number, so its
+    // metadata holds the phone too.
+    phone: customer.number || metadata.phone || "",
     fullName: customer.name || metadata.fullName || "",
     propertyId: metadata.propertyId || null,
     source: metadata.source || "",
+    channel: metadata.channel === "facetime" ? "facetime" : "phone",
     vapiCallId: call.id || "",
     endedReason: message.endedReason || "",
     summary: pickSummary(message),

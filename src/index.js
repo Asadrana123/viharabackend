@@ -24,6 +24,7 @@ const { startGaReportJob } = require('./jobs/gaReportJob');
 const { startAdsLoopJob } = require('./jobs/adsLoopJob');
 const { startRepairJob } = require('./jobs/repairJob');
 const { startSignupDoctorJob } = require('./jobs/signupDoctorJob');
+const { startFacetimeSweep } = require('./services/calling/facetime/facetimeSweep');
 require('./passport');
 
 const PORT = process.env.PORT || 8000;
@@ -67,6 +68,10 @@ server.listen(PORT, () => {
 
   // Buyer Match calls an admin started: 12:30 PM + 6:00 PM buyer-local, up to 7 days.
   startMatchCallScheduler();
+
+  // FaceTime test: catches FaceTime calls a Mac didn't finish (falls back to a phone call)
+  // and Macs that stopped checking in. Off unless FACETIME_ENABLED=true.
+  startFacetimeSweep();
 
   // Weekly market data refresh of every linked property the admin hasn't paused.
   startMarketSyncJob();

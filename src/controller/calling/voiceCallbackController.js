@@ -118,7 +118,7 @@ const handleVapiWebhook = catchAsyncError(async (req, res, next) => {
   for (const tc of toolCalls) {
     try {
       const { callback, spokenReply } = await createCallbackRequest({
-        phone: tc.args.phone || customer.number,
+        phone: tc.args.phone || customer.number || metadata.phone,
         fullName: tc.args.fullName || customer.name || "",
         email: tc.args.email || "",
         propertyId: tc.args.propertyId || metadata.propertyId || null,

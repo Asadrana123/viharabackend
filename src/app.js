@@ -186,6 +186,8 @@ app.use("/api/v1/admin-ask", adminAskRoutes);
 app.use("/api/v1/brand-kit", brandKitRoutes);
 app.use("/api/v1/design", designAdminRoutes);
 app.use("/api/v1/ads-loop", adsLoopRoutes);
+// FaceTime test (Maya over FaceTime audio via a Mac). Inert unless FACETIME_ENABLED=true.
+app.use("/api/v1/facetime", require("./routes/calling/facetimeRoutes"));
 app.use("/api/webhooks/zernio", zernioWebhookRoutes);
 
 // D7 (sendify-infra.md §2): fail loudly at boot if CHANNEL_TYPES has an enum

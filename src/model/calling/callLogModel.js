@@ -22,6 +22,8 @@ const callLogSchema = new mongoose.Schema(
     // Context this call came from.
     propertyId: { type: String, default: null },
     source: { type: String, default: "", trim: true },
+    // How Maya reached them: a normal phone call, or a FaceTime audio call (FaceTime test).
+    channel: { type: String, enum: ["phone", "facetime"], default: "phone" },
 
     // VAPI identifier for this call.
     vapiCallId: { type: String, default: "", trim: true },

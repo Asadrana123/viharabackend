@@ -50,6 +50,14 @@ const vtextContactSchema = new mongoose.Schema(
     ],
 
     stickyLines: { type: Map, of: mongoose.Schema.Types.ObjectId, default: {} }, // channelType -> lineId
+    // Is this number on iPhone (FaceTime test)? Learned from our own iMessages:
+    // "Delivered" = yes, error 22 = no. Kept apart from channelReachability on
+    // purpose so it never changes how the vText router picks a channel.
+    iphone: {
+      isIphone: { type: Boolean, default: null },
+      learnedAt: { type: Date },
+      fromMessageId: { type: mongoose.Schema.Types.ObjectId },
+    },
     channelReachability: [
       {
         channelType: { type: String },

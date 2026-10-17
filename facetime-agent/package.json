@@ -1,0 +1,20 @@
+{
+  "name": "vihara-facetime-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "FaceTime test agent: picks up FaceTime call jobs from the Vihara backend and bridges the call audio to Maya on Vapi. The mock agent runs on any computer for testing before a Mac exists.",
+  "type": "module",
+  "scripts": {
+    "start": "node src/macAgent.js",
+    "check": "node src/check.js",
+    "inspect": "node src/inspect.js",
+    "mock": "node src/mockAgent.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "ws": "^8.18.0"
+  }
+}
