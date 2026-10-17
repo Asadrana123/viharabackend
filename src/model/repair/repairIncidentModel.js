@@ -12,6 +12,7 @@ const INCIDENT_KINDS = Object.freeze([
     "page_dropoff", // ad clicks that never become page views
     "report_issue", // a technical action item from the daily Meta Ads report
     "signup_issue", // a sign-up doctor reason someone pressed "Fix this" on in Slack
+    "ga_issue", // the daily Google Analytics check: an event stopped, a dimension never fills, ad links send IDs
 ]);
 
 const INCIDENT_STATUS = Object.freeze({
