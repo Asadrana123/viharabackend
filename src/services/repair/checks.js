@@ -10,6 +10,8 @@
 //   pages     the pages live ads send people to: errors, redirects away, missing
 //             property, missing Meta pixel, slow; and ads whose clicks never
 //             become page views
+//   analytics Google Analytics: a tracked event stopped, a custom dimension never fills,
+//             ad links send a campaign ID instead of a name (gaChecks.js)
 
 const axios = require("axios");
 const { DateTime } = require("luxon");
@@ -17,6 +19,7 @@ const productModel = require("../../model/property/productModel");
 const { getRepairConfig } = require("../../config/repair/repairConfig");
 const { metaAdSignupsBetween } = require("../adsLoop/leadJoin");
 const meta = require("./metaGraph");
+const { checkAnalytics } = require("./gaChecks");
 
 // Dates in the ad account's time zone: the last `days` full days, ending yesterday.
 function window(days) {
@@ -176,6 +179,6 @@ async function checkPages() {
     return { findings, covers: (key) => key.startsWith("page_") };
 }
 
-const CHECKS = { tracking: checkTracking, pages: checkPages };
+const CHECKS = { tracking: checkTracking, pages: checkPages, analytics: checkAnalytics };
 
 module.exports = { CHECKS, checkTracking, checkPages, fetchPage };

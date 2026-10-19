@@ -218,4 +218,57 @@ async function fetchGaReportData(day) {
     return { reportDay, weekAgo, daily, events, pages, landing, channels, sources, campaignsDay, campaignsWeek, campaignSignUpsWeek, signUpByForm, viewByPageType };
 }
 
-module.exports = { fetchGaReportData, TRACKED_EVENTS, PROPERTY_TIMEZONE };
+// Breakdowns the repair agent can ask for over any date range (see repair/gaTool.js).
+const BREAKDOWN_ROWS = 25;
+const BREAKDOWNS = {
+    day: { dimensions: ["date"], metrics: ["activeUsers", "sessions", "engagedSessions", "screenPageViews"], orderBys: [{ dimension: { dimensionName: "date" } }] },
+    channel: { dimensions: ["sessionDefaultChannelGroup"], metrics: ["sessions", "engagedSessions"] },
+    source: { dimensions: ["sessionSourceMedium"], metrics: ["sessions", "engagedSessions"] },
+    campaign: { dimensions: ["sessionCampaignName"], metrics: ["sessions", "engagedSessions"] },
+    page: { dimensions: ["pagePath"], metrics: ["screenPageViews", "activeUsers", "userEngagementDuration"], dimensionFilter: ADMIN_PATH_FILTER },
+    landing_page: {
+        dimensions: ["landingPage"],
+        metrics: ["sessions", "engagedSessions"],
+        dimensionFilter: { notExpression: { filter: { fieldName: "landingPage", stringFilter: { matchType: "BEGINS_WITH", value: "/admin" } } } },
+    },
+    event: { dimensions: ["eventName"], metrics: ["eventCount"] },
+};
+// Event counts split by a custom dimension: [event, dimension].
+const EVENT_SPLITS = {
+    sign_up_by_form: ["sign_up", "customEvent:form_location"],
+    property_view_by_page_type: ["property_view", "customEvent:page_type"],
+};
+const BREAKDOWN_NAMES = [...Object.keys(BREAKDOWNS), ...Object.keys(EVENT_SPLITS)];
+
+/** True when some GA4 credentials and a property id are set, so a query can be tried. */
+function gaConfigured() {
+    const env = process.env;
+    const hasCredentials = env.GA_OAUTH_REFRESH_TOKEN || env.GA_SERVICE_ACCOUNT_JSON || env.GOOGLE_APPLICATION_CREDENTIALS;
+    return Boolean(env.GA_PROPERTY_ID && hasCredentials);
+}
+
+/**
+ * One breakdown over a date range, read-only.
+ * @param {{since: string, until: string, by: string}} p  dates are "YYYY-MM-DD" in property time
+ * @returns {Promise<Array<object>|null>} rows, or null when a custom dimension is not registered yet
+ */
+async function fetchGaBreakdown({ since, until, by }) {
+    const dateRanges = [{ startDate: since, endDate: until }];
+    if (EVENT_SPLITS[by]) {
+        const [eventName, dimension] = EVENT_SPLITS[by];
+        return eventSplit({ eventName, dimension, dateRanges });
+    }
+    const spec = BREAKDOWNS[by];
+    if (!spec) throw new Error(`Unknown breakdown "${by}". Use one of: ${BREAKDOWN_NAMES.join(", ")}`);
+    const firstMetric = spec.metrics[0];
+    return runReport({
+        dimensions: spec.dimensions,
+        metrics: spec.metrics,
+        dateRanges,
+        dimensionFilter: spec.dimensionFilter,
+        orderBys: spec.orderBys || byMetricDesc(firstMetric),
+        limit: BREAKDOWN_ROWS,
+    });
+}
+
+module.exports = { fetchGaReportData, fetchGaBreakdown, gaConfigured, BREAKDOWN_NAMES, TRACKED_EVENTS, PROPERTY_TIMEZONE };

@@ -13,9 +13,11 @@
 
 const cron = require("node-cron");
 const { fetchGaReportData } = require("../services/analytics/gaInsightsService");
-const { buildReportModel, buildSlackMessage } = require("../services/analytics/gaReportFormatter");
+const { buildReportModel, buildSlackMessage, messageToText } = require("../services/analytics/gaReportFormatter");
 const { summarizeGaReport } = require("../services/analytics/gaSummaryService");
 const { postToSlack } = require("../services/shared/slackService");
+const { getRepairConfig } = require("../config/repair/repairConfig");
+const { runGaReportIssues } = require("../services/repair/incidentService");
 
 const SCHEDULE = "0 16 * * *";
 const TIMEZONE = "Asia/Kolkata";
@@ -55,6 +57,11 @@ async function runGaReport() {
         const { model, message } = await buildGaReport();
         await postToSlack(webhookUrl, message);
         console.log(`[gaReport] Posted report for ${model.day}.`);
+
+        // The report's technical problems go to the repair agent, as the Meta report's do.
+        if (getRepairConfig().enabled) {
+            runGaReportIssues(messageToText(message)).catch((e) => console.error("[gaReport] repair hand-off failed:", e.message));
+        }
     } catch (error) {
         const detail = error.details || error.message;
         console.error("[gaReport] Run failed:", detail);
