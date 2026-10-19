@@ -20,6 +20,8 @@ const { createGithubClient, GithubError } = require("../design/githubService");
 const { getRepairConfig } = require("../../config/repair/repairConfig");
 const { fetchPage } = require("./checks");
 const meta = require("./metaGraph");
+const { gaReport } = require("./gaTool");
+const { BREAKDOWN_NAMES } = require("../analytics/gaInsightsService");
 const productModel = require("../../model/property/productModel");
 
 const MAX_STEPS = 80;
@@ -137,6 +139,16 @@ const TOOLS = [
         input_schema: { type: "object", properties: { since: { type: "string" }, until: { type: "string" } }, required: ["since", "until"], additionalProperties: false },
     },
     {
+        name: "ga_report",
+        description: "Google Analytics for the whole website (all traffic, not only ads), read-only. Pick a breakdown: day (visitors, sessions, page views per day), channel, source, campaign, page, landing_page, event (counts per event name), sign_up_by_form, property_view_by_page_type. Dates are YYYY-MM-DD in India time, at most 31 days. Use it to cross-check Meta's counts and our database. The newest days can still change a little.",
+        input_schema: {
+            type: "object",
+            properties: { since: { type: "string" }, until: { type: "string" }, by: { type: "string", enum: BREAKDOWN_NAMES } },
+            required: ["since", "until", "by"],
+            additionalProperties: false,
+        },
+    },
+    {
         name: "find_property_page",
         description: "Find a property's auction landing page by city, street or slug words (e.g. \"Lathrup Village\", \"New Orleans\"). Returns each match's address, status and page link.",
         input_schema: { type: "object", properties: { text: { type: "string" } }, required: ["text"], additionalProperties: false },
@@ -183,7 +195,7 @@ function systemPrompt(incident) {
     const { files: maxFiles, lines: maxLines } = limitsFor(incident);
     const intro = signup
         ? "The sign-up doctor found a likely reason an ad landing page gets visitors but few sign-ups, and a person asked in Slack for it to be fixed. Its evidence and suggested fix are below: check them against the code and the live page, then make the change that removes this reason, or explain exactly what a person must do when the fix is outside the code."
-        : "A daily check, or a technical action item in the daily Meta Ads report, found a broken technical thing (Meta tracking, an ad's landing page, a link, an ad that isn't delivering). When the item comes from the report, its suggestion (\"audit the page\", \"confirm the event fires\") is your task: do that audit yourself with the tools, then fix what is broken. Your job: find the real cause and fix it with the smallest safe change, or explain exactly what a person must do when the cause is outside the code.";
+        : "A daily check, or a technical action item in the daily Meta Ads report, found a broken technical thing (Meta tracking, Google Analytics tracking, an ad's landing page, a link, an ad that isn't delivering). Incidents about Google Analytics come from the daily Google Analytics check: look at ga_report first, then at the website code that sends the event or its parameters (src/services/capi.service.js, src/components/Landing/landing.helpers.js, public/index.html). When the item comes from the report, its suggestion (\"audit the page\", \"confirm the event fires\") is your task: do that audit yourself with the tools, then fix what is broken. Your job: find the real cause and fix it with the smallest safe change, or explain exactly what a person must do when the cause is outside the code.";
     const scope = signup
         ? `2. Fix only this one reason. You may change the landing page's wording, layout, styling (the website's .css files) and form behaviour, but nothing unrelated: no refactors, no new packages, no redesign. Keep Vihara's brand (main colour #0c4bea). When the code is shared by every landing page (e.g. PropertyAuctionPage.jsx, landing.helpers.js), make sure the change is right for all of them, or limit it to the pages that need it. A fix may change at most ${maxFiles} files and ${maxLines} lines.`
         : `2. You only repair broken technical things. Fix only the cause of this incident: no refactors, no unrelated cleanups, no new packages, no new features, no changes to design, styling, layout or wording. You can't change CSS or assets, and a fix may change at most ${maxFiles} files and ${maxLines} lines.`;
@@ -198,7 +210,7 @@ You have two repos:
 The live site is ${siteUrl}.
 
 How to work:
-1. Start from the evidence. Find when it started, then use recent_commits around that date and commit_diff to see what changed. Read the code that is involved. Don't guess.
+1. Start from the evidence. Find when it started, then use recent_commits around that date and commit_diff to see what changed. Read the code that is involved. Don't guess. When tracking is involved, compare three counts for the same days: Google Analytics (ga_report), Meta (meta_conversions) and our database. Where they disagree shows where events are lost.
 ${scope}
 3. Never remove tracking, consent, or lead-saving code to make a check pass, and never weaken validation of contact details or consent.
 ${outside}
@@ -412,6 +424,9 @@ async function investigate(incident, { log = () => {} } = {}) {
             const rows = traffic.map((t) => `${t.adName} (${t.adId}): ${t.linkClicks} link clicks, ${t.pageViews} page views`);
             const links = live.map((a) => `${a.adName}: ${a.links.join(" ") || "(link not readable with the ads token)"}`);
             return `Traffic:\n${rows.join("\n") || "none"}\n\nDelivering now:\n${links.join("\n") || "none"}`;
+        },
+        async ga_report(input) {
+            return gaReport(input);
         },
         async find_property_page({ text }) {
             const words = String(text).trim().split(/\s+/).filter(Boolean).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
