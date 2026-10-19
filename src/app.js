@@ -20,7 +20,6 @@ const auctionRegistrationRoutes = require("./routes/bidding/auctionRegistrationR
 const authRoutes = require("./routes/users/auth");
 const biddingRoutes = require("./routes/bidding/biddingRoutes");
 const ebookRoutes = require("./routes/integrations/eBookRoutes");
-const demographicRoutes = require("./routes/property/demoGraphicRoutes");
 const userPreferencesRoutes = require("./routes/users/userPreferencesRoutes");
 const unsubscribeRoutes = require("./routes/integrations/unsubscribeRoutes");
 const renovationRoutes = require("./routes/property/renovationRoutes");
@@ -132,7 +131,6 @@ app.get("/", (req, res) => {
 app.use('/api/v1/user', userRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/product', productRoutes);
-app.use('/api/v1/demographics', demographicRoutes);
 app.use("/api/saveContact", contactRoutes);
 app.use("/api/sellProperty", sellPropertyRoutes);
 app.use("/auth", authRoutes);

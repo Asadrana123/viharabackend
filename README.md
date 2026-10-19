@@ -209,7 +209,6 @@ viharabackend/
 │   │   ├── renovationController.js       # AI renovation endpoints
 │   │   ├── contactController.js          # Contact form submissions
 │   │   ├── sellingController.js          # Sell-property form
-│   │   ├── demoGraphicController.js      # Demographic data
 │   │   ├── eBookRequestController.js     # E-book download requests
 │   │   ├── landingPageLeadController.js  # Landing page lead capture
 │   │   ├── otpController.js              # OTP verification
@@ -246,7 +245,6 @@ viharabackend/
 │   │   ├── contactRoutes.js          # /api/saveContact/*
 │   │   ├── sellPropertyRoutes.js     # /api/sellProperty/*
 │   │   ├── savedSearch.js            # /api/user/save-searches/*
-│   │   ├── demoGraphicRoutes.js      # /api/v1/demographics/*
 │   │   ├── eBookRoutes.js            # /api/ebook/*
 │   │   ├── userPreferencesRoutes.js  # /api/v1/user/* (preferences)
 │   │   ├── unsubscribeRoutes.js      # /api/* (unsubscribe)
@@ -282,20 +280,15 @@ viharabackend/
 │   │   ├── getToken.js               # JWT token helper
 │   │   ├── cookieOptions.js          # Cookie configuration
 │   │   ├── stateAbbreviations.js     # US state abbreviation mappings
-│   │   ├── queryTimeoutWrapper.js    # MongoDB query timeout utility
-│   │   └── generateDummyData.js      # Test data generator
+│   │   └── queryTimeoutWrapper.js    # MongoDB query timeout utility
 │   │
-│   ├── htmlPages/
-│   │   ├── viharaEmailTemplate.js        # Branded email template
-│   │   ├── newsLetterTemplate.js         # Newsletter HTML
-│   │   ├── happyNewYearTemplate.js       # Holiday email template
-│   │   ├── successPage.js                # Unsubscribe success page
-│   │   ├── alreadyUnsubscribedPage.js    # Already unsubscribed page
-│   │   └── errorPage.js                  # Error page
-│   │
-│   └── data/
-│       ├── Counties.json             # US county reference data
-│       └── dummyUsers.json           # Seed/test user data
+│   └── htmlPages/
+│       ├── viharaEmailTemplate.js        # Branded email template
+│       ├── newsLetterTemplate.js         # Newsletter HTML
+│       ├── happyNewYearTemplate.js       # Holiday email template
+│       ├── successPage.js                # Unsubscribe success page
+│       ├── alreadyUnsubscribedPage.js    # Already unsubscribed page
+│       └── errorPage.js                  # Error page
 │
 ├── package.json
 ├── BACKEND_README.md                 # Legacy internal documentation
@@ -528,7 +521,6 @@ Uses Google Gemini AI to provide:
 | `GET` | `/auth/google/callback` | Google OAuth2 callback |
 | `POST` | `/api/saveContact` | Submit contact form |
 | `POST` | `/api/sellProperty` | Submit sell-property form |
-| `GET` | `/api/v1/demographics/*` | Demographic data endpoints |
 | `POST` | `/api/ebook/*` | E-book request endpoints |
 | `GET` | `/api/v1/corelogic/*` | CoreLogic property data |
 | `POST` | `/api/landing/*` | Landing page lead capture |

@@ -19,7 +19,6 @@ const PAGE_LABELS = {
   "/company/news": "News",
   "/Property-detail": "Property Detail",
   "/MBA": "MBA Landing Page",
-  "/developer": "Demographic Analysis",
   "/new-deals": "New Deals (landing page)",
   "/buyer-list": "Buyer List (landing page)",
   "/early-access": "Early Access (landing page)",
