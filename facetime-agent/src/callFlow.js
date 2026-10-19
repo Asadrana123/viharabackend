@@ -10,6 +10,7 @@ const defaults = {
   maxCallMs: 20 * 60 * 1000,
   watchEveryMs: 1000,
   goneAfterReads: 3, // this many "not connected" reads in a row = the call is gone
+  answeredAfterReads: 2, // this many "connected" reads in a row = the person really picked up
 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -18,10 +19,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function waitForAnswer(ui, o) {
   const deadline = Date.now() + o.ringTimeoutMs;
   let idleReads = 0;
+  let connectedReads = 0;
   while (Date.now() < deadline) {
     await sleep(o.watchEveryMs);
     const { state } = await ui.readCallState();
-    if (state === "connected") return { outcome: "connected", note: "" };
+    connectedReads = state === "connected" ? connectedReads + 1 : 0;
+    if (connectedReads >= o.answeredAfterReads) return { outcome: "connected", note: "" };
     if (state === "declined") return { outcome: "declined", note: "FaceTime showed declined/busy" };
     if (state === "unavailable") return { outcome: "no-answer", note: "FaceTime showed unavailable" };
     idleReads = state === "idle" ? idleReads + 1 : 0;

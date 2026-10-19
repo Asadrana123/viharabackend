@@ -12,8 +12,8 @@ const DEFAULTS = {
   callButtonLabels: ["Call"],
   // Buttons that exist only while a call is in progress (ringing or connected).
   endButtonLabels: ["End", "End Call", "Leave", "Hang Up"],
-  // The call timer ("0:07", "01:23") shows only once the person picked up.
-  connectedTimerPattern: "^\\d{1,2}:\\d{2}(:\\d{2})?$",
+  // The call timer ("0:07", "01:23", or "FaceTime Audio - 0:07" on macOS 15) shows only once the person picked up.
+  connectedTimerPattern: "(^|\\s-\\s)\\d{1,2}:\\d{2}(:\\d{2})?$",
   // Words shown while it is still ringing (only used to report "ringing" sooner).
   ringingTexts: ["Calling", "Ringing", "Connecting", "Waiting"],
   // Words shown when the person declined or was busy.
