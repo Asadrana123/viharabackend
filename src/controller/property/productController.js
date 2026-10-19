@@ -325,6 +325,37 @@ exports.updateProductBasicDetails = catchAsyncError(async (req, res, next) => {
     });
 });
 
+// Admin — remove or reorder a property's photos (Manage Listings → Photos).
+// body: { photos: [url, ...] } — first = main photo. Only URLs the property
+// already has are accepted, so this can drop or reorder photos, never add one.
+exports.updateProductPhotos = catchAsyncError(async (req, res, next) => {
+    const product = await productModel.findById(req.params.id);
+    if (!product) {
+        return next(new Errorhandler("Property not found", 404));
+    }
+
+    const { photos } = req.body || {};
+    if (!Array.isArray(photos) || photos.some((p) => typeof p !== "string" || !p)) {
+        return next(new Errorhandler("photos must be a list of photo links", 400));
+    }
+    const existing = new Set([product.image, ...(product.otherImages || [])].filter(Boolean));
+    if (photos.some((p) => !existing.has(p))) {
+        return next(new Errorhandler("Only the property's existing photos can be kept", 400));
+    }
+    const unique = [...new Set(photos)];
+
+    product.image = unique[0] || "";
+    product.otherImages = unique.slice(1);
+    // validateBeforeSave:false — same rationale as updateListingSettings.
+    await product.save({ validateBeforeSave: false });
+
+    return res.json({
+        success: true,
+        message: "Photos updated",
+        product: { _id: product._id, image: product.image, otherImages: product.otherImages },
+    });
+});
+
 // Admin — market data sync settings for one property (Manage Listings).
 // body (all optional):
 //   url                : market data listing link; "" / null unlinks (weekly sync stops)

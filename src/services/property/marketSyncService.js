@@ -5,8 +5,8 @@
 //
 // What a sync CHANGES (market data only, money shifted by the property's fixed %):
 //   propertyDetails, investmentData, marketInsights.daysOnMarket, schools,
-//   walkScores, coordinates, listingAgent — and the photos, but only when
-//   the source's photo list itself changed since the last sync.
+//   walkScores, coordinates, listingAgent. Photos are NOT synced — they are
+//   fetched once at import only.
 // A new value only replaces the old one when the source actually has it; empty
 // Market data never wipes what the property already has.
 //
@@ -21,8 +21,6 @@ const firecrawlService = require("../integrations/firecrawlService");
 const {
     fetchMarketDataListing,
     buildMarketDataFields,
-    uploadListingImages,
-    folderKeyFor,
 } = require("./propertyImportService");
 const {
     createTweakPercent,
@@ -33,7 +31,6 @@ const {
 
 // Pause between properties so the source/Firecrawl aren't hit in a burst.
 const DELAY_BETWEEN_PROPERTIES_MS = 5000;
-const PHOTO_FOLDER_ROOT = "vihara/properties";
 const MAX_ERROR_LENGTH = 500;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -73,7 +70,7 @@ async function syncProduct(product) {
         ? sync.estimateUpliftPercent
         : createEstimateUpliftPercent();
 
-    const { marketData, photoUrls, photoSignature } = await fetchMarketDataListing(sync.url);
+    const { marketData } = await fetchMarketDataListing(sync.url);
     const fresh = buildMarketDataFields(marketData, tweakPercent, estimateUpliftPercent);
 
     // Market data fields — merged so empty market data never wipes existing data.
@@ -82,23 +79,9 @@ async function syncProduct(product) {
         product.set(field, mergeKeepExisting(current[field], value));
     });
 
-    // Photos — only when the source's photo list changed. The first sync of a
-    // linked (older) property just records the fingerprint, so photos the
-    // admin already chose stay untouched.
-    let photosUpdated = false;
-    if (photoSignature && sync.photoSignature && photoSignature !== sync.photoSignature) {
-        const folder = `${PHOTO_FOLDER_ROOT}/${folderKeyFor(product)}`;
-        const { image, otherImages } = await uploadListingImages(photoUrls, folder, []);
-        if (image) {
-            product.image = image;
-            product.otherImages = otherImages;
-            photosUpdated = true;
-        }
-    }
-    // Keep the old fingerprint if the upload failed, so the next sync retries.
-    if (photoSignature && (photosUpdated || !sync.photoSignature)) {
-        sync.photoSignature = photoSignature;
-    }
+    // Photos are never touched by a sync — they're fetched once at import and
+    // after that only the admin changes them.
+    const photosUpdated = false;
 
     // Market data status — flag a change for the admin, change nothing else.
     const newStatus = marketData.homeStatus || null;

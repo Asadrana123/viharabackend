@@ -10,7 +10,8 @@ const {
     updateListingSettings,
     createProductsBulk,
     updateProductBasicDetails,
-    updateMarketSyncSettings
+    updateMarketSyncSettings,
+    updateProductPhotos
 } =require("../../controller/property/productController");
 const { deleteProduct } = require("../../controller/property/productDeleteController");
 const { isAuthenticated, authorizeRoles, optionalAuth } = require("../../middleware/auth");
@@ -24,6 +25,7 @@ router.get('/get', optionalAuth, getAllProducts);
 router.get('/admin/all', isAuthenticated, authorizeRoles("admin"), getAllProductsAdmin);
 router.put('/admin/:id/listing-settings', isAuthenticated, authorizeRoles("admin"), updateListingSettings);
 router.put('/admin/:id/basic-details', isAuthenticated, authorizeRoles("admin"), updateProductBasicDetails);
+router.put('/admin/:id/photos', isAuthenticated, authorizeRoles("admin"), updateProductPhotos);
 router.put('/admin/:id/market-sync', isAuthenticated, authorizeRoles("admin"), updateMarketSyncSettings);
 router.delete('/admin/:id', isAuthenticated, authorizeRoles("admin"), deleteProduct);
 

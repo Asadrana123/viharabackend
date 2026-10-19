@@ -14,6 +14,36 @@ function getRawHtml(payload) {
   return payload.data?.rawHtml || payload.rawHtml || '';
 }
 
+// Returns the full JSON array that follows `"responsivePhotos":` in text,
+// matching brackets (the photo objects contain nested arrays), or null.
+function sliceResponsivePhotos(text) {
+  const keyIndex = text.indexOf('"responsivePhotos"');
+  if (keyIndex === -1) return null;
+  const start = text.indexOf('[', keyIndex);
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (ch === '\\') i++;
+      else if (ch === '"') inString = false;
+    } else if (ch === '"') inString = true;
+    else if (ch === '[') depth++;
+    else if (ch === ']' && --depth === 0) return text.slice(start, i + 1);
+  }
+  return null;
+}
+
+// Listing photo hashes only — never the agent/broker headshots elsewhere on the page.
+function hashesFromPhotosText(photosText) {
+  const hashes = [];
+  const hashRegex = /photos\.zillowstatic\.com\/fp\/([a-f0-9]{32})-/gi;
+  let match;
+  while ((match = hashRegex.exec(photosText)) !== null) hashes.push(match[1]);
+  return hashes;
+}
+
 function extractMarketDataImages(payload) {
   const rawHtml = getRawHtml(payload);
   if (!rawHtml) return { ...EMPTY_RESULT };
@@ -35,35 +65,22 @@ function extractMarketDataImages(payload) {
       const cache = nextData?.props?.pageProps?.componentProps?.gdpClientCache;
 
       if (cache) {
-        const cacheString = JSON.stringify(cache);
-
-        // Locate responsivePhotos array or photo objects specific to this property listing
-        const responsivePhotosMatch = cacheString.match(/"responsivePhotos"\s*:\s*(\[[^\]]+\])/);
-
-        if (responsivePhotosMatch && responsivePhotosMatch[1]) {
-          const photoObjects = JSON.parse(responsivePhotosMatch[1]);
-          galleryHashes = photoObjects
-            .map((p) => p.url || p.caption || '')
-            .map((url) => {
-              const match = url.match(/\b([a-f0-9]{32})\b/i);
-              return match ? match[1] : null;
-            })
-            .filter(Boolean);
-        }
+        // The cache is often itself a JSON string — read it as text either way.
+        const cacheString = typeof cache === 'string' ? cache : JSON.stringify(cache);
+        const photosText = sliceResponsivePhotos(cacheString);
+        if (photosText) galleryHashes = hashesFromPhotosText(photosText);
       }
     } catch {
-      // Structured JSON not parseable — fall through to the key-based fallback.
+      // Structured JSON not parseable — fall through to the page-text fallback.
       galleryHashes = [];
     }
   }
 
-  // Fallback: search for photos explicitly tied to "mixedSources" or "jpeg" photo arrays in the state
+  // Fallback: the responsivePhotos array straight from the page text. Never
+  // scan the whole page — that picks up agent/broker headshots too.
   if (galleryHashes.length === 0) {
-    const photoArrayRegex = /"url"\s*:\s*"https:\/\/photos\.zillowstatic\.com\/fp\/([a-f0-9]{32})-/gi;
-    let match;
-    while ((match = photoArrayRegex.exec(unescapedHtml)) !== null) {
-      galleryHashes.push(match[1]);
-    }
+    const photosText = sliceResponsivePhotos(unescapedHtml);
+    if (photosText) galleryHashes = hashesFromPhotosText(photosText);
   }
 
   // Deduplicate maintaining strict page order
