@@ -8,7 +8,7 @@
 //
 // Everything printed is also saved to inspect-log.txt, to send to whoever is tuning signals.json.
 import fs from "node:fs";
-import { dumpUi, classify, setBaseline } from "./mac/facetimeUi.js";
+import { dumpUi, classify, setBaseline, callIsLive, withCallLive } from "./mac/facetimeUi.js";
 import { signals } from "./mac/signals.js";
 
 const ALL = process.argv.includes("--all");
@@ -30,12 +30,15 @@ for (;;) {
     const parts = [];
     // Same reading the agent makes. Like the agent, it ignores the words an idle FaceTime
     // screen already showed (Recents), so an old "10:42" doesn't look like a call timer.
-    const facetimeEls = await dumpUi("FaceTime");
-    const { state } = classify(facetimeEls);
-    const inCall = (facetimeEls || []).some((e) => e.role === "AXButton" && (signals.endButtonLabels.includes(e.name) || signals.endButtonLabels.includes(e.desc)));
-    if (!inCall) setBaseline(facetimeEls); // no call on screen: these words are the "before" picture
+    const byProc = {};
+    for (const proc of processes) byProc[proc] = await dumpUi(proc);
+    const all = Object.values(byProc).filter(Boolean).flat();
+    const allEls = Object.values(byProc).some(Boolean) ? all : null;
+    const { state } = withCallLive(classify(allEls), await callIsLive());
+    const inCall = (allEls || []).some((e) => e.role === "AXButton" && (signals.endButtonLabels.includes(e.name) || signals.endButtonLabels.includes(e.desc)));
+    if (!inCall) setBaseline(allEls); // no call on screen: these words are the "before" picture
     for (const proc of processes) {
-      const els = proc === "FaceTime" ? facetimeEls : await dumpUi(proc);
+      const els = byProc[proc];
       if (!els) {
         parts.push(`[${proc}] not running`);
         continue;

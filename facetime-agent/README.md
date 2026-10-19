@@ -9,7 +9,9 @@ The agent runs on the Mac (or, for the mock, any computer), never on Render.
 **Where things stand (Oct 17, 2026)**
 
 - **Backend and the Vapi side are tested for real.** A test call through the mock agent on Windows queued, rang and was answered. Maya spoke, heard the caller, and ended the call, and the call log was saved. The phone fallback also worked.
-- **The Mac-only parts have never run on a Mac yet.** That means driving the FaceTime app (AppleScript), detecting that a call is ringing or answered, and the BlackHole audio. Their logic is tested on Windows with a fake FaceTime. If something breaks on the first Mac run, it will most likely be one of these, and the steps below are built to find out which one.
+- **First Mac run (Oct 19, macOS 15.3):** FaceTime dialed fine, but the agent could not read the call. On this macOS the call screen is a Notification Center banner (not the FaceTime window), and once the person picks up its text can't be read at all. The agent now reads all three call processes, and treats "FaceTime's Video → Mute menu item is enabled but the ringing screen is gone" as picked up.
+- **Other macOS versions:** the screen reading depends on the macOS version (on 15.3 the call screen is in Notification Center, the Mute-menu check uses English menu names). After any macOS update or on a new Mac, run `npm run check`, then `npm run inspect -- --all` while placing one call by hand, and fix `signals.json` if the state shown is wrong. Keep production Macs on one macOS version with automatic updates off. The +24 dB gain on the recording from FaceTime was tuned on macOS 15.3.
+- **The Mac-only parts had never run on a Mac before that run.** That means driving the FaceTime app (AppleScript), detecting that a call is ringing or answered, and the BlackHole audio. Their logic is tested on Windows with a fake FaceTime. If something breaks on the first Mac run, it will most likely be one of these, and the steps below are built to find out which one.
 
 ---
 
@@ -216,6 +218,9 @@ The agent clicked something, but didn't recognise the ringing screen. Send `insp
 
 **The iPhone answered, but the agent kept "Ringing" and then said no-answer**
 The agent didn't recognise the "connected" screen: no End button or call timer was found. Send `inspect-log.txt` from step 5, call 2.
+
+**The iPhone answered, but the agent said no-answer, or never connected Maya (macOS 15)**
+The agent decides "answered" when a call is live (FaceTime's **Video → Mute** menu item is enabled) and the ringing screen is gone, twice in a row. The menu names are English; on another language that check always says "no call". Run `npm run inspect -- --all` during a call and send `inspect-log.txt`.
 
 **Maya connects, but the iPhone hears nothing, or Maya hears nothing**
 - While the agent runs, System Settings → Sound should show **Output: BlackHole 16ch** and **Input: BlackHole 2ch**.

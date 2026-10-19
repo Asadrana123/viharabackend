@@ -34,13 +34,37 @@ function deviceArgs(device) {
 /**
  * inputDevice → stdout (what Maya hears), stdin → outputDevice (what Maya says).
  * "-d" = the default device; anything else is a Core Audio device name (macOS).
+ * inputMix: extra SoX effect args for the recording side. "BlackHole 16ch" has 16 channels and
+ * FaceTime only uses the first two; SoX's plain mono downmix averages all 16, which makes
+ * the voice about 8 times quieter, so the Mac agent passes ["remix", "1,2", ...] (plus a gain).
  * A SoX that dies (device missing, unplugged) only stops the audio, never the agent.
  */
-function soxAudio(rate, { inputDevice = "-d", outputDevice = "-d", onError } = {}) {
+function soxAudio(rate, { inputDevice = "-d", outputDevice = "-d", inputMix = [], onError } = {}) {
   const inArgs = deviceArgs(inputDevice);
   const outArgs = deviceArgs(outputDevice);
-  const rec = spawn("sox", ["-q", ...inArgs, ...RAW(rate), "-"], { stdio: ["ignore", "pipe", "inherit"] });
-  const play = spawn("sox", ["-q", ...RAW(rate), "-", ...outArgs], { stdio: ["pipe", "ignore", "inherit"] });
+  const rec = spawn("sox", ["-q", ...inArgs, ...RAW(rate), "-", ...inputMix], { stdio: ["ignore", "pipe", "inherit"] });
+  // With its input left open, SoX holds back the last part of what it was given until more arrives, so
+  // a short sentence would never be heard. So playback is fed on a steady 20 ms clock: Maya's audio in
+  // order when there is some, silence when there isn't. (Silence added only after a burst cut her
+  // sentences up, because her audio arrives in uneven bursts.)
+  const play = spawn("sox", ["--buffer", "512", "-q", ...RAW(rate), "-", ...outArgs], { stdio: ["pipe", "ignore", "inherit"] });
+  const frameBytes = Math.round(rate * 0.02) * 2;
+  const silence = Buffer.alloc(frameBytes);
+  let queue = Buffer.alloc(0);
+  let playedAt = Date.now();
+  let sent = 0;
+  const feed = setInterval(() => {
+    // however many 20 ms frames are due by the clock (timers drift)
+    const due = Math.floor((Date.now() - playedAt) / 20);
+    for (; sent < due && play.stdin.writable; sent++) {
+      if (queue.length >= frameBytes) {
+        play.stdin.write(queue.subarray(0, frameBytes));
+        queue = queue.subarray(frameBytes);
+      } else {
+        play.stdin.write(silence);
+      }
+    }
+  }, 20);
   let stopped = false;
   const fail = (what) => (err) => !stopped && onError?.(`${what}: ${err?.message || err}`);
   rec.on("error", fail("SoX recording"));
@@ -50,9 +74,12 @@ function soxAudio(rate, { inputDevice = "-d", outputDevice = "-d", onError } = {
   play.on("exit", (code) => code && fail("SoX playback")(`exited with code ${code}`));
   return {
     onChunk: (fn) => rec.stdout.on("data", fn),
-    play: (buf) => play.stdin.writable && play.stdin.write(buf),
+    play: (buf) => {
+      queue = queue.length ? Buffer.concat([queue, buf]) : buf;
+    },
     stop: () => {
       stopped = true;
+      clearInterval(feed);
       rec.kill();
       play.stdin.end();
       play.kill();
@@ -84,7 +111,7 @@ function silentAudio(rate) {
 /**
  * @param {string} websocketCallUrl
  * @param {object} audioFormat - { sampleRate }
- * @param {object} [opts] - { audio: "sox"|"silent", inputDevice, outputDevice, onEvent, onAudioError }
+ * @param {object} [opts] - { audio: "sox"|"silent", inputDevice, outputDevice, inputMix, onEvent, onAudioError }
  * @returns {{ done: Promise<string>, hangUp: (reason?: string) => void }} done resolves with why the call ended
  */
 export function connectToMaya(websocketCallUrl, audioFormat, opts = {}) {

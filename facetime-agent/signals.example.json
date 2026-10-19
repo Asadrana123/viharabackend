@@ -1,7 +1,7 @@
 {
   "callButtonLabels": ["Call"],
   "endButtonLabels": ["End", "End Call", "Leave", "Hang Up"],
-  "connectedTimerPattern": "^\\d{1,2}:\\d{2}(:\\d{2})?$",
+  "connectedTimerPattern": "(^|\\s-\\s)\\d{1,2}:\\d{2}(:\\d{2})?$",
   "ringingTexts": ["Calling", "Ringing", "Connecting", "Waiting"],
   "declinedTexts": ["Declined", "Busy", "Call Declined"],
   "unavailableTexts": ["Unavailable", "No Answer", "Not Available", "Call Failed", "Call Back", "Failed"]
