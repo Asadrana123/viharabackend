@@ -9,7 +9,10 @@
 //   - stop the page from reaching anything else that could have an effect:
 //     third-party writes, trackers (Meta pixel, analytics), other backends,
 //     and live sockets (realtime checks aren't supported yet).
+// For ease-of-use (ux) checks it can also show the page on a tablet or phone
+// screen, flag pages wider than the screen, and run an accessibility scan.
 import { chromium } from "playwright";
+import { AxeBuilder } from "@axe-core/playwright";
 import { config } from "../config.js";
 import { api } from "../api.js";
 import { checkRequest } from "./httpTool.js";
@@ -21,6 +24,17 @@ const MAX_SNAPSHOT_CHARS = 10_000;
 const MAX_EVENTS = 25;
 
 const ROLES = ["visitor", "user", "admin"];
+// Screen sizes for the browser. Each role + device pair gets its own tab.
+export const DEVICES = {
+  desktop: { viewport: { width: 1366, height: 850 } },
+  tablet: { viewport: { width: 820, height: 1180 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
+  phone: {
+    viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true,
+    userAgent: "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36",
+  },
+};
+const MAX_AUDIT_ISSUES = 15;
+const AUDIT_IMPACT_ORDER = { critical: 0, serious: 1, moderate: 2, minor: 3 };
 const TRACKERS = /(^|\.)(facebook\.com|facebook\.net|google-analytics\.com|googletagmanager\.com|doubleclick\.net|googleadservices\.com|hotjar\.com|clarity\.ms|segment\.(io|com)|mixpanel\.com|posthog\.com|tiktok\.com|linkedin\.com|licdn\.com|vercel-insights\.com)$/i;
 const THIRD_PARTY_READ_TYPES = new Set(["script", "stylesheet", "image", "font", "media", "fetch", "xhr"]);
 
@@ -77,7 +91,7 @@ const CONSOLE_NOISE = /^Warning: |ERR_BLOCKED_BY_CLIENT/;
 
 export function createBrowser(log) {
   let browser = null;
-  const tabs = {}; // role → { context, page, events: [] }
+  const tabs = {}; // "role:device" → { context, page, events: [], device }
   let actionCount = 0;
 
   const note = (tab, text) => {
@@ -86,16 +100,25 @@ export function createBrowser(log) {
     if (tab.events.length > MAX_EVENTS * 2) tab.events.splice(0, tab.events.length - MAX_EVENTS);
   };
 
-  async function tabFor(as) {
-    if (tabs[as]) return tabs[as];
+  const tabKey = (as, device) => `${as}:${device}`;
+  const checkArgs = (as, device) => {
+    if (!ROLES.includes(as)) return 'as must be "visitor", "user" or "admin"';
+    if (!DEVICES[device]) return 'device must be "desktop", "tablet" or "phone"';
+    return null;
+  };
+  const noTab = (as, device) => ({ blocked: `no page open as ${as} on ${device} yet — call browser_open first` });
+
+  async function tabFor(as, device) {
+    const key = tabKey(as, device);
+    if (tabs[key]) return tabs[key];
     if (!browser) {
       browser = await chromium.launch({ headless: true });
       log("browser started");
     }
-    const context = await browser.newContext({ viewport: { width: 1366, height: 850 }, serviceWorkers: "block" });
+    const context = await browser.newContext({ ...DEVICES[device], serviceWorkers: "block" });
     context.setDefaultTimeout(ACTION_TIMEOUT_MS);
     context.setDefaultNavigationTimeout(NAV_TIMEOUT_MS);
-    const tab = { context, page: null, events: [] };
+    const tab = { context, page: null, events: [], device };
 
     if (as !== "visitor") {
       const { token } = await api.testSession(as);
@@ -137,7 +160,7 @@ export function createBrowser(log) {
     });
     page.on("popup", (popup) => { note(tab, `page tried to open a new tab: ${popup.url()} (closed)`); popup.close().catch(() => {}); });
     tab.page = page;
-    tabs[as] = tab;
+    tabs[key] = tab;
     return tab;
   }
 
@@ -145,8 +168,11 @@ export function createBrowser(log) {
   async function describe(tab, { within, screenshot } = {}) {
     const { page } = tab;
     await page.waitForLoadState("networkidle", { timeout: 3000 }).catch(() => {});
-    const out = { url: page.url().replace(siteOrigin, ""), title: await page.title().catch(() => "") };
+    const out = { url: page.url().replace(siteOrigin, ""), title: await page.title().catch(() => ""), device: tab.device };
     if (tab.events.length) out.events = tab.events.splice(0).slice(-MAX_EVENTS);
+    // Sideways scrolling is a common phone layout bug that a text snapshot can't show.
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth).catch(() => 0);
+    if (overflow > 2) out.layout = `page is ${overflow}px wider than the screen — people have to scroll sideways`;
     try {
       let snap = await (within ? locate(page, within) : page.locator("body")).first().ariaSnapshot({ timeout: 5000 });
       if (snap.length > MAX_SNAPSHOT_CHARS) snap = `${snap.slice(0, MAX_SNAPSHOT_CHARS)}\n… [truncated — use browser_look with "within" to see one part of the page]`;
@@ -164,15 +190,16 @@ export function createBrowser(log) {
     return null;
   };
 
-  async function open({ path, as = "visitor" }) {
-    if (!ROLES.includes(as)) return { blocked: 'as must be "visitor", "user" or "admin"' };
+  async function open({ path, as = "visitor", device = "desktop" }) {
+    const bad = checkArgs(as, device);
+    if (bad) return { blocked: bad };
     if (typeof path !== "string" || !path.startsWith("/") || path.startsWith("//") || /\s/.test(path)) {
       return { blocked: 'path must be a website path starting with "/", e.g. "/listing/123-main-st"' };
     }
     const limit = countAction();
     if (limit) return { blocked: limit };
-    log(`browser open ${path} as ${as}`);
-    const tab = await tabFor(as);
+    log(`browser open ${path} as ${as} on ${device}`);
+    const tab = await tabFor(as, device);
     try {
       const res = await tab.page.goto(siteOrigin + path, { waitUntil: "domcontentloaded" });
       if (res && res.status() >= 400) note(tab, `page returned HTTP ${res.status()}`);
@@ -186,16 +213,17 @@ export function createBrowser(log) {
     return describe(tab);
   }
 
-  async function act({ as = "visitor", action, target, value, screenshot }) {
-    if (!tabs[as]) return { blocked: `no page open as ${as} yet — call browser_open first` };
+  async function act({ as = "visitor", device = "desktop", action, target, value, screenshot }) {
+    const tab = tabs[tabKey(as, device)];
+    if (!tab) return noTab(as, device);
     const limit = countAction();
     if (limit) return { blocked: limit };
-    const tab = tabs[as];
     const { page } = tab;
-    log(`browser ${action} as ${as}${target ? ` ${JSON.stringify(target).slice(0, 120)}` : ""}`);
+    log(`browser ${action} as ${as} on ${device}${target ? ` ${JSON.stringify(target).slice(0, 120)}` : ""}`);
     try {
       switch (action) {
         case "click": await locate(page, target).click(); break;
+        case "tap": await locate(page, target).tap(); break;
         case "fill": await locate(page, target).fill(String(value ?? "")); break;
         case "select": await locate(page, target).selectOption(String(value ?? "")); break;
         case "check": await locate(page, target).check(); break;
@@ -220,9 +248,39 @@ export function createBrowser(log) {
     return describe(tab, { screenshot });
   }
 
-  async function look({ as = "visitor", within, screenshot }) {
-    if (!tabs[as]) return { blocked: `no page open as ${as} yet — call browser_open first` };
-    return describe(tabs[as], { within, screenshot });
+  async function look({ as = "visitor", device = "desktop", within, screenshot }) {
+    const tab = tabs[tabKey(as, device)];
+    if (!tab) return noTab(as, device);
+    return describe(tab, { within, screenshot });
+  }
+
+  /** Accessibility scan (axe, WCAG 2.1 A/AA) of the open page, most serious first. */
+  async function audit({ as = "visitor", device = "desktop", css }) {
+    const tab = tabs[tabKey(as, device)];
+    if (!tab) return noTab(as, device);
+    const limit = countAction();
+    if (limit) return { blocked: limit };
+    log(`browser audit as ${as} on ${device}`);
+    try {
+      let builder = new AxeBuilder({ page: tab.page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]);
+      if (css) builder = builder.include(css);
+      const { violations, passes } = await builder.analyze();
+      const issues = violations
+        .sort((a, b) => (AUDIT_IMPACT_ORDER[a.impact] ?? 4) - (AUDIT_IMPACT_ORDER[b.impact] ?? 4))
+        .slice(0, MAX_AUDIT_ISSUES)
+        .map((v) => ({
+          impact: v.impact,
+          problem: v.help,
+          rule: v.id,
+          count: v.nodes.length,
+          examples: v.nodes.slice(0, 3).map((n) => n.target.join(" ").slice(0, 150)),
+        }));
+      const out = { url: tab.page.url().replace(siteOrigin, ""), device, issueTypes: violations.length, rulesPassed: passes.length, issues };
+      if (violations.length > MAX_AUDIT_ISSUES) out.note = `${violations.length - MAX_AUDIT_ISSUES} less serious issue types not shown`;
+      return { out };
+    } catch (err) {
+      return { error: `accessibility scan failed: ${shortError(err)}` };
+    }
   }
 
   async function close() {
@@ -230,5 +288,5 @@ export function createBrowser(log) {
     browser = null;
   }
 
-  return { open, act, look, close, get actionCount() { return actionCount; } };
+  return { open, act, look, audit, close, get actionCount() { return actionCount; } };
 }

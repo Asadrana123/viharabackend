@@ -20,13 +20,16 @@ Pick checks by impact × likelihood of breaking. Favor, roughly in this order:
 - the main path users take most often
 - side effects that hurt if wrong or repeated (duplicate calls, emails or SMS to real leads)
 - code that looks fragile or recently changed, and rules the code seems to get wrong
-Merge near-duplicate checks into one (e.g. "empty name, email or phone" is one check). Leave out cosmetic details.
+- ease of use where it costs sign-ups, bids or leads: can people find the next step, understand the messages, and finish the task on a phone as well as a laptop
+Merge near-duplicate checks into one (e.g. "empty name, email or phone" is one check). Leave out pure taste (colors, fonts) unless it makes something hard to read or use.
+If the admin asks about ease of use, design, mobile, accessibility or "how it feels", most of the plan should be ux checks.
 
 Stay within the budget you are given. Include the most valuable checks up to the limits; list a few notable ones you left out with included=false and a short reason, so the admin can swap them in. Do not pad the plan to reach the limit — fewer, sharper checks are better.
 
 Each check has a kind:
 - api: calls the backend directly
 - ui: drives the real website in a browser like a visitor, user or admin would (slower — use where what people see matters: forms, error messages, pages loading the right data). It follows the same safety rules as api checks, and it can't watch live bidding updates (that's realtime).
+- ux: ease of use on the real website, judged like a first-time visitor would: is the next step obvious, are labels and messages clear, how many steps and how much typing it takes, does it work and look right on a phone or tablet (nothing cut off, overlapping, too small to tap or needing sideways scrolling), can it be used with the keyboard, and does an automatic accessibility scan find problems. Name the screen size in the title when it matters ("On a phone, …"). ux and ui checks share the website-check limit.
 - realtime: live Socket.IO behavior, e.g. several bidders seeing the same price
 - real_world: makes something real happen outside our system (a real phone call, SMS or email to a team number). Only plan these when the request needs them, say plainly what will happen, and expect the admin to approve them explicitly.
 
@@ -47,7 +50,7 @@ If submit_plan reports a problem, fix the plan and call it again. After it succe
 You cannot edit files or run commands in this phase, and secret files (.env) are off limits.`;
 
 const formatBudget = (b) =>
-  `- At most ${b.maxTests} included checks, of which at most ${b.maxUiTests} may be ui checks
+  `- At most ${b.maxTests} included checks, of which at most ${b.maxUiTests} may be ui or ux checks (together)
 - The test run will have about ${b.maxMinutes} minutes and $${b.maxCostUsd} in total, so prefer checks that are quick to run`;
 
 const formatFacts = (facts) =>

@@ -194,9 +194,9 @@ const submitPlan = catchAsyncError(async (req, res, next) => {
   if (included.length > run.budget.maxTests) {
     return next(new ErrorHandler(`Plan includes ${included.length} tests, budget allows ${run.budget.maxTests}`, 400));
   }
-  const uiCount = included.filter((i) => i.kind === "ui").length;
+  const uiCount = included.filter((i) => QaRun.BROWSER_KINDS.includes(i.kind)).length;
   if (uiCount > run.budget.maxUiTests) {
-    return next(new ErrorHandler(`Plan includes ${uiCount} UI tests, budget allows ${run.budget.maxUiTests}`, 400));
+    return next(new ErrorHandler(`Plan includes ${uiCount} website (ui/ux) tests, budget allows ${run.budget.maxUiTests}`, 400));
   }
 
   const version = (run.plan?.version || 0) + 1;
@@ -375,7 +375,7 @@ const submitResults = catchAsyncError(async (req, res, next) => {
       return next(new ErrorHandler(`Result ${key}: status must be one of ${QaRun.RESULT_STATUSES.join(", ")}`, 400));
     }
     const steps = Array.isArray(raw.steps) ? raw.steps.map((s) => str(s, 300)).filter(Boolean).slice(0, 10) : [];
-    const severity = raw.status === "fail" && QaRun.RESULT_SEVERITIES.includes(raw.severity) ? raw.severity : "";
+    const severity = ["fail", "ux_issue"].includes(raw.status) && QaRun.RESULT_SEVERITIES.includes(raw.severity) ? raw.severity : "";
     byKey.set(key, {
       key,
       title: item.title,

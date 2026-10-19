@@ -21,7 +21,7 @@ const adminName = (user) =>
 
 const BUDGET_LABELS = {
   maxTests: "Max tests",
-  maxUiTests: "Max UI tests",
+  maxUiTests: "Max website (ui/ux) tests",
   maxMinutes: "Max minutes",
   maxCostUsd: "Max cost ($)",
 };
@@ -113,6 +113,7 @@ const listRuns = catchAsyncError(async (req, res, next) => {
     pendingQuestions: questions.filter((q) => q.status === "pending").length,
     passed: results.filter((r) => r.status === "pass").length,
     failed: results.filter((r) => r.status === "fail").length,
+    uxIssues: results.filter((r) => r.status === "ux_issue").length,
     notVerified: results.filter((r) => r.status === "not_verified").length,
   }));
 

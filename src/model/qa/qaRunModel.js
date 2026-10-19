@@ -27,10 +27,14 @@ const CLAIMABLE = {
   approved: "running",
 };
 
-const PLAN_ITEM_KINDS = ["api", "ui", "realtime", "real_world"];
+// ux = ease of use on the real website (desktop, tablet or phone).
+const PLAN_ITEM_KINDS = ["api", "ui", "ux", "realtime", "real_world"];
+// Kinds that drive the browser; they share the budget's maxUiTests.
+const BROWSER_KINDS = ["ui", "ux"];
 const QUESTION_KINDS = ["yes_no", "text", "allow_skip", "number"];
-const RESULT_STATUSES = ["pass", "fail", "skipped", "not_verified"];
-// How much a failure matters to users or the business (failures only).
+// ux_issue = it works, but people would find it hard or confusing to use.
+const RESULT_STATUSES = ["pass", "fail", "ux_issue", "skipped", "not_verified"];
+// How much a failure or ux_issue matters to users or the business.
 const RESULT_SEVERITIES = ["critical", "major", "minor"];
 const MESSAGE_TYPES = ["request", "plan", "feedback", "question", "answer", "report", "status", "note", "clarification"];
 
@@ -148,6 +152,7 @@ module.exports = mongoose.model("qaRunModel", qaRunSchema);
 module.exports.RUN_STATUSES = RUN_STATUSES;
 module.exports.CLAIMABLE = CLAIMABLE;
 module.exports.PLAN_ITEM_KINDS = PLAN_ITEM_KINDS;
+module.exports.BROWSER_KINDS = BROWSER_KINDS;
 module.exports.QUESTION_KINDS = QUESTION_KINDS;
 module.exports.RESULT_STATUSES = RESULT_STATUSES;
 module.exports.RESULT_SEVERITIES = RESULT_SEVERITIES;

@@ -25,7 +25,9 @@ const PLAN_MIN_COST_USD = 0.25;
 const PLAN_TIME_SHARE = 0.5;
 const PLAN_MIN_MINUTES = 5;
 
-const KINDS = ["api", "ui", "realtime", "real_world"];
+const KINDS = ["api", "ui", "ux", "realtime", "real_world"];
+// Kinds that use the browser; together they must fit budget.maxUiTests.
+const BROWSER_KINDS = ["ui", "ux"];
 
 const planItem = z.object({
   key: z.string().regex(/^T\d{1,3}$/).describe("T1, T2, … in priority order"),
@@ -50,9 +52,9 @@ export function validatePlan(plan, budget) {
   if (included.length > budget.maxTests) {
     problems.push(`${included.length} checks are included but the budget allows ${budget.maxTests}. Mark the lowest-value ones included=false with a reason.`);
   }
-  const ui = included.filter((i) => i.kind === "ui").length;
+  const ui = included.filter((i) => BROWSER_KINDS.includes(i.kind)).length;
   if (ui > budget.maxUiTests) {
-    problems.push(`${ui} ui checks are included but the budget allows ${budget.maxUiTests}. Turn some into api checks or leave them out.`);
+    problems.push(`${ui} ui/ux checks are included but the budget allows ${budget.maxUiTests} in total. Turn some into api checks, merge them, or leave them out.`);
   }
   return problems;
 }

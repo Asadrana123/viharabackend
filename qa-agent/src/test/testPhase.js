@@ -42,7 +42,9 @@ const targetSchema = z
   })
   .describe("Which element: prefer role+name from the snapshot, then label/placeholder/text");
 const asSchema = z.enum(["visitor", "user", "admin"]).optional().describe('Who is logged in (default "visitor"); each has its own tab');
-const screenshotSchema = z.enum(["viewport", "full"]).optional().describe("Also return a screenshot (use when layout or looks matter)");
+const screenshotSchema = z.enum(["viewport", "full"]).optional().describe("Also return a screenshot (use when layout or looks matter, e.g. ux checks)");
+const deviceSchema = z.enum(["desktop", "tablet", "phone"]).optional()
+  .describe('Screen size (default "desktop"); use the same device in later calls to keep working in that tab');
 const sleep = (ms, signal) =>
   new Promise((resolve) => {
     const t = setTimeout(resolve, ms);
@@ -89,17 +91,19 @@ export function createTestTools(ctx) {
       {
         path: z.string().describe('Website path, e.g. "/", "/listing/123-main-st", "/admin/dashboard"'),
         as: asSchema,
+        device: deviceSchema,
       },
       async (args) => browserResult(await browser.open(args))
     ),
     tool(
       "browser_act",
-      "Do one thing on the open page — click, fill, select, check, uncheck, hover, press a key, scroll, wait, back — and return the page afterwards.",
+      "Do one thing on the open page — click, tap (touch, on tablet/phone), fill, select, check, uncheck, hover, press a key, scroll, wait, back — and return the page afterwards.",
       {
-        action: z.enum(["click", "fill", "select", "check", "uncheck", "hover", "press", "scroll", "wait", "back"]),
+        action: z.enum(["click", "tap", "fill", "select", "check", "uncheck", "hover", "press", "scroll", "wait", "back"]),
         target: targetSchema.optional().describe("The element (not needed for scroll, back, or a plain wait/press)"),
         value: z.union([z.string(), z.number()]).optional().describe("Text for fill, option for select, key for press (default Enter), pixels for scroll, ms for wait"),
         as: asSchema,
+        device: deviceSchema,
         screenshot: screenshotSchema,
       },
       async (args) => browserResult(await browser.act(args))
@@ -110,27 +114,39 @@ export function createTestTools(ctx) {
       {
         within: targetSchema.optional().describe("Only this part of the page, e.g. a form or dialog"),
         as: asSchema,
+        device: deviceSchema,
         screenshot: screenshotSchema,
       },
       async (args) => browserResult(await browser.look(args))
+    ),
+    tool(
+      "browser_audit",
+      "Run an automatic accessibility scan (WCAG 2.1 A/AA) on the open page: missing labels, low contrast, images without text, keyboard problems. Returns the issue types found, most serious first.",
+      {
+        as: asSchema,
+        device: deviceSchema,
+        css: z.string().optional().describe("Only scan this part of the page (CSS selector)"),
+      },
+      async (args) => browserResult(await browser.audit(args))
     ),
     tool(
       "record_result",
       "Record the result of one approved check. Call as soon as you know it; calling again for the same key replaces it.",
       {
         key: z.string().describe("The check's key, e.g. T3"),
-        status: z.enum(["pass", "fail", "not_verified", "skipped"]),
-        detail: z.string().min(5).max(2000).describe("Plain language for a non-technical reader: what happened (fail/pass) or why you couldn't check it (not_verified)"),
-        expected: z.string().max(1000).optional().describe("fail only: what should have happened instead"),
+        status: z.enum(["pass", "fail", "ux_issue", "not_verified", "skipped"])
+          .describe("ux_issue = it works, but people would find it hard, confusing or uncomfortable to use"),
+        detail: z.string().min(5).max(2000).describe("Plain language for a non-technical reader: what happened (fail/pass), what makes it hard to use (ux_issue) or why you couldn't check it (not_verified)"),
+        expected: z.string().max(1000).optional().describe("fail and ux_issue: what should have happened instead / what would make it easy"),
         steps: z.array(z.string().max(300)).max(10).optional()
-          .describe("fail and not_verified: short steps a non-technical person can follow on the website to see it themselves, e.g. [\"Open any property page\", \"Click Register\", \"Leave the phone empty and press Submit\"]"),
+          .describe("fail, ux_issue and not_verified: short steps a non-technical person can follow on the website to see it themselves, e.g. [\"Open any property page on a phone\", \"Click Register\", \"Leave the phone empty and press Submit\"]"),
         severity: z.enum(["critical", "major", "minor"]).optional()
-          .describe("fail only: critical = money, bids, security or data loss, or people can't complete the main task; major = a real problem many users would hit; minor = small or rare"),
+          .describe("fail and ux_issue: critical = money, bids, security or data loss, or people can't complete the main task; major = a real problem many users would hit; minor = small or rare"),
         location: z.string().max(300).optional().describe("file:line of the cause, for failures you traced (shown only to developers)"),
       },
       async ({ key, status, detail, expected, steps, severity, location }) => {
         if (!approvedKeys.has(key)) return textResult(`${key} is not an approved check. Approved: ${[...approvedKeys].join(", ")}`, true);
-        if (status === "fail" && !severity) return textResult("Failures need a severity (critical, major or minor).", true);
+        if ((status === "fail" || status === "ux_issue") && !severity) return textResult(`${status === "fail" ? "Failures" : "Ease-of-use issues"} need a severity (critical, major or minor).`, true);
         await api.submitResults(run._id, [{ key, status, detail, expected: expected || "", steps: steps || [], severity: severity || "", location: location || "" }]);
         recorded.set(key, status);
         const left = [...approvedKeys].filter((k) => !recorded.has(k));
@@ -241,7 +257,7 @@ export async function runTestPhase(run, log) {
         systemPrompt: { type: "preset", preset: "claude_code", append: TEST_SYSTEM_PROMPT },
         // No shell, no file writes, no network except through http_request and the guarded browser.
         tools: ["Read", "Grep", "Glob"],
-        allowedTools: ["Read", "Grep", "Glob", ...["http_request", "browser_open", "browser_act", "browser_look", "record_result", "post_progress", "ask_admin", "wait_for_answer", "finish_testing"].map((t) => `mcp__qa__${t}`)],
+        allowedTools: ["Read", "Grep", "Glob", ...["http_request", "browser_open", "browser_act", "browser_look", "browser_audit", "record_result", "post_progress", "ask_admin", "wait_for_answer", "finish_testing"].map((t) => `mcp__qa__${t}`)],
         permissionMode: "dontAsk",
         mcpServers: { qa: tools },
         hooks: secretFileHooks,
