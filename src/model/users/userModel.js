@@ -90,6 +90,16 @@ const userSchema = new mongoose.Schema({
   state: {
     type: String,
   },
+  // Government ID for auction bidding. Asked for once, on the first auction
+  // registration, and reused for every auction after. The file is stored
+  // privately on Cloudinary; only uploadedAt is sent to the client. Admins
+  // view the file through a short-lived signed link.
+  governmentId: {
+    publicId: { type: String, select: false },
+    resourceType: { type: String, select: false },
+    format: { type: String, select: false },
+    uploadedAt: { type: Date, default: null },
+  },
   savedProperties: [
     {
       type: mongoose.Schema.Types.ObjectId,

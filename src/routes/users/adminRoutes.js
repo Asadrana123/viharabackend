@@ -20,6 +20,7 @@ const {
   updateRegistrationStatus,
   deleteRegistration,
   getRegistrationActivity,
+  getGovernmentIdLink,
 } = require("../../controller/bidding/auctionRegistrationController");
 const {
   adminGetRealtors,
@@ -71,6 +72,13 @@ router.delete(
   isAuthenticated,
   authorizeRoles("admin"),
   deleteUser
+);
+
+router.get(
+  "/user/:id/government-id",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  getGovernmentIdLink
 );
 
 // Auction registration routes

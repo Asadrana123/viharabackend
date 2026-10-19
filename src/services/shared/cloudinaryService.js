@@ -98,8 +98,57 @@ async function uploadImagesFromUrls(urls, folder, opts = {}) {
     return { uploaded, failed };
 }
 
+/**
+ * Upload an in-memory file as a private ("authenticated") asset. Private assets
+ * have no public URL; read them with privateFileUrl.
+ * @param {Buffer} buffer
+ * @param {string} folder
+ * @returns {Promise<object>} Cloudinary upload result (public_id, resource_type, format, …).
+ */
+function uploadPrivateBuffer(buffer, folder) {
+    return new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+            {
+                folder,
+                type: "authenticated",
+                resource_type: "auto",
+                overwrite: false,
+                unique_filename: true,
+            },
+            (err, result) => (err ? reject(err) : resolve(result))
+        );
+        stream.end(buffer);
+    });
+}
+
+/**
+ * Signed link to a private asset that stops working after `expiresInSeconds`.
+ */
+function privateFileUrl({ publicId, resourceType, format }, expiresInSeconds = 600) {
+    return cloudinary.utils.private_download_url(publicId, format, {
+        resource_type: resourceType || "image",
+        type: "authenticated",
+        expires_at: Math.floor(Date.now() / 1000) + expiresInSeconds,
+    });
+}
+
+/** Delete a private asset. Never throws. */
+async function deletePrivateFile({ publicId, resourceType }) {
+    try {
+        await cloudinary.uploader.destroy(publicId, {
+            type: "authenticated",
+            resource_type: resourceType || "image",
+        });
+    } catch (err) {
+        console.error("[cloudinary] private file delete failed:", err.message);
+    }
+}
+
 module.exports = {
     isConfigured,
     uploadImageFromUrl,
     uploadImagesFromUrls,
+    uploadPrivateBuffer,
+    privateFileUrl,
+    deletePrivateFile,
 };

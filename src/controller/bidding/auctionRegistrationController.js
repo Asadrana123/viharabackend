@@ -27,7 +27,16 @@ const {
   onVerificationChange,
 } = require("../../services/propertyEmail/propertyEmailService");
 
+const {
+  isConfigured: isCloudinaryConfigured,
+  uploadPrivateBuffer,
+  privateFileUrl,
+  deletePrivateFile,
+} = require("../../services/shared/cloudinaryService");
+
 const FRONTEND_URL = "https://vihara.ai";
+const GOVERNMENT_ID_SECRET_FIELDS =
+  "+governmentId.publicId +governmentId.resourceType +governmentId.format";
 
 // Resolve a realtor showcase referral (slug) to an APPROVED realtor doc.
 // Returns null for a missing / stale / unknown-realtor ref, so a bad referral
@@ -120,6 +129,11 @@ exports.submitAuctionRegistration = catchAsyncError(
     const user = await User.findById(userId);
     if (!user) {
       return next(new Errorhandler("User not found", 404));
+    }
+
+    // A government ID must be on file (uploaded once, reused for every auction).
+    if (!user.governmentId?.uploadedAt) {
+      return next(new Errorhandler("Please upload a government ID to register", 400));
     }
 
     // Check if auction/product exists
@@ -284,6 +298,57 @@ exports.submitAuctionRegistration = catchAsyncError(
   }
 );
 
+// Upload the signed-in user's government ID (multipart field "governmentId").
+// Stored privately on the user, so it is asked for only once. A new upload
+// replaces the old file.
+exports.uploadGovernmentId = catchAsyncError(
+  async (req, res, next) => {
+    if (!req.file) {
+      return next(new Errorhandler("Please choose a file to upload", 400));
+    }
+    if (!isCloudinaryConfigured()) {
+      return next(new Errorhandler("File storage is not configured", 500));
+    }
+
+    const previous = await User.findById(req.user._id).select(GOVERNMENT_ID_SECRET_FIELDS);
+    const result = await uploadPrivateBuffer(req.file.buffer, "government-ids");
+
+    const governmentId = {
+      publicId: result.public_id,
+      resourceType: result.resource_type,
+      format: result.format,
+      uploadedAt: new Date()
+    };
+    // updateOne, not save(): the user model's pre-save hook re-hashes the password.
+    await User.updateOne({ _id: req.user._id }, { $set: { governmentId } });
+
+    if (previous?.governmentId?.publicId) deletePrivateFile(previous.governmentId);
+
+    res.status(200).json({
+      success: true,
+      message: "Government ID uploaded",
+      governmentIdUploadedAt: governmentId.uploadedAt
+    });
+  }
+);
+
+// Admin: short-lived link to view a user's government ID.
+exports.getGovernmentIdLink = catchAsyncError(
+  async (req, res, next) => {
+    const user = await User.findById(req.params.id).select(GOVERNMENT_ID_SECRET_FIELDS);
+    if (!user?.governmentId?.publicId) {
+      return next(new Errorhandler("No government ID on file for this user", 404));
+    }
+
+    const expiresInSeconds = 600;
+    res.status(200).json({
+      success: true,
+      url: privateFileUrl(user.governmentId, expiresInSeconds),
+      expiresInSeconds
+    });
+  }
+);
+
 // Get registration status for a specific auction
 exports.getRegistrationStatus = catchAsyncError(
   async (req, res, next) => {
@@ -334,7 +399,7 @@ exports.getAllRegistrations = catchAsyncError(
     const pageNum = all ? 1 : Math.max(1, parseInt(page) || 1);
 
     let find = AuctionRegistration.find(query)
-      .populate('userId', 'name email')
+      .populate('userId', 'name email governmentId.uploadedAt')
       .populate('auctionId', 'productName street city state image')
       .populate('realtorId', 'name slug')
       .sort({ submittedAt: -1, _id: -1 });
