@@ -8,7 +8,8 @@ import { signals as defaultSignals } from "./signals.js";
 
 // Every element in every window of a process, one per line: role, name,
 // description, value (tabs and newlines inside them flattened to spaces).
-// Returns "NO_PROCESS" when the app isn't running.
+// Returns "NO_PROCESS" when the app isn't running. (Checked through the list of
+// process names: `exists process` takes about 3 s for an app that isn't running.)
 const DUMP_SCRIPT = `
 on clean(t)
   set AppleScript's text item delimiters to {tab, linefeed, return}
@@ -22,7 +23,7 @@ end clean
 on run argv
   set procName to item 1 of argv
   tell application "System Events"
-    if not (exists process procName) then return "NO_PROCESS"
+    if (name of processes) does not contain procName then return "NO_PROCESS"
     set out to {}
     tell process procName
       repeat with w in windows
@@ -64,7 +65,7 @@ on run argv
   set procName to item 1 of argv
   set labels to rest of argv
   tell application "System Events"
-    if not (exists process procName) then return "NO_PROCESS"
+    if (name of processes) does not contain procName then return "NO_PROCESS"
     tell process procName
       repeat with w in windows
         try
@@ -104,8 +105,8 @@ end run
 const clean = (s) => (s === "missing value" ? "" : s);
 
 /** @returns {Promise<Array<{role,name,desc,value}>|null>} null when the process isn't running */
-export async function dumpUi(processName = "FaceTime") {
-  const out = await osascript(DUMP_SCRIPT, [processName]);
+export async function dumpUi(processName = "FaceTime", timeoutMs = 15000) {
+  const out = await osascript(DUMP_SCRIPT, [processName], timeoutMs);
   if (out === "NO_PROCESS") return null;
   return out
     .split("\n")
@@ -121,13 +122,19 @@ export async function dumpUi(processName = "FaceTime") {
 // Notification Center, so reading FaceTime alone always looks idle.
 export const CALL_PROCESSES = ["FaceTime", "NotificationCenter", "UserNotificationCenter"];
 
+// Once the person picks up, reading the call screen in Notification Center often hangs until
+// the time limit (15 s by default), which made every check during a call that slow: Maya
+// joined 15-30 s after the answer. A screen that can't be read this quickly is skipped,
+// the same as one that can't be read at all (with the call live, that means "connected").
+const CALL_SCREEN_TIMEOUT_MS = 3000;
+
 /** @returns {Promise<Array|null>} every element of all the call processes together; null when none is running */
-export async function dumpAll() {
+export async function dumpAll(timeoutMs = CALL_SCREEN_TIMEOUT_MS) {
   let found = false;
   const all = [];
   for (const proc of CALL_PROCESSES) {
     try {
-      const els = await dumpUi(proc);
+      const els = await dumpUi(proc, timeoutMs);
       if (els) {
         found = true;
         all.push(...els);
@@ -188,7 +195,7 @@ export function classify(els, signals = defaultSignals, ignore = baseline) {
 // The menu names are English; on another language set them the same way as signals.json.
 const CALL_LIVE_SCRIPT = `
 tell application "System Events"
-  if not (exists process "FaceTime") then return "false"
+  if (name of processes) does not contain "FaceTime" then return "false"
   try
     return (enabled of menu item "Mute" of menu 1 of menu bar item "Video" of menu bar 1 of process "FaceTime") as text
   on error
@@ -235,8 +242,8 @@ export async function dial(phone, { timeoutMs = 15000 } = {}) {
   baseline = new Set();
   await openUrl(`facetime-audio://${phone}`);
   await sleep(1500);
-  // FaceTime's screen before the call starts: the Recents list and the prompt.
-  setBaseline(await dumpAll());
+  // FaceTime's screen before the call starts: the Recents list and the prompt (no hurry here).
+  setBaseline(await dumpAll(15000));
 
   const deadline = Date.now() + timeoutMs;
   let clicked = false;

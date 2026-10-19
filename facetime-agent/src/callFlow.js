@@ -2,7 +2,7 @@
 // passed in, so this exact logic runs on the Mac (macAgent.js) and in tests
 // with stand-ins.
 //
-//   ui:      { dial(phone), readCallState(), hangUp(), quitFaceTime() }
+//   ui:      { dial(phone), readCallState(), callIsLive()?, hangUp(), quitFaceTime() }
 //   backend: { reportStatus(jobId, status, note), answered(jobId) }
 //   connect: (link) => { done: Promise<string>, hangUp(reason) }   (mayaBridge.connectToMaya, pre-wired)
 const defaults = {
@@ -47,7 +47,10 @@ async function bridgeCall(job, link, { ui, backend, connect, log }, o) {
       if (!watching) return;
       if (Date.now() - startedAt > o.maxCallMs) return call.hangUp(`call reached the ${Math.round(o.maxCallMs / 60000)} minute limit`);
       try {
-        notConnected = (await ui.readCallState()).state === "connected" ? 0 : notConnected + 1;
+        // During the call only "is it still live" matters. The quick menu check (callIsLive) is used
+        // when there is one: reading the call screen is slow then, and the load costs audio.
+        const live = ui.callIsLive ? await ui.callIsLive() : (await ui.readCallState()).state === "connected";
+        notConnected = live ? 0 : notConnected + 1;
       } catch {
         notConnected += 1;
       }

@@ -37,6 +37,9 @@ function connect({ websocketCallUrl, audioFormat }) {
     audio: "sox",
     inputDevice: FROM_FACETIME, // what the person says → Maya
     outputDevice: TO_FACETIME, // what Maya says → the person
+    // FaceTime plays on channels 1-2 of the 16-channel cable (averaging all 16 would be 8x too quiet), and
+    // the caller comes out of it very quiet (about -45 dB), so lift it 24 dB; the limiter stops clipping.
+    inputMix: ["remix", "1,2", "gain", "-l", "24"],
     onEvent: (event) => {
       if (event.type === "transcript" && event.transcriptType === "final") log(`  ${event.role}: ${event.transcript}`);
     },
@@ -60,6 +63,15 @@ async function main() {
   };
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
+  process.on("SIGHUP", stop); // the Terminal window was closed
+  // A crash must not leave the Mac's sound stuck on BlackHole.
+  for (const event of ["uncaughtException", "unhandledRejection"]) {
+    process.on(event, async (err) => {
+      console.error(`${event}:`, err?.stack || err);
+      await restoreAudio();
+      process.exit(1);
+    });
+  }
 
   const hello = await backend.heartbeat(VERSION);
   log(`Signed in as "${hello.lineName}". FaceTime is ${hello.facetimeEnabled ? "ON" : "OFF (turn it on for this Mac in the admin panel)"}.`);
