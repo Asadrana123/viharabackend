@@ -602,7 +602,7 @@ function registerSocketHandlers(socket) {
       const timeLeftMs = endTime - nowTime;
 
       if (timeLeftMs > 0 && timeLeftMs < 5 * 60 * 1000) {
-        const newEndTime = new Date(endTime.getTime() + 15 * 60 * 1000);
+        const newEndTime = new Date(endTime.getTime() + 5 * 60 * 1000);
         auctionData.endTime = newEndTime;              // keep in memory as endTime
         activeAuctions.set(auctionId, auctionData);
 
