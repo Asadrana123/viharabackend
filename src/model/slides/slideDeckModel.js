@@ -1,0 +1,35 @@
+// model/slides/slideDeckModel.js
+//
+// One deck an admin asked the Slides agent for: what they asked, the plan
+// Claude wrote, and the Google Slides file it became.
+const mongoose = require("mongoose");
+
+const slideDeckSchema = new mongoose.Schema(
+  {
+    topic: { type: String, required: true, trim: true, maxlength: 300 },
+    audience: { type: String, default: "", trim: true, maxlength: 300 },
+    notes: { type: String, default: "", maxlength: 30000 },
+    slideCount: { type: Number, required: true, min: 3, max: 20 },
+
+    status: { type: String, enum: ["working", "ready", "failed"], default: "working", index: true },
+    step: { type: String, default: "" }, // plain-language progress shown to the admin
+    error: { type: String, default: "" },
+
+    title: { type: String, default: "" },
+    plan: { type: mongoose.Schema.Types.Mixed, default: null }, // slides as Claude wrote them
+    presentationId: { type: String, default: "" },
+    url: { type: String, default: "" },
+
+    usage: {
+      inputTokens: { type: Number, default: 0 },
+      outputTokens: { type: Number, default: 0 },
+    },
+
+    requestedById: { type: mongoose.Schema.Types.ObjectId },
+    requestedByName: { type: String, default: "", trim: true },
+    requestedByEmail: { type: String, default: "", trim: true },
+  },
+  { timestamps: true }
+);
+
+module.exports = mongoose.model("slideDeckModel", slideDeckSchema);

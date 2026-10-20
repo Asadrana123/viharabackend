@@ -86,6 +86,7 @@ const designAdminRoutes = require("./routes/design/designAdminRoutes");
 const { recoverDesignJobs } = require("./services/design/designJobService");
 // Meta Ads Loop: Slack approvals (events, buttons, /adsloop), health, admin endpoints.
 const adsLoopRoutes = require("./routes/adsLoop/adsLoopRoutes");
+const googleSlidesRoutes = require("./routes/slides/googleSlidesRoutes");
 // Zernio webhooks (signed): comment.received drives the Instagram comment auto-reply.
 const zernioWebhookRoutes = require("./routes/social/zernioWebhookRoutes");
 const { recoverAdsLoop } = require("./jobs/adsLoopJob");
@@ -184,6 +185,7 @@ app.use("/api/v1/admin-ask", adminAskRoutes);
 app.use("/api/v1/brand-kit", brandKitRoutes);
 app.use("/api/v1/design", designAdminRoutes);
 app.use("/api/v1/ads-loop", adsLoopRoutes);
+app.use("/api/v1/google-slides", googleSlidesRoutes);
 // FaceTime test (Maya over FaceTime audio via a Mac). Inert unless FACETIME_ENABLED=true.
 app.use("/api/v1/facetime", require("./routes/calling/facetimeRoutes"));
 app.use("/api/webhooks/zernio", zernioWebhookRoutes);
