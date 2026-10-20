@@ -97,7 +97,8 @@ async function roundRegistrations(product, round, { approvedOnly = false } = {})
         name: r.name || "Unknown",
         buyerType: r.buyerType || "",
         status: r.status || "pending",
-        submittedAt: r.submittedAt
+        submittedAt: r.submittedAt,
+        carriedOver: isCarriedOver(round, r.submittedAt)
       }));
   }
   const regs = await AuctionRegistration.find({
@@ -112,14 +113,24 @@ async function roundRegistrations(product, round, { approvedOnly = false } = {})
     name: `${r.firstName || ""} ${r.lastName || ""}`.trim() || "Unknown",
     buyerType: r.buyerType || "",
     status: r.status || "pending",
-    submittedAt: r.submittedAt
+    submittedAt: r.submittedAt,
+    carriedOver: isCarriedOver(round, r.submittedAt)
   }));
 }
 
+// Registrations belong to the property, not a round, so a later auction also
+// lists people who signed up for an earlier one. Flag those so the seller can
+// tell them apart from sign-ups for this auction.
+function isCarriedOver(round, submittedAt) {
+  if (!round || round.roundNumber <= 1 || !round.createdAt || !submittedAt) return false;
+  return new Date(submittedAt) < new Date(round.createdAt);
+}
+
 function countRegistrations(list) {
-  const counts = { total: 0, approved: 0, pending: 0 };
+  const counts = { total: 0, approved: 0, pending: 0, carriedOver: 0 };
   list.forEach((r) => {
     if (counts[r.status] !== undefined) counts[r.status] += 1;
+    if (r.carriedOver) counts.carriedOver += 1;
     counts.total += 1;
   });
   return counts;
@@ -134,11 +145,21 @@ exports.getSellerAuctions = catchAsyncError(async (req, res, next) => {
 
   const auctions = await Product.find(filter)
     .select("productName city state street status currentBid auctionEndDate currentRoundId")
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 })
+    .lean();
+
+  // How many times each property has been auctioned, so the property list can
+  // flag the ones with more than one auction.
+  const roundCounts = await AuctionRound.aggregate([
+    { $match: { productId: { $in: auctions.map((a) => a._id) } } },
+    { $group: { _id: "$productId", count: { $sum: 1 } } }
+  ]);
+  const countByProduct = {};
+  roundCounts.forEach((rc) => { countByProduct[String(rc._id)] = rc.count; });
 
   return res.status(200).json({
     success: true,
-    auctions
+    auctions: auctions.map((a) => ({ ...a, auctionCount: countByProduct[String(a._id)] || 1 }))
   });
 });
 
