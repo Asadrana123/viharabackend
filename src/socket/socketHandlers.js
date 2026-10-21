@@ -169,9 +169,9 @@ async function finalizeAuction(auctionId) {
       status: "sold"
     });
 
-    // Email the full closed-auction report (PDF + Excel) to every
-    // assigned seller. Fires whether or not there was a winning bid
-    // (with no bids only the Terms & Conditions PDF is attached).
+    // Email the full closed-auction report (one PDF with the Terms &
+    // Conditions, plus Excel) to every assigned seller. Fires whether or not
+    // there was a winning bid (with no bids only the Terms PDF is attached).
     // Fire-and-forget — the sender swallows its own errors and never
     // blocks finalization.
     reportTriggered = true;

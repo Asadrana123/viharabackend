@@ -1,10 +1,12 @@
 // utils/termsPdfExport.js
 //
 // Renders a property's Terms & Conditions (config/property/termsAndConditions.js)
-// to a PDF Buffer, e.g. for attaching to the seller auction-closed email.
+// to a PDF Buffer, e.g. for attaching to the seller auction-closed email —
+// either on its own or after the auction report in one combined PDF.
 
 const PDFDocument = require("pdfkit");
 const { getPropertyDisclaimers } = require("../config/property/termsAndConditions");
+const { renderAuctionReportPdf } = require("./sellerReportExport");
 
 const PDF = {
   ink: "#081f52",
@@ -51,7 +53,8 @@ function renderTermsPdf(doc, product = {}) {
   });
 }
 
-function renderTermsPdfBuffer(product) {
+// Run a draw function against a fresh A4 document and collect it into a Buffer.
+function renderPdfBuffer(draw) {
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({ size: "A4", margin: 50 });
@@ -60,7 +63,7 @@ function renderTermsPdfBuffer(product) {
       doc.on("end", () => resolve(Buffer.concat(chunks)));
       doc.on("error", reject);
 
-      renderTermsPdf(doc, product);
+      draw(doc);
       doc.end();
     } catch (err) {
       reject(err);
@@ -68,4 +71,17 @@ function renderTermsPdfBuffer(product) {
   });
 }
 
-module.exports = { renderTermsPdfBuffer };
+function renderTermsPdfBuffer(product) {
+  return renderPdfBuffer((doc) => renderTermsPdf(doc, product));
+}
+
+// The auction report followed by the Terms & Conditions, starting on a new page.
+function renderReportWithTermsPdfBuffer(report, product) {
+  return renderPdfBuffer((doc) => {
+    renderAuctionReportPdf(doc, report);
+    doc.addPage();
+    renderTermsPdf(doc, product);
+  });
+}
+
+module.exports = { renderTermsPdfBuffer, renderReportWithTermsPdfBuffer };

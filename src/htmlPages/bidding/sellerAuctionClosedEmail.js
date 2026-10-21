@@ -67,8 +67,8 @@ const getSellerAuctionClosedEmailTemplate = ({ name, report }) => {
       </table>
       <div class="attach-note">
         <strong>Attached to this email:</strong><br/>
-        ${hasBids ? `• Full auction report (PDF)<br/>
-        • Full auction report (Excel)<br/>` : ""}• Terms and Conditions for this property (PDF)<br/>
+        ${hasBids ? `• Full auction report with the Terms and Conditions (PDF)<br/>
+        • Full auction report (Excel)<br/>` : "• Terms and Conditions for this property (PDF)<br/>"}
         ${hasBids ? "The reports include every bid and registration for this property." : ""}
       </div>
       ${hasBids ? `<p>All times in the report are shown in the property's local timezone.</p>` : ""}

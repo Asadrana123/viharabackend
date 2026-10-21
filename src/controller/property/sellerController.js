@@ -10,10 +10,9 @@ const {
   renderAuctionReportPdf,
   buildAuctionReportWorkbook,
   buildReportFilename,
-  renderAuctionReportPdfBuffer,
   buildAuctionReportExcelBuffer
 } = require("../../utils/sellerReportExport");
-const { renderTermsPdfBuffer } = require("../../utils/termsPdfExport");
+const { renderTermsPdfBuffer, renderReportWithTermsPdfBuffer } = require("../../utils/termsPdfExport");
 const PDFDocument = require("pdfkit");
 const mongoose = require("mongoose");
 const sendEmail = require("../../utils/sendEmail");
@@ -590,10 +589,10 @@ exports.exportSellerAuctionExcel = catchAsyncError(async (req, res, next) => {
   res.end();
 });
 
-// Email the full closed-auction report (PDF + Excel) to every assigned seller.
-// Called from the socket auction-finalization flow for the round that just
-// closed. Sends even when there were no bids, but then without the report
-// attachments (the Terms & Conditions PDF is always attached).
+// Email the full closed-auction report to every assigned seller: one PDF
+// (report + Terms & Conditions) and the Excel report. Called from the socket
+// auction-finalization flow for the round that just closed. Sends even when
+// there were no bids, but then with only the Terms & Conditions PDF.
 // Fully self-contained and fire-and-forget: it swallows its own errors so it can
 // never block or break auction finalization.
 exports.sendAuctionClosedSellerReport = async (auctionId, roundId = null) => {
@@ -623,12 +622,13 @@ exports.sendAuctionClosedSellerReport = async (auctionId, roundId = null) => {
       return;
     }
 
-    // Attach the report only when the auction received bids. Render both
-    // attachments once and reuse them for every recipient.
-    let attachments = [];
+    // With bids: one PDF (report + Terms & Conditions) plus the Excel report.
+    // Without bids: just the Terms & Conditions PDF. Rendered once and reused
+    // for every recipient.
+    let attachments;
     if (report.bids.length > 0) {
       const [pdfBuffer, excelBuffer] = await Promise.all([
-        renderAuctionReportPdfBuffer(report),
+        renderReportWithTermsPdfBuffer(report, product),
         buildAuctionReportExcelBuffer(report)
       ]);
 
@@ -645,15 +645,15 @@ exports.sendAuctionClosedSellerReport = async (auctionId, roundId = null) => {
           contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         }
       ];
+    } else {
+      attachments = [
+        {
+          filename: "Terms_and_Conditions.pdf",
+          content: await renderTermsPdfBuffer(product),
+          contentType: "application/pdf"
+        }
+      ];
     }
-
-    // The property's Terms & Conditions go out with every closed-auction email,
-    // bids or not — same content as the /listing/:slug page.
-    attachments.push({
-      filename: "Terms_and_Conditions.pdf",
-      content: await renderTermsPdfBuffer(product),
-      contentType: "application/pdf"
-    });
 
     const propertyLabel =
       report.property?.productName || report.property?.location || "your property";
