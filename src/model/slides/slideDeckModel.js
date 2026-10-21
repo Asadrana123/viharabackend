@@ -19,6 +19,21 @@ const slideDeckSchema = new mongoose.Schema(
     plan: { type: mongoose.Schema.Types.Mixed, default: null }, // slides as Claude wrote them
     presentationId: { type: String, default: "" },
     url: { type: String, default: "" },
+    // Google's id for each slide in `plan`, in the same order, so a change can replace just those slides.
+    slideIds: { type: [String], default: [] },
+
+    // Changes the admin asked for after the deck was made, oldest first.
+    revisions: [
+      {
+        instruction: { type: String, required: true, maxlength: 2000 },
+        status: { type: String, enum: ["working", "done", "failed"], default: "working" },
+        changedSlides: { type: [Number], default: [] }, // 1-based numbers in the new deck
+        removedCount: { type: Number, default: 0 },
+        error: { type: String, default: "" },
+        byName: { type: String, default: "" },
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
 
     usage: {
       inputTokens: { type: Number, default: 0 },

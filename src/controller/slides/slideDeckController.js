@@ -5,7 +5,7 @@
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const ErrorHandler = require("../../utils/errorhandler");
 const SlideDeck = require("../../model/slides/slideDeckModel");
-const { startDeck, failStaleDecks } = require("../../services/slides/deckJobService");
+const { startDeck, startRevision, failStaleDecks } = require("../../services/slides/deckJobService");
 const { getConnectionStatus } = require("../../services/slides/googleAuthService");
 const { MIN_SLIDES, MAX_SLIDES, DEFAULT_SLIDES, MAX_NOTES_CHARS } = require("../../config/slidesAgentConfig");
 
@@ -45,7 +45,7 @@ exports.createDeck = catchAsyncError(async (req, res, next) => {
 
 exports.getDeck = catchAsyncError(async (req, res, next) => {
   await failStaleDecks();
-  const deck = await SlideDeck.findById(req.params.id).select(`${LIST_FIELDS} notes plan`).catch(() => null);
+  const deck = await SlideDeck.findById(req.params.id).select(`${LIST_FIELDS} notes plan revisions`).catch(() => null);
   if (!deck) return next(new ErrorHandler("Deck not found", 404));
   res.status(200).json({ success: true, deck });
 });
@@ -54,4 +54,28 @@ exports.listDecks = catchAsyncError(async (req, res) => {
   await failStaleDecks();
   const decks = await SlideDeck.find().sort({ createdAt: -1 }).limit(50).select(LIST_FIELDS);
   res.status(200).json({ success: true, decks });
+});
+
+// Ask the agent to change a finished deck. Only the slides that change are rebuilt.
+exports.reviseDeck = catchAsyncError(async (req, res, next) => {
+  const instruction = String(req.body?.instruction || "").trim();
+  if (!instruction) return next(new ErrorHandler("Please say what you'd like to change", 400));
+  if (instruction.length > 2000) return next(new ErrorHandler("Keep the change under 2,000 characters", 400));
+
+  // Only a ready deck made with visual slide types, and only one change at a time.
+  const deck = await SlideDeck.findOneAndUpdate(
+    { _id: req.params.id, status: "ready", "plan.0.type": { $exists: true } },
+    { $set: { status: "working", step: "Starting" }, $push: { revisions: { instruction, byName: adminName(req.user) } } },
+    { new: true, projection: `${LIST_FIELDS} notes plan revisions` }
+  ).catch(() => null);
+
+  if (!deck) {
+    const existing = await SlideDeck.findById(req.params.id).select("status plan").lean().catch(() => null);
+    if (!existing) return next(new ErrorHandler("Deck not found", 404));
+    if (existing.status === "working") return next(new ErrorHandler("This deck is already being worked on. Wait for it to finish.", 409));
+    if (existing.status === "failed") return next(new ErrorHandler("This deck wasn't made, so it can't be changed. Try making it again.", 409));
+    return next(new ErrorHandler("This deck was made with an older version of the agent and can't be changed. Make a new deck instead.", 409));
+  }
+  startRevision(deck._id);
+  res.status(200).json({ success: true, deck });
 });

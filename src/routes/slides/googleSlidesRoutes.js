@@ -7,7 +7,7 @@ const express = require("express");
 const router = express.Router();
 
 const { getStatus, connect, callback, disconnect } = require("../../controller/slides/googleSlidesController");
-const { createDeck, getDeck, listDecks } = require("../../controller/slides/slideDeckController");
+const { createDeck, getDeck, listDecks, reviseDeck } = require("../../controller/slides/slideDeckController");
 const { isAuthenticated, authorizeRoles } = require("../../middleware/auth");
 
 const admin = [isAuthenticated, authorizeRoles("admin")];
@@ -21,5 +21,6 @@ router.post("/disconnect", ...admin, disconnect);
 router.get("/decks", ...admin, listDecks);
 router.post("/decks", ...admin, createDeck);
 router.get("/decks/:id", ...admin, getDeck);
+router.post("/decks/:id/revise", ...admin, reviseDeck);
 
 module.exports = router;
