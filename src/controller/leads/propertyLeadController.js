@@ -147,6 +147,8 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       email: lead.email,
       buyerType: lead.buyerType,
       quotePrice: lead.quotePrice,
+      needsFinancing: lead.needsFinancing,
+      downPayment: lead.downPayment,
     }).catch((e) => console.error(`[property-call:${slug}] scheduling failed:`, e.message));
     call = { attempted: true };
   } else {

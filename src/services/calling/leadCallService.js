@@ -36,6 +36,9 @@ const dispatchRegistrationCall = async (lead = {}) => {
     market: (lead.market || "").toString().trim(),
     buyerType: (lead.buyerType || "").toString().trim(),
     dealSize: (lead.dealSize || "").toString().trim(),
+    // Property auction: the buyer's quoted price, already spoken as words
+    // ({{prospect_quote}}). Was dropped here before, so Maya never heard it.
+    quote: (lead.quote || "").toString().trim(),
     // Buy-box answers the funnel schedulers put on the payload (NorCal,
     // New Deals). buildVariableValues turns them into {{prospect_*}} vars.
     where: (lead.where || "").toString().trim(),
