@@ -218,6 +218,129 @@ async function fetchGaReportData(day) {
     return { reportDay, weekAgo, daily, events, pages, landing, channels, sources, campaignsDay, campaignsWeek, campaignSignUpsWeek, signUpByForm, viewByPageType };
 }
 
+/**
+ * Numbers for the admin dashboard: one range against the range before it.
+ * Totals are their own query because unique visitors over a range can't be added up from daily rows.
+ * @param {{current: {since, until}, previous: {since, until}, granularity: "day"|"hour"}} windows
+ */
+async function fetchGaRangeData({ current, previous, granularity }) {
+    const both = [
+        { startDate: current.since, endDate: current.until },
+        { startDate: previous.since, endDate: previous.until },
+    ];
+    const currentOnly = [both[0]];
+    const [totals, series, events, channels, pages, landing] = await Promise.all([
+        runReport({
+            metrics: ["activeUsers", "newUsers", "sessions", "engagedSessions", "screenPageViews", "userEngagementDuration"],
+            dateRanges: both,
+        }),
+        runReport({
+            dimensions: [granularity === "hour" ? "hour" : "date"],
+            metrics: ["activeUsers", "sessions", "screenPageViews"],
+            dateRanges: both,
+        }),
+        runReport({
+            dimensions: ["eventName"],
+            metrics: ["eventCount"],
+            dateRanges: both,
+            dimensionFilter: { filter: { fieldName: "eventName", inListFilter: { values: TRACKED_EVENTS } } },
+        }),
+        runReport({
+            dimensions: ["sessionDefaultChannelGroup"],
+            metrics: ["sessions", "engagedSessions"],
+            dateRanges: both,
+            orderBys: byMetricDesc("sessions"),
+        }),
+        runReport({
+            dimensions: ["pagePath"],
+            metrics: ["screenPageViews", "activeUsers", "userEngagementDuration"],
+            dateRanges: currentOnly,
+            dimensionFilter: ADMIN_PATH_FILTER,
+            orderBys: byMetricDesc("screenPageViews"),
+            limit: TOP_ROWS,
+        }),
+        runReport({
+            dimensions: ["landingPage"],
+            metrics: ["sessions", "engagedSessions"],
+            dateRanges: currentOnly,
+            dimensionFilter: { notExpression: { filter: { fieldName: "landingPage", stringFilter: { matchType: "BEGINS_WITH", value: "/admin" } } } },
+            orderBys: byMetricDesc("sessions"),
+            limit: TOP_ROWS,
+        }),
+    ]);
+    return { totals, series, events, channels, pages, landing };
+}
+
+/** One page over a range against the range before it (exact path match). */
+async function fetchGaPageData({ current, previous, granularity, path }) {
+    const both = [
+        { startDate: current.since, endDate: current.until },
+        { startDate: previous.since, endDate: previous.until },
+    ];
+    const dimensionFilter = { filter: { fieldName: "pagePath", stringFilter: { matchType: "EXACT", value: path } } };
+    const [totals, series] = await Promise.all([
+        runReport({ metrics: ["screenPageViews", "activeUsers", "userEngagementDuration"], dateRanges: both, dimensionFilter }),
+        runReport({
+            dimensions: [granularity === "hour" ? "hour" : "date"],
+            metrics: ["screenPageViews"],
+            dateRanges: both,
+            dimensionFilter,
+        }),
+    ]);
+    return { totals, series };
+}
+
+// Audience breakdowns for the admin dashboard, each as active users over one range.
+// New vs returning counts sessions, because one person can be both in the same range.
+const AUDIENCE_ROWS = 10;
+const AUDIENCE_BREAKDOWNS = {
+    country: { dimension: "country", metric: "activeUsers" },
+    region: { dimension: "region", metric: "activeUsers" },
+    city: { dimension: "city", metric: "activeUsers" },
+    device: { dimension: "deviceCategory", metric: "activeUsers" },
+    browser: { dimension: "browser", metric: "activeUsers" },
+    os: { dimension: "operatingSystem", metric: "activeUsers" },
+    language: { dimension: "language", metric: "activeUsers" },
+    newVsReturning: { dimension: "newVsReturning", metric: "sessions" },
+    // Empty until Google signals is switched on for the property.
+    age: { dimension: "userAgeBracket", metric: "activeUsers" },
+    gender: { dimension: "userGender", metric: "activeUsers" },
+};
+// GA4 allows 10 requests at once per property, and other jobs use it too, so run these in small groups.
+const AUDIENCE_GROUP_SIZE = 5;
+
+/** @param {{current: {since, until}}} windows */
+async function fetchGaAudienceData({ current }) {
+    const dateRanges = [{ startDate: current.since, endDate: current.until }];
+    const raw = {};
+    // The total runs alongside the first group: 1 + 5 requests at once, under the limit of 10.
+    const totalPromise = runReport({ metrics: ["activeUsers"], dateRanges }).then((rows) => {
+        raw.totalUsers = rows[0] ? rows[0].activeUsers : 0;
+    });
+    const names = Object.keys(AUDIENCE_BREAKDOWNS);
+    for (let i = 0; i < names.length; i += AUDIENCE_GROUP_SIZE) {
+        const group = names.slice(i, i + AUDIENCE_GROUP_SIZE);
+        const results = await Promise.all(
+            group.map(async (name) => {
+                const { dimension, metric } = AUDIENCE_BREAKDOWNS[name];
+                try {
+                    return await runReport({ dimensions: [dimension], metrics: [metric], dateRanges, orderBys: byMetricDesc(metric), limit: AUDIENCE_ROWS });
+                } catch (error) {
+                    // Age and gender can be refused outright when Google signals is off. Treat that as "no data".
+                    if (name === "age" || name === "gender") return [];
+                    throw error;
+                }
+            })
+        );
+        group.forEach((name, j) => {
+            const { dimension, metric } = AUDIENCE_BREAKDOWNS[name];
+            raw[name] = results[j].map((r) => ({ name: r[dimension], value: r[metric] }));
+        });
+    }
+    await totalPromise;
+    return raw;
+}
+
 // Breakdowns the repair agent can ask for over any date range (see repair/gaTool.js).
 const BREAKDOWN_ROWS = 25;
 const BREAKDOWNS = {
@@ -271,4 +394,4 @@ async function fetchGaBreakdown({ since, until, by }) {
     });
 }
 
-module.exports = { fetchGaReportData, fetchGaBreakdown, gaConfigured, BREAKDOWN_NAMES, TRACKED_EVENTS, PROPERTY_TIMEZONE };
+module.exports = { fetchGaReportData, fetchGaBreakdown, fetchGaRangeData, fetchGaPageData, fetchGaAudienceData, gaConfigured, BREAKDOWN_NAMES, TRACKED_EVENTS, PROPERTY_TIMEZONE };

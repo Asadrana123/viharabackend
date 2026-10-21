@@ -408,4 +408,16 @@ function buildSummaryFacts(model) {
     };
 }
 
-module.exports = { buildReportModel, buildSlackMessage, buildSummaryFacts, messageToText, change, campaignLabel, NEW_EVENTS_START, MIN_DAILY_AVG_FOR_TRACKING_CHECK };
+module.exports = {
+    buildReportModel,
+    buildSlackMessage,
+    buildSummaryFacts,
+    messageToText,
+    change,
+    rateChange,
+    fmtDuration,
+    campaignLabel,
+    NEW_EVENTS_START,
+    MIN_FOR_PERCENT,
+    MIN_DAILY_AVG_FOR_TRACKING_CHECK,
+};
