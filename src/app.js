@@ -79,6 +79,7 @@ const qaAdminRoutes = require("./routes/qa/qaAdminRoutes");
 const qaAgentRoutes = require("./routes/qa/qaAgentRoutes");
 // Admin global search + "Ask AI" (Claude answering questions from the DB, read-only).
 const adminAskRoutes = require("./routes/adminAsk/adminAskRoutes");
+const adminAnalyticsRoutes = require("./routes/analytics/adminAnalyticsRoutes");
 // Brand Kit: the colours, fonts and messaging every page uses (public read, admin edit).
 const brandKitRoutes = require("./routes/brand/brandKitRoutes");
 // Design agent (admin-only): Claude redesigns pages → Vercel preview → approve to go live.
@@ -182,6 +183,7 @@ app.use("/api/webhooks/vtext", vtextWebhookRoutes);
 app.use("/api/v1/qa", qaAdminRoutes);
 app.use("/api/v1/qa-agent", qaAgentRoutes);
 app.use("/api/v1/admin-ask", adminAskRoutes);
+app.use("/api/v1/admin-analytics", adminAnalyticsRoutes);
 app.use("/api/v1/brand-kit", brandKitRoutes);
 app.use("/api/v1/design", designAdminRoutes);
 app.use("/api/v1/ads-loop", adsLoopRoutes);
