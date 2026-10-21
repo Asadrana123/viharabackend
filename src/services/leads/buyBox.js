@@ -68,6 +68,13 @@ const NEEDS_FINANCING_LABELS = { yes: "Yes", no: "No, paying cash", not_sure: "N
 const needsFinancingFrom = (v) => (NEEDS_FINANCING.includes(v) ? v : "");
 const needsFinancingLabel = (v) => NEEDS_FINANCING_LABELS[v] || "—";
 
+// "How much do you plan to put down?" — asked on the auction form only when the
+// buyer picks Financing. Must match DOWN_OPTIONS in the website's
+// PropertyAuctionPage.jsx. Anything else (or no financing) is stored as "".
+const DOWN_PAYMENT = ["Under 10%", "10-20%", "20-30%", "30% or more", "Not sure"];
+const downPaymentFrom = (v, needsFinancing) =>
+  needsFinancing === "yes" && DOWN_PAYMENT.includes(v) ? v : "";
+
 /**
  * Sanitize the buy box and recompute the match range server-side.
  * @param {object} raw            body.buy_box
@@ -209,6 +216,7 @@ module.exports = {
   touchesFrom,
   needsFinancingFrom,
   needsFinancingLabel,
+  downPaymentFrom,
   buildBuyBox,
   attributionFrom,
   clientIp,

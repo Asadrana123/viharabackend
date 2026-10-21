@@ -53,6 +53,9 @@ const propertyLeadSchema = new mongoose.Schema(
     // Cash investor | Owner-occupant | Fix and flip | Buy and hold
     buyerType: { type: String, default: "", trim: true },
     needsFinancing: { type: String, default: "", trim: true }, // yes | no | not_sure
+    // Planned down payment, only when needsFinancing is "yes":
+    // Under 10% | 10-20% | 20-30% | 30% or more | Not sure ("" otherwise).
+    downPayment: { type: String, default: "", trim: true },
 
     // Buyer's quoted price (Quote Your Price funnel), in whole dollars. Set from
     // the client's slider (estimate +/- 30%, or fixed numbers for some properties;
