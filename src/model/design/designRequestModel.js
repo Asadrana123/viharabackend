@@ -4,6 +4,9 @@
 // from first try through preview, changes, going live and undo.
 //
 // Status flow:
+//   checking     → (Landing Pages tab) Claude reads the uploaded mockup and lists
+//                  what can't be built
+//   needs_answer → some of the mockup can't be built: skip it and build, or discard
 //   working  → Claude is editing the page
 //   building → changes saved on a GitHub branch, Vercel is building the preview
 //   ready    → preview link is ready for the admin
@@ -14,7 +17,17 @@
 // "Change this…" on a ready request sends it back to working with feedback.
 const mongoose = require("mongoose");
 
-const STATUSES = ["working", "building", "ready", "approving", "live", "undoing", "undone", "failed", "discarded"];
+const STATUSES = ["checking", "needs_answer", "working", "building", "ready", "approving", "live", "undoing", "undone", "failed", "discarded"];
+const KINDS = ["design", "landing"];
+
+const blockedSchema = new mongoose.Schema(
+  {
+    item: { type: String, default: "" },
+    reason: { type: String, default: "" },
+    instead: { type: String, default: "" },
+  },
+  { _id: false }
+);
 
 const roundSchema = new mongoose.Schema(
   {
@@ -35,6 +48,9 @@ const roundSchema = new mongoose.Schema(
 
 const designRequestSchema = new mongoose.Schema(
   {
+    // "design": Design Studio (described in words). "landing": Landing Pages tab
+    // (built from an uploaded HTML mockup, keeping the landing theme).
+    kind: { type: String, enum: KINDS, default: "design", index: true },
     pageKey: { type: String, required: true, trim: true }, // DESIGN_PAGES key, or "new"
     pageLabel: { type: String, required: true, trim: true },
     pagePath: { type: String, required: true, trim: true }, // e.g. /contact-us or /p/spring-promo
@@ -48,6 +64,21 @@ const designRequestSchema = new mongoose.Schema(
     // Which server runs this request (local and live backends share one DB).
     worker: { type: String, default: "" },
     rounds: { type: [roundSchema], default: [] },
+    // Landing Pages tab: the uploaded mockup (cleaned; only loaded when building).
+    mockup: {
+      fileName: { type: String, default: "", trim: true },
+      html: { type: String, default: "", select: false },
+    },
+    // What the mockup check found. Blocked items are skipped when the designer
+    // chooses "skip these and build".
+    review: {
+      summary: { type: String, default: "" },
+      sections: { type: [String], default: [] },
+      blocked: { type: [blockedSchema], default: [] },
+      ignored: { type: [String], default: [] },
+      checkedAt: { type: Date },
+      skippedByName: { type: String, default: "" },
+    },
     // Plain-language reason shown to the admin when status is "failed".
     error: { type: String, default: "" },
 
@@ -72,5 +103,6 @@ const designRequestSchema = new mongoose.Schema(
 );
 
 designRequestSchema.statics.STATUSES = STATUSES;
+designRequestSchema.statics.KINDS = KINDS;
 
 module.exports = mongoose.model("designRequestModel", designRequestSchema);

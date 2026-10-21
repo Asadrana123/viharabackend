@@ -9,12 +9,13 @@
 //   3. A page may change only the files that no other page, layout or the app
 //      shell also uses — so redesigning one page can never change another.
 //
-// Pages made by the design agent (src/components/Designed/<slug>/) are listed too.
+// Pages made by the design agent (src/components/Designed/<slug>/) and landing
+// pages made from a mockup (src/components/Landing/pages/<slug>/) are listed too.
 // The result is cached per commit of the live branch.
 const path = require("path").posix;
 const { parse } = require("@babel/parser");
 const github = require("./githubService");
-const { PAGE_LABELS, SAMPLE_PATHS, isExcludedPath, groupFor, NEW_PAGE } = require("../../config/designPages");
+const { PAGE_LABELS, SAMPLE_PATHS, isExcludedPath, groupFor, NEW_PAGE, NEW_LANDING_PAGE } = require("../../config/designPages");
 
 const RESOLVE_EXT = ["", ".js", ".jsx", "/index.js", "/index.jsx"];
 const STYLE_EXT = [".css"];
@@ -242,6 +243,13 @@ async function scan(sha) {
     .filter(Boolean);
   designed.forEach((m) => {
     pagesByFile.set(m[0], [NEW_PAGE.path(m[1])]);
+    own(m[0], closure(m[0]));
+  });
+  const landing = tree
+    .map((e) => e.path.match(/^src\/components\/Landing\/pages\/([a-z0-9-]{3,50})\/index\.jsx$/))
+    .filter(Boolean);
+  landing.forEach((m) => {
+    pagesByFile.set(m[0], [NEW_LANDING_PAGE.path(m[1])]);
     own(m[0], closure(m[0]));
   });
 

@@ -1,6 +1,8 @@
 // services/design/designJobService.js
 //
 // Runs a design request from start to finish, in the background on this server:
+//   check:   (Landing Pages tab) Claude reads the uploaded mockup; if some of
+//            it can't be built → "needs_answer" until the designer skips it
 //   round:   agent edits the page → commit to the request's branch → wait for
 //            Vercel's preview of that commit → "ready" with the preview link
 //   approve: pull request + squash merge into the live branch → "live"
@@ -12,8 +14,9 @@
 const DesignRequest = require("../../model/design/designRequestModel");
 const github = require("./githubService");
 const { runDesignRound } = require("./designAgentService");
+const { landingTheme, reviewMockup } = require("./landingMockup");
 const { getCurrentBrandKit } = require("../brand/brandKitService");
-const { LEGACY_PAGES, NEW_PAGE } = require("../../config/designPages");
+const { LEGACY_PAGES, NEW_PAGE, NEW_LANDING_PAGE, LANDING_REFERENCE } = require("../../config/designPages");
 
 const os = require("os");
 
@@ -36,6 +39,10 @@ function pageFor(doc) {
   const page = { label: doc.pageLabel, path: doc.pagePath };
   if (doc.pageKey === NEW_PAGE.key) {
     const folder = NEW_PAGE.folder(doc.newPageSlug);
+    return { page, editable: [], newFilesIn: folder, mustCreate: [`${folder}index.jsx`] };
+  }
+  if (doc.pageKey === NEW_LANDING_PAGE.key) {
+    const folder = NEW_LANDING_PAGE.folder(doc.newPageSlug);
     return { page, editable: [], newFilesIn: folder, mustCreate: [`${folder}index.jsx`] };
   }
   if (doc.editable?.length) return { page, editable: doc.editable, newFilesIn: doc.newFilesIn, mustCreate: [] };
@@ -63,7 +70,7 @@ const isLatest = (roundIndex) => (roundIndex >= 0 ? { [`rounds.${roundIndex + 1}
 
 async function fail(id, roundIndex, message) {
   await DesignRequest.updateOne(
-    { _id: id, status: { $in: ["working", "building"] }, ...isLatest(roundIndex) },
+    { _id: id, status: { $in: ["checking", "working", "building"] }, ...isLatest(roundIndex) },
     { $set: { status: "failed", error: message, ...(roundIndex >= 0 ? setRound(roundIndex, { error: message, finishedAt: new Date() }) : {}) } }
   );
 }
@@ -75,11 +82,12 @@ async function runLatestRound(id) {
   const say = log(id);
   let roundIndex = -1;
   try {
-    const doc = await DesignRequest.findById(id);
+    const doc = await DesignRequest.findById(id).select("+mockup.html");
     if (!doc || doc.status !== "working") return;
     roundIndex = doc.rounds.length - 1;
     const round = doc.rounds[roundIndex];
     const { page, editable, newFilesIn, mustCreate } = pageFor(doc);
+    const isLanding = doc.kind === "landing";
 
     if (!doc.branch) {
       const branch = `design/${doc._id}`;
@@ -104,6 +112,15 @@ async function runLatestRound(id) {
       instruction: round.instruction,
       history,
       mustCreate,
+      landing: isLanding
+        ? {
+            mockupHtml: doc.mockup.html,
+            skipped: doc.review?.blocked || [],
+            isNew: doc.pageKey === NEW_LANDING_PAGE.key,
+            reference: LANDING_REFERENCE,
+            theme: await landingTheme(doc.branch),
+          }
+        : null,
       log: say,
       // Stop early (and stop spending) if the admin discards it meanwhile.
       shouldStop: async () => !(await DesignRequest.exists({ _id: id, status: "working", ...isLatest(roundIndex) })),
@@ -130,7 +147,7 @@ async function runLatestRound(id) {
     const sha = await github.commitFiles(
       doc.branch,
       result.files,
-      `Design (${doc.pageLabel}): ${round.instruction.replace(/\s+/g, " ").slice(0, 60)}\n\nRequested by ${round.byName || "admin"} via the design agent.`
+      `${isLanding ? "Landing" : "Design"} (${doc.pageLabel}): ${round.instruction.replace(/\s+/g, " ").slice(0, 60)}\n\nRequested by ${round.byName || "admin"} via the ${isLanding ? "landing page" : "design"} agent.`
     );
     say(`committed ${filesChanged.length} file(s) as ${sha.slice(0, 7)}`);
     await DesignRequest.updateOne(
@@ -199,6 +216,81 @@ async function startRequest({ pageKey, pageLabel, pagePath, newPageSlug, editabl
   return doc;
 }
 
+// Landing Pages tab: check the mockup first (status must already be "checking").
+// Nothing blocked → build straight away; otherwise wait for the designer.
+async function runReview(id) {
+  if (active.has(String(id))) return;
+  active.add(String(id));
+  const say = log(id);
+  let build = false;
+  try {
+    const doc = await DesignRequest.findById(id).select("+mockup.html").lean();
+    if (!doc || doc.status !== "checking") return;
+    const { page, editable } = pageFor(doc);
+    say("checking the mockup");
+    const { review, usage } = await reviewMockup({
+      ref: github.baseBranch(),
+      mockupHtml: doc.mockup.html,
+      page,
+      editable,
+      isNew: doc.pageKey === NEW_LANDING_PAGE.key,
+      notes: doc.rounds[0]?.instruction,
+    });
+    build = review.blocked.length === 0;
+    await DesignRequest.updateOne(
+      { _id: id, status: "checking" },
+      {
+        $set: { status: build ? "working" : "needs_answer", error: "", review: { ...review, checkedAt: new Date() } },
+        $inc: {
+          "usage.inputTokens": usage.inputTokens,
+          "usage.outputTokens": usage.outputTokens,
+          "usage.cacheReadTokens": usage.cacheReadTokens,
+          "usage.cacheWriteTokens": usage.cacheWriteTokens,
+          "usage.costUsd": usage.costUsd,
+        },
+      }
+    );
+    say(build ? "mockup ok — building" : `${review.blocked.length} thing(s) can't be built — asking the designer`);
+  } catch (err) {
+    console.error(`[design ${id}] mockup check failed:`, err);
+    await fail(id, -1, friendlyError(err));
+    return;
+  } finally {
+    active.delete(String(id));
+  }
+  if (build) runLatestRound(id);
+}
+
+async function startLandingRequest({ pageKey, pageLabel, pagePath, newPageSlug, editable, newFilesIn, instruction, fileName, html, byName }) {
+  const doc = await DesignRequest.create({
+    kind: "landing",
+    pageKey,
+    pageLabel,
+    pagePath,
+    newPageSlug: newPageSlug || "",
+    editable: editable || [],
+    newFilesIn: newFilesIn || "",
+    createdByName: byName,
+    status: "checking",
+    worker: WORKER_ID,
+    mockup: { fileName, html },
+    rounds: [{ instruction, byName }],
+  });
+  runReview(doc._id);
+  return doc;
+}
+
+// "Skip these and build" on a mockup with things that can't be built.
+async function skipAndBuild(id, byName) {
+  const doc = await DesignRequest.findOneAndUpdate(
+    { _id: id, status: "needs_answer" },
+    { $set: { status: "working", error: "", worker: WORKER_ID, "review.skippedByName": byName } },
+    { new: true }
+  );
+  if (doc) runLatestRound(doc._id);
+  return doc;
+}
+
 // "Change this…" on a ready request, or "Try again" on a failed one.
 async function addRound(id, { instruction, byName, from }) {
   const doc = await DesignRequest.findOneAndUpdate(
@@ -213,6 +305,16 @@ async function addRound(id, { instruction, byName, from }) {
 async function retry(id, byName) {
   const doc = await DesignRequest.findById(id).lean();
   if (!doc || doc.status !== "failed") return null;
+  // The mockup check itself failed: check again.
+  if (doc.kind === "landing" && !doc.review?.checkedAt) {
+    const again = await DesignRequest.findOneAndUpdate(
+      { _id: id, status: "failed" },
+      { $set: { status: "checking", error: "", worker: WORKER_ID } },
+      { new: true }
+    );
+    if (again) runReview(again._id);
+    return again;
+  }
   const last = doc.rounds[doc.rounds.length - 1];
   // Committed but the preview failed to build: ask the agent to fix the build.
   const instruction = last?.commitSha && !last.previewUrl ? BUILD_FAILED_INSTRUCTION : last.instruction;
@@ -295,7 +397,7 @@ async function undo(id, byName) {
 
 async function discard(id) {
   const doc = await DesignRequest.findOneAndUpdate(
-    { _id: id, status: { $in: ["working", "building", "ready", "failed"] } },
+    { _id: id, status: { $in: ["checking", "needs_answer", "working", "building", "ready", "failed"] } },
     { $set: { status: "discarded" } },
     { new: true }
   );
@@ -309,7 +411,7 @@ async function discard(id) {
 async function recoverDesignJobs() {
   try {
     await DesignRequest.updateMany(
-      { status: "working", worker: WORKER_ID },
+      { status: { $in: ["checking", "working"] }, worker: WORKER_ID },
       { $set: { status: "failed", error: "The server restarted while the agent was working. Click \"Try again\"." } }
     );
     await DesignRequest.updateMany(
@@ -327,4 +429,4 @@ async function recoverDesignJobs() {
   }
 }
 
-module.exports = { startRequest, addRound, retry, approve, undo, discard, recoverDesignJobs };
+module.exports = { startRequest, startLandingRequest, skipAndBuild, addRound, retry, approve, undo, discard, recoverDesignJobs };

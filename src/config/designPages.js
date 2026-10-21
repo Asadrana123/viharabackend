@@ -35,11 +35,12 @@ const SAMPLE_PATHS = {
   "/careers/:roleId": "/careers",
 };
 
-// Never offered: the admin panel itself, and the address new pages are served from.
-const isExcludedPath = (p) => /(^|\/)admin(\/|$)/i.test(p) || p === "/p/:slug";
+// Never offered: the admin panel itself, and the addresses new pages are served from.
+const isExcludedPath = (p) => /(^|\/)admin(\/|$)/i.test(p) || p === "/p/:slug" || p === "/lp/:slug";
 
 function groupFor(p) {
   if (p.startsWith("/p/")) return "Pages made in Design Studio";
+  if (p.startsWith("/lp/")) return "Landing pages";
   if (/^\/realtor/i.test(p)) return "Realtor portal";
   if (/^\/seller/i.test(p)) return "Seller portal";
   if (/^\/(auth|login|signup|verify-otp|reset-password|set-new-password|request-send)/i.test(p)) return "Sign in & accounts";
@@ -70,6 +71,23 @@ const NEW_PAGE = {
   path: (slug) => `/p/${slug}`,
 };
 
+// Landing Pages tab: the designer uploads an HTML mockup for a page in the
+// Landing folder (or a new one). New landing pages are standalone (no site
+// header/footer) at /lp/<slug>, from src/components/Landing/pages/<slug>/.
+const LANDING_ROOT = "src/components/Landing/";
+const NEW_LANDING_PAGE = {
+  key: "new-landing",
+  label: "New landing page",
+  folder: (slug) => `${LANDING_ROOT}pages/${slug}/`,
+  path: (slug) => `/lp/${slug}`,
+};
+// A new landing page starts from the newest landing theme: the New Deals page.
+const LANDING_REFERENCE = {
+  page: `${LANDING_ROOT}NewDealsPage.jsx`,
+  styles: [`${LANDING_ROOT}BuyerList.css`, `${LANDING_ROOT}NorthernCalifornia.css`, `${LANDING_ROOT}NewDeals.css`],
+};
+const isLandingFile = (file) => String(file || "").startsWith(LANDING_ROOT);
+
 // "Spring Auction Promo!" → "spring-auction-promo"
 const toSlug = (name) =>
   String(name || "")
@@ -78,4 +96,16 @@ const toSlug = (name) =>
     .replace(/^-+|-+$/g, "")
     .slice(0, 50);
 
-module.exports = { PAGE_LABELS, SAMPLE_PATHS, isExcludedPath, groupFor, LEGACY_PAGES, NEW_PAGE, toSlug };
+module.exports = {
+  PAGE_LABELS,
+  SAMPLE_PATHS,
+  isExcludedPath,
+  groupFor,
+  LEGACY_PAGES,
+  NEW_PAGE,
+  LANDING_ROOT,
+  NEW_LANDING_PAGE,
+  LANDING_REFERENCE,
+  isLandingFile,
+  toSlug,
+};

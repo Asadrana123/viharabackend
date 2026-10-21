@@ -7,7 +7,9 @@
 //   1. Code is valid (JSX/JS parses)
 //   2. Every import points at a file that exists or an installed package
 //   3. No unused imports (the live build treats lint warnings as errors)
-//   4. Only Brand Kit colours and fonts (old colours already in a file are tolerated)
+//   4. Only Brand Kit colours and fonts (old colours already in a file are tolerated);
+//      for landing pages: only the colours, fonts and effects the Landing folder
+//      already uses, so a page can be restructured but never re-themed
 //   5. Code that loads or saves data is kept exactly as it was
 const path = require("path").posix;
 const { parse } = require("@babel/parser");
@@ -174,6 +176,60 @@ function checkBrand(file, text, original, brandKit) {
   return [...problems];
 }
 
+/**
+ * The landing pages' look, read from every stylesheet in the Landing folder.
+ * @param {string[]} cssTexts
+ * @returns {{ colors: Set<string>, fonts: Set<string>, corpus: string }}
+ */
+function buildLandingTheme(cssTexts) {
+  const corpus = cssTexts.join("\n");
+  return {
+    colors: new Set((corpus.match(COLOR_LITERAL) || []).map(normalizeColor)),
+    fonts: new Set([...corpus.matchAll(FONT_DECL)].map((m) => m[1].trim().replace(/\s*!important$/, "").toLowerCase())),
+    corpus,
+  };
+}
+
+// Landing pages keep their own theme (--bl-, --ln-, --nc-… tokens): nothing
+// the Landing folder doesn't already use — colours, fonts, gradients,
+// animations, blur, italics, weights.
+function checkLandingTheme(file, text, original, theme) {
+  if (!CODE_EXT.test(file) && !STYLE_EXT.test(file)) return [];
+  const known = `${theme.corpus}\n${original || ""}`;
+  const problems = new Set();
+  for (const raw of text.match(COLOR_LITERAL) || []) {
+    const c = normalizeColor(raw);
+    if (ALWAYS_OK_COLORS.has(c) || theme.colors.has(c) || SHADOW_RGBA.test(c) || (original || "").includes(raw)) continue;
+    problems.add(`${file}: colour ${raw} isn't part of the landing theme — use the theme's colour variables (e.g. var(--bl-ink), var(--ln-blue))`);
+  }
+  for (const m of [...text.matchAll(FONT_DECL), ...text.matchAll(FONT_JSX)]) {
+    const value = m[1].trim().replace(/\s*!important$/, "");
+    if (/^inherit$/i.test(value) || theme.fonts.has(value.toLowerCase())) continue;
+    problems.add(`${file}: font "${value}" isn't part of the landing theme — use the theme's font variable (e.g. var(--bl-font)) or inherit`);
+  }
+  const fresh = (re) => (text.match(re) || []).filter((m) => !known.includes(m));
+  if (fresh(/(?:linear|radial|conic|repeating-linear|repeating-radial|repeating-conic)-gradient\([^;}\n]*/g).length) {
+    problems.add(`${file}: that gradient isn't part of the landing theme — use one the theme already has, or a plain theme background`);
+  }
+  if (fresh(/@keyframes\s+[\w-]+/g).length) {
+    problems.add(`${file}: don't add new animations — reuse the theme's existing ones`);
+  }
+  if (fresh(/backdrop-filter\s*:[^;}\n]*|filter\s*:\s*blur\([^;}\n]*/g).length) {
+    problems.add(`${file}: that blur effect isn't part of the landing theme`);
+  }
+  const italic = /font-style\s*:\s*italic|fontStyle\s*:\s*["'`]italic/;
+  if (italic.test(text) && !italic.test(known)) {
+    problems.add(`${file}: italics aren't part of the landing theme`);
+  }
+  for (const m of text.matchAll(/font-weight\s*:\s*(\d{3})|fontWeight\s*:\s*["'`]?(\d{3})/g)) {
+    const w = Number(m[1] || m[2]);
+    if (!new RegExp(`font-weight\\s*:\\s*${w}\\b`).test(known) && !known.includes(m[0])) {
+      problems.add(`${file}: font weight ${w} isn't used by the landing theme — use one it already uses`);
+    }
+  }
+  return [...problems];
+}
+
 const squash = (s) => s.replace(/\s+/g, " ").trim();
 
 // Visits every AST node (Babel nodes are plain objects).
@@ -238,9 +294,10 @@ function checkDataActions(file, text, original) {
  * @param {Object<string,string|null>} originals path → content before (null = new file)
  * @param {(p:string)=>boolean} fileExists  whether a path exists after the change
  * @param {(name:string)=>boolean} [isKnownPackage] whether an npm package is installed
+ * @param {object} [landingTheme]  from buildLandingTheme: check against it instead of the Brand Kit
  * @returns {string[]} problems (empty = all good)
  */
-function runChecks({ changed, originals, fileExists, isKnownPackage, brandKit }) {
+function runChecks({ changed, originals, fileExists, isKnownPackage, brandKit, landingTheme }) {
   const problems = [];
   for (const [file, text] of Object.entries(changed)) {
     const original = originals[file] ?? null;
@@ -248,11 +305,11 @@ function runChecks({ changed, originals, fileExists, isKnownPackage, brandKit })
       ...checkSyntax(file, text),
       ...checkImports(file, text, fileExists, isKnownPackage),
       ...checkUnusedImports(file, text),
-      ...checkBrand(file, text, original, brandKit),
+      ...(landingTheme ? checkLandingTheme(file, text, original, landingTheme) : checkBrand(file, text, original, brandKit)),
       ...checkDataActions(file, text, original)
     );
   }
   return problems;
 }
 
-module.exports = { runChecks };
+module.exports = { runChecks, buildLandingTheme };
