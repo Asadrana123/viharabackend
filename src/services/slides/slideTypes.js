@@ -8,7 +8,7 @@
 // Template types (cover, section, closing, bullets) fill the Vihara template's
 // placeholders instead; they're checked with simple character limits.
 const { ICON_SET } = require("../../config/slideIcons");
-const { GRID, TYPE, fit } = require("./slideDesign");
+const { GRID, TYPE, LINE_HEIGHT, fit } = require("./slideDesign");
 
 const { margin: M, gap: G, contentTop: TOP, contentWidth: CW, contentHeight: CH } = GRID;
 
@@ -187,6 +187,127 @@ const explainer = (s) => {
   return ops;
 };
 
+// A table cell: "yes" → check mark, "no" / "-" / "" → dash, anything else → short text.
+const cellKind = (v) => {
+  const t = String(v || "").trim().toLowerCase();
+  if (["yes", "y", "true", "✓", "✔"].includes(t)) return "yes";
+  if (["", "no", "n", "false", "-", "–", "—"].includes(t)) return "no";
+  return "text";
+};
+
+const table = (s) => {
+  const ops = [];
+  const rows = s.rows;
+  const hasNote = rows.some((r) => (r.note || "").trim());
+  // Tables are the densest slides, so they use all the room under the title.
+  const top = TOP - 0.15;
+  const avail = GRID.contentBottom + 0.15 - top;
+  const labelW = 2.1;
+  const noteW = hasNote ? 2.8 : 0;
+  const cellW = (CW - labelW - noteW) / s.columns.length;
+  const headH = 0.55;
+  const rowH = Math.min(0.62, (avail - headH - 0.06) / rows.length);
+  const h = headH + rowH * rows.length;
+  // Square corners: Slides rounds corners in proportion to size, which looks bloated on a tall table.
+  ops.push({ op: "shape", type: "RECTANGLE", x: M, y: top, w: CW, h: h + 0.06, fill: "surface", outline: "border" });
+
+  const head = (x, w, text, label, align = "CENTER") =>
+    ops.push({ op: "text", x, y: top + 0.04, w, h: headH - 0.04, text, size: 9, weight: 700, color: "primary", align, valign: "MIDDLE", lineSpacing: 95, label });
+  head(M + 0.1, labelW - 0.1, s.rowHeader, "row header", "START");
+  s.columns.forEach((c, j) => head(M + labelW + j * cellW, cellW, c, `column ${j + 1} header`));
+  if (hasNote) head(M + labelW + s.columns.length * cellW + 0.1, noteW - 0.2, s.noteHeader, "note header", "START");
+
+  rows.forEach((r, i) => {
+    const y = top + headH + i * rowH;
+    ops.push({ op: "shape", type: "RECTANGLE", x: M + 0.15, y: y - 0.006, w: CW - 0.3, h: 0.012, fill: "border" });
+    const d = Math.min(0.34, rowH - 0.14);
+    const hasIcon = (r.icon || "").trim();
+    if (hasIcon) ops.push({ op: "badge", icon: r.icon, x: M + 0.15, y: y + (rowH - d) / 2, d });
+    const lx = M + (hasIcon ? 0.2 + d : 0.1);
+    ops.push({ op: "text", x: lx, y, w: M + labelW - lx, h: rowH, text: r.label, size: 10, weight: 600, color: "heading", valign: "MIDDLE", lineSpacing: 88, label: `row ${i + 1} label` });
+    (r.cells || []).forEach((v, j) => {
+      const cx = M + labelW + j * cellW;
+      const kind = cellKind(v);
+      if (kind === "yes") ops.push({ op: "icon", name: "check-circle", x: cx + (cellW - 0.26) / 2, y: y + (rowH - 0.26) / 2, s: 0.26, color: "primary" });
+      else if (kind === "no") ops.push({ op: "shape", type: "RECTANGLE", x: cx + (cellW - 0.14) / 2, y: y + rowH / 2 - 0.012, w: 0.14, h: 0.024, fill: "border" });
+      else ops.push({ op: "text", x: cx, y, w: cellW, h: rowH, text: v, size: TYPE.label, weight: 600, color: "text", align: "CENTER", valign: "MIDDLE", lineSpacing: 88, label: `row ${i + 1} cell ${j + 1}` });
+    });
+    if (hasNote && (r.note || "").trim()) {
+      const nx = M + labelW + s.columns.length * cellW + 0.1;
+      ops.push({ op: "text", x: nx, y, w: noteW - 0.2, h: rowH, text: r.note, size: 9.5, color: "text", valign: "MIDDLE", lineSpacing: 88, label: `row ${i + 1} note` });
+    }
+  });
+  return ops;
+};
+
+const flow = (s) => {
+  const ops = [];
+  const n = s.stages.length;
+  const rowGap = 0.25;
+  const cardH = Math.min(0.95, (CH - rowGap * (n - 1)) / n);
+  // Where each stage's cards sit, so connectors can join them.
+  const placed = s.stages.map((st, k) => {
+    const m = st.items.length;
+    const gap = st.mode === "sequence" ? 0.42 : 0.25;
+    const w = Math.min(2.7, (CW - gap * (m - 1)) / m);
+    const total = m * w + gap * (m - 1);
+    const x0 = M + (CW - total) / 2;
+    const y = TOP + k * (cardH + rowGap);
+    return { st, y, cards: st.items.map((it, j) => ({ it, x: x0 + j * (w + gap), w })), gap };
+  });
+
+  // Connectors first, so cards sit on top of them.
+  for (let k = 0; k < n - 1; k++) {
+    const a = placed[k];
+    const b = placed[k + 1];
+    // A sequence continues from its last card into the next stage's first card.
+    const from = a.st.mode === "sequence" ? [a.cards[a.cards.length - 1]] : a.cards;
+    const to = b.st.mode === "sequence" ? [b.cards[0]] : b.cards;
+    const cx = (c) => c.x + c.w / 2;
+    const busY = a.y + cardH + rowGap / 2;
+    const xs = [...from, ...to].map(cx);
+    const lo = Math.min(...xs);
+    const hi = Math.max(...xs);
+    if (hi - lo > 0.01) ops.push({ op: "shape", type: "RECTANGLE", x: lo, y: busY - 0.012, w: hi - lo + 0.024, h: 0.024, fill: "primarySoftStrong" });
+    for (const c of from) ops.push({ op: "shape", type: "RECTANGLE", x: cx(c), y: a.y + cardH, w: 0.024, h: rowGap / 2, fill: "primarySoftStrong" });
+    for (const c of to) ops.push({ op: "shape", type: "RECTANGLE", x: cx(c), y: busY, w: 0.024, h: rowGap / 2, fill: "primarySoftStrong" });
+  }
+
+  placed.forEach(({ st, y, cards, gap }, k) => {
+    cards.forEach(({ it, x, w }, j) => {
+      const tag = (it.value || "").trim();
+      ops.push({ op: "shape", type: "ROUND_RECTANGLE", x, y, w, h: cardH, fill: "surface", outline: "border" });
+      const d = Math.min(0.42, cardH - 0.22);
+      ops.push({ op: "badge", icon: it.icon, x: x + 0.12, y: y + (cardH - d) / 2, d });
+      const tx = x + 0.12 + d + 0.06;
+      // Heading and text share one box so short cards still fit two lines of text.
+      ops.push({
+        op: "text",
+        x: tx,
+        y,
+        w: x + w - 0.04 - tx,
+        h: cardH,
+        runs: [
+          { text: it.heading, size: 10.5, weight: 600, color: "heading" },
+          { text: it.text, size: 9.5, color: "text" },
+        ],
+        valign: "MIDDLE",
+        lineSpacing: 92,
+        label: `stage ${k + 1} box ${j + 1}`,
+      });
+      if (tag) {
+        // A small sticker on the card's top-right corner, e.g. "Live".
+        ops.push({ op: "shape", type: "ROUND_RECTANGLE", x: x + w - 0.82, y: y - 0.12, w: 0.72, h: 0.24, fill: "primary" });
+        ops.push({ op: "text", x: x + w - 0.82, y: y - 0.12, w: 0.72, h: 0.24, text: tag, size: 9, weight: 700, color: "white", align: "CENTER", valign: "MIDDLE", lineSpacing: 90, label: `stage ${k + 1} box ${j + 1} tag` });
+      }
+      if (st.mode === "sequence" && j < cards.length - 1) {
+        ops.push({ op: "icon", name: "arrow-right", x: x + w + (gap - 0.24) / 2, y: y + (cardH - 0.24) / 2, s: 0.24, color: "primary" });
+      }
+    });
+  });
+  return ops;
+};
+
 function parseNumber(v) {
   const n = parseFloat(String(v).replace(/,/g, ""));
   return Number.isFinite(n) ? n : NaN;
@@ -246,6 +367,17 @@ const TYPES = {
   key_message: { layout: keyMessage, use: "One big statement the audience must remember, plus a supporting line. Use for the core idea, a mission, or a strong claim from the notes.", needsIcon: true, fields: ["statement", "text"] },
   chart: { layout: chart, use: "2-6 numbers from the notes compared as bars. value is a plain number; unit (optional) is added after each value; text is the one-line takeaway.", items: { min: 2, max: 6, fields: ["heading", "value"] }, fields: ["text"] },
   explainer: { layout: explainer, use: "One idea explained in a short paragraph (body), with the key line (callout) and an icon in the panel beside it.", needsIcon: true, fields: ["body", "callout"] },
+  table: {
+    layout: table,
+    use: "A grid: 2-8 rows × 2-6 columns, e.g. segments vs stages, plans vs features. rowHeader names the first column; columns are the other headers; each row has a label, an optional icon, one cell per column (\"yes\" shows a check, \"no\" or \"\" a dash, or a few words), and an optional note (then noteHeader names that column).",
+    rows: { min: 2, max: 8, columns: { min: 2, max: 6 } },
+    titleMax: 34, // the table starts close under the title, so the title must stay on one line
+  },
+  flow: {
+    layout: flow,
+    use: "A diagram of how things move: 2-4 stages top to bottom, each with 1-4 boxes. mode \"sequence\" = boxes in a row joined by arrows; \"parallel\" = boxes side by side that the flow splits into or joins from. Each box: icon, heading (≤ 24 chars), text (≤ 45 chars, less with 4 boxes in a stage), and value = an optional short tag like \"Live\" (≤ 6 chars).",
+    stages: { min: 2, max: 4, items: { min: 1, max: 4 } },
+  },
 };
 
 const TYPE_NAMES = Object.keys(TYPES);
@@ -276,8 +408,9 @@ function slideProblems(s, at) {
   }
   if (DRAWN_NEEDS_TITLE(s.type)) {
     const title = (s.title || "").trim();
+    const max = t.titleMax || 42;
     need(title, "title is empty.");
-    if (title.length > 42) problems.push(`${at}: title is ${title.length} chars, max 42: "${title}"`);
+    if (title.length > max) problems.push(`${at}: title is ${title.length} chars, max ${max}: "${title}"`);
   }
   const iconOk = (name, where) => {
     if (!nonEmpty(name)) problems.push(`${at}: ${where} needs an icon.`);
@@ -298,6 +431,33 @@ function slideProblems(s, at) {
     });
     if (s.type === "chart") items.forEach((it, j) => need(Number.isFinite(parseNumber(it.value)) && !/[a-z%$]/i.test(it.value), `item ${j + 1} value must be a plain number like "42" or "1.5" (put "%" etc. in unit): "${it.value}"`));
   }
+  if (t.rows) {
+    const cols = s.columns || [];
+    const rows = s.rows || [];
+    need(cols.length >= t.rows.columns.min && cols.length <= t.rows.columns.max, `needs ${t.rows.columns.min}-${t.rows.columns.max} columns, has ${cols.length}.`);
+    cols.forEach((c, j) => need(nonEmpty(c), `column ${j + 1} header is empty.`));
+    need(nonEmpty(s.rowHeader), "rowHeader is empty.");
+    need(rows.length >= t.rows.min && rows.length <= t.rows.max, `needs ${t.rows.min}-${t.rows.max} rows, has ${rows.length}.`);
+    rows.forEach((r, j) => {
+      need(nonEmpty(r.label), `row ${j + 1} label is empty.`);
+      need((r.cells || []).length === cols.length, `row ${j + 1} needs one cell per column (${cols.length}), has ${(r.cells || []).length}.`);
+      if (nonEmpty(r.icon) && !ICON_SET.has(r.icon)) problems.push(`${at}: row ${j + 1} icon "${r.icon}" is not in the icon list.`);
+    });
+    if (rows.some((r) => nonEmpty(r.note))) need(nonEmpty(s.noteHeader), "noteHeader is empty (rows have notes).");
+  }
+  if (t.stages) {
+    const stages = s.stages || [];
+    need(stages.length >= t.stages.min && stages.length <= t.stages.max, `needs ${t.stages.min}-${t.stages.max} stages, has ${stages.length}.`);
+    stages.forEach((st, k) => {
+      need(["sequence", "parallel"].includes(st.mode), `stage ${k + 1} mode must be "sequence" or "parallel".`);
+      const items = st.items || [];
+      need(items.length >= t.stages.items.min && items.length <= t.stages.items.max, `stage ${k + 1} needs ${t.stages.items.min}-${t.stages.items.max} boxes, has ${items.length}.`);
+      items.forEach((it, j) => {
+        iconOk(it.icon, `stage ${k + 1} box ${j + 1}`);
+        need(nonEmpty(it.heading), `stage ${k + 1} box ${j + 1} heading is empty.`);
+      });
+    });
+  }
   if (t.sides) {
     for (const name of ["left", "right"]) {
       const side = s[name] || {};
@@ -313,7 +473,7 @@ function slideProblems(s, at) {
   for (const o of layout(s)) {
     if (o.op !== "text" || !o.label) continue;
     if (o.runs) {
-      const used = o.runs.reduce((sum, r) => sum + fit(r.text, o.w, 99, r.size, r.weight || 400, o.lineSpacing).lines * r.size * 1.5 * ((o.lineSpacing || 100) / 100), 0) / 72;
+      const used = o.runs.reduce((sum, r) => sum + fit(r.text, o.w, 99, r.size, r.weight || 400, o.lineSpacing).lines * r.size * LINE_HEIGHT * ((o.lineSpacing || 100) / 100), 0) / 72;
       if (used > o.h - 0.1) problems.push(`${at}: ${o.label} is too long for its row. Shorten the heading or text.`);
       continue;
     }
@@ -331,6 +491,9 @@ const LABEL_FIELD = {
   "milestone date": "items[].value", "milestone heading": "items[].heading", "milestone text": "items[].text",
   "bar label": "items[].heading", "bar value": "items[].value (with unit)",
   "left label": "left.label", "left point": "left.points[]", "right label": "right.label", "right point": "right.points[]",
+  "row header": "rowHeader", "column header": "columns[]", "note header": "noteHeader",
+  "row label": "rows[].label", "row cell": "rows[].cells[] (text)", "row note": "rows[].note",
+  "stage box heading": "stages[].items[].heading", "stage box text": "stages[].items[].text", "stage box tag": "stages[].items[].value",
   subtitle: "subtitle", statement: "statement", "supporting text": "text", insight: "text", body: "body", callout: "callout", number: "number", title: "title",
 };
 
@@ -341,7 +504,7 @@ function fieldLimits(name) {
   const t = TYPES[name];
   const layout = t.layout || t.overlay;
   if (!layout) return null;
-  const range = t.items || t.sides;
+  const range = t.items || t.sides || t.rows || t.stages?.items;
   const counts = range ? Array.from({ length: range.max - range.min + 1 }, (_, k) => range.min + k) : [1];
   const limits = {};
   for (const n of counts) {
@@ -350,6 +513,10 @@ function fieldLimits(name) {
       items: Array.from({ length: n }, () => ({ icon: "house", heading: "x", text: "x", value: "1" })),
       left: { label: "x", points: Array(n).fill("x") },
       right: { label: "x", points: Array(n).fill("x") },
+      // Tables at their widest (5 columns, with notes); flows with 3 stages of n boxes.
+      rowHeader: "x", noteHeader: "x", columns: Array(5).fill("x"),
+      rows: Array.from({ length: n }, () => ({ icon: "house", label: "x", cells: Array(5).fill("x"), note: "x" })),
+      stages: Array.from({ length: 3 }, () => ({ mode: "parallel", items: Array.from({ length: n }, () => ({ icon: "house", heading: "x", text: "x", value: "x" })) })),
     };
     for (const o of layout(dummy)) {
       if (o.op !== "text" || !o.label || o.runs) continue;

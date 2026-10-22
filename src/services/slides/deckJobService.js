@@ -2,11 +2,13 @@
 //
 // Makes and changes decks in the background on this server:
 //   new deck: "working" → Claude plans the deck → Google Slides file is built → "ready" (with the link)
+//   restyle:  "working" → the source deck is read (pictures of its slides) → Claude rebuilds it slide for slide → built → "ready"
 //   change:   "working" → Claude changes the plan → only the changed slides are rebuilt → "ready"
 //   anything goes wrong → a new deck is "failed"; a change is marked failed and the deck stays "ready"
 // The admin panel polls the deck to show progress.
 const SlideDeck = require("../../model/slides/slideDeckModel");
-const { planDeck, reviseDeck } = require("./deckPlanner");
+const { planDeck, reviseDeck, restyleDeck } = require("./deckPlanner");
+const { readSourceDeck, removeTemporary } = require("./sourceDeck");
 const { buildVisualDeck, updateVisualDeck } = require("./deckRenderer");
 const { getCurrentBrandKit } = require("../brand/brandKitService");
 const { STALE_JOB_MS } = require("../../config/slidesAgentConfig");
@@ -22,16 +24,31 @@ async function runDeck(deckId) {
   if (!deck || deck.status !== "working") return;
 
   try {
-    await step("Writing the slides");
     const kit = await getCurrentBrandKit();
-    const { plan, usage } = await planDeck({
-      topic: deck.topic,
-      audience: deck.audience,
-      notes: deck.notes,
-      slideCount: deck.slideCount,
-      kit,
-      onStep: step,
-    });
+    let result;
+    if (deck.source?.presentationId) {
+      await step("Reading your deck");
+      let source;
+      try {
+        source = await readSourceDeck(deck.source.presentationId, { onStep: step });
+      } finally {
+        // An uploaded .pptx was only converted so it could be read.
+        if (deck.source.temporary) await removeTemporary(deck.source.presentationId);
+      }
+      await step("Redesigning the slides");
+      result = await restyleDeck({ source, instruction: deck.notes, kit, onStep: step });
+    } else {
+      await step("Writing the slides");
+      result = await planDeck({
+        topic: deck.topic,
+        audience: deck.audience,
+        notes: deck.notes,
+        slideCount: deck.slideCount,
+        kit,
+        onStep: step,
+      });
+    }
+    const { plan, usage } = result;
     await SlideDeck.updateOne({ _id: deckId }, { $set: { plan: plan.slides, title: plan.deckTitle, usage } });
     say(`planned ${plan.slides.length} slides (${usage.inputTokens} in / ${usage.outputTokens} out tokens)`);
 
@@ -68,6 +85,7 @@ async function runRevision(deckId) {
       audience: deck.audience,
       notes: deck.notes,
       instruction: revision.instruction,
+      restyled: Boolean(deck.source?.presentationId),
       kit,
       onStep: step,
     });

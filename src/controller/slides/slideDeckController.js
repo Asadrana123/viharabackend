@@ -7,12 +7,13 @@ const ErrorHandler = require("../../utils/errorhandler");
 const SlideDeck = require("../../model/slides/slideDeckModel");
 const { startDeck, startRevision, failStaleDecks } = require("../../services/slides/deckJobService");
 const { getConnectionStatus } = require("../../services/slides/googleAuthService");
+const { presentationIdFromUrl, checkSource, importPptx, removeTemporary } = require("../../services/slides/sourceDeck");
 const { MIN_SLIDES, MAX_SLIDES, DEFAULT_SLIDES, MAX_NOTES_CHARS } = require("../../config/slidesAgentConfig");
 
 const adminName = (user) =>
   [user?.name, user?.last_name].filter(Boolean).join(" ") || user?.email || "Admin";
 
-const LIST_FIELDS = "topic audience slideCount status step error title url requestedByName createdAt updatedAt";
+const LIST_FIELDS = "topic audience slideCount status step error title url source requestedByName createdAt updatedAt";
 
 exports.createDeck = catchAsyncError(async (req, res, next) => {
   const topic = String(req.body?.topic || "").trim();
@@ -78,4 +79,52 @@ exports.reviseDeck = catchAsyncError(async (req, res, next) => {
   }
   startRevision(deck._id);
   res.status(200).json({ success: true, deck });
+});
+
+// Restyle an existing deck into the Vihara design: a Google Slides link (body.url)
+// or an uploaded .pptx (file). The original is never changed; a new deck is made
+// with the same number of slides.
+exports.restyleDeck = catchAsyncError(async (req, res, next) => {
+  const instruction = String(req.body?.instruction || "").trim();
+  if (instruction.length > 2000) return next(new ErrorHandler("Keep the extra instructions under 2,000 characters", 400));
+  if (!(await getConnectionStatus()).connected) return next(new ErrorHandler("Connect Google first, then restyle a deck", 409));
+
+  let source;
+  if (req.file) {
+    const fileName = req.file.originalname.replace(/\.pptx$/i, "");
+    let presentationId;
+    try {
+      presentationId = await importPptx(req.file.buffer, fileName);
+    } catch (e) {
+      return next(new ErrorHandler(`Couldn't open that PowerPoint file: ${e.message}`, 400));
+    }
+    source = { kind: "pptx", presentationId, url: "", title: fileName, temporary: true };
+  } else {
+    const url = String(req.body?.url || "").trim();
+    const presentationId = presentationIdFromUrl(url);
+    if (!presentationId) return next(new ErrorHandler("Paste a Google Slides link (docs.google.com/presentation/…) or upload a .pptx file", 400));
+    source = { kind: "google", presentationId, url, title: "", temporary: false };
+  }
+
+  let checked;
+  try {
+    checked = await checkSource(source.presentationId);
+  } catch (e) {
+    if (source.temporary) await removeTemporary(source.presentationId);
+    return next(new ErrorHandler(e.message, 400));
+  }
+  source.title = source.title || checked.title;
+
+  const deck = await SlideDeck.create({
+    topic: `Restyle: ${source.title}`.slice(0, 300),
+    notes: instruction,
+    slideCount: checked.slideCount,
+    source,
+    step: "Starting",
+    requestedById: req.user._id,
+    requestedByName: adminName(req.user),
+    requestedByEmail: req.user.email || "",
+  });
+  startDeck(deck._id);
+  res.status(201).json({ success: true, deck: await SlideDeck.findById(deck._id).select(LIST_FIELDS) });
 });

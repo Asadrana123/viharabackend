@@ -42,6 +42,11 @@ const SLIDE_SCHEMA = obj({
   items: { type: "array", items: obj({ icon: str, heading: str, text: str, value: str }) },
   left: obj({ label: str, points: strList }),
   right: obj({ label: str, points: strList }),
+  rowHeader: str,
+  noteHeader: str,
+  columns: strList,
+  rows: { type: "array", items: obj({ icon: str, label: str, cells: strList, note: str }) },
+  stages: { type: "array", items: obj({ mode: { type: "string", enum: ["sequence", "parallel"] }, items: { type: "array", items: obj({ icon: str, heading: str, text: str, value: str }) } }) },
   speakerNotes: str,
 });
 
@@ -57,9 +62,11 @@ function typeGuide() {
     if (t.bullets) parts.push(`bullets: ${t.bullets.min}-${t.bullets.max}, each ≤ ${t.bullets.chars}`);
     if (t.items) parts.push(`items: ${t.items.min}-${t.items.max}, each with ${t.items.fields.join(", ")}`);
     if (t.sides) parts.push(`left and right: label + ${t.sides.min}-${t.sides.max} points each`);
+    if (t.rows) parts.push(`rowHeader; columns: ${t.rows.columns.min}-${t.rows.columns.max}; rows: ${t.rows.min}-${t.rows.max}, each with label, icon (optional), cells, note (optional); noteHeader when notes are used`);
+    if (t.stages) parts.push(`stages: ${t.stages.min}-${t.stages.max}, each with mode and ${t.stages.items.min}-${t.stages.items.max} items (icon, heading, text, value)`);
     if (t.needsIcon) parts.push("icon");
     if (t.fields) parts.push(t.fields.join(", "));
-    if (!t.template) parts.push("title ≤ 42");
+    if (!t.template) parts.push(`title ≤ ${t.titleMax || 42}`);
     const limits = describeLimits(name);
     return `- ${name}: ${t.use}\n  Fields: ${parts.join("; ")}.${limits ? `\n  Max characters: ${limits}.` : ""}`;
   }).join("\n");
@@ -80,7 +87,7 @@ Slide types:
 ${typeGuide()}
 
 Choosing types:
-- Match the shape of the content: steps → process; parallel ideas → icon_cards; a contrast → comparison; real numbers → stats or chart; dates → timeline; the one thing to remember → key_message.
+- Match the shape of the content: steps → process; parallel ideas → icon_cards; a contrast → comparison; real numbers → stats or chart; dates → timeline; a grid of options vs criteria → table; a flow that splits or joins → flow; the one thing to remember → key_message.
 - Vary the deck: never use the same type on two slides in a row, and use "bullets" at most once (only if nothing visual fits).
 - First slide is cover, last is closing. Use section dividers only in decks of 8+ slides.
 
@@ -114,20 +121,26 @@ ${notes || "(none — keep the content general and make no specific claims)"}
 
 // Everything wrong with a plan, in words Claude can act on. Empty = good.
 // slideCount: the exact number asked for, or null when any length 3–20 is fine (a change).
-function findProblems(plan, slideCount) {
+// restyled: the deck follows someone else's deck slide for slide, so its structure is looser:
+// no closing slide needed, two slides of a type in a row are fine, bullets up to twice.
+function findProblems(plan, slideCount, { restyled = false } = {}) {
   const problems = [];
   const slides = plan.slides || [];
   if (slideCount && slides.length !== slideCount) problems.push(`The deck must have exactly ${slideCount} slides; it has ${slides.length}.`);
   if (!slideCount && (slides.length < MIN_SLIDES || slides.length > MAX_SLIDES)) problems.push(`The deck must have ${MIN_SLIDES}-${MAX_SLIDES} slides; it has ${slides.length}.`);
   if (slides[0]?.type !== "cover") problems.push("Slide 1 must be type cover.");
-  if (slides[slides.length - 1]?.type !== "closing") problems.push("The last slide must be type closing.");
-  if (slides.filter((s) => s.type === "bullets").length > 1) problems.push("Use bullets at most once; turn the others into a visual type.");
+  if (!restyled && slides[slides.length - 1]?.type !== "closing") problems.push("The last slide must be type closing.");
+  const maxBullets = restyled ? 2 : 1;
+  if (slides.filter((s) => s.type === "bullets").length > maxBullets) problems.push(`Use bullets at most ${maxBullets === 1 ? "once" : "twice"}; turn the others into a visual type.`);
 
   slides.forEach((s, i) => {
     const at = `Slide ${i + 1} (${s.type})`;
     if (s.type === "cover" && i !== 0) problems.push(`${at}: cover is only for slide 1.`);
     if (s.type === "closing" && i !== slides.length - 1) problems.push(`${at}: closing is only for the last slide.`);
-    if (i > 0 && s.type === slides[i - 1].type) problems.push(`${at}: same type as the slide before; pick a different type for one of them.`);
+    const sameAsBefore = i > 0 && s.type === slides[i - 1].type;
+    if (sameAsBefore && (!restyled || (i > 1 && s.type === slides[i - 2].type))) {
+      problems.push(`${at}: same type as the slide${restyled ? "s" : ""} before; pick a different type.`);
+    }
     if (s.type === "section" && !/^\d{2}$/.test((s.number || "").trim())) problems.push(`${at}: number must be two digits like "01".`);
     if ((s.speakerNotes || "").length > SPEAKER_NOTES_CHARS) problems.push(`${at}: speakerNotes is over ${SPEAKER_NOTES_CHARS} chars.`);
     problems.push(...slideProblems(s, at));
@@ -165,19 +178,19 @@ async function ask(system, messages, usage) {
 }
 
 // Asks, checks, and gives Claude up to FIX_ROUNDS chances to fix what's wrong.
-async function askUntilValid({ kit, firstMessage, slideCount, onStep = () => {} }) {
+async function askUntilValid({ kit, firstMessage, slideCount, restyled = false, onStep = () => {} }) {
   const usage = { inputTokens: 0, outputTokens: 0 };
   const system = systemPrompt(kit);
   const messages = [{ role: "user", content: firstMessage }];
 
   let { plan, content } = await ask(system, messages, usage);
-  let problems = findProblems(plan, slideCount);
+  let problems = findProblems(plan, slideCount, { restyled });
   for (let round = 1; problems.length && round <= FIX_ROUNDS; round++) {
     onStep(`Tidying up ${problems.length} detail${problems.length === 1 ? "" : "s"}`);
     messages.push({ role: "assistant", content });
     messages.push({ role: "user", content: `Fix these problems and return the whole deck again:\n${problems.map((p) => `- ${p}`).join("\n")}` });
     ({ plan, content } = await ask(system, messages, usage));
-    problems = findProblems(plan, slideCount);
+    problems = findProblems(plan, slideCount, { restyled });
   }
   if (problems.length) throw new Error(`The AI's deck still had problems after ${FIX_ROUNDS} fixes: ${problems.slice(0, 3).join(" ")}`);
   return { plan, usage };
@@ -220,7 +233,41 @@ ${input.instruction}
 </change>
 
 Make that change and return the whole deck. Keep every slide the change doesn't need to touch exactly as it is, field for field and word for word (including speakerNotes), so it isn't rebuilt. The deck can get longer or shorter if the change asks for it. Keep deckTitle unless the change is about the title.`;
-  return askUntilValid({ kit: input.kit, firstMessage, slideCount: null, onStep: input.onStep });
+  return askUntilValid({ kit: input.kit, firstMessage, slideCount: null, restyled: input.restyled, onStep: input.onStep });
 }
 
-module.exports = { planDeck, reviseDeck, findProblems };
+/**
+ * Rebuilds someone else's deck in the Vihara design, slide for slide: Claude
+ * looks at a picture of each source slide (plus any text and speaker notes)
+ * and writes one Vihara slide for it.
+ * @param {{ source: { title: string, slides: { text: string, notes: string, image: string }[] }, instruction?: string, kit: object, onStep?: (s: string) => void }} input
+ */
+function restyleDeck({ source, instruction, kit, onStep }) {
+  const n = source.slides.length;
+  const content = [
+    {
+      type: "text",
+      text: `Rebuild this ${n}-slide deck ("${source.title}") in the Vihara design. Below is a picture of every slide, with any text and speaker notes it has.
+
+Rules for rebuilding:
+- Exactly ${n} slides, in the same order: your slide 1 is their slide 1, and so on. Slide 1 is a cover.
+- Keep the meaning and every fact, number, name, status and link. The pictures are the source; don't add anything they don't say.
+- Choose the slide type that best shows each slide's content (a grid → table, a flow chart → flow, steps → process…). Shorten wording to fit the limits, but don't drop facts that matter; when a slide has too much, keep the most important points.
+- Leave out repeated decoration: page numbers, the "VIHARA / AI-NATIVE AUCTION PLATFORM" header, logos, slogans that appear on every slide.
+- speakerNotes: keep the slide's own speaker notes if it has them (shortened to fit); otherwise write what a presenter would say.${instruction ? `
+
+The admin also asked for this: ${instruction}` : ""}`,
+    },
+  ];
+  source.slides.forEach((s, i) => {
+    content.push({
+      type: "text",
+      text: `Slide ${i + 1}.${s.text ? ` Text on the slide: ${s.text.slice(0, 3000)}` : " (No text; read the picture.)"}${s.notes ? `
+Speaker notes: ${s.notes.slice(0, 2000)}` : ""}`,
+    });
+    content.push({ type: "image", source: { type: "base64", media_type: "image/png", data: s.image } });
+  });
+  return askUntilValid({ kit, firstMessage: content, slideCount: n, restyled: true, onStep });
+}
+
+module.exports = { planDeck, reviseDeck, restyleDeck, findProblems };

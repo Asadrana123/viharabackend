@@ -4,10 +4,21 @@
 // callback: Google redirects the browser there, and the signed `state` proves
 // which admin started it.
 const express = require("express");
+const multer = require("multer");
 const router = express.Router();
 
+// A .pptx to restyle: held in memory only, 50 MB cap.
+const pptxUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (/\.pptx$/i.test(file.originalname)) return cb(null, true);
+    cb(new Error("Please upload a PowerPoint (.pptx) file"));
+  },
+});
+
 const { getStatus, connect, callback, disconnect } = require("../../controller/slides/googleSlidesController");
-const { createDeck, getDeck, listDecks, reviseDeck } = require("../../controller/slides/slideDeckController");
+const { createDeck, getDeck, listDecks, reviseDeck, restyleDeck } = require("../../controller/slides/slideDeckController");
 const { isAuthenticated, authorizeRoles } = require("../../middleware/auth");
 
 const admin = [isAuthenticated, authorizeRoles("admin")];
@@ -20,6 +31,7 @@ router.post("/disconnect", ...admin, disconnect);
 // Decks made by the Slides agent
 router.get("/decks", ...admin, listDecks);
 router.post("/decks", ...admin, createDeck);
+router.post("/decks/restyle", ...admin, pptxUpload.single("file"), restyleDeck);
 router.get("/decks/:id", ...admin, getDeck);
 router.post("/decks/:id/revise", ...admin, reviseDeck);
 

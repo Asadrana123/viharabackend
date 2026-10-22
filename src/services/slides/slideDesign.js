@@ -167,7 +167,7 @@ class Canvas {
 // Google Slides can't shrink text to fit through the API, so we check before
 // building. Poppins is a wide font; these widths are deliberately generous.
 const INSET = 0.1; // Slides' default padding inside a text box, per side (in)
-const LINE_HEIGHT = 1.5; // Poppins line height at 100% spacing, in ems
+const LINE_HEIGHT = 1.25; // Poppins renders at ~1.19 em per line at 100% spacing (measured); a little slack
 
 function countLines(text, widthIn, sizePt, weight = 400) {
   // Average Poppins character width in ems, measured on rendered slides (with a little slack).
@@ -201,4 +201,4 @@ function fit(text, widthIn, heightIn, sizePt, weight = 400, lineSpacing = 100) {
   return { ok: lines <= maxLines, lines, maxLines, maxChars: Math.floor(perLine * maxLines * 0.9) };
 }
 
-module.exports = { GRID, TYPE, FONT, palette, tint, Canvas, fit, emu };
+module.exports = { GRID, TYPE, FONT, LINE_HEIGHT, palette, tint, Canvas, fit, emu };

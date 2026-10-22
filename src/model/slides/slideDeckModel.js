@@ -19,6 +19,15 @@ const slideDeckSchema = new mongoose.Schema(
     plan: { type: mongoose.Schema.Types.Mixed, default: null }, // slides as Claude wrote them
     presentationId: { type: String, default: "" },
     url: { type: String, default: "" },
+    // Set when the deck restyles an existing deck (a Google Slides link or an uploaded .pptx).
+    source: {
+      kind: { type: String, enum: ["google", "pptx"] },
+      presentationId: { type: String, default: "" },
+      url: { type: String, default: "" },
+      title: { type: String, default: "" },
+      temporary: { type: Boolean, default: false }, // an uploaded .pptx converted for reading; deleted once read
+    },
+
     // Google's id for each slide in `plan`, in the same order, so a change can replace just those slides.
     slideIds: { type: [String], default: [] },
 
