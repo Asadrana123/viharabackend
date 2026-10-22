@@ -2,6 +2,7 @@
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const ErrorHandler = require("../../utils/errorhandler");
 const EarlyAccessLead = require("../../model/leads/earlyAccessLeadModel");
+const { sanitizeFormAnswers, answersAsFields } = require("../../services/leads/formAnswers");
 const { scheduleEarlyAccessSignupCall } = require("../../services/calling/earlyAccessCallScheduler");
 const { enrichPerson } = require("../../services/shared/fullenrichService");
 const { syncEarlyAccessLead } = require("../../services/integrations/brevoService");
@@ -45,6 +46,8 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
     fullName, email, phone, markets, buyerType, dealSize, needsFinancing, timezone,
     consent, consentText, consentTimestamp, eventId,
   } = req.body;
+  // Extra questions added to the form in Admin → Landing Pages (services/leads/formAnswers.js).
+  const extraAnswers = sanitizeFormAnswers(req.body.extraAnswers);
 
   if (!fullName || !fullName.trim())
     return next(new ErrorHandler("fullName is required", 400));
@@ -62,6 +65,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
   let lead;
   try {
     lead = await EarlyAccessLead.create({
+      extraAnswers,
       fullName: fullName.trim(),
       email: normalizedEmail,
       phone: phone.trim(),          // raw, as entered (for display)
@@ -124,6 +128,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       { label: "Buyer Type", value: EARLY_ACCESS_REGISTERING_AS[lead.buyerType] || lead.buyerType },
       { label: "Deal Size", value: lead.dealSize },
       { label: "Needs Financing", value: needsFinancingLabel(lead.needsFinancing) },
+      ...answersAsFields(lead.extraAnswers),
     ],
   }).catch((e) => console.error("[slack] early-access notify failed:", e.message));
 

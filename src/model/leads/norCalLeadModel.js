@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { formAnswerSchemaDef } = require("../../services/leads/formAnswers");
 
 /**
  * Northern California early-access leads (/northern-california-early-access page).
@@ -88,6 +89,8 @@ const norCalLeadSchema = new mongoose.Schema(
 
     // Client pixel de-dupe id (client GTM/Meta only; no server CAPI here).
     eventId: { type: String, default: "" },
+    // Extra questions added to the form in Admin → Landing Pages: [{ question, answer }].
+    extraAnswers: formAnswerSchemaDef,
 
     // FullEnrich reverse-email profile (null when enrichment returns nothing).
     enrichment: { type: mongoose.Schema.Types.Mixed, default: null },

@@ -86,7 +86,7 @@ const REVIEW_SYSTEM = `You check a designer's HTML mockup before a landing page 
 How the build works: the mockup decides the STRUCTURE — sections, their order, layout (columns, grids, cards), and the text. The LOOK always stays the current landing theme: its colours, fonts, sizes, buttons, cards, shadows and radii. Fonts, colours, gradients and effects in the mockup are never copied; list the noticeable ones under "ignored" (that is expected, not a problem).
 
 List under "blocked" only things that truly can't be built now:
-- A form or input that would save new data (sign-up, contact, upload, payment, login) when the page has no existing form doing that. An existing form on the page can be moved and restyled — not blocked.
+- Payments, logins/accounts, file uploads, or a form that must go somewhere other than our lead system (e.g. an outside CRM or booking tool). Ordinary forms ARE fine: any questions and steps can be built — the lead is saved, the team alerted and, with consent, our AI concierge calls them. On an existing page the form's contact and consent fields (name, email, phone, consent wording) always stay; list removing those as blocked.
 - Live or personal data the page doesn't already load (counts, prices, listings, user accounts, maps with listings).
 - Third-party widgets, embeds, iframes, scripts, chat bubbles, videos hosted elsewhere, custom fonts or npm packages.
 - Images that are local files or embedded in the HTML ("[embedded file]", relative paths): they can't be uploaded from here. Images on res.cloudinary.com, or ones the page already uses, are fine.
@@ -113,7 +113,7 @@ async function reviewMockup({ ref, mockupHtml, page, editable, isNew, notes }) {
   }
 
   const pageText = isNew
-    ? `This will be a NEW landing page (${page.label}, at ${page.path}). It starts with no form and no data of its own; buttons can link to existing pages such as the Buyer List sign-up (/buyer-list), New Deals (/new-deals) or a property's auction page. For reference, here is the newest existing landing page:`
+    ? `This will be a NEW landing page (${page.label}, at ${page.path}). It has no data of its own; a form on it saves leads to our lead system (name, email and phone are always asked, plus any other questions), and buttons can link to existing pages such as the Buyer List sign-up (/buyer-list), New Deals (/new-deals) or a property's auction page. For reference, here is the newest existing landing page:`
     : `This mockup is for the existing landing page "${page.label}" at ${page.path}. Its current code (what it already loads, submits and tracks):`;
 
   const response = await getClient()

@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { formAnswerSchemaDef } = require("../../services/leads/formAnswers");
 
 /**
  * Buyer List leads (/buyer-list page — "Your buy box. Our deal flow.").
@@ -79,6 +80,8 @@ const buyerListLeadSchema = new mongoose.Schema(
 
     // Shared browser/server dedupe id of the LATEST submission (SIGNUP_EVENT_ID).
     eventId: { type: String, default: "", trim: true },
+    // Extra questions added to the form in Admin → Landing Pages: [{ question, answer }].
+    extraAnswers: formAnswerSchemaDef,
     submittedAt: { type: Date, default: null },
     submissions: { type: Number, default: 1 },
 

@@ -14,6 +14,7 @@
 // Everything else mirrors the old single-property schema (call retry state,
 // consent, enrichment) so the shared scheduler behaves identically.
 const mongoose = require("mongoose");
+const { formAnswerSchemaDef } = require("../../services/leads/formAnswers");
 
 // One UTM "touch" (first or last), as sent by the page. utm_content carries the
 // Meta Ads Loop creative id (LT-0004) for leads that came from an ad.
@@ -100,6 +101,8 @@ const propertyLeadSchema = new mongoose.Schema(
     smsConsentAt: { type: Date, default: null },
 
     eventId: { type: String, default: "" },
+    // Extra questions added to the form in Admin → Landing Pages: [{ question, answer }].
+    extraAnswers: formAnswerSchemaDef,
 
     // FullEnrich reverse-email/phone profile (null when enrichment returns nothing).
     enrichment: { type: mongoose.Schema.Types.Mixed, default: null },

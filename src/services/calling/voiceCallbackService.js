@@ -39,6 +39,11 @@ const partnerProgramVoicePrompt = require("../../config/partnerProgramVoicePromp
 // auction dates and financing change.
 const { loadPropertyBundle } = require("./propertyCallScheduler");
 
+// Forms on landing pages made in Admin → Landing Pages stamp `lp-<slug>`; their
+// script is built per page (config/landingFormVoicePrompt.js).
+const { buildLandingFormPrompt } = require("../../config/landingFormVoicePrompt");
+const LANDING_FORM_SOURCE_PREFIX = "lp-";
+
 // Prefix the property scheduler stamps on its callback source: `auction-<slug>`.
 const AUCTION_SOURCE_PREFIX = "auction-";
 
@@ -176,6 +181,14 @@ async function resolvePromptByAuctionSlug(source) {
   }
 }
 
+/** Landing page forms: when the callback `source` is "lp-<slug>", that page's script. */
+function resolvePromptByLandingPage(source) {
+  const tag = String(source || "").trim();
+  if (!tag.startsWith(LANDING_FORM_SOURCE_PREFIX)) return null;
+  const slug = tag.slice(LANDING_FORM_SOURCE_PREFIX.length).trim();
+  return slug ? buildLandingFormPrompt(slug) : null;
+}
+
 /**
  * Buyer Match callback: rebuild the matched-property script in its "calling you
  * back" form, so the callback talks about the same property for the same
@@ -198,7 +211,8 @@ async function resolveBuyerMatchPrompt(source, note) {
  *   0. buyer-match:<id> source — the matched-property script (live listing)
  *   1. propertyId               — the admin-authored prompt for that property
  *   2. auction-<slug> source    — property pages (script from the live listing)
- *   3. brand source map         — nor-cal / early-access / partner-program
+ *   3. lp-<slug> source         — landing pages made in Admin → Landing Pages
+ *   4. brand source map         — nor-cal / early-access / partner-program
  * null everywhere → the universal prompt.
  */
 async function resolveCallbackPrompt({ source, propertyId, note } = {}) {
@@ -206,6 +220,7 @@ async function resolveCallbackPrompt({ source, propertyId, note } = {}) {
     (await resolveBuyerMatchPrompt(source, note)) ||
     (await resolvePromptSnapshot(propertyId)) ||
     (await resolvePromptByAuctionSlug(source)) ||
+    resolvePromptByLandingPage(source) ||
     resolveStaticPromptBySource(source)
   );
 }

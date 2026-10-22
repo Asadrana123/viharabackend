@@ -141,6 +141,12 @@ const PROMPT_VARIABLES = [
     example: "yes",
   },
   {
+    key: "prospect_form_answers",
+    label: "Answers from a landing page form made in Admin → Landing Pages",
+    scope: "contact",
+    example: "Which city are you buying in?: Austin; Budget: $200K–$300K",
+  },
+  {
     key: "current_time_local",
     label: "Caller's local date & time (for booking callbacks)",
     scope: "contact",
@@ -281,6 +287,7 @@ const buildVariableValues = (contact = {}, researchSummary = "", property = {}, 
   prospect_deal_volume: contact.dealVolume || "",
   prospect_deal_interest: contact.dealInterest || "",
   prospect_advisor_requested: contact.advisorRequested || "",
+  prospect_form_answers: contact.formAnswers || "",
   ...callerClock(contact.timezone),
 
   property_name: property.name || "",

@@ -17,6 +17,7 @@
 // updating the scheduler.
 
 const mongoose = require("mongoose");
+const { formAnswerSchemaDef } = require("../../services/leads/formAnswers");
 
 const partnerLeadSchema = new mongoose.Schema(
   {
@@ -63,6 +64,8 @@ const partnerLeadSchema = new mongoose.Schema(
 
     // Client-generated id for Meta / GTM event correlation and idempotency.
     eventId: { type: String, default: "" },
+    // Extra questions added to the form in Admin → Landing Pages: [{ question, answer }].
+    extraAnswers: formAnswerSchemaDef,
 
     // ── Enrichment (FullEnrich; filled in the background, never blocks signup) ─
     enrichment: { type: mongoose.Schema.Types.Mixed, default: null },

@@ -168,7 +168,11 @@ function landingSystemPrompt({ page, editable, newFilesIn, landing }) {
 Create ${newFilesIn}index.jsx (default export: the page component) and one stylesheet for it in the same folder.
 Landing pages are standalone: the site header and footer are NOT added, so build the page's own top bar and footer like the other landing pages do.
 Start from the newest landing page, ${landing.reference.page}: read it first and reuse its structure pieces (top bar, hero, buttons, cards, FAQ, CTA band, footer) and its stylesheets by importing them (${landing.reference.styles.join(", ")}) — relative to your folder.
-The page has no form or data of its own: buttons link to existing pages (e.g. /buyer-list, /new-deals) or to ADVISOR_BOOKING_URL from landing.config.js.
+Buttons can link to existing pages (e.g. /buyer-list, /new-deals) or to ADVISOR_BOOKING_URL from landing.config.js.
+If the mockup has a form, build it — any questions, steps and layout the mockup shows — and send it with submitLandingForm(slug, payload) from src/services/landingForm.service.js (slug: "${page.path.replace(/^\/lp\//, "")}"). The lead is saved, the team is alerted and, with consent, our AI concierge calls them.
+  Payload — these fields are required: fullName, email, phone, consent (true only when the consent box is ticked), consentText: LANDING_FORM_CONSENT_TEXT, consentTimestamp (ISO string), timezone: getTimezone(), eventId: makeEventId("lp"), pageUrl: window.location.href, first_touch and last_touch from captureTouches() (landing.helpers.js; call it once on load — it returns { firstTouch, lastTouch }).
+  Every other question goes in extraAnswers: [{ question: "<the label shown>", answer: <value> }].
+  Show LANDING_FORM_CONSENT_TEXT (landing.config.js) next to an unticked consent checkbox, word for word. Phone uses type="tel", email type="email". Validate name, email and phone before sending; show a clear error and keep the visitor on the page if it fails; after success show a thank-you state on the page and fire trackEvent("lp_form_submit", { page: slug }) and trackEvent("registration_complete", { form_location: "lp" }).
 Add <Helmet> with a title and meta description, and fire trackEvent from landing.helpers.js for the main button clicks like the other pages do.`
     : `The existing landing page "${page.label}", shown at ${page.path}.
 Read its files first: it already has its theme (its stylesheets and their --xx- variables). Reuse its classes and components.`;
@@ -194,8 +198,12 @@ You can read any other file under src/ but you cannot change it. Shared styleshe
 ${landing.skipped.length ? landing.skipped.map((s) => `- ${s.item}${s.instead ? ` (instead: ${s.instead})` : ""}`).join("\n") : "- (nothing)"}
 
 # Rules
-- Keep everything that loads or saves data, tracks analytics, submits forms or navigates exactly as it is: API/service calls, hooks, trackEvent, onSubmit, form field names and validation, consent text. Move it around the layout if the mockup puts it elsewhere, but do not alter or remove it. The checker rejects your work if any of it changes.
-- Never add forms that save new data, API calls, packages, iframes or third-party scripts.
+- Forms: the designer may change a form freely — add, remove or reorder questions, split it into steps, change labels, placeholders, buttons and layout. Locked (the checker rejects your work otherwise):
+  • the call that saves the lead (register…/submit…), the trackEvent conversion calls (same event names) and the thank-you navigation
+  • the contact, consent and tracking fields in the payload: name, email, phone, consent, consentText, consentTimestamp, SMS consent fields, timezone, event id, touches/attribution, fbp/fbc, page url, buy_box, tier
+  • the consent wording, word for word — never edit or shorten consent text
+  Other payload fields (e.g. market, budget, persona) may be removed with their question. A NEW question's answer goes in the payload as extraAnswers: [{ question: "<the label shown>", answer: <value> }] — the lead's backend saves it. Keep the existing validation for the locked fields.
+- Data shown on the page (properties, deals) may be dropped with its section, or kept; never add new API calls, packages, iframes or third-party scripts.
 - Images: only images the page already uses, or https://res.cloudinary.com URLs from the mockup. Leave out other images and keep the layout balanced without them.
 - Text: use the mockup's text, except obvious placeholders (lorem ipsum, "XX", "$000", made-up stats or testimonials) — for those keep the page's current text or write a short neutral line. Never invent facts, numbers, prices or addresses.
 - Keep <Helmet> titles and meta tags.

@@ -10,7 +10,9 @@
 //   4. Only Brand Kit colours and fonts (old colours already in a file are tolerated);
 //      for landing pages: only the colours, fonts and effects the Landing folder
 //      already uses, so a page can be restructured but never re-themed
-//   5. Code that loads or saves data is kept exactly as it was
+//   5. Code that loads or saves data is kept exactly as it was; for landing
+//      pages: forms may change, but the save call, tracking, required
+//      fields and consent wording stay (checkLandingDataActions)
 const path = require("path").posix;
 const { parse } = require("@babel/parser");
 
@@ -288,6 +290,113 @@ function checkDataActions(file, text, original) {
   );
 }
 
+// ── Landing page forms ──────────────────────────────────────────────────────
+// On landing pages the designer may change a form freely (questions, order,
+// steps, labels), so the payload it sends may change. What stays locked:
+//   • the call that saves the lead, the conversion/tracking calls (by event
+//     name) and the thank-you navigation
+//   • the contact, consent and tracking fields the lead's backend needs
+//   • the consent wording, exactly
+// Loading data for display (get…, useQuery) may be dropped with its section.
+const LOCKED_CALL = /^(register|submit|send|save|create|post|update)[A-Z]\w*$|^fire\w*(Conversion|Conversions)$|^(trackEvent|gtag|fbq|navigate)$/;
+const LOCKED_KEY =
+  /^(full_?name|fullName|first_?name|firstName|last_?name|lastName|email|phone|consent|consentText|consentTimestamp|sms_?consent\w*|smsConsent\w*|timezone|event_?id|eventId|attribution|first_touch|last_touch|fbp|fbc|page_url|pageUrl|submitted_at|tier|buy_box|honeypot)$/;
+const CONSENT_WORDING_KEY = /consent_?text/i;
+const NAME_KEY = /^(full_?name|fullName|first_?name|firstName)$/;
+
+const propKey = (p) => (p.key?.type === "Identifier" ? p.key.name : p.key?.type === "StringLiteral" ? p.key.value : null);
+
+// Locked call signatures and the lead payloads (objects with an email and a name or phone).
+function formFacts(text) {
+  const ast = parseCode("", text);
+  const calls = new Set();
+  const payloads = [];
+  const objects = []; // every object with a few fields: where a changed payload is looked for
+  const consts = {}; // const NAME = … → its value (for consent wording kept in a constant)
+  let submits = 0;
+  walk(ast.program, (node) => {
+    if (node.type === "VariableDeclarator" && node.id.type === "Identifier" && node.init) {
+      consts[node.id.name] = squash(text.slice(node.init.start, node.init.end));
+    } else if (node.type === "CallExpression") {
+      const callee = text.slice(node.callee.start, node.callee.end);
+      if (!LOCKED_CALL.test(callee)) return;
+      const first = node.arguments[0];
+      // Tracking and navigation are locked per event name / address; saves by function.
+      const withArg = /^(trackEvent|gtag|fbq|navigate)$/.test(callee) && first && /Literal$/.test(first.type);
+      calls.add(withArg ? `${callee}(${squash(text.slice(first.start, first.end))})` : callee);
+    } else if (node.type === "JSXAttribute" && node.name?.name === "onSubmit") {
+      submits += 1;
+    } else if (node.type === "ObjectExpression") {
+      const props = node.properties.filter((p) => p.type === "ObjectProperty");
+      const keys = props.map(propKey).filter(Boolean);
+      const fields = () =>
+        Object.fromEntries(props.filter((p) => propKey(p)).map((p) => [propKey(p), squash(text.slice(p.value.start, p.value.end))]));
+      if (keys.length >= 3) objects.push(fields());
+      if (keys.includes("email") && keys.some((k) => k === "phone" || NAME_KEY.test(k))) {
+        payloads.push(fields());
+      }
+    }
+  });
+  return { calls, payloads, objects, consts, submits };
+}
+
+// The new payload that shares the most fields with an old one (the same form's).
+const closestPayload = (payload, candidates) => {
+  const keys = Object.keys(payload);
+  let best = null;
+  let bestShared = 0;
+  for (const c of candidates) {
+    const shared = keys.filter((k) => k in c).length;
+    if (shared > bestShared) [best, bestShared] = [c, shared];
+  }
+  return best || {};
+};
+
+function checkLandingDataActions(file, text, original) {
+  if (!CODE_EXT.test(file)) return [];
+  let after;
+  try {
+    after = formFacts(text);
+  } catch {
+    return []; // syntax problems are reported by checkSyntax
+  }
+  // New landing pages: a form must send the contact and consent fields.
+  if (!original) {
+    if (!after.calls.has("submitLandingForm")) return [];
+    const keys = new Set(after.payloads.flatMap((p) => Object.keys(p)));
+    const missing = ["fullName", "email", "phone", "consent", "consentText", "eventId"].filter((k) => !keys.has(k));
+    return missing.length ? [`${file}: the form's submitLandingForm payload must include ${missing.join(", ")}`] : [];
+  }
+  let before;
+  try {
+    before = formFacts(original);
+  } catch {
+    return [];
+  }
+  const problems = [];
+  for (const call of before.calls) {
+    if (!after.calls.has(call)) problems.push(`${file}: keep this call — it saves the lead or tracks a conversion: ${call.slice(0, 120)}`);
+  }
+  if (before.submits && !after.submits) problems.push(`${file}: the form must still have its onSubmit handler`);
+  for (const payload of before.payloads) {
+    const now = closestPayload(payload, after.objects);
+    for (const [key, value] of Object.entries(payload)) {
+      if (!LOCKED_KEY.test(key)) continue;
+      if (!(key in now)) {
+        problems.push(`${file}: the form must still send "${key}" — the lead's backend needs it`);
+      } else if (CONSENT_WORDING_KEY.test(key)) {
+        // Same expression, and if it names a constant here, the same constant text.
+        const name = value.match(/^(?:\w+\s*\?\s*)?([A-Z][A-Z0-9_]*)(?:\s*:\s*\S+)?$/)?.[1];
+        const changedConst = name && name in before.consts && before.consts[name] !== after.consts[name];
+        if (now[key] !== value || changedConst) {
+          problems.push(`${file}: keep the consent wording exactly as it was ("${key}: ${value.slice(0, 80)}")`);
+        }
+      }
+    }
+  }
+  return [...new Set(problems)].slice(0, 10);
+}
+
 /**
  * Runs every check on the changed files.
  * @param {Object<string,string>} changed   path → new content
@@ -306,7 +415,7 @@ function runChecks({ changed, originals, fileExists, isKnownPackage, brandKit, l
       ...checkImports(file, text, fileExists, isKnownPackage),
       ...checkUnusedImports(file, text),
       ...(landingTheme ? checkLandingTheme(file, text, original, landingTheme) : checkBrand(file, text, original, brandKit)),
-      ...checkDataActions(file, text, original)
+      ...(landingTheme ? checkLandingDataActions(file, text, original) : checkDataActions(file, text, original))
     );
   }
   return problems;

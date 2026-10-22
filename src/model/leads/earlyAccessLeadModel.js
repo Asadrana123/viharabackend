@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { formAnswerSchemaDef } = require("../../services/leads/formAnswers");
 
 /**
  * Early-access buyer-list leads (/early-access page).
@@ -63,6 +64,8 @@ const earlyAccessLeadSchema = new mongoose.Schema(
     consentTimestamp: { type: Date, default: null },
 
     eventId: { type: String, default: "" },
+    // Extra questions added to the form in Admin → Landing Pages: [{ question, answer }].
+    extraAnswers: formAnswerSchemaDef,
 
     // FullEnrich reverse-email profile (null when enrichment returns nothing).
     enrichment: { type: mongoose.Schema.Types.Mixed, default: null },

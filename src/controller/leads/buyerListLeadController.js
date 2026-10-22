@@ -6,6 +6,7 @@
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const ErrorHandler = require("../../utils/errorhandler");
 const BuyerListLead = require("../../model/leads/buyerListLeadModel");
+const { sanitizeFormAnswers, answersAsFields } = require("../../services/leads/formAnswers");
 const { normalisePhone } = require("../../services/calling/vapiCallsService");
 const { syncBuyerListLead } = require("../../services/integrations/brevoService");
 const { sendEvent } = require("../../services/integrations/metaCapiService");
@@ -112,6 +113,8 @@ const registerBuyerListLead = catchAsyncError(async (req, res, next) => {
     smsConsentAt: smsConsent ? now : null,
     eventId,
     submittedAt: Number.isNaN(submittedAt.getTime()) ? now : submittedAt,
+    // Extra questions added to the form in Admin → Landing Pages.
+    extraAnswers: sanitizeFormAnswers(body.extraAnswers),
   };
 
   // ── 2. Dedupe by email OR phone (email match wins) ─────────────────────────
@@ -211,6 +214,7 @@ const registerBuyerListLead = catchAsyncError(async (req, res, next) => {
       { label: "Price", value: `${buyBox.price_min} – ${buyBox.price_max === null ? "3M+" : buyBox.price_max}` },
       { label: "Financing", value: buyBox.financing || "—" },
       { label: "Campaign", value: lead.lastTouch?.utm_campaign || "—" },
+      ...answersAsFields(lead.extraAnswers),
     ],
   }).catch((e) => console.error("[slack] buyer-list notify failed:", e.message));
 });

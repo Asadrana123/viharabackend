@@ -2,6 +2,7 @@
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const ErrorHandler = require("../../utils/errorhandler");
 const PartnerLead = require("../../model/leads/partnerLeadModel");
+const { sanitizeFormAnswers, answersAsFields } = require("../../services/leads/formAnswers");
 const { schedulePartnerSignupCall } = require("../../services/calling/partnerCallScheduler");
 const { enrichPerson } = require("../../services/shared/fullenrichService");
 const { getCallsForPhones, normalisePhone } = require("../../services/calling/vapiCallsService");
@@ -39,6 +40,8 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
     consent, consentText, consentTimestamp, eventId,
     smsConsent, smsConsentText,
   } = req.body;
+  // Extra questions added to the form in Admin → Landing Pages (services/leads/formAnswers.js).
+  const extraAnswers = sanitizeFormAnswers(req.body.extraAnswers);
 
   if (!firstName || !firstName.trim())
     return next(new ErrorHandler("firstName is required", 400));
@@ -63,6 +66,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
   let lead;
   try {
     lead = await PartnerLead.create({
+      extraAnswers,
       firstName: firstName.trim(),
       lastName: lastName.trim(),
       email: normalizedEmail,       // canonical, unique dedup gate
@@ -127,6 +131,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       { label: "Primary Market", value: lead.primaryMarket },
       { label: "Persona", value: lead.persona },
       { label: "Needs Financing", value: needsFinancingLabel(lead.needsFinancing) },
+      ...answersAsFields(lead.extraAnswers),
     ],
   }).catch((e) => console.error("[slack] partner notify failed:", e.message));
 

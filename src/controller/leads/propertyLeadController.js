@@ -9,6 +9,7 @@ const catchAsyncError = require("../../middleware/catchAsyncError");
 const ErrorHandler = require("../../utils/errorhandler");
 const productModel = require("../../model/property/productModel");
 const PropertyLead = require("../../model/leads/propertyLeadModel");
+const { sanitizeFormAnswers, answersAsFields } = require("../../services/leads/formAnswers");
 const { scheduleSignupCall } = require("../../services/calling/propertyCallScheduler");
 const { enrichPerson } = require("../../services/shared/fullenrichService");
 const { getCallsForPhones, normalisePhone } = require("../../services/calling/vapiCallsService");
@@ -71,6 +72,8 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
     consent, consentText, consentTimestamp, eventId, quotePrice,
     smsConsent, smsConsentText,
   } = req.body;
+  // Extra questions added to the form in Admin → Landing Pages (services/leads/formAnswers.js).
+  const extraAnswers = sanitizeFormAnswers(req.body.extraAnswers);
 
   if (!fullName || !fullName.trim())
     return next(new ErrorHandler("fullName is required", 400));
@@ -101,6 +104,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
   let lead;
   try {
     lead = await PropertyLead.create({
+      extraAnswers,
       propertySlug: slug,
       fullName: fullName.trim(),
       phone: phone.trim(),
@@ -184,6 +188,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       { label: "Needs Financing", value: needsFinancingLabel(lead.needsFinancing) },
       ...(lead.downPayment ? [{ label: "Down Payment", value: lead.downPayment }] : []),
       { label: "Quote", value: hasQuote ? `$${quoteNum.toLocaleString("en-US")}` : "—" },
+      ...answersAsFields(lead.extraAnswers),
     ],
   }).catch((e) => console.error(`[slack] property notify failed (${slug}):`, e.message));
 

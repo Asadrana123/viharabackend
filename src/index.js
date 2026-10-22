@@ -9,6 +9,7 @@ const { startRensselaerAveCallScheduler } = require('./services/calling/renssela
 const { startPartnerCallScheduler } = require('./services/calling/partnerCallScheduler');
 const { startNorCalCallScheduler } = require('./services/calling/norCalCallScheduler');
 const { startNewDealsCallScheduler } = require('./services/calling/newDealsCallScheduler');
+const { startLandingFormCallScheduler } = require('./services/calling/landingFormCallScheduler');
 const { startVoiceCallbackScheduler } = require('./services/calling/voiceCallbackScheduler'); // ← ADD
 const { startPropertyCallScheduler } = require('./services/calling/propertyCallScheduler'); // unified /auction/:slug scheduler
 const { startMatchCallScheduler } = require('./services/buyerMatch/matchCallService'); // admin-started Buyer Match calls
@@ -57,6 +58,8 @@ server.listen(PORT, () => {
   // (11:00 AM / 2:30 PM / 6:00 PM in the lead's timezone).
   startNorCalCallScheduler();
   startNewDealsCallScheduler();
+  // Forms on landing pages made in Admin → Landing Pages (same daily loop).
+  startLandingFormCallScheduler();
 
   // Human-requested callbacks ("call me back in 10 minutes"). Dials at the exact
   // time asked, then falls into the daily 1:32 PM retry loop on no-answer.
@@ -73,7 +76,8 @@ server.listen(PORT, () => {
   // and Macs that stopped checking in. Off unless FACETIME_ENABLED=true.
   startFacetimeSweep();
 
-  // Weekly market data refresh of every linked property the admin hasn't paused.
+  // Weekly market data refresh of every linked property the admin hasn't paused,
+  // plus a daily status check that posts sold / off-market properties to Slack.
   startMarketSyncJob();
 
   // Property Importer queue: market data links an admin queued, scraped one at a time.

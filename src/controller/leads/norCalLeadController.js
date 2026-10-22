@@ -2,6 +2,7 @@
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const ErrorHandler = require("../../utils/errorhandler");
 const NorCalLead = require("../../model/leads/norCalLeadModel");
+const { sanitizeFormAnswers, answersAsFields } = require("../../services/leads/formAnswers");
 const { scheduleNorCalSignupCall } = require("../../services/calling/norCalCallScheduler");
 const { enrichPerson } = require("../../services/shared/fullenrichService");
 const { getCallsForPhones, normalisePhone } = require("../../services/calling/vapiCallsService");
@@ -53,6 +54,8 @@ const registerNorCalLead = catchAsyncError(async (req, res, next) => {
     smsConsent,
     smsConsentText,
   } = req.body;
+  // Extra questions added to the form in Admin → Landing Pages (services/leads/formAnswers.js).
+  const extraAnswers = sanitizeFormAnswers(req.body.extraAnswers);
 
   if (!fullName || !fullName.trim())
     return next(new ErrorHandler("fullName is required", 400));
@@ -81,6 +84,7 @@ const registerNorCalLead = catchAsyncError(async (req, res, next) => {
   let lead;
   try {
     lead = await NorCalLead.create({
+      extraAnswers,
       fullName: fullName.trim(),
       email: email.trim().toLowerCase(),
       phone: phone.trim(),          // raw, as entered (for display)
@@ -157,6 +161,7 @@ const registerNorCalLead = catchAsyncError(async (req, res, next) => {
       { label: "Bedrooms", value: lead.bedrooms || "—" },
       { label: "When", value: lead.when || "—" },
       { label: "Needs Financing", value: needsFinancingLabel(lead.needsFinancing) },
+      ...answersAsFields(lead.extraAnswers),
     ],
   }).catch((e) => console.error("[slack] nor-cal notify failed:", e.message));
 
