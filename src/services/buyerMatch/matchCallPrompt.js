@@ -36,7 +36,7 @@ function propertyLines(p = {}) {
     ["Address", p.address],
     ["Type", p.type],
     ["Starting bid", p.starting_bid],
-    ["Vihara estimate of value", p.estimate],
+    ["Market estimate of value", p.estimate],
     ["Estimated monthly rent", p.monthly_rent],
     // Filled per call in the buyer's own timezone (vapiPromptService).
     ...(p.auctionWindow
@@ -128,7 +128,7 @@ RULES
 - One or two sentences per turn, then stop and listen. One question at a time.
 - Never ask for their phone number or email — we already have them.
 - Never promise a price, a discount, or that they'll win the auction.
-- You may share the Vihara estimate and the auction times above. The times are already in the buyer's own timezone — say them naturally ("Saturday, October seventeenth at eleven A M your time"), and skip any that are blank.`;
+- You may share the market estimate and the auction times above. The times are already in the buyer's own timezone — say them naturally ("Saturday, October seventeenth at eleven A M your time"), and skip any that are blank.`;
 
   const firstMessage = {
     first: `Hi {{prospect_name}}, this is Maya from Vihara. You told us what you're looking for, and a property just came up that I think fits — have you got a quick minute?`,

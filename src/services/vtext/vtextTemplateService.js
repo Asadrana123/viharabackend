@@ -41,7 +41,7 @@ const TEMPLATE_VARIABLES = [
   { key: "opening_bid", label: "Opening bid (short)", scope: "property", example: "$525K" },
   { key: "auction_date", label: "Auction day", scope: "property", example: "Sat, Oct 17" },
   { key: "auction_time", label: "Auction hours", scope: "property", example: "11 AM–3:15 PM PT" },
-  { key: "estimated_value", label: "Vihara estimate", scope: "property", example: "$1,037,000" },
+  { key: "estimated_value", label: "Market estimate", scope: "property", example: "$1,037,000" },
   { key: "monthly_rent", label: "Estimated monthly rent", scope: "property", example: "$4,499" },
   { key: "listing_url", label: "Listing URL", scope: "property", example: "https://www.vihara.ai/listing/1703-brookside-pine-ln-kingwood" },
 ];

@@ -26,7 +26,7 @@ const TEXT_ROLES = Object.freeze(["headline", "secondaryHeadline", "supportingCo
 const STRING_LABELS = Object.freeze({
     valueGapLine: "Value gap",
     priceLine: "Starting price",
-    estimateLine: "Vihara estimate",
+    estimateLine: "Market estimate",
     specsLine: "Beds / baths / sq ft",
     cityState: "City and state",
     auctionDateLine: "Auction date",

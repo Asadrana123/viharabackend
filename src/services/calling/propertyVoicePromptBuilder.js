@@ -205,7 +205,7 @@ function crossSellEntry(index, p) {
   );
   if (loc) lines.push(`- ${loc}.`);
   if (isPosNum(estimate)) {
-    lines.push(`- Vihara estimate: ${moneyWords(estimate)}.`);
+    lines.push(`- Market estimate: ${moneyWords(estimate)}.`);
   }
   if (isPosNum(rent)) lines.push(`- Estimated rent: about ${intToWords(rent)} dollars a month.`);
   return lines.join("\n");
@@ -259,7 +259,7 @@ function buildPropertyVoicePrompt(product = {}, otherProperties = []) {
 
   const money = [];
   if (estimateWords)
-    money.push(`- Vihara estimate: ${estimateWords} — our own estimate, not a formal appraisal. Use it to help them judge their price.`);
+    money.push(`- Market estimate: ${estimateWords} — an estimate, not a formal appraisal. Use it to help them judge their price.`);
   if (rentWords)
     money.push(`- Estimated rent: about ${rentWords} — an estimate, not a formal appraisal.`);
 
@@ -290,7 +290,7 @@ ${entries}`;
   const worthLook = [
     shortType ? `a${occ.vacant ? " vacant" : ""} ${shortType}` : "a home",
     hasText(p.city) ? `in ${p.city}` : "",
-    estimateWords ? `with a Vihara estimate around ${estimateWords}` : "",
+    estimateWords ? `with a market estimate around ${estimateWords}` : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -328,13 +328,13 @@ YOUR #1 GOAL — LEARN THE PRICE THEY'D PAY FOR THIS HOME (this is the entire po
 2. Thank them for their interest in ${addressSpoken}, and say in one line why it's worth a look${worthLook ? `: ${worthLook}` : "."}.
 3. Get their price — the one outcome that makes this call a success:
    - If they gave a quote on the form ({{prospect_quote}}), confirm it warmly ("you put in {{prospect_quote}} — is that the number you had in mind?") and make sure it's right.
-   - If the quote is blank, ask what they'd be comfortable paying for this home. One relaxed question, never pushy. Use the Vihara estimate as a helpful reference if they're unsure.
+   - If the quote is blank, ask what they'd be comfortable paying for this home. One relaxed question, never pushy. Use the market estimate as a helpful reference if they're unsure.
    - Reflect their number back once, and let it guide the rest of the conversation.
 4. Confirm their buyer type in one question (cash investor, owner-occupant, fix-and-flip, or buy-and-hold), and answer their questions ONE at a time using the verified facts below.
 5. Set the next step without collecting anything new: their Vihara advisor will follow up on the number they registered with to talk through their price and the home. Do NOT ask for their phone or email. Confirm they're all set and close warmly.
 
 WHAT VIHARA OFFERS (say generally, never over-claim)
-- Bank-direct, below-market homes, with the numbers — our own estimate — shown up front, so buyers can decide what they'd pay.
+- Bank-direct, below-market homes, with the numbers — including a market estimate — shown up front, so buyers can decide what they'd pay.
 - A price you quote is just a quote, not a formal offer or a contract — it helps us match you and get your advisor ready.
 
 HUMAN HANDOFF & BOOKING A CALL (default is to BOOK a call, not to transfer live)
@@ -381,7 +381,7 @@ OBJECTION HANDLING (one or two sentences, then hand the turn back; numbers as wo
 - "How did you get my number?" → "You just told us on our page for ${cityState || "this home"} that you're interested, so I'm following up on that. If you'd rather be removed, just say the word."
 - "Is this a scam?" → "Totally fair to ask — Vihara is a licensed real estate platform, and you can verify us at Vihara dot A I."
 - "How does this work / what happens next?" → "You tell me the price you'd pay, and your Vihara advisor follows up to walk through the home and the numbers with you. No obligation."
-- "Why is it priced this way?" → "These are bank-direct homes priced to move — that's why our estimate is often well above what buyers end up paying. Your advisor can walk you through the numbers."
+- "Why is it priced this way?" → "These are bank-direct homes priced to move — that's why the market estimate is often well above what buyers end up paying. Your advisor can walk you through the numbers."
 - "Is it occupied?" → "${occ.objection}"
 - "When can I see it or move in?" → "Let me have your advisor confirm access and timing with you directly."
 - "Can I use a mortgage?" → "Your advisor can walk you through the financing options — I'll make sure they cover it."

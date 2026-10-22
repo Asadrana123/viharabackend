@@ -24,7 +24,7 @@ const VERIFIED_FIELDS = Object.freeze([
     { key: "assetType", label: "Asset type", path: "assetType", type: "string" },
     { key: "monthlyHOADues", label: "Monthly HOA dues", path: "monthlyHOADues", type: "number" },
     { key: "startBid", label: "Starting bid", path: "startBid", type: "number", positive: true },
-    { key: "viharaEstimate", label: "Vihara estimate", path: "investmentData.valuation.ViharaValue", type: "number", positive: true },
+    { key: "viharaEstimate", label: "Market estimate", path: "investmentData.valuation.ViharaValue", type: "number", positive: true },
     { key: "rentEstimate", label: "Rent estimate (monthly)", path: "rentEstimate", type: "number", positive: true },
     { key: "rehabEstimate", label: "Rehab estimate", path: "rehabEstimate", type: "number" },
     { key: "auctionStartDate", label: "Auction start date", path: "auctionStartDate", type: "date" },

@@ -114,7 +114,7 @@ CURRENT LIVE DEALS (reference only — do NOT recite as a list or read a whole e
 - Bank-owned, five-bedroom five-bathroom multi-cabin property; currently vacant.
 - Big Bear Lake, San Bernardino County — walking distance to Big Bear Village and the lake, about a mile and a third from Bear Mountain and Snow Summit resorts, near a Mountain Transit shuttle stop.
 - About thirty-two hundred square feet on a lot around sixteen thousand square feet; built nineteen twenty-four; no HOA. Zoning permits one additional unit.
-- Starting bid: five hundred twenty-five thousand dollars. Vihara estimate: about one point nine million dollars — roughly seventy-three percent below our estimate at the opening bid.
+- Starting bid: five hundred twenty-five thousand dollars. Market estimate: about one point nine million dollars — roughly seventy-three percent below the market estimate at the opening bid.
 - Estimated rent: about three thousand dollars a month.
 - Fits buyers who are: cash investors, buy-and-hold, and fix-and-flip after mountain-resort upside.
 
@@ -122,7 +122,7 @@ CURRENT LIVE DEALS (reference only — do NOT recite as a list or read a whole e
 - Bank-owned, three-bedroom one-and-a-half-bath single-family home; currently OCCUPIED — route any possession, tenant, or access question to the advisor; never promise it's vacant.
 - Ogdensburg, St. Lawrence County, New York.
 - About two thousand square feet on a lot around fifty-seven hundred square feet; built nineteen eighteen; no HOA. Covered front porch, in-ground pool, detached garage, full basement, and an open floor plan.
-- Starting bid: forty thousand dollars. Vihara estimate: one hundred thirty-three thousand dollars — about seventy percent below our estimate.
+- Starting bid: forty thousand dollars. Market estimate: one hundred thirty-three thousand dollars — about seventy percent below the market estimate.
 - Estimated rent: about one thousand dollars a month.
 - Fits buyers who are: budget cash buyers and buy-and-hold investors after a low entry point.
 
@@ -130,7 +130,7 @@ CURRENT LIVE DEALS (reference only — do NOT recite as a list or read a whole e
 - Bank-owned, five-bedroom five-bathroom custom single-family home; currently vacant.
 - Kingwood, Harris County, Texas — Kings Point Village subdivision, near a golf course.
 - About forty-nine hundred square feet on a lot of about half an acre; built nineteen ninety. High ceilings, private in-ground pool, three-car garage, and a circular driveway. Annual HOA fees around one thousand two hundred seventy-five dollars.
-- Starting bid: eight hundred thousand dollars. Vihara estimate: about one million forty thousand dollars — roughly twenty-three percent below our estimate.
+- Starting bid: eight hundred thousand dollars. Market estimate: about one million forty thousand dollars — roughly twenty-three percent below the market estimate.
 - Estimated rent: about forty-five hundred dollars a month.
 - Fits buyers who are: higher-budget buy-and-hold and owner-occupants after an upscale home under estimate.
 

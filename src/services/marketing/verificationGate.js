@@ -86,7 +86,7 @@ function computeValueGap({ viharaEstimate, startBid }) {
     const base = { viharaEstimate: viharaEstimate ?? null, startBid: startBid ?? null, amount: null };
 
     if (viharaEstimate == null) {
-        return { ...base, bin: GATE_BINS.BLOCKED, reason: "Vihara estimate is missing" };
+        return { ...base, bin: GATE_BINS.BLOCKED, reason: "Market estimate is missing" };
     }
     if (startBid == null) {
         return { ...base, bin: GATE_BINS.BLOCKED, reason: "Starting bid is missing" };
@@ -94,7 +94,7 @@ function computeValueGap({ viharaEstimate, startBid }) {
 
     const amount = Math.round(viharaEstimate - startBid);
     if (amount <= 0) {
-        return { ...base, bin: GATE_BINS.BLOCKED, reason: "Vihara estimate is not above the starting bid" };
+        return { ...base, bin: GATE_BINS.BLOCKED, reason: "Market estimate is not above the starting bid" };
     }
     return { ...base, amount, bin: GATE_BINS.VERIFIED, reason: "" };
 }

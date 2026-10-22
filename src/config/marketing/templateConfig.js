@@ -73,7 +73,7 @@ const BUILTIN_TEMPLATE = Object.freeze({
 
 // Text used for the template preview (never saved on a run).
 const PREVIEW_TEXTS = Object.freeze({
-    headline: "$62,000 below the Vihara estimate",
+    headline: "$62,000 below the market estimate",
     secondaryHeadline: "Starting bid: $180,000",
     supportingCopy: "3 bed | 2 bath | 1,450 sq ft",
     cta: "See the Deal",

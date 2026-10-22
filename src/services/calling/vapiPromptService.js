@@ -190,7 +190,7 @@ const PROMPT_VARIABLES = [
   },
   {
     key: "estimated_arv",
-    label: "Vihara estimate (spoken)",
+    label: "Market estimate (spoken)",
     scope: "property",
     example: "one million thirty seven thousand dollars",
   },

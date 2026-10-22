@@ -321,7 +321,7 @@ function buildValuation(p, ctx) {
   const v = (p.investmentData && p.investmentData.valuation) || {};
   const parts = [];
   // NOTE: ViharaValue is the PUBLIC value. reservePrice is NOT read here.
-  if (has(v.ViharaValue)) parts.push(`The estimated market value (Vihara Value) is ${money(v.ViharaValue)}.`);
+  if (has(v.ViharaValue)) parts.push(`The market estimate is ${money(v.ViharaValue)}.`);
   if (has(v.lowRange) || has(v.highRange)) {
     const lo = has(v.lowRange) ? money(v.lowRange) : null;
     const hi = has(v.highRange) ? money(v.highRange) : null;
