@@ -14,10 +14,12 @@
 // (title, description, address, beds/baths/sqft/lot/year, types, HOA, APN),
 // auction terms (dates, starting bid, reserve, current bid, EMD, ...),
 // visibility and status. If the source's own status changes (e.g. sold / off
-// market), the property is only flagged for the admin — nothing else happens.
+// market), the property is only flagged for the admin in Slack
+// (marketStatusWatchService) — nothing else happens.
 
 const productModel = require("../../model/property/productModel");
 const firecrawlService = require("../integrations/firecrawlService");
+const { recordMarketStatus, reportStatusChange } = require("./marketStatusWatchService");
 const {
     fetchMarketDataListing,
     buildMarketDataFields,
@@ -83,13 +85,9 @@ async function syncProduct(product) {
     // after that only the admin changes them.
     const photosUpdated = false;
 
-    // Market data status — flag a change for the admin, change nothing else.
-    const newStatus = marketData.homeStatus || null;
-    const statusChanged = Boolean(sync.marketStatus && newStatus && newStatus !== sync.marketStatus);
-    if (statusChanged) {
-        sync.statusAlert = { from: sync.marketStatus, to: newStatus, detectedAt: new Date() };
-    }
-    if (newStatus) sync.marketStatus = newStatus;
+    // Market data status — flag a change for the admin (Slack, after the save),
+    // change nothing else.
+    const statusChanged = recordMarketStatus(product, marketData.homeStatus || null);
 
     sync.tweakPercent = tweakPercent;
     sync.estimateUpliftPercent = estimateUpliftPercent;
@@ -100,6 +98,7 @@ async function syncProduct(product) {
     // validateBeforeSave:false — same as the other admin updates: legacy
     // properties may miss unrelated required fields, which must not block a sync.
     await product.save({ validateBeforeSave: false });
+    if (statusChanged) await reportStatusChange(product);
 
     return { photosUpdated, statusChanged };
 }

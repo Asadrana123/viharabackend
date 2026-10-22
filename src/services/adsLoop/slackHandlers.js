@@ -2,7 +2,8 @@
 //
 // Everything that arrives from Slack, after the route checked its signature:
 //   events        thread replies (#creative-review notes, "go" in #ads-weekly) and ✅ reactions
-//   interactions  Approve / Reject / Go / Activate buttons (and the repair agent's buttons)
+//   interactions  Approve / Reject / Go / Activate buttons (and the repair agent's,
+//                 sign-up doctor's and market status buttons)
 //   /adsloop      stop | resume | status | build <property slug> | retry <core id> | pull | weekly | repair | why [page]
 //
 // Every message / reaction / click is claimed once (processedSlackMessages)
@@ -104,6 +105,9 @@ const ACTIONS = {
     // Sign-up doctor
     doctor_fix: (v, ctx) => require("../conversion/conversionService").handleFix({ value: v, userId: ctx.userId }),
     doctor_details: (v, ctx) => require("../conversion/conversionService").handleDetails({ value: v, userId: ctx.userId }),
+    // Market status watch (a live property sold / went off market)
+    market_status_hide: (v, ctx) => require("../property/marketStatusWatchService").handleHide({ productId: v, userId: ctx.userId }),
+    market_status_keep: (v, ctx) => require("../property/marketStatusWatchService").handleKeep({ productId: v, userId: ctx.userId }),
 };
 
 // Forms (modals) sent from Slack, by callback_id.

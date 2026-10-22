@@ -570,14 +570,17 @@ const productSchema = new mongoose.Schema({
         // the source's own listing status (FOR_SALE, PENDING, RECENTLY_SOLD, ...).
         marketStatus: { type: String, default: null },
         // Set when marketStatus changes between syncs; cleared when the admin
-        // dismisses it in Manage Listings. Nothing else changes automatically.
+        // dismisses it in Manage Listings or answers the Slack alert
+        // (marketStatusWatchService). Nothing else changes automatically.
         statusAlert: {
             type: new mongoose.Schema(
-                { from: String, to: String, detectedAt: Date },
+                { from: String, to: String, detectedAt: Date, slackChannel: String, slackTs: String },
                 { _id: false }
             ),
             default: null
         },
+        // The last status posted to Slack, so the same status is reported once.
+        reportedStatus: { type: String, default: null },
         // Fingerprint of the source's photo list. Photos are re-uploaded only when
         // the source's photos change, so admin photo edits survive normal syncs.
         photoSignature: { type: String, default: null }
