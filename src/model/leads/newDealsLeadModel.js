@@ -28,8 +28,8 @@ const touchSchema = new mongoose.Schema(
 
 const buyBoxSchema = new mongoose.Schema(
   {
-    strategy: { type: [String], default: [] },      // flip | rent | brrrr | wholesale | home
-    property_type: { type: [String], default: [] }, // sfr | condo | mf_2_4 | mf_5_plus | mixed_use
+    strategy: { type: [String], default: [] },      // flip | rent | brrrr | wholesale | home | str
+    property_type: { type: [String], default: [] }, // sfr | condo | mf_2_4 | mf_5_plus | land | mixed_use
     states: { type: [String], default: [] },
     cities: { type: [String], default: [] },
     price_min: { type: Number, default: null },
@@ -39,6 +39,8 @@ const buyBoxSchema = new mongoose.Schema(
     condition: { type: String, default: "", trim: true },
     financing: { type: String, default: "", trim: true },
     deals_12mo: { type: String, default: "", trim: true },
+    // "How much are you ready to put down?" — only when not paying cash.
+    down_payment: { type: String, default: "", trim: true }, // under_10 | 10_20 | 20_25 | 25_plus | not_sure
   },
   { _id: false }
 );
@@ -59,7 +61,10 @@ const newDealsLeadSchema = new mongoose.Schema(
 
     // Spotlight deal they tapped ("bal-01" …) — see NEW_DEALS in landing.config.
     dealInterest: { type: String, default: "", trim: true },
+    // Main way to reach them (call > text > email) — what Brevo and the welcome email read.
     contactPreference: { type: String, enum: ["", "email", "text", "call"], default: "" },
+    // Every way they ticked ("Best way to reach you" is multi-pick on the form).
+    contactPreferences: { type: [String], default: [] },
     // Legacy: the "advisor call" checkbox was removed from the form (Maya
     // connects to an advisor on request). Kept so older records still read.
     advisorCallRequested: { type: Boolean, default: false },

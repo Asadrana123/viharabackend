@@ -8,9 +8,9 @@
 const MAX_PRICE = 3000000;
 const TOUCH_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "gclid", "fbclid"];
 
-const STRATEGIES = ["flip", "rent", "brrrr", "wholesale", "home"];
+const STRATEGIES = ["flip", "rent", "brrrr", "wholesale", "home", "str"]; // str = short-term rental (/new-deals)
 const CONDITIONS = ["turnkey", "light_rehab", "heavy_rehab", "any"];
-const FINANCING = ["cash", "hard_money", "mortgage", "not_sure"];
+const FINANCING = ["cash", "hard_money", "mortgage", "financing", "not_sure"]; // financing = /new-deals "Financing"
 const DEALS_12MO = ["1", "2_5", "6_plus"];
 const US_STATES = [
   "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID", "IL", "IN", "IA",
@@ -135,13 +135,13 @@ const withTimeout = (promise, ms, timeoutValue = { success: false, error: "timeo
 
 // ── Speech helpers (Maya reads these aloud) ─────────────────────────────────
 const SPEECH_LABELS = {
-  strategy: { flip: "fix and flip", rent: "rental or buy-and-hold", brrrr: "BRRRR", wholesale: "wholesale", home: "a home to live in" },
+  strategy: { flip: "fix and flip", rent: "rental or buy-and-hold", brrrr: "BRRRR", wholesale: "wholesale", home: "a home to live in", str: "short-term rental" },
   property_type: {
     sfr: "single-family", condo: "condo or townhome", mf_2_4: "two to four units",
     mf_5_plus: "five-plus units", land: "land", mixed_use: "mixed-use",
   },
   condition: { turnkey: "turnkey", light_rehab: "light rehab", heavy_rehab: "heavy rehab", any: "any condition" },
-  financing: { cash: "cash", hard_money: "hard or private money", mortgage: "a mortgage", not_sure: "not sure yet" },
+  financing: { cash: "cash", hard_money: "hard or private money", mortgage: "a mortgage", financing: "financing", not_sure: "not sure yet" },
   deals_12mo: { 1: "one deal", "2_5": "two to five deals", "6_plus": "six or more deals" },
 };
 const STATE_NAMES = {
@@ -157,13 +157,13 @@ const STATE_NAMES = {
 
 // Form labels exactly as the buyer saw them (welcome email, admin text).
 const FORM_LABELS = {
-  strategy: { flip: "Fix & flip", rent: "Rental / hold", brrrr: "BRRRR", wholesale: "Wholesale", home: "Home to live in" },
+  strategy: { flip: "Fix & flip", rent: "Rental / hold", brrrr: "BRRRR", wholesale: "Wholesale", home: "Home to live in", str: "Short-term rental" },
   property_type: {
     sfr: "Single-family", condo: "Condo / townhome", mf_2_4: "2–4 units",
     mf_5_plus: "5+ units", land: "Land", mixed_use: "Mixed-use",
   },
   condition: { turnkey: "Turnkey", light_rehab: "Light rehab", heavy_rehab: "Heavy rehab", any: "Any condition" },
-  financing: { cash: "Cash", hard_money: "Hard / private money", mortgage: "Mortgage", not_sure: "Not sure yet" },
+  financing: { cash: "Cash", hard_money: "Hard / private money", mortgage: "Mortgage", financing: "Financing", not_sure: "Not sure yet" },
   deals_12mo: { 1: "1", "2_5": "2–5", "6_plus": "6+" },
 };
 const labelList = (group, values = []) =>

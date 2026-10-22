@@ -38,9 +38,29 @@ const {
   splitName,
 } = require("../../services/leads/buyBox");
 
-// /new-deals property types (mixed-use instead of land).
-const PROPERTY_TYPES = ["sfr", "condo", "mf_2_4", "mf_5_plus", "mixed_use"];
+// /new-deals property types ("Multi Family" on the form sends mf_2_4 + mf_5_plus).
+const PROPERTY_TYPES = ["sfr", "condo", "mf_2_4", "mf_5_plus", "land", "mixed_use"];
 const CONTACT_PREFERENCES = ["email", "text", "call"];
+// "How much are you ready to put down?" — must match DOWN_OPTIONS in the
+// website's NewDealsPage.jsx. Kept only when they're not paying cash.
+const DOWN_PAYMENTS = ["under_10", "10_20", "20_25", "25_plus", "not_sure"];
+const DOWN_PAYMENT_LABELS = {
+  under_10: "Under 10%", "10_20": "10–20%", "20_25": "20–25%", "25_plus": "25%+", not_sure: "Not sure",
+};
+const CONTACT_LABELS = { email: "Email", text: "Text", call: "Phone call" };
+
+// Multi-pick "Best way to reach you" → ordered list; older pages send one value.
+const contactPrefsFrom = (body) => {
+  const raw = Array.isArray(body.contact_preferences) ? body.contact_preferences : [body.contact_preference];
+  return CONTACT_PREFERENCES.filter((c) => raw.includes(c));
+};
+// The single main channel stored for Brevo / the welcome email: call > text > email.
+const mainContactPref = (prefs) => ["call", "text", "email"].find((c) => prefs.includes(c)) || "";
+const contactPrefsText = (lead) =>
+  (lead.contactPreferences && lead.contactPreferences.length
+    ? lead.contactPreferences
+    : [lead.contactPreference].filter(Boolean)
+  ).map((c) => CONTACT_LABELS[c] || c).join(", ");
 
 // States with spotlight inventory. ENV: NEW_DEALS_ACTIVE_MARKETS="MD,MI,LA"
 const activeMarkets = () => marketList(process.env.NEW_DEALS_ACTIVE_MARKETS, "MD,MI,LA");
@@ -86,7 +106,8 @@ async function sendWelcomeOnce(lead) {
       PRICE_RANGE: priceRangeText(box),
       CONDITION: labelList("condition", box.condition),
       FINANCING: labelList("financing", box.financing),
-      CONTACT_PREF: claimed.contactPreference || "",
+      DOWN_PAYMENT: DOWN_PAYMENT_LABELS[box.down_payment] || "",
+      CONTACT_PREF: contactPrefsText(claimed),
       ADVISOR_CALL: claimed.advisorCallRequested === true,
       DEAL_MARKET: deal ? deal.market : "",
       DEAL_PRICE: deal ? deal.price : "",
@@ -145,11 +166,14 @@ const registerNewDealsLead = catchAsyncError(async (req, res, next) => {
 
   const now = new Date();
   const buyBox = buildBuyBox(body.buy_box, PROPERTY_TYPES);
+  const rawDown = body.buy_box && body.buy_box.down_payment;
+  buyBox.down_payment = buyBox.financing !== "cash" && DOWN_PAYMENTS.includes(rawDown) ? rawDown : "";
   const advisorCallRequested = body.advisor_call_requested === true;
   const tier = computeTier(buyBox, advisorCallRequested);
   const consent = body.contact_consent === true;
   const dealInterest = findDeal(str(body.deal_interest, 40)) ? str(body.deal_interest, 40) : "";
-  const contactPreference = CONTACT_PREFERENCES.includes(body.contact_preference) ? body.contact_preference : "";
+  const contactPreferences = contactPrefsFrom(body);
+  const contactPreference = mainContactPref(contactPreferences);
 
   const { firstTouch, lastTouch } = touchesFrom(body, now);
   const attribution = attributionFrom(body.attribution, ["variant", "market_param"]);
@@ -167,6 +191,7 @@ const registerNewDealsLead = catchAsyncError(async (req, res, next) => {
     tier,
     dealInterest,
     contactPreference,
+    contactPreferences,
     advisorCallRequested,
     consent,
     consentText: consent ? str(body.contact_consent_text, 1000) : "",
@@ -276,7 +301,9 @@ const registerNewDealsLead = catchAsyncError(async (req, res, next) => {
       { label: "Deal", value: dealLabel(lead.dealInterest) || "—" },
       { label: "States", value: buyBox.states.join(", ") || "—" },
       { label: "Price", value: `${buyBox.price_min} – ${buyBox.price_max === null ? "3M+" : buyBox.price_max}` },
-      { label: "Reach By", value: lead.contactPreference || "—" },
+      { label: "Financing", value: labelList("financing", buyBox.financing) || "—" },
+      { label: "Down Payment", value: DOWN_PAYMENT_LABELS[buyBox.down_payment] || "—" },
+      { label: "Reach By", value: contactPrefsText(lead) || "—" },
     ],
   }).catch((e) => console.error("[slack] new-deals notify failed:", e.message));
 });

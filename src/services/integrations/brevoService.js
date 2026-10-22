@@ -474,7 +474,9 @@ const buildBuyBoxAttributes = (lead) => {
   const box = lead.buyBox || {};
   const attributes = {
     STATES: Array.isArray(box.states) ? box.states : [],
-    STRATEGY: Array.isArray(box.strategy) ? box.strategy : [],
+    // "str" (short-term rental, /new-deals) isn't a Brevo option yet — leave it
+    // out so the upsert doesn't 400 and drop the whole buy box.
+    STRATEGY: Array.isArray(box.strategy) ? box.strategy.filter((s) => s !== "str") : [],
     PROPERTY_TYPE: Array.isArray(box.property_type) ? box.property_type : [],
   };
   if (isNum(box.price_min)) attributes.PRICE_MIN = box.price_min;
