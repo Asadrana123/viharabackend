@@ -7,10 +7,7 @@ const PartnerLead = require("../../model/leads/partnerLeadModel");
 const BuyerListLead = require("../../model/leads/buyerListLeadModel");
 const NewDealsLead = require("../../model/leads/newDealsLeadModel");
 const RenovationContractorRequest = require("../../model/property/renovationContractorRequestModel");
-const { getCallsForPhones, normalisePhone } = require("../../services/calling/vapiCallsService");
-const { getEmailEventsForEmails } = require("../../services/integrations/emailEventsService");
-const { getNotesForLeads } = require("../../services/leads/leadNotesService");
-const { getVtextMessagesForPhones } = require("../../services/vtext/vtextLeadMessagesService");
+const { sendCrossFunnelList } = require("../../services/leads/crossFunnelLeads");
 
 // Whole-word "test" (case-insensitive): matches "test", "Test User", "John Test",
 // but NOT "Testerson" or "contest". Kept identical to the exclusion regex used by
@@ -31,91 +28,22 @@ const SOURCES = [
 ];
 
 /**
- * GET /api/v1/test-leads?page=&limit=   (limit=all → every lead)
+ * GET /api/v1/test-leads?page=&limit=&view=&id=   (limit=all → every lead)
  *
  * One consolidated view of every lead whose name contains the whole word "test",
- * across ALL four lead collections. These leads are excluded from every other
- * lead tab, so this is the single place they surface.
- *
- * Each row carries its calls, notes and email events (same shape
- * as the individual lead tabs) plus `leadType` / `leadTypeLabel` so the UI knows
- * which funnel it came from and can edit notes against the right collection.
+ * across the lead collections. These leads are excluded from every other lead
+ * tab, so this is the single place they surface. ?view=summary / ?id= work as
+ * on the single-funnel tabs.
  *
  * NOTE ON SCALE: like the Interested Leads endpoint this pulls every lead and
  * filters in memory — fine at current volume. Move to a query-level filter when
  * the collections grow.
  */
-const getTestLeads = catchAsyncError(async (req, res) => {
-  const page = Math.max(1, parseInt(req.query.page) || 1);
-  // limit=all → the whole list in one response (the admin Leads tab scrolls
-  // through everything; this list is rebuilt in full on every request anyway).
-  const all = req.query.limit === "all";
-  const limit = all ? 0 : Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
-
-  // ── 1. Resolve each collection independently (calls + emails + notes) ─────────
-  const perSource = await Promise.all(
-    SOURCES.map(async ({ model, leadType, label }) => {
-      const leads = await model.find().sort({ createdAt: -1 }).lean();
-
-      const phones = leads.map((l) => l.phone).filter(Boolean);
-      const emailAddresses = leads.map((l) => l.email).filter(Boolean);
-      const leadIds = leads.map((l) => l._id);
-
-      const [messagesByPhone, callsByPhone, eventsByEmail, notesByLead] = await Promise.all([
-        getVtextMessagesForPhones(phones),
-        getCallsForPhones(phones),
-        getEmailEventsForEmails(emailAddresses),
-        getNotesForLeads(leadType, leadIds),
-      ]);
-
-      return leads.map((lead) => {
-        // Unify partner (firstName + lastName) and renovation-contractor
-        // (name) with the rest (fullName).
-        const fullName =
-          lead.fullName ||
-          lead.name ||
-          [lead.firstName, lead.lastName].filter(Boolean).join(" ");
-
-        return {
-          ...lead,
-          fullName,
-          leadType,                   // drives note edit/delete on the right collection
-          leadTypeLabel: label,       // human label for the Source column
-          calls: callsByPhone[normalisePhone(lead.phone)] || [],
-          emails: eventsByEmail[String(lead.email || "").toLowerCase()] || [],
-          notes: notesByLead[String(lead._id)] || [],
-          messages: messagesByPhone[normalisePhone(lead.phone)] || [],
-        };
-      });
-    })
-  );
-
-  // ── 2. Flatten + keep only test-named leads ──────────────────────────────
-  const testLeads = perSource
-    .flat()
-    .filter((lead) => TEST_NAME_REGEX.test(lead.fullName || ""));
-
-  // ── 3. Newest activity first — latest call, else when the lead came in ────
-  const activityAt = (lead) => {
-    const latest = lead.calls[0]; // calls are newest-first
-    const callTs = latest?.startedAt ? new Date(latest.startedAt).getTime() : 0;
-    const createdTs = lead.createdAt ? new Date(lead.createdAt).getTime() : 0;
-    return Math.max(callTs, createdTs);
-  };
-  testLeads.sort((a, b) => activityAt(b) - activityAt(a));
-
-  // ── 4. Paginate the combined, filtered list ───────────────────────────────
-  const total = testLeads.length;
-  const start = all ? 0 : (page - 1) * limit;
-  const pageLeads = all ? testLeads : testLeads.slice(start, start + limit);
-
-  res.status(200).json({
-    success: true,
-    leads: pageLeads,
-    pagination: all
-      ? { page: 1, limit: total, total, pages: 1 }
-      : { page, limit, total, pages: Math.ceil(total / limit) },
-  });
-});
+const getTestLeads = catchAsyncError((req, res) =>
+  sendCrossFunnelList(req, res, {
+    sources: SOURCES,
+    keep: (lead) => TEST_NAME_REGEX.test(lead.fullName || ""),
+  })
+);
 
 module.exports = { getTestLeads };

@@ -91,6 +91,74 @@ const getCallsForPhones = async (phones = [], opts = {}) => {
   return byPhone;
 };
 
+// A "pickup" = a human actually answered (voicemail + missed are not).
+const PICKUP_OUTCOMES = new Set(["positive", "negative", "callback"]);
+
+/**
+ * Light version of getCallsForPhones for list views. Per phone: the newest call
+ * (mapped), how many calls there were, and whether any was a pickup. Mongo does
+ * the grouping, so the transcripts of the many no-answer callback calls never
+ * leave the database — only calls someone may have answered are read in full.
+ * Best-effort like getCallsForPhones: a DB failure returns {}.
+ *
+ * Returns { "+1555…": { latest, count, pickedUp } }.
+ */
+const getCallSummaryForPhones = async (phones = []) => {
+  const wanted = [...new Set(phones.map(normalisePhone).filter(Boolean))];
+  const byPhone = {};
+  if (wanted.length === 0) return byPhone;
+
+  let groups = [];
+  let maybeAnswered = [];
+  try {
+    [groups, maybeAnswered] = await Promise.all([
+      CallLog.aggregate([
+        { $match: { phone: { $in: wanted } } },
+        { $sort: { phone: 1, createdAt: -1 } },
+        {
+          $group: {
+            _id: "$phone",
+            count: { $sum: 1 },
+            latest: {
+              $first: {
+                _id: "$_id",
+                vapiCallId: "$vapiCallId",
+                phone: "$phone",
+                endedReason: "$endedReason",
+                durationSeconds: "$durationSeconds",
+                transcript: "$transcript",
+                startedAt: "$startedAt",
+                createdAt: "$createdAt",
+              },
+            },
+          },
+        },
+      ]),
+      // A superset of the pickups: everything deriveOutcome doesn't rule out
+      // from endedReason alone. Their outcome is then derived exactly as usual.
+      CallLog.find({
+        phone: { $in: wanted },
+        endedReason: { $nin: [...MISSED_REASONS, "voicemail"], $not: /error|failed/i },
+      })
+        .select("phone endedReason durationSeconds transcript")
+        .lean(),
+    ]);
+  } catch (err) {
+    console.error("[vapi-calls] CallLog summary failed:", err.message);
+    return byPhone;
+  }
+
+  for (const g of groups) {
+    byPhone[g._id] = { latest: mapCallLog(g.latest), count: g.count, pickedUp: false };
+  }
+  for (const row of maybeAnswered) {
+    const entry = byPhone[row.phone];
+    if (entry && !entry.pickedUp) entry.pickedUp = PICKUP_OUTCOMES.has(mapCallLog(row).outcome);
+  }
+
+  return byPhone;
+};
+
 // ─── Raw VAPI list (kept for non-admin-table consumers) ───────────────────────
 /** Cursor-paginate VAPI's call list up to `max` calls (bounded). */
 const fetchRecentCalls = async ({ max = DEFAULT_SCAN } = {}) => {
@@ -191,19 +259,20 @@ function calcDuration(startedAt, endedAt) {
   return diff > 0 ? diff : 0;
 }
 
+const MISSED_REASONS = [
+  "no-answer",
+  "customer-did-not-answer",
+  "customer-busy",
+  "silence-timed-out",
+  "call-start-error",
+  "twilio-failed-to-connect-call",
+  "pipeline-error",
+];
+
 function deriveOutcome(call, durationSecs) {
   const reason = (call.endedReason || "").toLowerCase();
 
-  const missedReasons = [
-    "no-answer",
-    "customer-did-not-answer",
-    "customer-busy",
-    "silence-timed-out",
-    "call-start-error",
-    "twilio-failed-to-connect-call",
-    "pipeline-error",
-  ];
-  if (missedReasons.includes(reason)) return "missed";
+  if (MISSED_REASONS.includes(reason)) return "missed";
   if (reason.includes("error") || reason.includes("failed")) return "missed";
   if (reason === "voicemail") return "voicemail";
 
@@ -312,6 +381,8 @@ function formatDuration(secs) {
 
 module.exports = {
   getCallsForPhones,
+  getCallSummaryForPhones,
+  PICKUP_OUTCOMES,
   fetchRecentCalls,
   normalisePhone,
   mapCall,

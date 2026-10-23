@@ -5,10 +5,10 @@ const PartnerLead = require("../../model/leads/partnerLeadModel");
 const { sanitizeFormAnswers, answersAsFields } = require("../../services/leads/formAnswers");
 const { schedulePartnerSignupCall } = require("../../services/calling/partnerCallScheduler");
 const { enrichPerson } = require("../../services/shared/fullenrichService");
-const { getCallsForPhones, normalisePhone } = require("../../services/calling/vapiCallsService");
+const { normalisePhone } = require("../../services/calling/vapiCallsService");
 const { getEmailEventsForEmails } = require("../../services/integrations/emailEventsService");
 const { getNotesForLeads } = require("../../services/leads/leadNotesService");
-const { listView, scopeQuery, unlessSummary, shapeLeads } = require("../../services/leads/leadListView");
+const { listView, scopeQuery, unlessSummary, listSelect, callsForList, shapeLeads } = require("../../services/leads/leadListView");
 const { getVtextMessagesForPhones } = require("../../services/vtext/vtextLeadMessagesService");
 const { notifyNewLead } = require("../../services/shared/slackService");
 const { needsFinancingFrom, needsFinancingLabel } = require("../../services/leads/buyBox");
@@ -188,7 +188,7 @@ const getAllPartnerLeads = catchAsyncError(async (req, res) => {
     lastName: { $not: TEST_NAME_REGEX },
   };
   const [leads, total] = await Promise.all([
-    PartnerLead.find(scopeQuery(view, query)).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit).lean(),
+    PartnerLead.find(scopeQuery(view, query)).select(listSelect(view)).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit).lean(),
     PartnerLead.countDocuments(scopeQuery(view, query)),
   ]);
 
@@ -196,16 +196,16 @@ const getAllPartnerLeads = catchAsyncError(async (req, res) => {
   const emailAddresses = leads.map((l) => l.email).filter(Boolean);
   const leadIds = leads.map((l) => l._id);
 
-  const [messagesByPhone, callsByPhone, eventsByEmail, notesByLead] = await Promise.all([
+  const [messagesByPhone, callsFor, eventsByEmail, notesByLead] = await Promise.all([
     getVtextMessagesForPhones(unlessSummary(view, phones)),
-    getCallsForPhones(phones),
+    callsForList(view, phones),
     getEmailEventsForEmails(unlessSummary(view, emailAddresses)),
     getNotesForLeads(LEAD_NOTE_TYPE, unlessSummary(view, leadIds)),
   ]);
 
   const leadsWithCalls = leads.map((lead) => ({
     ...lead,
-    calls: callsByPhone[normalisePhone(lead.phone)] || [],
+    ...callsFor(lead.phone),
     emails: eventsByEmail[String(lead.email || "").toLowerCase()] || [],
     notes: notesByLead[String(lead._id)] || [],
     messages: messagesByPhone[normalisePhone(lead.phone)] || [],

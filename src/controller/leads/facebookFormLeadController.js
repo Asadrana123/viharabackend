@@ -7,10 +7,9 @@
 
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const FacebookFormLead = require("../../model/leads/facebookFormLeadModel");
-const { normalisePhone, getCallsForPhones } = require("../../services/calling/vapiCallsService");
 const { getEmailEventsForEmails } = require("../../services/integrations/emailEventsService");
 const { getNotesForLeads } = require("../../services/leads/leadNotesService");
-const { listView, scopeQuery, unlessSummary, shapeLeads } = require("../../services/leads/leadListView");
+const { listView, scopeQuery, unlessSummary, listSelect, callsForList, shapeLeads } = require("../../services/leads/leadListView");
 
 const LEAD_NOTE_TYPE = "facebookForm"; // matches leadNoteModel.LEAD_TYPES
 
@@ -29,14 +28,14 @@ const getAllFacebookFormLeads = catchAsyncError(async (req, res) => {
   if (typeof req.query.formId === "string" && req.query.formId) query.formId = req.query.formId;
 
   const [leads, total, forms] = await Promise.all([
-    FacebookFormLead.find(scopeQuery(view, query)).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit).lean(),
+    FacebookFormLead.find(scopeQuery(view, query)).select(listSelect(view)).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit).lean(),
     FacebookFormLead.countDocuments(scopeQuery(view, query)),
     // The forms seen so far, for the tab's filter.
     FacebookFormLead.aggregate([{ $group: { _id: "$formId", name: { $last: "$formName" }, leads: { $sum: 1 } } }, { $sort: { leads: -1 } }]),
   ]);
 
-  const [callsByPhone, eventsByEmail, notesByLead] = await Promise.all([
-    getCallsForPhones(leads.map((l) => l.phone).filter(Boolean)),
+  const [callsFor, eventsByEmail, notesByLead] = await Promise.all([
+    callsForList(view, leads.map((l) => l.phone).filter(Boolean)),
     getEmailEventsForEmails(unlessSummary(view, leads.map((l) => l.email).filter(Boolean))),
     getNotesForLeads(LEAD_NOTE_TYPE, unlessSummary(view, leads.map((l) => l._id))),
   ]);
@@ -46,7 +45,7 @@ const getAllFacebookFormLeads = catchAsyncError(async (req, res) => {
     leads: shapeLeads(view, leads.map((lead) => ({
       ...lead,
       fullName: lead.fullName || lead.firstName,
-      calls: callsByPhone[normalisePhone(lead.phone)] || [],
+      ...callsFor(lead.phone),
       emails: eventsByEmail[String(lead.email || "").toLowerCase()] || [],
       notes: notesByLead[String(lead._id)] || [],
     }))),
