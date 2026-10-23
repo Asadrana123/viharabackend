@@ -48,6 +48,7 @@ const BLOCKED_FIELDS = [
   'currentBidder',           // bidder identity
   'bidderEmails',            // other people's PII
   'sellerIds',               // internal seller references
+  'bankId',                  // internal bank reference
   'brevoListId',             // internal marketing config
   // Listing agent: nothing about them is embedded (name, company, phone, email, licence).
   // Vihara decision, 2026-10-13: not shown in any way for now.

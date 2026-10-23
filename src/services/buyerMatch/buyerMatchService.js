@@ -9,9 +9,11 @@
 //   • by property — best buyers for one property
 //   • by buyer    — best properties for one buyer
 //   • by seller   — best buyers across every property a seller owns
+//   • by bank     — same, across every property a bank owns
 // Every query can be narrowed to buyers who signed up in a date range.
 
 const User = require("../../model/users/userModel");
+const Bank = require("../../model/property/bankModel");
 const { loadPropertyProfiles, loadLeadProfiles, SOURCES } = require("./profiles");
 const { isMatchable, scorePair } = require("./scoring");
 const { attachActivity, getLeadActivity } = require("./activity");
@@ -44,10 +46,27 @@ async function loadSellers(properties) {
   );
 }
 
+async function loadBanks(properties) {
+  const ids = [...new Set(properties.map((p) => p.bankId).filter(Boolean))];
+  if (!ids.length) return new Map();
+  const banks = await Bank.find({ _id: { $in: ids } }).select("name").lean();
+  return new Map(
+    banks.map((b) => [
+      String(b._id),
+      {
+        id: String(b._id),
+        name: b.name,
+        email: "",
+        propertyIds: properties.filter((p) => p.bankId === String(b._id)).map((p) => p.id),
+      },
+    ])
+  );
+}
+
 async function build() {
   const [properties, allLeads] = await Promise.all([loadPropertyProfiles(), loadLeadProfiles()]);
   const leads = allLeads.filter(isMatchable);
-  const [sellers] = await Promise.all([loadSellers(properties), attachActivity(leads)]);
+  const [sellers, banks] = await Promise.all([loadSellers(properties), loadBanks(properties), attachActivity(leads)]);
   const now = Date.now();
 
   const byProperty = new Map(properties.map((p) => [p.id, []]));
@@ -70,6 +89,7 @@ async function build() {
     properties: new Map(properties.map((p) => [p.id, p])),
     leads: new Map(leads.map((l) => [l.key, l])),
     sellers,
+    banks,
     totalLeads: allLeads.length,
     byProperty,
     byLead,
@@ -184,6 +204,7 @@ const publicProperty = (p, s) => ({
   auctionStartDate: p.auctionStartDate,
   auctionEndDate: p.auctionEndDate,
   sellers: p.sellerIds.map((id) => s.sellers.get(id)?.name).filter(Boolean),
+  bank: (p.bankId && s.banks.get(p.bankId)?.name) || null,
 });
 
 /** Score fields + whether this buyer registered for THIS property's auction. */
@@ -212,6 +233,7 @@ const statsOf = (s) => ({
   matchableLeads: s.leads.size,
   totalLeads: s.totalLeads,
   sellers: s.sellers.size,
+  banks: s.banks.size,
   builtAt: s.builtAt,
 });
 
@@ -246,34 +268,47 @@ async function listLeads({ search = "", source = "", from, to, page = 1, limit =
   };
 }
 
-async function listSellers({ search = "", from, to } = {}) {
-  const s = await getSnapshot();
+/**
+ * One picker row for a seller or a bank: how many strong buyers fit any of
+ * their properties. A buyer who fits two of the properties counts once.
+ */
+function groupRow(s, group, inRange) {
+  const best = new Map();
+  for (const pid of group.propertyIds) {
+    for (const m of buyersFor(s, pid, { inRange })) {
+      const k = personKey(s.leads.get(m.leadKey));
+      if (!best.has(k) || best.get(k).score < m.score) best.set(k, m);
+    }
+  }
+  const all = [...best.values()].sort((a, b) => b.score - a.score);
+  return {
+    id: group.id,
+    name: group.name,
+    email: group.email,
+    propertyCount: group.propertyIds.length,
+    ...summarize(all),
+  };
+}
+
+function listGroups(groups, { search = "", from, to }, s) {
   const inRange = signupFilter({ from, to });
   const q = search.trim().toLowerCase();
-  const rows = [...s.sellers.values()]
-    .filter((sel) => !q || `${sel.name} ${sel.email}`.toLowerCase().includes(q))
-    .map((sel) => {
-      // A buyer who fits two of this seller's properties counts once.
-      const best = new Map();
-      for (const pid of sel.propertyIds) {
-        for (const m of buyersFor(s, pid, { inRange })) {
-          const k = personKey(s.leads.get(m.leadKey));
-          if (!best.has(k) || best.get(k).score < m.score) best.set(k, m);
-        }
-      }
-      const all = [...best.values()].sort((a, b) => b.score - a.score);
-      return {
-        id: sel.id,
-        name: sel.name,
-        email: sel.email,
-        propertyCount: sel.propertyIds.length,
-        ...summarize(all),
-      };
-    })
+  return [...groups.values()]
+    .filter((g) => !q || `${g.name} ${g.email}`.toLowerCase().includes(q))
+    .map((g) => groupRow(s, g, inRange))
     .sort(byStrength);
+}
 
+async function listSellers(opts = {}) {
+  const s = await getSnapshot();
   const unassigned = [...s.properties.values()].filter((p) => !p.sellerIds.length).length;
-  return { sellers: rows, unassignedProperties: unassigned };
+  return { sellers: listGroups(s.sellers, opts, s), unassignedProperties: unassigned };
+}
+
+async function listBanks(opts = {}) {
+  const s = await getSnapshot();
+  const unassigned = [...s.properties.values()].filter((p) => !p.bankId).length;
+  return { banks: listGroups(s.banks, opts, s), unassignedProperties: unassigned };
 }
 
 async function matchesForProperty(propertyId, { minScore = 50, source = "", from, to, limit = 50 } = {}) {
@@ -305,13 +340,10 @@ async function matchesForLead(leadType, leadId, { minScore = 50, limit = 50 } = 
   };
 }
 
-async function matchesForSeller(sellerId, { minScore = 60, source = "", from, to, perProperty = 5 } = {}) {
-  const s = await getSnapshot();
-  const seller = s.sellers.get(String(sellerId));
-  if (!seller) return null;
+/** Best buyers for each property of a seller or a bank. */
+function groupMatches(s, group, { minScore, source, from, to, perProperty }) {
   const inRange = signupFilter({ from, to });
-
-  const lists = seller.propertyIds.map((pid) => [pid, buyersFor(s, pid, { inRange, source, minScore })]);
+  const lists = group.propertyIds.map((pid) => [pid, buyersFor(s, pid, { inRange, source, minScore })]);
   const properties = lists
     .map(([pid, list]) => ({
       property: publicProperty(s.properties.get(pid), s),
@@ -321,10 +353,29 @@ async function matchesForSeller(sellerId, { minScore = 60, source = "", from, to
     .sort((a, b) => b.total - a.total);
 
   return {
-    seller: { id: seller.id, name: seller.name, email: seller.email, propertyCount: seller.propertyIds.length },
-    // A buyer who fits several of this seller's properties is counted once.
+    // A buyer who fits several of these properties is counted once.
     uniqueBuyers: countPeople(lists.map(([, list]) => list), s.leads),
     properties,
+  };
+}
+
+async function matchesForSeller(sellerId, { minScore = 60, source = "", from, to, perProperty = 5 } = {}) {
+  const s = await getSnapshot();
+  const seller = s.sellers.get(String(sellerId));
+  if (!seller) return null;
+  return {
+    seller: { id: seller.id, name: seller.name, email: seller.email, propertyCount: seller.propertyIds.length },
+    ...groupMatches(s, seller, { minScore, source, from, to, perProperty }),
+  };
+}
+
+async function matchesForBank(bankId, { minScore = 60, source = "", from, to, perProperty = 5 } = {}) {
+  const s = await getSnapshot();
+  const bank = s.banks.get(String(bankId));
+  if (!bank) return null;
+  return {
+    bank: { id: bank.id, name: bank.name, propertyCount: bank.propertyIds.length },
+    ...groupMatches(s, bank, { minScore, source, from, to, perProperty }),
   };
 }
 
@@ -428,9 +479,11 @@ module.exports = {
   listProperties,
   listLeads,
   listSellers,
+  listBanks,
   matchesForProperty,
   matchesForLead,
   matchesForSeller,
+  matchesForBank,
   matchesForSheet,
   leadActivity,
   getMatchContext,

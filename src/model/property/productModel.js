@@ -195,6 +195,14 @@ const productSchema = new mongoose.Schema({
         }
     ],
 
+    // The bank that owns this property (one per property). Admin-only — lets
+    // the admin pages group leads, buyer matches and registrations by bank.
+    bankId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "bankModel",
+        default: null
+    },
+
     // ============================================
     // COORDINATES (For Map Display - CoreLogic Integration)
     // Priority: Parcel > Block > City Approximation

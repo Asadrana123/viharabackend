@@ -47,7 +47,7 @@ exports.createProductsBulk = catchAsyncError(async (req, res, next) => {
 // reserve, other bidders' emails, seller / test-user / Brevo bookkeeping.
 const PUBLIC_HIDDEN_FIELDS = [
     "marketSync", "reservePrice", "bidderEmails", "allowedTestUsers",
-    "sellerIds", "currentBidder", "brevoListId", "brevoOutboundSmsListId",
+    "sellerIds", "bankId", "currentBidder", "brevoListId", "brevoOutboundSmsListId",
 ];
 
 /**

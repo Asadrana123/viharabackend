@@ -10,9 +10,11 @@ const {
   listProperties,
   listLeads,
   listSellers,
+  listBanks,
   matchesForProperty,
   matchesForLead,
   matchesForSeller,
+  matchesForBank,
   matchesForSheet,
   leadActivity,
   SOURCE_OPTIONS,
@@ -64,6 +66,12 @@ exports.getSellers = catchAsyncError(async (req, res) => {
   res.status(200).json({ success: true, ...data });
 });
 
+/** GET /api/v1/buyer-match/banks?search=&from=&to= */
+exports.getBanks = catchAsyncError(async (req, res) => {
+  const data = await listBanks(common(req.query));
+  res.status(200).json({ success: true, ...data });
+});
+
 /** GET /api/v1/buyer-match/property/:id?minScore=&source=&from=&to=&limit= */
 exports.getPropertyMatches = catchAsyncError(async (req, res, next) => {
   const data = await matchesForProperty(req.params.id, {
@@ -83,6 +91,17 @@ exports.getSellerMatches = catchAsyncError(async (req, res, next) => {
     perProperty: intParam(req.query.perProperty, 5, 1, 50),
   });
   if (!data) return next(new Errorhandler("Seller not found or has no open properties", 404));
+  res.status(200).json({ success: true, ...data });
+});
+
+/** GET /api/v1/buyer-match/bank/:id?minScore=&source=&from=&to=&perProperty= */
+exports.getBankMatches = catchAsyncError(async (req, res, next) => {
+  const data = await matchesForBank(req.params.id, {
+    ...common(req.query),
+    minScore: intParam(req.query.minScore, 60, 0, 100),
+    perProperty: intParam(req.query.perProperty, 5, 1, 50),
+  });
+  if (!data) return next(new Errorhandler("Bank not found or has no open properties", 404));
   res.status(200).json({ success: true, ...data });
 });
 

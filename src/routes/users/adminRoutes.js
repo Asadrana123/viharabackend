@@ -13,7 +13,12 @@ const {
   getAuctionsWithSellers,
   assignSeller,
   unassignSeller,
-  inviteSeller
+  inviteSeller,
+  getBanks,
+  assignBank,
+  unassignBank,
+  renameBank,
+  deleteBank
 } = require("../../controller/users/adminController");
 const {
   getAllRegistrations,
@@ -180,6 +185,42 @@ router.delete(
   isAuthenticated,
   authorizeRoles("admin"),
   unassignSeller
+);
+
+// Bank assignment routes (one bank per property; a bank is created by name).
+router.get(
+  "/banks",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  getBanks
+);
+
+router.put(
+  "/banks/:bankId",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  renameBank
+);
+
+router.delete(
+  "/banks/:bankId",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  deleteBank
+);
+
+router.put(
+  "/auction/:auctionId/bank",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  assignBank
+);
+
+router.delete(
+  "/auction/:auctionId/bank",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  unassignBank
 );
 
 // ============================================================================

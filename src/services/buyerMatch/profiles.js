@@ -132,6 +132,7 @@ function toPropertyProfile(p) {
     auctionEndDate: p.auctionEndDate || null,
     status: p.status,
     sellerIds: (p.sellerIds || []).map(String),
+    bankId: p.bankId ? String(p.bankId) : null,
   };
 }
 
@@ -144,7 +145,7 @@ async function loadPropertyProfiles() {
   })
     .select(
       "productName slug street city county state zipCode beds baths squareFootage propertyType assetType " +
-        "occupancyStatus reservePrice startBid currentBid auctionStartDate auctionEndDate status image otherImages sellerIds " +
+        "occupancyStatus reservePrice startBid currentBid auctionStartDate auctionEndDate status image otherImages sellerIds bankId " +
         "investmentData.valuation.ViharaValue investmentData.rental.estimatedAnnualRent investmentData.rental.estimatedMonthlyRent"
     )
     .lean();

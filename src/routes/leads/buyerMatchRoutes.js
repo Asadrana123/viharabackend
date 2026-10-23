@@ -6,8 +6,10 @@ const {
   getProperties,
   getLeads,
   getSellers,
+  getBanks,
   getPropertyMatches,
   getSellerMatches,
+  getBankMatches,
   getLeadMatches,
   getLeadActivity,
   getCalling,
@@ -23,8 +25,10 @@ router.use(isAuthenticated, authorizeRoles("admin"));
 router.get("/properties", getProperties);
 router.get("/leads", getLeads);
 router.get("/sellers", getSellers);
+router.get("/banks", getBanks);
 router.get("/property/:id", getPropertyMatches);
 router.get("/seller/:id", getSellerMatches);
+router.get("/bank/:id", getBankMatches);
 router.get("/lead/:leadType/:leadId", getLeadMatches);
 router.get("/lead/:leadType/:leadId/activity", getLeadActivity);
 router.get("/calling/:leadType/:leadId", getCalling);

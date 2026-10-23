@@ -6,6 +6,7 @@ const sendToken = require("../../utils/getToken");
 const ManualBid = require("../../model/bidding/manualBiddingModel");
 const AutoBidding = require("../../model/bidding/autoBiddingModel");
 const Product = require("../../model/property/productModel");
+const Bank = require("../../model/property/bankModel");
 const mongoose = require('mongoose');
 const BidsManager = require('../../utils/bidsManager');
 const { resolvePropertyTimezone, wallClockToUtc, utcToWallClock } = require('../../utils/resolveTimezone');
@@ -463,8 +464,9 @@ exports.updateAuctionStartBid = catchAsyncError(
 exports.getAuctionsWithSellers = catchAsyncError(
   async (req, res) => {
     const auctions = await Product.find()
-      .select('productName street city state status sellerIds createdAt')
+      .select('productName street city state status sellerIds bankId createdAt')
       .populate('sellerIds', 'name email')
+      .populate('bankId', 'name')
       .sort({ createdAt: -1 })
       .lean();
 
@@ -714,6 +716,154 @@ exports.unassignSeller = catchAsyncError(
         _id: updated._id,
         sellerIds: updated.sellerIds || []
       }
+    });
+  }
+);
+
+// ============================================================================
+// BANK ASSIGNMENT (admin only)
+// A property can belong to ONE bank (productModel.bankId). Banks have no login;
+// they exist so the admin can view leads, buyer matches and registrations by
+// bank. A bank is created the first time its name is typed in.
+// ============================================================================
+
+const cleanBankName = (name) => String(name || '').trim().replace(/\s+/g, ' ');
+
+// Every bank with how many properties it owns, A–Z.
+exports.getBanks = catchAsyncError(
+  async (req, res) => {
+    const [banks, counts] = await Promise.all([
+      Bank.find().select('_id name').sort({ nameKey: 1 }).lean(),
+      Product.aggregate([
+        { $match: { bankId: { $ne: null } } },
+        { $group: { _id: '$bankId', count: { $sum: 1 } } }
+      ])
+    ]);
+    const countById = new Map(counts.map((c) => [String(c._id), c.count]));
+    res.status(200).json({
+      success: true,
+      banks: banks.map((b) => ({ ...b, propertyCount: countById.get(String(b._id)) || 0 }))
+    });
+  }
+);
+
+// Set a property's bank. Send { bankId } for an existing bank or { name } to
+// use the bank with that name — created if it doesn't exist yet.
+exports.assignBank = catchAsyncError(
+  async (req, res, next) => {
+    const { auctionId } = req.params;
+    const { bankId, name } = req.body || {};
+
+    if (!mongoose.Types.ObjectId.isValid(auctionId)) {
+      return next(new Errorhandler("Invalid auction ID", 400));
+    }
+
+    let bank;
+    let created = false;
+    if (bankId) {
+      if (!mongoose.Types.ObjectId.isValid(bankId)) {
+        return next(new Errorhandler("Invalid bank ID", 400));
+      }
+      bank = await Bank.findById(bankId).select('_id name').lean();
+      if (!bank) return next(new Errorhandler("Bank not found", 404));
+    } else {
+      const trimmed = cleanBankName(name);
+      if (!trimmed) return next(new Errorhandler("Enter the bank name", 400));
+      if (trimmed.length > 100) return next(new Errorhandler("Bank name cannot exceed 100 characters", 400));
+      const nameKey = Bank.keyOf(trimmed);
+      bank = await Bank.findOne({ nameKey }).select('_id name').lean();
+      if (!bank) {
+        try {
+          bank = (await Bank.create({ name: trimmed, nameKey })).toObject();
+          created = true;
+        } catch (err) {
+          // Two admins typed the same new name at once — use the one that won.
+          if (err.code !== 11000) throw err;
+          bank = await Bank.findOne({ nameKey }).select('_id name').lean();
+        }
+      }
+    }
+
+    // findByIdAndUpdate: no pre-save hook (slug regeneration) is triggered.
+    const auction = await Product.findByIdAndUpdate(
+      auctionId,
+      { bankId: bank._id },
+      { new: true }
+    ).select('_id productName');
+    if (!auction) return next(new Errorhandler("Auction not found", 404));
+
+    res.status(200).json({
+      success: true,
+      created,
+      message: `${auction.productName} assigned to ${bank.name}`,
+      auction: { _id: auction._id, bankId: { _id: bank._id, name: bank.name } }
+    });
+  }
+);
+
+// Clear a property's bank. The bank itself stays (it may own other properties).
+exports.unassignBank = catchAsyncError(
+  async (req, res, next) => {
+    const { auctionId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(auctionId)) {
+      return next(new Errorhandler("Invalid auction ID", 400));
+    }
+    const auction = await Product.findByIdAndUpdate(
+      auctionId,
+      { bankId: null },
+      { new: true }
+    ).select('_id productName');
+    if (!auction) return next(new Errorhandler("Auction not found", 404));
+
+    res.status(200).json({
+      success: true,
+      message: `Bank removed from ${auction.productName}`,
+      auction: { _id: auction._id, bankId: null }
+    });
+  }
+);
+
+// Rename a bank (fix a typo). Every property keeps pointing at it.
+exports.renameBank = catchAsyncError(
+  async (req, res, next) => {
+    const { bankId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(bankId)) {
+      return next(new Errorhandler("Invalid bank ID", 400));
+    }
+    const trimmed = cleanBankName((req.body || {}).name);
+    if (!trimmed) return next(new Errorhandler("Enter the bank name", 400));
+    if (trimmed.length > 100) return next(new Errorhandler("Bank name cannot exceed 100 characters", 400));
+
+    const nameKey = Bank.keyOf(trimmed);
+    const clash = await Bank.findOne({ nameKey, _id: { $ne: bankId } }).select('_id').lean();
+    if (clash) return next(new Errorhandler("Another bank already has that name", 400));
+
+    const bank = await Bank.findByIdAndUpdate(
+      bankId,
+      { name: trimmed, nameKey },
+      { new: true }
+    ).select('_id name').lean();
+    if (!bank) return next(new Errorhandler("Bank not found", 404));
+
+    res.status(200).json({ success: true, message: 'Bank renamed', bank });
+  }
+);
+
+// Delete a bank and take it off every property it was on.
+exports.deleteBank = catchAsyncError(
+  async (req, res, next) => {
+    const { bankId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(bankId)) {
+      return next(new Errorhandler("Invalid bank ID", 400));
+    }
+    const bank = await Bank.findByIdAndDelete(bankId).select('_id name').lean();
+    if (!bank) return next(new Errorhandler("Bank not found", 404));
+    const { modifiedCount } = await Product.updateMany({ bankId }, { bankId: null });
+
+    res.status(200).json({
+      success: true,
+      message: `${bank.name} deleted${modifiedCount ? ` and removed from ${modifiedCount} propert${modifiedCount === 1 ? 'y' : 'ies'}` : ''}`,
+      bankId: bank._id
     });
   }
 );
