@@ -104,4 +104,5 @@ const voicemailMessage =
 const endCallMessage =
   "Perfect, {{prospect_name}} — your buy box is set. When a deal fits, we'll send you the address, photos and terms. Have a great day!";
 
-module.exports = { systemPrompt, firstMessage, voicemailMessage, endCallMessage };
+// ADVISOR_HANDOFF is reused by the Facebook instant-form scripts (facebookFormVoicePrompt.js).
+module.exports = { systemPrompt, firstMessage, voicemailMessage, endCallMessage, ADVISOR_HANDOFF };

@@ -26,6 +26,7 @@ const { DID_NOT_CONNECT_REASONS, WAIT_MS } = require("./registrationCallService"
 const { enqueueBurst, PRIORITY } = require("./callDispatchQueue");
 const { FOLLOW_UP_DAYS, FOLLOW_UP_CALL_OPTS, nextFollowUpAt, noAnswerUpdate, skipUpdate } = require("./followUpCadence");
 const newDealsVoicePrompt = require("../../config/newDealsVoicePrompt");
+const { facebookFormPromptFor } = require("../../config/facebookFormVoicePrompt");
 const { dealSpoken } = require("../../config/newDeals");
 const { spokenList, spokenBudget, stateName } = require("../leads/buyBox");
 
@@ -77,8 +78,9 @@ function callPayload(lead, source = "new-deals") {
  * @param {import("mongoose").Model} p.Model  newDealsLead or facebookFormLead
  * @param {string} p.source                   call source (also picks Maya's script on callbacks)
  * @param {string} p.logTag                   log prefix
+ * @param {Function} [p.payloadFor]           lead → call payload (default: callPayload with this source)
  */
-function createBuyBoxCallScheduler({ Model, source, logTag }) {
+function createBuyBoxCallScheduler({ Model, source, logTag, payloadFor = (lead) => callPayload(lead, source) }) {
   /** connected → stop this lead (and siblings on the same number); else next slot. */
   async function applyOutcome(lead, connected) {
     if (connected) {
@@ -113,7 +115,7 @@ function createBuyBoxCallScheduler({ Model, source, logTag }) {
     );
 
     const { connected } = await enqueueBurst(
-      callPayload(lead, source),
+      payloadFor(lead),
       { initialDelayMs: WAIT_MS, ...BURST_OPTS },
       PRIORITY.SIGNUP
     );
@@ -172,7 +174,7 @@ function createBuyBoxCallScheduler({ Model, source, logTag }) {
         ).lean();
         if (!claimed) continue;
 
-        enqueueBurst({ ...callPayload(claimed, source), isFollowUp: true }, { ...BURST_OPTS, ...FOLLOW_UP_CALL_OPTS }, PRIORITY.SCHEDULED)
+        enqueueBurst({ ...payloadFor(claimed), isFollowUp: true }, { ...BURST_OPTS, ...FOLLOW_UP_CALL_OPTS }, PRIORITY.SCHEDULED)
           .then(({ connected }) => applyOutcome(claimed, connected))
           .catch((e) => console.error(`[${logTag}] burst failed:`, e.message));
       }
@@ -197,7 +199,29 @@ function createBuyBoxCallScheduler({ Model, source, logTag }) {
 }
 
 const newDealsCalls = createBuyBoxCallScheduler({ Model: NewDealsLead, source: "new-deals", logTag: "new-deals-daily" });
-const facebookFormCalls = createBuyBoxCallScheduler({ Model: FacebookFormLead, source: "facebook-form", logTag: "facebook-form-daily" });
+/**
+ * Facebook / Instagram instant-form leads: the form decides Maya's script
+ * (config/facebookFormVoicePrompt.js), and every answer on the form is passed
+ * as {{prospect_form_answers}} ("Question: answer; ...").
+ */
+const CONTACT_KEYS = /^(full_name|first_name|last_name|email|phone_number|phone)$/;
+function facebookFormPayload(lead) {
+  const answers = (lead.answers || []).filter((a) => !CONTACT_KEYS.test(a.key));
+  const timeline = answers.find((a) => /timeline|when/i.test(a.key));
+  return {
+    ...callPayload(lead, "facebook-form"),
+    promptConfig: facebookFormPromptFor(lead.formName),
+    formAnswers: answers.map((a) => `${a.question}: ${a.label || a.value}`).join("; "),
+    timeline: timeline ? timeline.label || timeline.value : "",
+  };
+}
+
+const facebookFormCalls = createBuyBoxCallScheduler({
+  Model: FacebookFormLead,
+  source: "facebook-form",
+  logTag: "facebook-form-daily",
+  payloadFor: facebookFormPayload,
+});
 
 module.exports = {
   scheduleNewDealsSignupCall: newDealsCalls.scheduleSignupCall,
@@ -206,4 +230,5 @@ module.exports = {
   startFacebookFormCallScheduler: facebookFormCalls.start,
   createBuyBoxCallScheduler,
   callPayload,
+  facebookFormPayload,
 };

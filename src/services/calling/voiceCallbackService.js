@@ -29,6 +29,7 @@ const { resolvePromptConfig } = require("./vapiPromptService");
 // back to the VAPI dashboard default assistant.
 const norCalVoicePrompt = require("../../config/norCalVoicePrompt");
 const newDealsVoicePrompt = require("../../config/newDealsVoicePrompt");
+const { defaultFacebookFormPrompt } = require("../../config/facebookFormVoicePrompt");
 const earlyAccessVoicePrompt = require("../../config/earlyAccessVoicePrompt");
 const partnerProgramVoicePrompt = require("../../config/partnerProgramVoicePrompt");
 
@@ -55,8 +56,9 @@ const AUCTION_SOURCE_PREFIX = "auction-";
 const SOURCE_PROMPTS = {
   "nor-cal": norCalVoicePrompt,
   "new-deals": newDealsVoicePrompt,
-  // Facebook / Instagram instant-form leads get the same script as /new-deals.
-  "facebook-form": newDealsVoicePrompt,
+  // Facebook / Instagram instant-form leads: a requested callback uses the
+  // default form script (the per-form scripts are picked at signup / daily calls).
+  "facebook-form": defaultFacebookFormPrompt,
   "early-access": earlyAccessVoicePrompt,
   "partner-program": partnerProgramVoicePrompt,
 };

@@ -52,6 +52,10 @@ const dispatchRegistrationCall = async (lead = {}) => {
     dealVolume: (lead.dealVolume || "").toString().trim(),
     dealInterest: (lead.dealInterest || "").toString().trim(),
     advisorRequested: (lead.advisorRequested || "").toString().trim(),
+    // Every answer on the form, "Question: answer; ..." ({{prospect_form_answers}}) —
+    // Admin → Landing Pages forms and Facebook instant forms. Was dropped here
+    // before, so Maya never heard those answers.
+    formAnswers: (lead.formAnswers || "").toString().trim(),
     // Caller's IANA timezone — lets Maya resolve "call me back at 5" in THEIR
     // time and lets the callback be stored in the right zone.
     timezone: (lead.timezone || "").toString().trim(),
