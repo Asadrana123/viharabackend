@@ -3,8 +3,9 @@
 // Market data background jobs (Pacific time; the properties are US listings):
 //   Sunday 3:00 AM      full refresh of every market data-linked property that
 //                       isn't paused (it also checks the listing status)
-//   Mon–Sat 5:00 AM     status check only: a live property that sold / went off
-//                       market is posted to Slack with Hide / Keep live buttons
+//   Daily 5:00 AM       status check only: a live property that sold / went off
+//                       market is posted to Slack with Hide / Keep live buttons,
+//                       then a daily summary report
 // The server runs as one instance, so a simple in-process guard is enough to
 // stop a slow run from overlapping the next one (or the other job).
 
@@ -14,7 +15,7 @@ const { checkAllStatuses } = require("../services/property/marketStatusWatchServ
 const { migrateLegacySyncFields } = require("../services/property/legacySyncFieldMigration");
 
 const SCHEDULE = "0 3 * * 0";
-const STATUS_SCHEDULE = "0 5 * * 1-6";
+const STATUS_SCHEDULE = "0 5 * * *";
 const TIMEZONE = "America/Los_Angeles";
 
 let isRunning = false;
@@ -45,7 +46,7 @@ function startMarketSyncJob() {
     migrateLegacySyncFields();
     cron.schedule(SCHEDULE, runMarketSync, { timezone: TIMEZONE });
     cron.schedule(STATUS_SCHEDULE, runStatusCheck, { timezone: TIMEZONE });
-    console.log("[marketSync] Weekly market data sync (Sundays 3:00 AM Pacific) and daily status check (Mon–Sat 5:00 AM Pacific) scheduled.");
+    console.log("[marketSync] Weekly market data sync (Sundays 3:00 AM Pacific) and daily status check (5:00 AM Pacific) scheduled.");
 }
 
 module.exports = { startMarketSyncJob };

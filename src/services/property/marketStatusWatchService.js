@@ -11,7 +11,8 @@
 // nobody was told yet — one Slack message goes out with the listing link and:
 //   Hide from site   showOnAuctions off + market sync paused (approvers only)
 //   Keep live        clears the alert; the property stays as it is
-// Nothing is hidden automatically.
+// Nothing is hidden automatically. After every daily check a summary goes to
+// the same channel (status counts, live properties not for sale, failures).
 
 const productModel = require("../../model/property/productModel");
 const firecrawlService = require("../integrations/firecrawlService");
@@ -173,8 +174,47 @@ async function checkProduct(product) {
     return report ? reportStatusChange(product) : false;
 }
 
+const propertyLink = (product) =>
+    `<${product.marketSync.url}|${product.productName || product.slug || product._id}>`;
+
+/** The daily summary: status counts, every property not for sale, failures. */
+function reportBlocks(summary, rows) {
+    const counts = {};
+    rows.filter((r) => r.status).forEach((r) => { counts[label(r.status)] = (counts[label(r.status)] || 0) + 1; });
+    const countLine = Object.entries(counts).map(([status, n]) => `${status}: ${n}`).join(" · ") || "none";
+
+    const blocks = [
+        section(`📋 *Daily property status check*\n${summary.checked} of ${summary.total} live properties checked · ${countLine}`),
+    ];
+    const notForSale = rows.filter((r) => r.status && r.status !== "FOR_SALE");
+    blocks.push(
+        section(
+            notForSale.length
+                ? `*Live on our site but not for sale on the listing*\n${notForSale
+                    .map((r) => `• ${propertyLink(r.product)}: ${label(r.status)}${r.alerted ? " (new, see the alert above)" : r.open ? " (alert still open)" : " (kept live)"}`)
+                    .join("\n")}`
+                : "✅ Every live property is still for sale."
+        )
+    );
+    const failed = rows.filter((r) => r.error);
+    if (failed.length) {
+        blocks.push(context(`⚠️ Could not check: ${failed.map((r) => `${propertyLink(r.product)} (${r.error})`).join(", ")}`));
+    }
+    return blocks;
+}
+
+async function postDailyReport(summary, rows) {
+    const channel = slackChannel();
+    if (!channel) return;
+    const text = `Daily property status check: ${summary.checked}/${summary.total} checked, ${summary.alerts} new alert(s)`;
+    await slack
+        .postMessage({ channel, text, blocks: reportBlocks(summary, rows) })
+        .catch((e) => console.error("[marketStatus] Daily report to Slack failed:", e.message));
+}
+
 /**
- * Check every property live on /auctions with a linked, not-paused listing.
+ * Check every property live on /auctions with a linked, not-paused listing,
+ * then post the daily summary to Slack.
  * @returns {Promise<{ total:number, checked:number, failed:number, alerts:number, skipped?:string }>}
  */
 async function checkAllStatuses() {
@@ -186,17 +226,23 @@ async function checkAllStatuses() {
         .select("productName slug showOnAuctions marketSync");
     summary.total = products.length;
 
+    const rows = [];
     for (let i = 0; i < products.length; i++) {
         const product = products[i];
         try {
-            if (await checkProduct(product)) summary.alerts += 1;
+            const alerted = await checkProduct(product);
+            if (alerted) summary.alerts += 1;
             summary.checked += 1;
+            rows.push({ product, status: product.marketSync.marketStatus, alerted, open: Boolean(product.marketSync.statusAlert) });
         } catch (error) {
             summary.failed += 1;
             console.error(`[marketStatus] Property ${product._id} failed:`, error.message);
+            rows.push({ product, status: product.marketSync.marketStatus, error: String(error.message || error).slice(0, 120) });
         }
         if (i < products.length - 1) await sleep(DELAY_BETWEEN_PROPERTIES_MS);
     }
+
+    await postDailyReport(summary, rows);
     return summary;
 }
 
