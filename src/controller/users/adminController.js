@@ -22,6 +22,10 @@ async function currentRoundIsClosed(auction) {
 }
 const ROUND_CLOSED_MESSAGE = "This auction has already closed. Start a new auction to set new dates or prices.";
 const { getIoInstance } = require('../../socket/getIoInstance');
+const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
+const { sendEmailAsync } = require('../../utils/sendEmail');
+const getSellerAccessEmail = require('../../htmlPages/seller/sellerAccessEmail');
 
 // Create an admin account
 exports.CreateAdmin = catchAsyncError(
@@ -541,6 +545,129 @@ exports.assignSeller = catchAsyncError(
         _id: updated._id,
         sellerIds: updated.sellerIds || []
       }
+    });
+  }
+);
+
+// Give a seller access in one step: create their account (or use the existing
+// one), assign the chosen properties, and email them the login details with
+// each property's auction time, listing link and seller-dashboard link.
+// - New account: a random password is generated and sent in the email.
+// - Existing account: the password is left alone unless `resetPassword` is
+//   true, in which case a new one is generated and sent.
+// If the email fails, the response carries the password so the admin can share
+// it by hand.
+exports.inviteSeller = catchAsyncError(
+  async (req, res, next) => {
+    const { name, last_name, email, auctionIds, resetPassword } = req.body || {};
+
+    const trimmedEmail = String(email || '').trim().toLowerCase();
+    if (!trimmedEmail) {
+      return next(new Errorhandler("Seller email is required", 400));
+    }
+    const ids = Array.isArray(auctionIds) ? [...new Set(auctionIds.map(String))] : [];
+    if (!ids.length) {
+      return next(new Errorhandler("Choose at least one property", 400));
+    }
+    if (ids.some((id) => !mongoose.Types.ObjectId.isValid(id))) {
+      return next(new Errorhandler("Invalid property ID", 400));
+    }
+
+    const products = await Product.find({ _id: { $in: ids } })
+      .select('_id productName street city state zipCode slug auctionStartDate auctionEndDate')
+      .lean();
+    if (products.length !== ids.length) {
+      return next(new Errorhandler("One or more properties were not found", 404));
+    }
+    // Keep the order the admin picked them in.
+    products.sort((a, b) => ids.indexOf(String(a._id)) - ids.indexOf(String(b._id)));
+
+    const escaped = trimmedEmail.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    let user = await userModel.findOne({
+      email: { $regex: `^${escaped}$`, $options: "i" }
+    }).select('_id name email role active');
+
+    // 12 characters, no look-alike characters, easy to type from an email.
+    const newPassword = () => {
+      const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+      return Array.from(crypto.randomBytes(12), (b) => chars[b % chars.length]).join('');
+    };
+
+    let password = null;
+    let created = false;
+
+    if (!user) {
+      const first = String(name || '').trim();
+      const last = String(last_name || '').trim();
+      if (first.length < 2) {
+        return next(new Errorhandler("Enter the seller's first name (at least 2 letters)", 400));
+      }
+      if (!last) {
+        return next(new Errorhandler("Enter the seller's last name", 400));
+      }
+      password = newPassword();
+      // create() runs the pre-save hook, which hashes the password.
+      user = await userModel.create({
+        name: first,
+        last_name: last,
+        email: trimmedEmail,
+        password,
+        role: 'seller',
+        email_verified_at: new Date()
+      });
+      created = true;
+    } else {
+      if (user.active === 0) {
+        return next(new Errorhandler("That user account is deactivated", 400));
+      }
+      const update = {};
+      // Promote a normal user to seller. Never downgrade an admin.
+      if (user.role === 'user') update.role = 'seller';
+      if (resetPassword) {
+        password = newPassword();
+        // Hashed here: findByIdAndUpdate skips the pre-save hook.
+        update.password = await bcrypt.hash(password, 10);
+        update.updated_at = Date.now();
+      }
+      if (Object.keys(update).length) {
+        await userModel.findByIdAndUpdate(user._id, update, { runValidators: true });
+      }
+    }
+
+    await Product.updateMany(
+      { _id: { $in: ids } },
+      { $addToSet: { sellerIds: user._id } }
+    );
+
+    let emailSent = true;
+    try {
+      await sendEmailAsync(
+        user.email,
+        getSellerAccessEmail.subject(products),
+        getSellerAccessEmail({ email: user.email, password, properties: products })
+      );
+    } catch (err) {
+      emailSent = false;
+      console.error(`Seller access email to ${user.email} failed:`, err);
+    }
+
+    // Fresh seller lists for the properties touched, so the UI can re-render.
+    const updated = await Product.find({ _id: { $in: ids } })
+      .select('_id sellerIds')
+      .populate('sellerIds', 'name email')
+      .lean();
+
+    const who = created ? 'Account created' : 'Seller added';
+    res.status(200).json({
+      success: true,
+      created,
+      emailSent,
+      message: emailSent
+        ? `${who} and login email sent to ${user.email}`
+        : `${who}, but the email to ${user.email} could not be sent`,
+      // Only when the email failed — the admin then shares it by hand.
+      password: emailSent ? undefined : password,
+      auctions: updated.map((a) => ({ _id: a._id, sellerIds: a.sellerIds || [] }))
     });
   }
 );

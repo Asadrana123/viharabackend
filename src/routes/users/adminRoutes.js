@@ -12,7 +12,8 @@ const {
   startNewAuction,
   getAuctionsWithSellers,
   assignSeller,
-  unassignSeller
+  unassignSeller,
+  inviteSeller
 } = require("../../controller/users/adminController");
 const {
   getAllRegistrations,
@@ -164,6 +165,14 @@ router.put(
   isAuthenticated,
   authorizeRoles("admin"),
   assignSeller
+);
+
+// Create (or reuse) a seller account, assign properties, and email the login.
+router.post(
+  "/sellers/invite",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  inviteSeller
 );
 
 router.delete(
