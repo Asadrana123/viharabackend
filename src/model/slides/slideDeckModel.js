@@ -28,6 +28,13 @@ const slideDeckSchema = new mongoose.Schema(
       temporary: { type: Boolean, default: false }, // an uploaded .pptx converted for reading; deleted once read
     },
 
+    // Pictures of the source slides on Cloudinary (services/slides/sourceImages), for crops of screenshots and photos.
+    sourceImages: {
+      count: { type: Number, default: 0 },
+      width: { type: Number, default: 0 },
+      height: { type: Number, default: 0 },
+    },
+
     // Google's id for each slide in `plan`, in the same order, so a change can replace just those slides.
     slideIds: { type: [String], default: [] },
 

@@ -39,7 +39,7 @@ const SLIDE_SCHEMA = obj({
   text: str,
   unit: str,
   bullets: strList,
-  items: { type: "array", items: obj({ icon: str, heading: str, text: str, value: str }) },
+  items: { type: "array", items: obj({ icon: str, heading: str, text: str, value: str, points: strList }) },
   left: obj({ label: str, points: strList }),
   right: obj({ label: str, points: strList }),
   rowHeader: str,
@@ -47,13 +47,15 @@ const SLIDE_SCHEMA = obj({
   columns: strList,
   rows: { type: "array", items: obj({ icon: str, label: str, cells: strList, note: str }) },
   stages: { type: "array", items: obj({ mode: { type: "string", enum: ["sequence", "parallel"] }, items: { type: "array", items: obj({ icon: str, heading: str, text: str, value: str }) } }) },
+  insights: { type: "array", items: obj({ icon: str, label: str, text: str }) },
+  images: { type: "array", items: obj({ slide: { type: "integer" }, box: { type: "array", items: { type: "number" } }, caption: str }) },
   speakerNotes: str,
 });
 
 const DECK_SCHEMA = obj({ deckTitle: str, slides: { type: "array", items: SLIDE_SCHEMA } });
 
-function typeGuide() {
-  return TYPE_NAMES.map((name) => {
+function typeGuide({ restyle }) {
+  return TYPE_NAMES.filter((name) => restyle || !TYPES[name].restyleOnly).map((name) => {
     const t = TYPES[name];
     const parts = [];
     // Drawn text is limited by its box (Max characters below); template text by a fixed count.
@@ -77,14 +79,18 @@ const iconGuide = () =>
     .map(([group, names]) => `${group}: ${names.join(", ")}`)
     .join("\n");
 
-function systemPrompt(kit) {
+function systemPrompt(kit, { restyle = false } = {}) {
   const m = kit.messaging || {};
   return `You plan presentation decks for Vihara (${m.tagline || "AI-powered real estate auctions"}) that look designed, not typed: every slide shows its idea visually.
 
 You choose the story, a slide type for each slide, the words and the icons. Colours, fonts, positions, logo and header are fixed by the Vihara design system.
 
 Slide types:
-${typeGuide()}
+${typeGuide({ restyle })}
+
+Every slide except cover, section, closing and bullets can also have:
+- subtitle: one line under the title that frames it (≤ 80 chars; the title then stays ≤ 40 chars).
+- insights: a strip along the bottom with 2-3 short notes, each { icon, label like "What" / "Why" / "How" / "Result", text ≤ 60 chars }. Not on table slides. Leave [] when not needed.
 
 Choosing types:
 - Match the shape of the content: steps → process; parallel ideas → icon_cards; a contrast → comparison; real numbers → stats or chart; dates → timeline; a grid of options vs criteria → table; a flow that splits or joins → flow; the one thing to remember → key_message.
@@ -120,10 +126,11 @@ ${notes || "(none — keep the content general and make no specific claims)"}
 }
 
 // Everything wrong with a plan, in words Claude can act on. Empty = good.
+// sourceSlides: how many source slides pictures can be cropped from (restyled decks only).
 // slideCount: the exact number asked for, or null when any length 3–20 is fine (a change).
 // restyled: the deck follows someone else's deck slide for slide, so its structure is looser:
 // no closing slide needed, two slides of a type in a row are fine, bullets up to twice.
-function findProblems(plan, slideCount, { restyled = false } = {}) {
+function findProblems(plan, slideCount, { restyled = false, sourceSlides = 0 } = {}) {
   const problems = [];
   const slides = plan.slides || [];
   if (slideCount && slides.length !== slideCount) problems.push(`The deck must have exactly ${slideCount} slides; it has ${slides.length}.`);
@@ -143,7 +150,7 @@ function findProblems(plan, slideCount, { restyled = false } = {}) {
     }
     if (s.type === "section" && !/^\d{2}$/.test((s.number || "").trim())) problems.push(`${at}: number must be two digits like "01".`);
     if ((s.speakerNotes || "").length > SPEAKER_NOTES_CHARS) problems.push(`${at}: speakerNotes is over ${SPEAKER_NOTES_CHARS} chars.`);
-    problems.push(...slideProblems(s, at));
+    problems.push(...slideProblems(s, at, { sourceSlides }));
   });
   return problems;
 }
@@ -178,19 +185,20 @@ async function ask(system, messages, usage) {
 }
 
 // Asks, checks, and gives Claude up to FIX_ROUNDS chances to fix what's wrong.
-async function askUntilValid({ kit, firstMessage, slideCount, restyled = false, onStep = () => {} }) {
+async function askUntilValid({ kit, firstMessage, slideCount, restyled = false, sourceSlides = 0, onStep = () => {} }) {
   const usage = { inputTokens: 0, outputTokens: 0 };
-  const system = systemPrompt(kit);
+  const system = systemPrompt(kit, { restyle: sourceSlides > 0 });
+  const rules = { restyled, sourceSlides };
   const messages = [{ role: "user", content: firstMessage }];
 
   let { plan, content } = await ask(system, messages, usage);
-  let problems = findProblems(plan, slideCount, { restyled });
+  let problems = findProblems(plan, slideCount, rules);
   for (let round = 1; problems.length && round <= FIX_ROUNDS; round++) {
     onStep(`Tidying up ${problems.length} detail${problems.length === 1 ? "" : "s"}`);
     messages.push({ role: "assistant", content });
     messages.push({ role: "user", content: `Fix these problems and return the whole deck again:\n${problems.map((p) => `- ${p}`).join("\n")}` });
     ({ plan, content } = await ask(system, messages, usage));
-    problems = findProblems(plan, slideCount, { restyled });
+    problems = findProblems(plan, slideCount, rules);
   }
   if (problems.length) throw new Error(`The AI's deck still had problems after ${FIX_ROUNDS} fixes: ${problems.slice(0, 3).join(" ")}`);
   return { plan, usage };
@@ -233,7 +241,7 @@ ${input.instruction}
 </change>
 
 Make that change and return the whole deck. Keep every slide the change doesn't need to touch exactly as it is, field for field and word for word (including speakerNotes), so it isn't rebuilt. The deck can get longer or shorter if the change asks for it. Keep deckTitle unless the change is about the title.`;
-  return askUntilValid({ kit: input.kit, firstMessage, slideCount: null, restyled: input.restyled, onStep: input.onStep });
+  return askUntilValid({ kit: input.kit, firstMessage, slideCount: null, restyled: input.restyled, sourceSlides: input.sourceSlides || 0, onStep: input.onStep });
 }
 
 /**
@@ -252,7 +260,9 @@ function restyleDeck({ source, instruction, kit, onStep }) {
 Rules for rebuilding:
 - Exactly ${n} slides, in the same order: your slide 1 is their slide 1, and so on. Slide 1 is a cover.
 - Keep the meaning and every fact, number, name, status and link. The pictures are the source; don't add anything they don't say.
-- Choose the slide type that best shows each slide's content (a grid → table, a flow chart → flow, steps → process…). Shorten wording to fit the limits, but don't drop facts that matter; when a slide has too much, keep the most important points.
+- Choose the slide type that best shows each slide's content (a grid → table, a flow chart → flow, steps → process, a repeating loop → cycle…). Shorten wording to fit the limits, but don't drop facts that matter; when a slide has too much, keep the most important points.
+- Make every slide at least as visual as the original: give it the original's subtitle line, keep checklists inside cards and steps as points, keep What / Why / How notes as insights, and give every item a fitting icon.
+- When a slide shows a real picture (an app or dashboard screenshot, a property photo, a before/after pair), use image_feature and crop that picture from its slide: box = [left, top, right, bottom] as fractions of the slide picture, tight around the picture only. A before/after pair is two images. Give an image a caption only when the picture has no label of its own; if "Before" / "After" or similar is already printed on it, leave caption "".
 - Leave out repeated decoration: page numbers, the "VIHARA / AI-NATIVE AUCTION PLATFORM" header, logos, slogans that appear on every slide.
 - speakerNotes: keep the slide's own speaker notes if it has them (shortened to fit); otherwise write what a presenter would say.${instruction ? `
 
@@ -267,7 +277,7 @@ Speaker notes: ${s.notes.slice(0, 2000)}` : ""}`,
     });
     content.push({ type: "image", source: { type: "base64", media_type: "image/png", data: s.image } });
   });
-  return askUntilValid({ kit, firstMessage: content, slideCount: n, restyled: true, onStep });
+  return askUntilValid({ kit, firstMessage: content, slideCount: n, restyled: true, sourceSlides: n, onStep });
 }
 
 module.exports = { planDeck, reviseDeck, restyleDeck, findProblems };

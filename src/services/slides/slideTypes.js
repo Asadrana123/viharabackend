@@ -2,15 +2,27 @@
 //
 // Every kind of slide the agent can make. Each drawn type has one layout()
 // that returns the elements to put on the slide (cards, badges, text...).
-// The same layout is used to draw the slide AND to check that every text fits
-// its box before anything is built, so the two can never disagree.
+// drawnOps() adds what any drawn slide can carry (a subtitle under the title,
+// a What / Why / How strip along the bottom). The same ops are used to draw
+// the slide AND to check that every text fits its box before anything is
+// built, so the two can never disagree.
+//
+// Colour: items in a slide take the accent colours in order (accent0 = the
+// brand blue, then green, orange, purple, red, teal; see slideDesign), so
+// steps, segments and stages are told apart the same way in every deck.
 //
 // Template types (cover, section, closing, bullets) fill the Vihara template's
-// placeholders instead; they're checked with simple character limits.
+// placeholders instead; cover/section/closing draw their text on top of it.
 const { ICON_SET } = require("../../config/slideIcons");
-const { GRID, TYPE, LINE_HEIGHT, fit } = require("./slideDesign");
+const { GRID, TYPE, LINE_HEIGHT, ACCENT_COUNT, fit } = require("./slideDesign");
 
-const { margin: M, gap: G, contentTop: TOP, contentWidth: CW, contentHeight: CH } = GRID;
+const { margin: M, gap: G, contentWidth: CW } = GRID;
+const SOURCE_ASPECT = 16 / 9; // pictures of source slides are 16:9
+
+const A = (i) => `accent${i % ACCENT_COUNT}`;
+const AS = (i) => `accentSoft${i % ACCENT_COUNT}`;
+const nonEmpty = (v) => typeof v === "string" && v.trim().length > 0;
+const pointsOf = (it) => (it.points || []).filter(nonEmpty);
 
 // Even columns across the content area.
 const columns = (n, width = CW, x0 = M, gap = G) => {
@@ -18,12 +30,34 @@ const columns = (n, width = CW, x0 = M, gap = G) => {
   return Array.from({ length: n }, (_, i) => ({ x: x0 + i * (w + gap), w }));
 };
 
+// The content area of a drawn slide: under the title (and subtitle), above the
+// What / Why / How strip when there is one.
+const STRIP_H = 0.88;
+function area(s) {
+  const top = s.subtitle ? 1.88 : GRID.contentTop;
+  const bottom = (s.insights || []).length ? GRID.contentBottom - STRIP_H - 0.12 : GRID.contentBottom;
+  return { TOP: top, BOTTOM: bottom, CH: bottom - top };
+}
+
+// A short list with a small check (or other) icon per line.
+function pointRows(ops, points, x, y, w, h, { color, size = TYPE.small, icon = "check", label }) {
+  const rowH = Math.min(0.42, h / Math.max(points.length, 1));
+  points.forEach((p, j) => {
+    const ry = y + j * rowH;
+    ops.push({ op: "icon", name: icon, x, y: ry + (rowH - 0.2) / 2, s: 0.2, color });
+    // The text box reaches a little past its row (text boxes pad their inside); one centred line still sits in the row.
+    ops.push({ op: "text", x: x + 0.24, y: ry - 0.05, w: w - 0.24, h: rowH + 0.1, text: p, size, color: "text", valign: "MIDDLE", lineSpacing: 92, label: `${label} point ${j + 1}` });
+  });
+}
+
 // ── Drawn types ─────────────────────────────────────────────────────────────
 
 const iconCards = (s) => {
+  const { TOP, CH } = area(s);
   const ops = [];
   const n = s.items.length;
-  if (n === 4) {
+  const anyPoints = s.items.some((it) => pointsOf(it).length);
+  if (n === 4 && !anyPoints) {
     // 2 × 2: wide cards with the icon beside the words, so headings stay on one line.
     const [L, R] = columns(2);
     const h = (CH - G) / 2;
@@ -31,52 +65,76 @@ const iconCards = (s) => {
       const { x, w } = i % 2 ? R : L;
       const y = TOP + Math.floor(i / 2) * (h + G);
       ops.push({ op: "shape", type: "ROUND_RECTANGLE", x, y, w, h, fill: "surface", outline: "border" });
-      ops.push({ op: "badge", icon: it.icon, x: x + 0.3, y: y + (h - 0.72) / 2, d: 0.72 });
-      ops.push({ op: "text", x: x + 1.2, y: y + 0.2, w: w - 1.4, h: 0.46, text: it.heading, size: TYPE.cardTitle, weight: 600, color: "heading", valign: "BOTTOM", label: `card ${i + 1} heading` });
-      ops.push({ op: "text", x: x + 1.2, y: y + 0.66, w: w - 1.4, h: h - 0.8, text: it.text, size: TYPE.body, color: "text", lineSpacing: 105, label: `card ${i + 1} text` });
+      ops.push({ op: "badge", icon: it.icon, x: x + 0.3, y: y + (h - 0.72) / 2, d: 0.72, fill: AS(i), color: A(i) });
+      ops.push({ op: "text", x: x + 1.2, y: y + 0.1, w: w - 1.4, h: Math.min(0.5, h / 2 - 0.05), text: it.heading, size: TYPE.cardTitle, weight: 600, color: "heading", valign: "BOTTOM", label: `card ${i + 1} heading` });
+      ops.push({ op: "text", x: x + 1.2, y: y + Math.min(0.6, h / 2 + 0.05), w: w - 1.4, h: h - Math.min(0.6, h / 2 + 0.05) - 0.08, text: it.text, size: TYPE.body, color: "text", lineSpacing: 105, label: `card ${i + 1} text` });
     });
     return ops;
   }
   columns(n).forEach(({ x, w }, i) => {
     const it = s.items[i];
+    const pts = pointsOf(it);
     ops.push({ op: "shape", type: "ROUND_RECTANGLE", x, y: TOP, w, h: CH, fill: "surface", outline: "border" });
-    ops.push({ op: "badge", icon: it.icon, x: x + 0.3, y: TOP + 0.35, d: 0.8 });
-    ops.push({ op: "text", x: x + 0.2, y: TOP + 1.35, w: w - 0.4, h: 0.82, text: it.heading, size: 16, weight: 600, color: "heading", label: `card ${i + 1} heading` });
-    ops.push({ op: "text", x: x + 0.2, y: TOP + 2.17, w: w - 0.4, h: CH - 2.3, text: it.text, size: 13, color: "text", lineSpacing: 110, label: `card ${i + 1} text` });
+    ops.push({ op: "badge", icon: it.icon, x: x + 0.25, y: TOP + 0.25, d: 0.78, fill: AS(i), color: A(i) });
+    ops.push({ op: "text", x: x + 0.18, y: TOP + 1.12, w: w - 0.36, h: 0.62, text: it.heading, size: 15, weight: 600, color: "heading", valign: "BOTTOM", label: `card ${i + 1} heading` });
+    let y = TOP + 1.8;
+    if (nonEmpty(it.text)) {
+      const th = pts.length ? 0.62 : CH - 1.95;
+      ops.push({ op: "text", x: x + 0.18, y, w: w - 0.36, h: th, text: it.text, size: pts.length ? TYPE.small : 12.5, color: "text", lineSpacing: 105, label: `card ${i + 1} text` });
+      y += th + 0.05;
+    }
+    if (pts.length) pointRows(ops, pts, x + 0.22, y, w - 0.4, TOP + CH - 0.12 - y, { color: A(i), label: `card ${i + 1}` });
   });
   return ops;
 };
 
+// Cards in a row, each a numbered step, joined by arrows.
 const process = (s) => {
+  const { TOP, CH } = area(s);
   const ops = [];
-  const cols = columns(s.items.length, CW, M, 0.2);
-  const d = 0.9;
-  const cy = TOP + 0.25; // a little lower, so the block sits near the middle
-  const first = cols[0].x + cols[0].w / 2;
-  const last = cols[cols.length - 1].x + cols[cols.length - 1].w / 2;
-  ops.push({ op: "shape", type: "RECTANGLE", x: first, y: cy + d / 2 - 0.02, w: last - first, h: 0.04, fill: "primarySoftStrong" });
+  const n = s.items.length;
+  const gap = 0.34;
+  const cols = columns(n, CW, M, gap);
   cols.forEach(({ x, w }, i) => {
     const it = s.items[i];
-    const cx = x + w / 2;
-    ops.push({ op: "badge", icon: it.icon, x: cx - d / 2, y: cy, d, fill: "primary", color: "white" });
-    ops.push({ op: "text", x, y: cy + d + 0.2, w, h: 0.32, text: `STEP ${i + 1}`, size: TYPE.label, weight: 700, color: "primary", align: "CENTER" });
-    ops.push({ op: "text", x, y: cy + d + 0.5, w, h: 0.66, text: it.heading, size: 14, weight: 600, color: "heading", align: "CENTER", label: `step ${i + 1} heading` });
-    ops.push({ op: "text", x, y: cy + d + 1.16, w, h: GRID.contentBottom - (cy + d + 1.16), text: it.text, size: TYPE.small, color: "text", align: "CENTER", lineSpacing: 110, label: `step ${i + 1} text` });
+    const pts = pointsOf(it);
+    const y = TOP + 0.12;
+    const h = CH - 0.12;
+    ops.push({ op: "shape", type: "ROUND_RECTANGLE", x, y, w, h, fill: "surface", outline: "border" });
+    // Number sticker on the card's top edge.
+    ops.push({ op: "shape", type: "ELLIPSE", x: x + 0.18, y: y - 0.16, w: 0.38, h: 0.38, fill: A(i), outline: "white" });
+    ops.push({ op: "text", x: x + 0.06, y: y - 0.16, w: 0.62, h: 0.38, text: String(i + 1).padStart(2, "0"), size: 10, weight: 700, color: "white", align: "CENTER", valign: "MIDDLE", lineSpacing: 90 });
+    // The icon shrinks when the card is short, so heading, text and points keep their room.
+    const needBelow = 0.66 + (nonEmpty(it.text) ? 0.5 : 0) + pts.length * 0.25 + 0.12;
+    const d = Math.max(0.45, Math.min(0.8, w - 0.6, h - 0.32 - needBelow));
+    ops.push({ op: "badge", icon: it.icon, x: x + (w - d) / 2, y: y + 0.3, d, fill: AS(i), color: A(i) });
+    ops.push({ op: "text", x: x + 0.12, y: y + 0.34 + d, w: w - 0.24, h: 0.62, text: it.heading, size: 13.5, weight: 600, color: "heading", align: "CENTER", valign: "MIDDLE", label: `step ${i + 1} heading` });
+    let ty = y + 0.98 + d;
+    const bottom = y + h - 0.12;
+    if (nonEmpty(it.text)) {
+      const th = pts.length ? Math.min(0.5, bottom - ty - pts.length * 0.27) : bottom - ty;
+      ops.push({ op: "text", x: x + 0.12, y: ty, w: w - 0.24, h: th, text: it.text, size: TYPE.label + 0.5, color: "text", align: "CENTER", lineSpacing: 100, label: `step ${i + 1} text` });
+      ty += th;
+    }
+    if (pts.length) pointRows(ops, pts, x + 0.16, ty, w - 0.28, bottom - ty, { color: A(i), size: TYPE.label, label: `step ${i + 1}` });
+    if (i < n - 1) ops.push({ op: "icon", name: "arrow-right", x: x + w + (gap - 0.24) / 2, y: y + 0.3 + d / 2 - 0.12, s: 0.24, color: "muted" });
   });
   return ops;
 };
 
 const comparison = (s) => {
+  const { TOP, CH } = area(s);
   const ops = [];
   const [L, R] = columns(2);
   const side = (col, data, good, name) => {
-    ops.push({ op: "shape", type: "ROUND_RECTANGLE", x: col.x, y: TOP, w: col.w, h: CH, fill: good ? "primarySoft" : "surface", outline: good ? null : "border" });
-    ops.push({ op: "badge", icon: good ? "check-circle" : "x-circle", x: col.x + 0.3, y: TOP + 0.28, d: 0.5, fill: good ? "primary" : "border", color: good ? "white" : "muted", scale: 0.6 });
-    ops.push({ op: "text", x: col.x + 0.9, y: TOP + 0.26, w: col.w - 1.1, h: 0.54, text: data.label, size: 16, weight: 700, color: good ? "primary" : "heading", valign: "MIDDLE", label: `${name} label` });
+    const accent = good ? "accent1" : "accent4"; // green for the better side, red for the worse
+    ops.push({ op: "shape", type: "ROUND_RECTANGLE", x: col.x, y: TOP, w: col.w, h: CH, fill: good ? "accentSoft1" : "surface", outline: good ? null : "border" });
+    ops.push({ op: "badge", icon: good ? "check-circle" : "x-circle", x: col.x + 0.3, y: TOP + 0.28, d: 0.56, fill: good ? accent : "accentSoft4", color: good ? "white" : accent, scale: 0.6 });
+    ops.push({ op: "text", x: col.x + 0.98, y: TOP + 0.26, w: col.w - 1.18, h: 0.6, text: data.label, size: 16, weight: 700, color: good ? accent : "heading", valign: "MIDDLE", label: `${name} label` });
     const rowH = (CH - 1.15) / Math.max(3, data.points.length);
     data.points.forEach((p, j) => {
       const y = TOP + 1.05 + j * rowH;
-      ops.push({ op: "icon", name: good ? "check" : "minus", x: col.x + 0.38, y: y + 0.07, s: 0.26, color: good ? "primary" : "muted" });
+      ops.push({ op: "icon", name: good ? "check" : "x", x: col.x + 0.4, y: y + 0.06, s: 0.26, color: accent });
       ops.push({ op: "text", x: col.x + 0.8, y, w: col.w - 1.0, h: rowH, text: p, size: TYPE.body, color: good ? "heading" : "text", lineSpacing: 105, label: `${name} point ${j + 1}` });
     });
   };
@@ -86,42 +144,45 @@ const comparison = (s) => {
 };
 
 const stats = (s) => {
+  const { TOP, CH } = area(s);
   const ops = [];
-  const h = CH - 0.2;
+  const h = CH - 0.1;
   columns(s.items.length).forEach(({ x, w }, i) => {
     const it = s.items[i];
-    ops.push({ op: "shape", type: "ROUND_RECTANGLE", x, y: TOP + 0.1, w, h, fill: "surface", outline: "border" });
-    ops.push({ op: "badge", icon: it.icon, x: x + (w - 0.7) / 2, y: TOP + 0.4, d: 0.7 });
-    ops.push({ op: "text", x: x + 0.1, y: TOP + 1.25, w: w - 0.2, h: 0.85, text: it.value, size: TYPE.stat, weight: 700, color: "primary", align: "CENTER", valign: "MIDDLE", label: `stat ${i + 1} value` });
-    ops.push({ op: "text", x: x + 0.2, y: TOP + 2.15, w: w - 0.4, h: h - 2.15, text: it.text, size: TYPE.body, color: "text", align: "CENTER", lineSpacing: 110, label: `stat ${i + 1} label` });
+    ops.push({ op: "shape", type: "ROUND_RECTANGLE", x, y: TOP + 0.05, w, h, fill: "surface", outline: "border" });
+    ops.push({ op: "badge", icon: it.icon, x: x + (w - 0.72) / 2, y: TOP + 0.3, d: 0.72, fill: AS(i), color: A(i) });
+    ops.push({ op: "text", x: x + 0.1, y: TOP + 1.12, w: w - 0.2, h: 0.85, text: it.value, size: TYPE.stat, weight: 700, color: A(i), align: "CENTER", valign: "MIDDLE", label: `stat ${i + 1} value` });
+    ops.push({ op: "text", x: x + 0.2, y: TOP + 2.0, w: w - 0.4, h: Math.max(0.4, h - 2.05), text: it.text, size: TYPE.body, color: "text", align: "CENTER", lineSpacing: 105, label: `stat ${i + 1} label` });
   });
   return ops;
 };
 
 const timeline = (s) => {
+  const { TOP, BOTTOM } = area(s);
   const ops = [];
   const cols = columns(s.items.length, CW, M, 0.15);
-  const lineY = TOP + 1.2;
-  ops.push({ op: "shape", type: "RECTANGLE", x: M, y: lineY - 0.02, w: CW, h: 0.04, fill: "primarySoftStrong" });
+  const lineY = TOP + 1.05;
+  ops.push({ op: "shape", type: "RECTANGLE", x: M, y: lineY - 0.02, w: CW, h: 0.04, fill: "border" });
   cols.forEach(({ x, w }, i) => {
     const it = s.items[i];
     const cx = x + w / 2;
-    ops.push({ op: "text", x, y: lineY - 0.8, w, h: 0.5, text: it.value, size: 15, weight: 700, color: "primary", align: "CENTER", valign: "BOTTOM", label: `milestone ${i + 1} date` });
-    ops.push({ op: "shape", type: "ELLIPSE", x: cx - 0.16, y: lineY - 0.16, w: 0.32, h: 0.32, fill: "primary", outline: "white" });
-    ops.push({ op: "text", x, y: lineY + 0.35, w, h: 0.66, text: it.heading, size: 13.5, weight: 600, color: "heading", align: "CENTER", label: `milestone ${i + 1} heading` });
-    ops.push({ op: "text", x, y: lineY + 1.01, w, h: GRID.contentBottom - (lineY + 1.01), text: it.text, size: TYPE.small, color: "text", align: "CENTER", lineSpacing: 110, label: `milestone ${i + 1} text` });
+    ops.push({ op: "text", x, y: lineY - 0.8, w, h: 0.5, text: it.value, size: 15, weight: 700, color: A(i), align: "CENTER", valign: "BOTTOM", label: `milestone ${i + 1} date` });
+    ops.push({ op: "shape", type: "ELLIPSE", x: cx - 0.18, y: lineY - 0.18, w: 0.36, h: 0.36, fill: A(i), outline: "white" });
+    ops.push({ op: "text", x, y: lineY + 0.32, w, h: 0.62, text: it.heading, size: 13.5, weight: 600, color: "heading", align: "CENTER", label: `milestone ${i + 1} heading` });
+    ops.push({ op: "text", x, y: lineY + 0.94, w, h: BOTTOM - (lineY + 0.94), text: it.text, size: TYPE.small, color: "text", align: "CENTER", lineSpacing: 105, label: `milestone ${i + 1} text` });
   });
   return ops;
 };
 
 const iconList = (s) => {
+  const { TOP, CH } = area(s);
   const ops = [];
   const n = s.items.length;
   const rowH = CH / n;
   const d = Math.min(0.62, rowH - 0.12);
   s.items.forEach((it, i) => {
     const y = TOP + i * rowH;
-    ops.push({ op: "badge", icon: it.icon, x: M, y: y + (rowH - d) / 2, d });
+    ops.push({ op: "badge", icon: it.icon, x: M, y: y + (rowH - d) / 2, d, fill: AS(i), color: A(i) });
     ops.push({
       op: "text",
       x: M + d + 0.25,
@@ -141,15 +202,17 @@ const iconList = (s) => {
 };
 
 const keyMessage = (s) => {
+  const { TOP, CH } = area(s);
   const ops = [];
   ops.push({ op: "shape", type: "ROUND_RECTANGLE", x: M, y: TOP, w: CW, h: CH, fill: "primarySoft" });
   ops.push({ op: "badge", icon: s.icon, x: M + 0.5, y: TOP + (CH - 1.5) / 2, d: 1.5, fill: "primary", color: "white" });
-  ops.push({ op: "text", x: M + 2.35, y: TOP + 0.35, w: CW - 2.75, h: 1.75, text: s.statement, size: TYPE.statement, weight: 700, color: "heading", valign: "BOTTOM", lineSpacing: 100, label: "statement" });
-  ops.push({ op: "text", x: M + 2.35, y: TOP + 2.2, w: CW - 2.75, h: CH - 2.5, text: s.text, size: 14, color: "text", lineSpacing: 110, label: "supporting text" });
+  ops.push({ op: "text", x: M + 2.35, y: TOP + 0.3, w: CW - 2.75, h: CH * 0.55, text: s.statement, size: TYPE.statement, weight: 700, color: "heading", valign: "BOTTOM", lineSpacing: 100, label: "statement" });
+  ops.push({ op: "text", x: M + 2.35, y: TOP + 0.4 + CH * 0.55, w: CW - 2.75, h: CH * 0.45 - 0.55, text: s.text, size: 14, color: "text", lineSpacing: 110, label: "supporting text" });
   return ops;
 };
 
 const chart = (s) => {
+  const { TOP, CH } = area(s);
   const ops = [];
   const values = s.items.map((it) => parseNumber(it.value));
   const max = Math.max(...values, 0) || 1;
@@ -171,19 +234,121 @@ const chart = (s) => {
   const iw = M + CW - ix;
   ops.push({ op: "shape", type: "ROUND_RECTANGLE", x: ix, y: TOP, w: iw, h: CH, fill: "primarySoft" });
   ops.push({ op: "badge", icon: "lightbulb", x: ix + 0.3, y: TOP + 0.3, d: 0.6, fill: "primary", color: "white" });
-  ops.push({ op: "text", x: ix + 0.2, y: TOP + 1.1, w: iw - 0.4, h: CH - 1.3, text: s.text, size: 14, weight: 600, color: "heading", lineSpacing: 110, label: "insight" });
+  ops.push({ op: "text", x: ix + 0.2, y: TOP + 1.05, w: iw - 0.4, h: CH - 1.2, text: s.text, size: 14, weight: 600, color: "heading", lineSpacing: 110, label: "insight" });
   return ops;
 };
 
 const explainer = (s) => {
+  const { TOP, CH } = area(s);
   const ops = [];
   const lw = 4.4;
   ops.push({ op: "text", x: M, y: TOP, w: lw, h: CH, text: s.body, size: 14, color: "text", lineSpacing: 115, label: "body" });
   const px = M + lw + 0.3;
   const pw = M + CW - px;
   ops.push({ op: "shape", type: "ROUND_RECTANGLE", x: px, y: TOP, w: pw, h: CH, fill: "primarySoft" });
-  ops.push({ op: "badge", icon: s.icon, x: px + (pw - 1.0) / 2, y: TOP + 0.45, d: 1.0, fill: "primary", color: "white" });
-  ops.push({ op: "text", x: px + 0.3, y: TOP + 1.65, w: pw - 0.6, h: CH - 1.9, text: s.callout, size: 19, weight: 700, color: "primary", align: "CENTER", label: "callout" });
+  ops.push({ op: "badge", icon: s.icon, x: px + (pw - 1.0) / 2, y: TOP + 0.35, d: 1.0, fill: "primary", color: "white" });
+  ops.push({ op: "text", x: px + 0.3, y: TOP + 1.5, w: pw - 0.6, h: CH - 1.65, text: s.callout, size: 19, weight: 700, color: "primary", align: "CENTER", label: "callout" });
+  return ops;
+};
+
+// A loop: the steps listed on the left, the same steps around a ring on the right.
+const cycle = (s) => {
+  const { TOP, CH } = area(s);
+  const ops = [];
+  const n = s.items.length;
+  const listW = 4.3;
+  const rowH = CH / n;
+  s.items.forEach((it, i) => {
+    const y = TOP + i * rowH;
+    const d = Math.min(0.5, rowH - 0.14);
+    ops.push({ op: "shape", type: "ELLIPSE", x: M, y: y + (rowH - 0.36) / 2, w: 0.36, h: 0.36, fill: A(i) });
+    // Wider than the circle: text boxes have inner padding, and "02" must stay on one line.
+    ops.push({ op: "text", x: M - 0.12, y: y + (rowH - 0.36) / 2, w: 0.6, h: 0.36, text: String(i + 1).padStart(2, "0"), size: 9, weight: 700, color: "white", align: "CENTER", valign: "MIDDLE", lineSpacing: 90 });
+    ops.push({ op: "badge", icon: it.icon, x: M + 0.46, y: y + (rowH - d) / 2, d, fill: AS(i), color: A(i) });
+    ops.push({
+      op: "text",
+      x: M + 0.56 + d,
+      y,
+      w: listW - 0.56 - d,
+      h: rowH,
+      runs: [
+        { text: it.heading, size: 13, weight: 600, color: A(i) },
+        { text: it.text, size: TYPE.small, color: "text" },
+      ],
+      valign: "MIDDLE",
+      lineSpacing: 100,
+      label: `step ${i + 1}`,
+    });
+  });
+  // The ring.
+  const R = Math.min(1.45, CH / 2 - 0.25);
+  const cx = M + listW + (CW - listW) / 2;
+  const cy = TOP + CH / 2;
+  ops.push({ op: "shape", type: "ELLIPSE", x: cx - R, y: cy - R, w: 2 * R, h: 2 * R, outline: "border", weight: 2 });
+  ops.push({ op: "text", x: cx - R + 0.45, y: cy - 0.45, w: 2 * R - 0.9, h: 0.9, text: s.statement, size: 16, weight: 700, color: "heading", align: "CENTER", valign: "MIDDLE", lineSpacing: 95, label: "centre" });
+  const nd = Math.min(0.78, (2 * Math.PI * R) / n - 0.25);
+  s.items.forEach((it, i) => {
+    const a = -Math.PI / 2 + (2 * Math.PI * i) / n;
+    const nx = cx + R * Math.cos(a);
+    const ny = cy + R * Math.sin(a);
+    ops.push({ op: "badge", icon: it.icon, x: nx - nd / 2, y: ny - nd / 2, d: nd, fill: A(i), color: "white", outline: "white" });
+    // An arrow half-way to the next step, pointing along the ring.
+    const am = a + Math.PI / n;
+    ops.push({ op: "icon", name: "arrow-right", x: cx + R * Math.cos(am) - 0.13, y: cy + R * Math.sin(am) - 0.13, s: 0.26, color: "muted", rotate: am + Math.PI / 2 });
+  });
+  return ops;
+};
+
+// A picture from the source deck (screenshot, photo, before/after) beside points.
+const imageFeature = (s) => {
+  const { TOP, CH } = area(s);
+  const ops = [];
+  const imgs = s.images || [];
+  const panelW = 5.5;
+  const gap = 0.2;
+  const slotW = (panelW - gap * (imgs.length - 1)) / imgs.length;
+  imgs.forEach((im, i) => {
+    const [x0, y0, x1, y1] = im.box;
+    const aspect = ((x1 - x0) * SOURCE_ASPECT) / (y1 - y0);
+    const capH = nonEmpty(im.caption) ? 0.32 : 0;
+    // Largest size that keeps the picture's shape inside its slot.
+    let w = slotW;
+    let h = w / aspect;
+    if (h > CH - capH) {
+      h = CH - capH;
+      w = h * aspect;
+    }
+    const x = M + i * (slotW + gap) + (slotW - w) / 2;
+    const y = TOP + (CH - capH - h) / 2;
+    ops.push({ op: "image", ref: i, x, y, w, h, outline: "border" });
+    if (capH) {
+      ops.push({ op: "shape", type: "ROUND_RECTANGLE", x: x + 0.1, y: y + 0.1, w: Math.min(1.6, w - 0.2), h: 0.26, fill: A(i) });
+      ops.push({ op: "text", x: x + 0.1, y: y + 0.1, w: Math.min(1.6, w - 0.2), h: 0.26, text: im.caption.toUpperCase(), size: 8.5, weight: 700, color: "white", align: "CENTER", valign: "MIDDLE", lineSpacing: 90, label: `picture ${i + 1} caption` });
+    }
+  });
+  const lx = M + panelW + 0.35;
+  const lw = M + CW - lx;
+  const n = s.items.length;
+  const rowH = CH / n;
+  s.items.forEach((it, i) => {
+    const y = TOP + i * rowH;
+    const d = Math.min(0.5, rowH - 0.14);
+    ops.push({ op: "badge", icon: it.icon, x: lx, y: y + (rowH - d) / 2, d, fill: AS(i), color: A(i) });
+    ops.push({
+      op: "text",
+      x: lx + d + 0.15,
+      y,
+      w: lw - d - 0.15,
+      h: rowH,
+      runs: [
+        { text: it.heading, size: 12.5, weight: 600, color: "heading" },
+        { text: it.text, size: TYPE.label + 0.5, color: "text" },
+      ],
+      valign: "MIDDLE",
+      lineSpacing: 100,
+      label: `point ${i + 1}`,
+    });
+  });
   return ops;
 };
 
@@ -196,12 +361,13 @@ const cellKind = (v) => {
 };
 
 const table = (s) => {
+  const { BOTTOM } = area(s);
   const ops = [];
   const rows = s.rows;
   const hasNote = rows.some((r) => (r.note || "").trim());
   // Tables are the densest slides, so they use all the room under the title.
-  const top = TOP - 0.15;
-  const avail = GRID.contentBottom + 0.15 - top;
+  const top = (s.subtitle ? 1.88 : GRID.contentTop) - 0.15;
+  const avail = BOTTOM + 0.15 - top;
   const labelW = 2.1;
   const noteW = hasNote ? 2.8 : 0;
   const cellW = (CW - labelW - noteW) / s.columns.length;
@@ -210,26 +376,28 @@ const table = (s) => {
   const h = headH + rowH * rows.length;
   // Square corners: Slides rounds corners in proportion to size, which looks bloated on a tall table.
   ops.push({ op: "shape", type: "RECTANGLE", x: M, y: top, w: CW, h: h + 0.06, fill: "surface", outline: "border" });
+  // Each column gets its accent, as a soft band behind it.
+  s.columns.forEach((_, j) => ops.push({ op: "shape", type: "RECTANGLE", x: M + labelW + j * cellW + 0.04, y: top + 0.05, w: cellW - 0.08, h: h - 0.04, fill: AS(j + 1) }));
 
-  const head = (x, w, text, label, align = "CENTER") =>
-    ops.push({ op: "text", x, y: top + 0.04, w, h: headH - 0.04, text, size: 9, weight: 700, color: "primary", align, valign: "MIDDLE", lineSpacing: 95, label });
-  head(M + 0.1, labelW - 0.1, s.rowHeader, "row header", "START");
-  s.columns.forEach((c, j) => head(M + labelW + j * cellW, cellW, c, `column ${j + 1} header`));
-  if (hasNote) head(M + labelW + s.columns.length * cellW + 0.1, noteW - 0.2, s.noteHeader, "note header", "START");
+  const head = (x, w, text, label, color, align = "CENTER") =>
+    ops.push({ op: "text", x, y: top + 0.04, w, h: headH - 0.04, text, size: 9, weight: 700, color, align, valign: "MIDDLE", lineSpacing: 95, label });
+  head(M + 0.1, labelW - 0.1, s.rowHeader, "row header", "heading", "START");
+  s.columns.forEach((c, j) => head(M + labelW + j * cellW, cellW, c, `column ${j + 1} header`, A(j + 1)));
+  if (hasNote) head(M + labelW + s.columns.length * cellW + 0.1, noteW - 0.2, s.noteHeader, "note header", "heading", "START");
 
   rows.forEach((r, i) => {
     const y = top + headH + i * rowH;
     ops.push({ op: "shape", type: "RECTANGLE", x: M + 0.15, y: y - 0.006, w: CW - 0.3, h: 0.012, fill: "border" });
     const d = Math.min(0.34, rowH - 0.14);
     const hasIcon = (r.icon || "").trim();
-    if (hasIcon) ops.push({ op: "badge", icon: r.icon, x: M + 0.15, y: y + (rowH - d) / 2, d });
+    if (hasIcon) ops.push({ op: "badge", icon: r.icon, x: M + 0.15, y: y + (rowH - d) / 2, d, fill: AS(i), color: A(i) });
     const lx = M + (hasIcon ? 0.2 + d : 0.1);
     ops.push({ op: "text", x: lx, y, w: M + labelW - lx, h: rowH, text: r.label, size: 10, weight: 600, color: "heading", valign: "MIDDLE", lineSpacing: 88, label: `row ${i + 1} label` });
     (r.cells || []).forEach((v, j) => {
       const cx = M + labelW + j * cellW;
       const kind = cellKind(v);
-      if (kind === "yes") ops.push({ op: "icon", name: "check-circle", x: cx + (cellW - 0.26) / 2, y: y + (rowH - 0.26) / 2, s: 0.26, color: "primary" });
-      else if (kind === "no") ops.push({ op: "shape", type: "RECTANGLE", x: cx + (cellW - 0.14) / 2, y: y + rowH / 2 - 0.012, w: 0.14, h: 0.024, fill: "border" });
+      if (kind === "yes") ops.push({ op: "icon", name: "check-circle", x: cx + (cellW - 0.28) / 2, y: y + (rowH - 0.28) / 2, s: 0.28, color: A(j + 1) });
+      else if (kind === "no") ops.push({ op: "shape", type: "RECTANGLE", x: cx + (cellW - 0.14) / 2, y: y + rowH / 2 - 0.012, w: 0.14, h: 0.024, fill: "muted" });
       else ops.push({ op: "text", x: cx, y, w: cellW, h: rowH, text: v, size: TYPE.label, weight: 600, color: "text", align: "CENTER", valign: "MIDDLE", lineSpacing: 88, label: `row ${i + 1} cell ${j + 1}` });
     });
     if (hasNote && (r.note || "").trim()) {
@@ -241,6 +409,7 @@ const table = (s) => {
 };
 
 const flow = (s) => {
+  const { TOP, CH } = area(s);
   const ops = [];
   const n = s.stages.length;
   const rowGap = 0.25;
@@ -277,9 +446,10 @@ const flow = (s) => {
     cards.forEach(({ it, x, w }, j) => {
       const tag = (it.value || "").trim();
       ops.push({ op: "shape", type: "ROUND_RECTANGLE", x, y, w, h: cardH, fill: "surface", outline: "border" });
-      const d = Math.min(0.42, cardH - 0.22);
-      ops.push({ op: "badge", icon: it.icon, x: x + 0.12, y: y + (cardH - d) / 2, d });
-      const tx = x + 0.12 + d + 0.06;
+      const d = Math.min(0.46, cardH - 0.22);
+      // Each stage has its own colour, so the levels of the flow read at a glance.
+      ops.push({ op: "badge", icon: it.icon, x: x + 0.12, y: y + (cardH - d) / 2, d, fill: A(k), color: "white" });
+      const tx = x + 0.12 + d + 0.08;
       // Heading and text share one box so short cards still fit two lines of text.
       ops.push({
         op: "text",
@@ -297,11 +467,11 @@ const flow = (s) => {
       });
       if (tag) {
         // A small sticker on the card's top-right corner, e.g. "Live".
-        ops.push({ op: "shape", type: "ROUND_RECTANGLE", x: x + w - 0.82, y: y - 0.12, w: 0.72, h: 0.24, fill: "primary" });
+        ops.push({ op: "shape", type: "ROUND_RECTANGLE", x: x + w - 0.82, y: y - 0.12, w: 0.72, h: 0.24, fill: A(k) });
         ops.push({ op: "text", x: x + w - 0.82, y: y - 0.12, w: 0.72, h: 0.24, text: tag, size: 9, weight: 700, color: "white", align: "CENTER", valign: "MIDDLE", lineSpacing: 90, label: `stage ${k + 1} box ${j + 1} tag` });
       }
       if (st.mode === "sequence" && j < cards.length - 1) {
-        ops.push({ op: "icon", name: "arrow-right", x: x + w + (gap - 0.24) / 2, y: y + (cardH - 0.24) / 2, s: 0.24, color: "primary" });
+        ops.push({ op: "icon", name: "arrow-right", x: x + w + (gap - 0.24) / 2, y: y + (cardH - 0.24) / 2, s: 0.24, color: A(k) });
       }
     });
   });
@@ -311,6 +481,40 @@ const flow = (s) => {
 function parseNumber(v) {
   const n = parseFloat(String(v).replace(/,/g, ""));
   return Number.isFinite(n) ? n : NaN;
+}
+
+// ── Extras any drawn slide can carry ────────────────────────────────────────
+
+// A one-line subtitle under the title, and a What / Why / How strip at the bottom.
+function extrasOps(s) {
+  const ops = [];
+  if (s.subtitle) ops.push({ op: "text", x: M, y: 1.36, w: CW, h: 0.42, text: s.subtitle, size: 13, color: "muted", valign: "TOP", lineSpacing: 100, label: "subtitle" });
+  const ins = s.insights || [];
+  if (ins.length) {
+    const y = GRID.contentBottom - STRIP_H + 0.06;
+    ops.push({ op: "shape", type: "ROUND_RECTANGLE", x: M, y, w: CW, h: STRIP_H, fill: "surface", outline: "border" });
+    columns(ins.length, CW - 0.3, M + 0.15, 0.25).forEach(({ x, w }, i) => {
+      const it = ins[i];
+      const d = 0.5;
+      ops.push({ op: "badge", icon: it.icon, x, y: y + (STRIP_H - d) / 2, d, fill: AS(i + 3), color: A(i + 3) });
+      ops.push({
+        op: "text",
+        x: x + d + 0.1,
+        y,
+        w: w - d - 0.1,
+        h: STRIP_H,
+        runs: [
+          { text: it.label.toUpperCase(), size: 8.5, weight: 700, color: A(i + 3) },
+          { text: it.text, size: 10, weight: 600, color: "heading" },
+        ],
+        valign: "MIDDLE",
+        lineSpacing: 95,
+        label: `strip ${i + 1}`,
+      });
+      if (i < ins.length - 1) ops.push({ op: "shape", type: "RECTANGLE", x: x + w + 0.12, y: y + 0.18, w: 0.012, h: STRIP_H - 0.36, fill: "border" });
+    });
+  }
+  return ops;
 }
 
 // ── Catalogue ───────────────────────────────────────────────────────────────
@@ -358,15 +562,38 @@ const TYPES = {
     bullets: { min: 2, max: 5, chars: 110 },
   },
 
-  icon_cards: { layout: iconCards, use: "2-4 parallel ideas (features, benefits, pillars), each with an icon.", items: { min: 2, max: 4, fields: ["icon", "heading", "text"] } },
-  process: { layout: process, use: "3-5 steps in order (how it works, onboarding, a workflow).", items: { min: 3, max: 5, fields: ["icon", "heading", "text"] } },
+  icon_cards: {
+    layout: iconCards,
+    use: "2-4 parallel ideas (features, benefits, pillars), each with an icon. Optional points per card (2-4 short items with check marks, like \"Name\", \"Phone\").",
+    items: { min: 2, max: 4, fields: ["icon", "heading"] },
+    textOrPoints: true,
+  },
+  process: {
+    layout: process,
+    use: "3-5 steps in order, shown as numbered cards joined by arrows (how it works, onboarding, a workflow). Each step: icon, heading, and text and/or 2-4 short points.",
+    items: { min: 3, max: 5, fields: ["icon", "heading"] },
+    textOrPoints: true,
+  },
   comparison: { layout: comparison, use: "Two sides: before vs after, old way vs Vihara, problem vs solution. left is the worse side, right the better side.", sides: { min: 2, max: 4 } },
-  stats: { layout: stats, use: "2-4 real numbers from the notes, each with an icon. value is the number with its unit (e.g. \"3x\", \"48h\", \"$2M\").", items: { min: 2, max: 4, fields: ["icon", "value", "text"] } },
+  stats: { layout: stats, use: "2-4 real numbers, each with an icon. value is the number with its unit (e.g. \"3x\", \"48h\", \"$2M\").", items: { min: 2, max: 4, fields: ["icon", "value", "text"] } },
   timeline: { layout: timeline, use: "3-6 dated milestones or a roadmap. value is the date or phase (e.g. \"Q1 2026\", \"Week 1\").", items: { min: 3, max: 6, fields: ["value", "heading", "text"] } },
   icon_list: { layout: iconList, use: "3-5 points that each need a sentence, shown as rows with icons. heading ≤ 40 chars, text ≤ 100 chars.", items: { min: 3, max: 5, fields: ["icon", "heading", "text"] } },
-  key_message: { layout: keyMessage, use: "One big statement the audience must remember, plus a supporting line. Use for the core idea, a mission, or a strong claim from the notes.", needsIcon: true, fields: ["statement", "text"] },
-  chart: { layout: chart, use: "2-6 numbers from the notes compared as bars. value is a plain number; unit (optional) is added after each value; text is the one-line takeaway.", items: { min: 2, max: 6, fields: ["heading", "value"] }, fields: ["text"] },
+  key_message: { layout: keyMessage, use: "One big statement the audience must remember, plus a supporting line. Use for the core idea, a mission, or a strong claim.", needsIcon: true, fields: ["statement", "text"] },
+  chart: { layout: chart, use: "2-6 real numbers compared as bars. value is a plain number; unit (optional) is added after each value; text is the one-line takeaway.", items: { min: 2, max: 6, fields: ["heading", "value"] }, fields: ["text"] },
   explainer: { layout: explainer, use: "One idea explained in a short paragraph (body), with the key line (callout) and an icon in the panel beside it.", needsIcon: true, fields: ["body", "callout"] },
+  cycle: {
+    layout: cycle,
+    use: "A loop that repeats (follow-up loops, feedback cycles): 3-5 steps listed on the left and drawn around a ring on the right; statement is the short label in the middle of the ring (≤ 18 chars, e.g. \"AI loop\").",
+    items: { min: 3, max: 5, fields: ["icon", "heading", "text"] },
+    fields: ["statement"],
+  },
+  image_feature: {
+    layout: imageFeature,
+    restyleOnly: true,
+    use: "A picture from the source deck (an app screenshot, a property photo, a before/after pair) beside 2-4 points with icons. images: 1-2 crops, each { slide: the source slide number, box: [left, top, right, bottom] as fractions 0-1 of that slide's picture, tight around the picture itself (not its title or labels), caption: optional tag like \"Before\", left \"\" when the picture already shows its own label }.",
+    items: { min: 2, max: 4, fields: ["icon", "heading", "text"] },
+    pictures: { min: 1, max: 2 },
+  },
   table: {
     layout: table,
     use: "A grid: 2-8 rows × 2-6 columns, e.g. segments vs stages, plans vs features. rowHeader names the first column; columns are the other headers; each row has a label, an optional icon, one cell per column (\"yes\" shows a check, \"no\" or \"\" a dash, or a few words), and an optional note (then noteHeader names that column).",
@@ -381,15 +608,23 @@ const TYPES = {
 };
 
 const TYPE_NAMES = Object.keys(TYPES);
-const DRAWN_NEEDS_TITLE = (t) => !TYPES[t].template;
+const isDrawn = (type) => !TYPES[type]?.template;
+
+// The elements of a drawn slide: its layout plus subtitle and strip.
+function drawnOps(s) {
+  return [...TYPES[s.type].layout(s), ...extrasOps(s)];
+}
 
 // Everything wrong with one slide, as instructions Claude can act on.
-function slideProblems(s, at) {
+function slideProblems(s, at, { sourceSlides = 0 } = {}) {
   const t = TYPES[s.type];
   if (!t) return [`${at}: unknown type "${s.type}".`];
   const problems = [];
   const need = (cond, msg) => !cond && problems.push(`${at}: ${msg}`);
-  const nonEmpty = (v) => typeof v === "string" && v.trim().length > 0;
+  const iconOk = (name, where) => {
+    if (!nonEmpty(name)) problems.push(`${at}: ${where} needs an icon.`);
+    else if (!ICON_SET.has(name)) problems.push(`${at}: ${where} icon "${name}" is not in the icon list.`);
+  };
 
   if (t.limits) {
     for (const [f, max] of Object.entries(t.limits)) {
@@ -406,16 +641,22 @@ function slideProblems(s, at) {
       if (/^\s*(\d+[.)]|[-•*–])\s/.test(x)) problems.push(`${at}: bullet ${j + 1} starts with a number or symbol; the slide adds bullet marks itself.`);
     });
   }
-  if (DRAWN_NEEDS_TITLE(s.type)) {
+  if (isDrawn(s.type)) {
     const title = (s.title || "").trim();
-    const max = t.titleMax || 42;
+    // With a subtitle under it, the title has to stay on one line.
+    const max = Math.min(t.titleMax || 42, s.subtitle ? 40 : 42);
     need(title, "title is empty.");
-    if (title.length > max) problems.push(`${at}: title is ${title.length} chars, max ${max}: "${title}"`);
+    if (title.length > max) problems.push(`${at}: title is ${title.length} chars, max ${max}${s.subtitle ? " (with a subtitle)" : ""}: "${title}"`);
+    const ins = s.insights || [];
+    if (ins.length) {
+      need(ins.length >= 2 && ins.length <= 3, `insights needs 2-3 entries, has ${ins.length}.`);
+      ins.forEach((it, j) => {
+        iconOk(it.icon, `insight ${j + 1}`);
+        need(nonEmpty(it.label) && nonEmpty(it.text), `insight ${j + 1} needs a label and text.`);
+      });
+    }
+    if (["table"].includes(s.type) && ins.length) problems.push(`${at}: a table has no room for insights; leave insights empty.`);
   }
-  const iconOk = (name, where) => {
-    if (!nonEmpty(name)) problems.push(`${at}: ${where} needs an icon.`);
-    else if (!ICON_SET.has(name)) problems.push(`${at}: ${where} icon "${name}" is not in the icon list.`);
-  };
   if (t.needsIcon) iconOk(s.icon, "the slide");
   if (t.optionalIcon && nonEmpty(s.icon) && !ICON_SET.has(s.icon)) problems.push(`${at}: icon "${s.icon}" is not in the icon list.`);
   for (const f of t.fields || []) need(nonEmpty(s[f]), `${f} is empty.`);
@@ -428,8 +669,19 @@ function slideProblems(s, at) {
         if (f === "icon") iconOk(it.icon, `item ${j + 1}`);
         else need(nonEmpty(it[f]), `item ${j + 1} ${f} is empty.`);
       }
+      const pts = pointsOf(it);
+      if (t.textOrPoints) need(nonEmpty(it.text) || pts.length, `item ${j + 1} needs text or points.`);
+      if (pts.length) need(t.textOrPoints && pts.length >= 2 && pts.length <= 4, t.textOrPoints ? `item ${j + 1} points: 2-4, has ${pts.length}.` : `item ${j + 1}: this type doesn't show points; leave them empty.`);
     });
     if (s.type === "chart") items.forEach((it, j) => need(Number.isFinite(parseNumber(it.value)) && !/[a-z%$]/i.test(it.value), `item ${j + 1} value must be a plain number like "42" or "1.5" (put "%" etc. in unit): "${it.value}"`));
+  }
+  if (t.sides) {
+    for (const name of ["left", "right"]) {
+      const side = s[name] || {};
+      need(nonEmpty(side.label), `${name}.label is empty.`);
+      const n = (side.points || []).length;
+      need(n >= t.sides.min && n <= t.sides.max, `${name} needs ${t.sides.min}-${t.sides.max} points, has ${n}.`);
+    }
   }
   if (t.rows) {
     const cols = s.columns || [];
@@ -458,23 +710,27 @@ function slideProblems(s, at) {
       });
     });
   }
-  if (t.sides) {
-    for (const name of ["left", "right"]) {
-      const side = s[name] || {};
-      need(nonEmpty(side.label), `${name}.label is empty.`);
-      const n = (side.points || []).length;
-      need(n >= t.sides.min && n <= t.sides.max, `${name} needs ${t.sides.min}-${t.sides.max} points, has ${n}.`);
-    }
+  if (t.pictures) {
+    const imgs = s.images || [];
+    if (!sourceSlides) problems.push(`${at}: image_feature needs pictures from a source deck; use another type.`);
+    need(imgs.length >= t.pictures.min && imgs.length <= t.pictures.max, `needs ${t.pictures.min}-${t.pictures.max} images, has ${imgs.length}.`);
+    imgs.forEach((im, j) => {
+      const b = im.box || [];
+      const ok = b.length === 4 && b.every((v) => typeof v === "number" && v >= 0 && v <= 1) && b[2] - b[0] >= 0.08 && b[3] - b[1] >= 0.08;
+      need(ok, `image ${j + 1} box must be [left, top, right, bottom] fractions 0-1, at least 0.08 wide and tall.`);
+      need(Number.isInteger(im.slide) && im.slide >= 1 && im.slide <= sourceSlides, `image ${j + 1} slide must be a source slide number 1-${sourceSlides}.`);
+    });
   }
-  const layout = t.layout || t.overlay;
-  if (problems.length || !layout) return problems;
+  if ((s.images || []).length && !t.pictures) problems.push(`${at}: only image_feature shows images; leave images empty.`);
+  if (problems.length) return problems;
 
   // Every text must fit its box at the design's sizes.
-  for (const o of layout(s)) {
+  const ops = t.layout ? drawnOps(s) : t.overlay ? t.overlay(s) : [];
+  for (const o of ops) {
     if (o.op !== "text" || !o.label) continue;
     if (o.runs) {
       const used = o.runs.reduce((sum, r) => sum + fit(r.text, o.w, 99, r.size, r.weight || 400, o.lineSpacing).lines * r.size * LINE_HEIGHT * ((o.lineSpacing || 100) / 100), 0) / 72;
-      if (used > o.h - 0.1) problems.push(`${at}: ${o.label} is too long for its row. Shorten the heading or text.`);
+      if (used > o.h - 0.1) problems.push(`${at}: ${o.label} is too long for its space. Shorten the heading or text.`);
       continue;
     }
     const f = fit(o.text, o.w, o.h, o.size, o.weight || 400, o.lineSpacing || 100);
@@ -485,15 +741,15 @@ function slideProblems(s, at) {
 
 // Which plan field each text box shows, for the limits Claude is given.
 const LABEL_FIELD = {
-  "card heading": "items[].heading", "card text": "items[].text",
-  "step heading": "items[].heading", "step text": "items[].text",
+  "card heading": "items[].heading", "card text": "items[].text", "card point": "items[].points[]",
+  "step heading": "items[].heading", "step text": "items[].text", "step point": "items[].points[]",
   "stat value": "items[].value", "stat label": "items[].text",
   "milestone date": "items[].value", "milestone heading": "items[].heading", "milestone text": "items[].text",
   "bar label": "items[].heading", "bar value": "items[].value (with unit)",
   "left label": "left.label", "left point": "left.points[]", "right label": "right.label", "right point": "right.points[]",
   "row header": "rowHeader", "column header": "columns[]", "note header": "noteHeader",
   "row label": "rows[].label", "row cell": "rows[].cells[] (text)", "row note": "rows[].note",
-  "stage box heading": "stages[].items[].heading", "stage box text": "stages[].items[].text", "stage box tag": "stages[].items[].value",
+  "stage box tag": "stages[].items[].value", "picture caption": "images[].caption", centre: "statement",
   subtitle: "subtitle", statement: "statement", "supporting text": "text", insight: "text", body: "body", callout: "callout", number: "number", title: "title",
 };
 
@@ -502,21 +758,22 @@ const LABEL_FIELD = {
 // fit first time; slideProblems() still checks every slide exactly.
 function fieldLimits(name) {
   const t = TYPES[name];
-  const layout = t.layout || t.overlay;
+  const layout = t.layout ? (s) => drawnOps({ ...s, type: name }) : t.overlay;
   if (!layout) return null;
   const range = t.items || t.sides || t.rows || t.stages?.items;
   const counts = range ? Array.from({ length: range.max - range.min + 1 }, (_, k) => range.min + k) : [1];
   const limits = {};
   for (const n of counts) {
     const dummy = {
-      title: "x", subtitle: "x", number: "01", icon: "house", statement: "x", text: "x", body: "x", callout: "x", unit: "",
-      items: Array.from({ length: n }, () => ({ icon: "house", heading: "x", text: "x", value: "1" })),
+      title: "x", subtitle: "", number: "01", icon: "house", statement: "x", text: "x", body: "x", callout: "x", unit: "",
+      items: Array.from({ length: n }, () => ({ icon: "house", heading: "x", text: "x", value: "1", points: ["x", "x", "x"] })),
       left: { label: "x", points: Array(n).fill("x") },
       right: { label: "x", points: Array(n).fill("x") },
       // Tables at their widest (5 columns, with notes); flows with 3 stages of n boxes.
       rowHeader: "x", noteHeader: "x", columns: Array(5).fill("x"),
       rows: Array.from({ length: n }, () => ({ icon: "house", label: "x", cells: Array(5).fill("x"), note: "x" })),
       stages: Array.from({ length: 3 }, () => ({ mode: "parallel", items: Array.from({ length: n }, () => ({ icon: "house", heading: "x", text: "x", value: "x" })) })),
+      images: [{ slide: 1, box: [0, 0, 0.5, 0.6], caption: "x" }],
     };
     for (const o of layout(dummy)) {
       if (o.op !== "text" || !o.label || o.runs) continue;
@@ -539,10 +796,10 @@ function describeLimits(name) {
       const entries = Object.entries(byCount);
       const values = [...new Set(entries.map(([, v]) => v))];
       if (values.length === 1) return `${field} ≤ ${values[0]}`;
-      const unit = TYPES[name].sides ? "points" : "items";
+      const unit = TYPES[name].sides ? "points" : TYPES[name].rows ? "rows" : "items";
       return `${field} ≤ ${entries.map(([n, v], k) => (k === 0 ? `${v} (${n} ${unit})` : `${v} (${n})`)).join(" / ")}`;
     })
     .join("; ");
 }
 
-module.exports = { TYPES, TYPE_NAMES, slideProblems, describeLimits };
+module.exports = { TYPES, TYPE_NAMES, isDrawn, drawnOps, slideProblems, describeLimits };

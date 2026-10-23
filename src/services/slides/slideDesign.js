@@ -35,6 +35,12 @@ const TYPE = {
   label: 10,
 };
 
+// Accent colours, used in this order to tell items apart (steps, segments,
+// stages). accent0 is the Brand Kit's main colour; the rest are fixed so every
+// deck colours its items the same way.
+const ACCENTS = ["#16a34a", "#ea580c", "#7c3aed", "#dc2626", "#0891b2"];
+const ACCENT_COUNT = ACCENTS.length + 1;
+
 // Colours come from the Brand Kit; these are only the fallbacks.
 function palette(kitColors = {}) {
   const c = (k, d) => (kitColors[k] || d).toLowerCase();
@@ -52,6 +58,8 @@ function palette(kitColors = {}) {
     surface: c("surface", "#ffffff"),
     border: c("border", "#e5e7eb"),
     white: "#ffffff",
+    // accent0…5 (solid) and accentSoft0…5 (light, for badge backgrounds and bands)
+    ...Object.fromEntries([primary, ...ACCENTS].flatMap((hex, i) => [[`accent${i}`, hex], [`accentSoft${i}`, tint(hex, 0.88)]])),
   };
 }
 
@@ -92,10 +100,10 @@ class Canvas {
   }
 
   // Filled shape: "ROUND_RECTANGLE", "RECTANGLE" or "ELLIPSE". Returns its id.
-  shape(type, x, y, w, h, { fill, outline } = {}) {
+  shape(type, x, y, w, h, { fill, outline, weight = 0.75 } = {}) {
     const objectId = this.id();
     this.requests.push({ createShape: { objectId, shapeType: type, elementProperties: box(this.slideId, x, y, w, h) } });
-    const props = { outline: outline ? { outlineFill: solid(outline), weight: { magnitude: 0.75, unit: "PT" } } : { propertyState: "NOT_RENDERED" } };
+    const props = { outline: outline ? { outlineFill: solid(outline), weight: { magnitude: weight, unit: "PT" } } : { propertyState: "NOT_RENDERED" } };
     if (fill) props.shapeBackgroundFill = solid(fill);
     else props.shapeBackgroundFill = { propertyState: "NOT_RENDERED" };
     this.requests.push({
@@ -148,16 +156,44 @@ class Canvas {
     return objectId;
   }
 
-  // Phosphor icon (config/slideIcons) in one colour, as a square image.
-  icon(name, x, y, sizeIn, color) {
+  // Phosphor icon (config/slideIcons) in one colour, as a square image,
+  // optionally turned by `rotate` radians around its centre.
+  icon(name, x, y, sizeIn, color, rotate = 0) {
     const objectId = this.id();
-    this.requests.push({ createImage: { objectId, url: iconUrl(name, color), elementProperties: box(this.slideId, x, y, sizeIn, sizeIn) } });
+    const elementProperties = box(this.slideId, x, y, sizeIn, sizeIn);
+    if (rotate) {
+      const cos = Math.cos(rotate);
+      const sin = Math.sin(rotate);
+      const half = sizeIn / 2;
+      elementProperties.transform = {
+        scaleX: cos,
+        scaleY: cos,
+        shearX: -sin,
+        shearY: sin,
+        translateX: emu(x + half - (cos * half - sin * half)),
+        translateY: emu(y + half - (sin * half + cos * half)),
+        unit: "EMU",
+      };
+    }
+    this.requests.push({ createImage: { objectId, url: iconUrl(name, color), elementProperties } });
+    return objectId;
+  }
+
+  // A picture (public URL) in a box, with an optional thin outline.
+  image(url, x, y, w, h, { outline } = {}) {
+    const objectId = this.id();
+    this.requests.push({ createImage: { objectId, url, elementProperties: box(this.slideId, x, y, w, h) } });
+    if (outline) {
+      this.requests.push({
+        updateImageProperties: { objectId, imageProperties: { outline: { outlineFill: solid(outline), weight: { magnitude: 0.75, unit: "PT" } } }, fields: "outline" },
+      });
+    }
     return objectId;
   }
 
   // An icon centred in a filled circle: the slides' visual motif.
-  iconBadge(name, x, y, d, { fill = this.c.primarySoft, color = this.c.primary, scale = 0.52 } = {}) {
-    this.shape("ELLIPSE", x, y, d, d, { fill });
+  iconBadge(name, x, y, d, { fill = this.c.primarySoft, color = this.c.primary, scale = 0.52, outline } = {}) {
+    this.shape("ELLIPSE", x, y, d, d, { fill, outline, weight: outline ? 2 : 0.75 });
     const s = d * scale;
     if (name) this.icon(name, x + (d - s) / 2, y + (d - s) / 2, s, color);
   }
@@ -171,7 +207,7 @@ const LINE_HEIGHT = 1.25; // Poppins renders at ~1.19 em per line at 100% spacin
 
 function countLines(text, widthIn, sizePt, weight = 400) {
   // Average Poppins character width in ems, measured on rendered slides (with a little slack).
-  const charW = sizePt * (weight >= 600 ? 0.58 : 0.51);
+  const charW = sizePt * (weight >= 600 ? 0.56 : 0.51);
   const perLine = Math.max(1, Math.floor(((widthIn - 2 * INSET) * 72) / charW));
   let lines = 0;
   for (const para of String(text).split("\n")) {
@@ -197,8 +233,9 @@ function countLines(text, widthIn, sizePt, weight = 400) {
 function fit(text, widthIn, heightIn, sizePt, weight = 400, lineSpacing = 100) {
   const { lines, perLine } = countLines(text, widthIn, sizePt, weight);
   const lineIn = (sizePt * LINE_HEIGHT * (lineSpacing / 100)) / 72;
-  const maxLines = Math.max(1, Math.floor((heightIn - 2 * 0.05) / lineIn));
+  // A box too short for even one line can't hold any text.
+  const maxLines = Math.max(0, Math.floor((heightIn - 2 * 0.05) / lineIn));
   return { ok: lines <= maxLines, lines, maxLines, maxChars: Math.floor(perLine * maxLines * 0.9) };
 }
 
-module.exports = { GRID, TYPE, FONT, LINE_HEIGHT, palette, tint, Canvas, fit, emu };
+module.exports = { GRID, TYPE, FONT, LINE_HEIGHT, ACCENT_COUNT, palette, tint, Canvas, fit, emu };

@@ -1,17 +1,21 @@
 // scripts/uploadSlideIcons.js
 //
 // Uploads the Slides agent's icons (config/slideIcons.js) to Cloudinary, once.
-// Each icon is Phosphor's "bold" SVG, made solid black so the colour can be
+// Each icon is Phosphor's SVG in one weight, made solid black so the colour can be
 // set in the URL (see iconUrl). Icons already on Cloudinary are skipped, so
 // re-running after adding names only uploads the new ones.
 //
-//   node src/scripts/uploadSlideIcons.js
+//   node src/scripts/uploadSlideIcons.js          (the weight in use, ICON_WEIGHT)
+//   node src/scripts/uploadSlideIcons.js bold     (another weight)
 //
 // Env: CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET
 require("dotenv").config();
 const axios = require("axios");
 const cloudinary = require("cloudinary").v2;
-const { ICON_NAMES, ICON_FOLDER, PHOSPHOR_VERSION } = require("../config/slideIcons");
+const { ICON_NAMES, ICON_WEIGHT, PHOSPHOR_VERSION, folderFor } = require("../config/slideIcons");
+
+const WEIGHT = process.argv[2] || ICON_WEIGHT;
+const ICON_FOLDER = folderFor(WEIGHT);
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -19,7 +23,7 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-const svgUrl = (name) => `https://unpkg.com/@phosphor-icons/core@${PHOSPHOR_VERSION}/assets/bold/${name}-bold.svg`;
+const svgUrl = (name) => `https://unpkg.com/@phosphor-icons/core@${PHOSPHOR_VERSION}/assets/${WEIGHT}/${name}-${WEIGHT}.svg`;
 
 async function existing() {
   const ids = new Set();
@@ -35,7 +39,7 @@ async function existing() {
 (async () => {
   const have = await existing();
   const todo = ICON_NAMES.filter((n) => !have.has(`${ICON_FOLDER}/${n}`));
-  console.log(`${ICON_NAMES.length} icons, ${have.size} already uploaded, ${todo.length} to upload`);
+  console.log(`${WEIGHT}: ${ICON_NAMES.length} icons, ${have.size} already uploaded, ${todo.length} to upload`);
 
   const failed = [];
   for (const name of todo) {

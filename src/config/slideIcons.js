@@ -1,7 +1,7 @@
 // config/slideIcons.js
 //
 // The icons the Slides agent may put on slides: Phosphor icons (the same set
-// the website uses), "bold" weight. Claude picks names from this list only,
+// the website uses), in one weight (ICON_WEIGHT, "fill" by default). Claude picks names from this list only,
 // so every deck has the same icon style.
 //
 // The SVGs live on Cloudinary under ICON_FOLDER, uploaded once by
@@ -10,7 +10,10 @@
 // To add an icon: add its Phosphor name (phosphoricons.com) here and re-run the script.
 const cloudinary = require("cloudinary").v2;
 
-const ICON_FOLDER = "vihara-slides/icons";
+// Solid "fill" icons read better on slides; "bold" (outline) is the other weight uploaded.
+const ICON_WEIGHT = process.env.SLIDES_ICON_WEIGHT || "fill";
+const folderFor = (weight) => (weight === "bold" ? "vihara-slides/icons" : `vihara-slides/icons-${weight}`);
+const ICON_FOLDER = folderFor(ICON_WEIGHT);
 const PHOSPHOR_VERSION = "2.1.1";
 
 const ICON_GROUPS = {
@@ -45,7 +48,7 @@ const ICON_GROUPS = {
   ],
   "Trust & safety": [
     "shield-check", "lock-key", "seal-check", "certificate", "eye", "eye-slash", "warning", "warning-circle",
-    "x-circle", "check", "minus", "info", "question", "prohibit", "thumbs-up", "thumbs-down", "star",
+    "x-circle", "x", "check", "minus", "info", "question", "prohibit", "thumbs-up", "thumbs-down", "star",
   ],
   "Places & movement": ["airplane", "car", "truck", "train", "compass", "navigation-arrow", "tree", "sun", "leaf", "globe"],
 };
@@ -63,4 +66,4 @@ function iconUrl(name, hexColor, sizePx = 256) {
   });
 }
 
-module.exports = { ICON_GROUPS, ICON_NAMES, ICON_SET, ICON_FOLDER, PHOSPHOR_VERSION, iconUrl };
+module.exports = { ICON_GROUPS, ICON_NAMES, ICON_SET, ICON_FOLDER, ICON_WEIGHT, PHOSPHOR_VERSION, folderFor, iconUrl };

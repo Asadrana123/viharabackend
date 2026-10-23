@@ -9,21 +9,27 @@
 //     slides that changed.
 const { getAuthorizedClient } = require("./googleAuthService");
 const { SlidesError, mapLayouts, call, SLIDES_API, DRIVE_API } = require("./slidesBuilder");
-const { TYPES } = require("./slideTypes");
+const { TYPES, drawnOps } = require("./slideTypes");
 const { Canvas, palette } = require("./slideDesign");
+const { cropUrl } = require("./sourceImages");
 
 const leftAlign = (objectId) => ({
   updateParagraphStyle: { objectId, textRange: { type: "ALL" }, style: { alignment: "START" }, fields: "alignment" },
 });
 
-// Draws a layout's elements on the slide, resolving colour names to the palette.
-function draw(canvas, ops) {
+// Draws a layout's elements on the slide, resolving colour names to the palette
+// and picture refs to crops of the source deck (images[ref] of slide `s`).
+function draw(canvas, ops, s, imageSource) {
   const c = canvas.c;
   const col = (k) => (k ? c[k] || k : undefined);
   for (const o of ops) {
-    if (o.op === "shape") canvas.shape(o.type, o.x, o.y, o.w, o.h, { fill: col(o.fill), outline: col(o.outline) });
-    else if (o.op === "badge") canvas.iconBadge(o.icon, o.x, o.y, o.d, { fill: col(o.fill || "primarySoft"), color: col(o.color || "primary"), scale: o.scale });
-    else if (o.op === "icon") canvas.icon(o.name, o.x, o.y, o.s, col(o.color));
+    if (o.op === "shape") canvas.shape(o.type, o.x, o.y, o.w, o.h, { fill: col(o.fill), outline: col(o.outline), weight: o.weight });
+    else if (o.op === "badge") canvas.iconBadge(o.icon, o.x, o.y, o.d, { fill: col(o.fill || "primarySoft"), color: col(o.color || "primary"), scale: o.scale, outline: col(o.outline) });
+    else if (o.op === "icon") canvas.icon(o.name, o.x, o.y, o.s, col(o.color), o.rotate);
+    else if (o.op === "image") {
+      if (!imageSource) throw new SlidesError("This slide uses a picture from the original deck, but the original's pictures aren't available.");
+      canvas.image(cropUrl(imageSource, s.images[o.ref]), o.x, o.y, o.w, o.h, { outline: col(o.outline) });
+    }
     else if (o.op === "text") {
       const runs = o.runs ? o.runs.map((r) => ({ ...r, color: col(r.color) })) : o.text;
       canvas.text(o.x, o.y, o.w, o.h, runs, { ...o, color: col(o.color) });
@@ -33,7 +39,7 @@ function draw(canvas, ops) {
 
 // Requests for one slide, with Google object id `slideId` (≥ 5 characters).
 // insertionIndex: where it goes; undefined = at the end.
-function slideRequests(s, slideId, insertionIndex, layouts, colors) {
+function slideRequests(s, slideId, insertionIndex, layouts, colors, imageSource) {
   const t = TYPES[s.type];
   const requests = [];
   const ph = (field) => `${slideId}_${field}`;
@@ -67,7 +73,7 @@ function slideRequests(s, slideId, insertionIndex, layouts, colors) {
     }
     if (t.overlay) {
       const canvas = new Canvas(slideId, colors);
-      draw(canvas, t.overlay(s));
+      draw(canvas, t.overlay(s), s, imageSource);
       requests.push(...canvas.requests);
     }
     return requests;
@@ -89,7 +95,7 @@ function slideRequests(s, slideId, insertionIndex, layouts, colors) {
   requests.push({ insertText: { objectId: ph("title"), text: s.title, insertionIndex: 0 } }, leftAlign(ph("title")));
   requests.push({ deleteObject: { objectId: ph("unused") } }); // the bullet box; drawn slides don't use it
   const canvas = new Canvas(slideId, colors);
-  draw(canvas, t.layout(s));
+  draw(canvas, drawnOps(s), s, imageSource);
   requests.push(...canvas.requests);
   return requests;
 }
@@ -135,10 +141,11 @@ async function writeNotes(client, id, entries) {
 /**
  * A new deck from a plan checked by deckPlanner.
  * @param {{ deckTitle: string, slides: object[] }} plan
- * @param {{ shareWith?: string, kitColors?: object, onStep?: (s: string) => void }} opts
+ * @param {{ shareWith?: string, kitColors?: object, imageSource?: object, onStep?: (s: string) => void }} opts
+ *   imageSource: where the source deck's slide pictures are (sourceImages.uploadSourceSlides), for restyled decks
  * @returns {Promise<{ presentationId: string, url: string, slideIds: string[] }>}
  */
-async function buildVisualDeck(plan, { shareWith, kitColors, onStep = () => {} } = {}) {
+async function buildVisualDeck(plan, { shareWith, kitColors, imageSource, onStep = () => {} } = {}) {
   const client = await connected();
   const templateId = process.env.GOOGLE_SLIDES_TEMPLATE_ID;
   if (!templateId) throw new SlidesError("GOOGLE_SLIDES_TEMPLATE_ID is not set.");
@@ -154,7 +161,7 @@ async function buildVisualDeck(plan, { shareWith, kitColors, onStep = () => {} }
 
   onStep("Designing the slides");
   const slideIds = plan.slides.map((_, i) => `slide${String(i).padStart(2, "0")}`);
-  const requests = plan.slides.flatMap((s, i) => slideRequests(s, slideIds[i], i, layouts, colors));
+  const requests = plan.slides.flatMap((s, i) => slideRequests(s, slideIds[i], i, layouts, colors, imageSource));
   // The template's own sample slides go last, once the new slides exist.
   for (const sid of existingIds) requests.push({ deleteObject: { objectId: sid } });
   await batch(client, id, requests);
@@ -193,7 +200,7 @@ function slideKey(s) {
  *           plan: { deckTitle: string, slides: object[] }, revision: number, kitColors?: object, onStep?: (s: string) => void }} input
  * @returns {Promise<{ slideIds: string[], changedSlides: number[], removedCount: number }>}
  */
-async function updateVisualDeck({ presentationId: id, oldSlides, oldSlideIds, oldTitle, plan, revision, kitColors, onStep = () => {} }) {
+async function updateVisualDeck({ presentationId: id, oldSlides, oldSlideIds, oldTitle, plan, revision, kitColors, imageSource, onStep = () => {} }) {
   const client = await connected();
   const colors = palette(kitColors);
   const { layouts, existingIds } = await loadLayouts(client, id, plan.slides);
@@ -226,7 +233,7 @@ async function updateVisualDeck({ presentationId: id, oldSlides, oldSlideIds, ol
     const newId = `r${revision}s${String(j).padStart(2, "0")}`;
     slideIds.push(newId);
     changedSlides.push(j + 1);
-    requests.push(...slideRequests(s, newId, undefined, layouts, colors));
+    requests.push(...slideRequests(s, newId, undefined, layouts, colors, imageSource));
   });
   const removed = oldSlideIds.filter((sid, i) => !used.has(i) && present.has(sid));
   for (const sid of removed) requests.push({ deleteObject: { objectId: sid } });

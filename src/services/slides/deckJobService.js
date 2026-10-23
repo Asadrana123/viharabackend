@@ -9,12 +9,15 @@
 const SlideDeck = require("../../model/slides/slideDeckModel");
 const { planDeck, reviseDeck, restyleDeck } = require("./deckPlanner");
 const { readSourceDeck, removeTemporary } = require("./sourceDeck");
+const { uploadSourceSlides } = require("./sourceImages");
 const { buildVisualDeck, updateVisualDeck } = require("./deckRenderer");
 const { getCurrentBrandKit } = require("../brand/brandKitService");
 const { STALE_JOB_MS } = require("../../config/slidesAgentConfig");
 
 const log = (id) => (msg) => console.log(`[slides ${id}] ${msg}`);
 const setStep = (deckId) => (step) => SlideDeck.updateOne({ _id: deckId, status: "working" }, { $set: { step } }).exec();
+// Where a deck's source slide pictures are, for crops; null when it has none.
+const imageSourceOf = (deckId, si) => (si?.count ? { deckId: String(deckId), width: si.width, height: si.height } : null);
 const addUsage = (a, b) => ({ inputTokens: (a?.inputTokens || 0) + b.inputTokens, outputTokens: (a?.outputTokens || 0) + b.outputTokens });
 
 async function runDeck(deckId) {
@@ -26,6 +29,7 @@ async function runDeck(deckId) {
   try {
     const kit = await getCurrentBrandKit();
     let result;
+    let imageSource = null;
     if (deck.source?.presentationId) {
       await step("Reading your deck");
       let source;
@@ -35,6 +39,10 @@ async function runDeck(deckId) {
         // An uploaded .pptx was only converted so it could be read.
         if (deck.source.temporary) await removeTemporary(deck.source.presentationId);
       }
+      // Kept so the new deck (and later changes) can reuse screenshots and photos from it.
+      const sourceImages = await uploadSourceSlides(String(deckId), source.slides.map((sl) => sl.image));
+      await SlideDeck.updateOne({ _id: deckId }, { $set: { sourceImages } });
+      imageSource = imageSourceOf(deckId, sourceImages);
       await step("Redesigning the slides");
       result = await restyleDeck({ source, instruction: deck.notes, kit, onStep: step });
     } else {
@@ -55,6 +63,7 @@ async function runDeck(deckId) {
     const { presentationId, url, slideIds } = await buildVisualDeck(plan, {
       shareWith: deck.requestedByEmail,
       kitColors: kit.colors,
+      imageSource,
       onStep: step,
     });
     await SlideDeck.updateOne({ _id: deckId }, { $set: { status: "ready", step: "", presentationId, url, slideIds } });
@@ -86,6 +95,7 @@ async function runRevision(deckId) {
       notes: deck.notes,
       instruction: revision.instruction,
       restyled: Boolean(deck.source?.presentationId),
+      sourceSlides: deck.sourceImages?.count || 0,
       kit,
       onStep: step,
     });
@@ -99,6 +109,7 @@ async function runRevision(deckId) {
       plan,
       revision: index + 1,
       kitColors: kit.colors,
+      imageSource: imageSourceOf(deckId, deck.sourceImages),
       onStep: step,
     });
     await SlideDeck.updateOne(
