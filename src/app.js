@@ -48,6 +48,8 @@ const newDealsLeadRoutes = require("./routes/leads/newDealsLeadRoutes");
 const facebookFormLeadRoutes = require("./routes/leads/facebookFormLeadRoutes");
 // Forms on landing pages made in Admin → Landing Pages (/lp/<slug>).
 const landingFormLeadRoutes = require("./routes/leads/landingFormLeadRoutes");
+// Home page popup form (name, email, cash / financing).
+const homePopupLeadRoutes = require("./routes/leads/homePopupLeadRoutes");
 const rb2bRoutes = require("./routes/leads/rb2bRoutes");
 const brevoWebhookRoutes = require("./routes/integrations/brevoWebhookRoutes");
 const leadNoteRoutes = require("./routes/leads/leadNoteRoutes");
@@ -168,6 +170,7 @@ app.use("/api/v1/buyer-list", buyerListLeadRoutes);
 app.use("/api/v1/new-deals", newDealsLeadRoutes);
 app.use("/api/v1/facebook-leads", facebookFormLeadRoutes);
 app.use("/api/v1/landing-forms", landingFormLeadRoutes);
+app.use("/api/v1/home-popup", homePopupLeadRoutes);
 app.use("/api/v1/rb2b", rb2bRoutes);
 app.use("/api/webhooks/brevo", brevoWebhookRoutes);
 app.use("/api/v1/lead-notes", leadNoteRoutes);

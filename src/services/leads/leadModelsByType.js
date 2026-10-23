@@ -42,6 +42,7 @@ const MODEL_BY_TYPE = {
 const BuyerListLead = require("../../model/leads/buyerListLeadModel");
 const PersonaLead = require("../../model/leads/personaLeadModel");
 const RenovationContractorRequest = require("../../model/property/renovationContractorRequestModel");
+const HomePopupLead = require("../../model/leads/homePopupLeadModel");
 
 const ALL_LEAD_SOURCES = {
   earlyAccess:          { model: EarlyAccessLead,             label: "Early Access" },
@@ -55,6 +56,7 @@ const ALL_LEAD_SOURCES = {
   buyerList:            { model: BuyerListLead,               label: "Buyer List" },
   persona:              { model: PersonaLead,                 label: "Persona" },
   renovationContractor: { model: RenovationContractorRequest, label: "Renovation Contractors/Vendors" },
+  homePopup:            { model: HomePopupLead,               label: "Home Popup" },
 };
 
 module.exports = { MODEL_BY_TYPE, ALL_LEAD_SOURCES };
