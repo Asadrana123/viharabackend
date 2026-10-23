@@ -225,6 +225,7 @@ module.exports = {
   spokenList,
   spokenBudget,
   stateName,
+  STATE_NAMES,
   labelList,
   priceRangeText,
   splitName,

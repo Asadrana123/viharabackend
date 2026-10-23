@@ -8,7 +8,7 @@ const { startGeorgiaStCallScheduler } = require('./services/calling/georgiaStCal
 const { startRensselaerAveCallScheduler } = require('./services/calling/rensselaerAveCallScheduler');
 const { startPartnerCallScheduler } = require('./services/calling/partnerCallScheduler');
 const { startNorCalCallScheduler } = require('./services/calling/norCalCallScheduler');
-const { startNewDealsCallScheduler } = require('./services/calling/newDealsCallScheduler');
+const { startNewDealsCallScheduler, startFacebookFormCallScheduler } = require('./services/calling/newDealsCallScheduler');
 const { startLandingFormCallScheduler } = require('./services/calling/landingFormCallScheduler');
 const { startVoiceCallbackScheduler } = require('./services/calling/voiceCallbackScheduler'); // ← ADD
 const { startPropertyCallScheduler } = require('./services/calling/propertyCallScheduler'); // unified /auction/:slug scheduler
@@ -58,6 +58,8 @@ server.listen(PORT, () => {
   // (11:00 AM / 2:30 PM / 6:00 PM in the lead's timezone).
   startNorCalCallScheduler();
   startNewDealsCallScheduler();
+  // Facebook / Instagram instant-form leads (same daily loop, own collection).
+  startFacebookFormCallScheduler();
   // Forms on landing pages made in Admin → Landing Pages (same daily loop).
   startLandingFormCallScheduler();
 

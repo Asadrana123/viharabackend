@@ -22,6 +22,7 @@ const PartnerLead = require("../../model/leads/partnerLeadModel");
 const PropertyLead = require("../../model/leads/propertyLeadModel");
 const NorCalLead = require("../../model/leads/norCalLeadModel");
 const NewDealsLead = require("../../model/leads/newDealsLeadModel");
+const FacebookFormLead = require("../../model/leads/facebookFormLeadModel");
 
 const MODEL_BY_TYPE = {
   earlyAccess: EarlyAccessLead,
@@ -31,6 +32,7 @@ const MODEL_BY_TYPE = {
   property: PropertyLead, // unified /auction/:slug leads
   norcal: NorCalLead,     // Northern California early-access leads
   newDeals: NewDealsLead, // /new-deals buy-box leads
+  facebookForm: FacebookFormLead, // Facebook / Instagram instant-form leads (via Zernio)
 };
 
 // Every lead tab's collection, with the label the admin UI shows for it.
@@ -49,6 +51,7 @@ const ALL_LEAD_SOURCES = {
   property:             { model: PropertyLead,                label: "Property page" },
   norcal:               { model: NorCalLead,                  label: "Northern California" },
   newDeals:             { model: NewDealsLead,                label: "New Deals" },
+  facebookForm:         { model: FacebookFormLead,            label: "Facebook Forms" },
   buyerList:            { model: BuyerListLead,               label: "Buyer List" },
   persona:              { model: PersonaLead,                 label: "Persona" },
   renovationContractor: { model: RenovationContractorRequest, label: "Renovation Contractors/Vendors" },

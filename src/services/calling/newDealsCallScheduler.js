@@ -14,9 +14,14 @@
 //
 // Maya speaks newDealsVoicePrompt; asking for an advisor transfers the call to
 // the forwarding number saved on the VAPI assistant.
+//
+// The same loop runs for Facebook / Instagram instant-form leads
+// (facebookFormLeadModel, same buy-box shape) with its own collection and
+// call source "facebook-form": createBuyBoxCallScheduler() below.
 
 const cron = require("node-cron");
 const NewDealsLead = require("../../model/leads/newDealsLeadModel");
+const FacebookFormLead = require("../../model/leads/facebookFormLeadModel");
 const { DID_NOT_CONNECT_REASONS, WAIT_MS } = require("./registrationCallService");
 const { enqueueBurst, PRIORITY } = require("./callDispatchQueue");
 const { FOLLOW_UP_DAYS, FOLLOW_UP_CALL_OPTS, nextFollowUpAt, noAnswerUpdate, skipUpdate } = require("./followUpCadence");
@@ -37,7 +42,7 @@ const BURST_OPTS = {
 };
 
 /** Payload the dispatcher expects — buy-box answers in a form Maya can speak. */
-function callPayload(lead) {
+function callPayload(lead, source = "new-deals") {
   const box = lead.buyBox || {};
   const where = [
     ...(box.states || []).map(stateName),
@@ -62,126 +67,143 @@ function callPayload(lead) {
     dealInterest: dealSpoken(lead.dealInterest),
     advisorRequested: lead.advisorCallRequested ? "yes" : "no",
     promptConfig: newDealsVoicePrompt,
-    source: "new-deals",
+    source,
   };
 }
 
-/** connected → stop this lead (and siblings on the same number); else next slot. */
-async function applyOutcome(lead, connected) {
-  if (connected) {
-    await NewDealsLead.updateOne({ _id: lead._id }, { $set: { callStatus: "connected", nextCallAt: null } });
-    if (lead.phoneNormalized) {
-      await NewDealsLead.updateMany(
-        { phoneNormalized: lead.phoneNormalized, callStatus: "no-answer", _id: { $ne: lead._id } },
-        { $set: { callStatus: "connected", nextCallAt: null } }
+/**
+ * The signup call + 7-day daily follow-up loop for one buy-box lead collection.
+ * @param {object} p
+ * @param {import("mongoose").Model} p.Model  newDealsLead or facebookFormLead
+ * @param {string} p.source                   call source (also picks Maya's script on callbacks)
+ * @param {string} p.logTag                   log prefix
+ */
+function createBuyBoxCallScheduler({ Model, source, logTag }) {
+  /** connected → stop this lead (and siblings on the same number); else next slot. */
+  async function applyOutcome(lead, connected) {
+    if (connected) {
+      await Model.updateOne({ _id: lead._id }, { $set: { callStatus: "connected", nextCallAt: null } });
+      if (lead.phoneNormalized) {
+        await Model.updateMany(
+          { phoneNormalized: lead.phoneNormalized, callStatus: "no-answer", _id: { $ne: lead._id } },
+          { $set: { callStatus: "connected", nextCallAt: null } }
+        );
+      }
+    } else {
+      await Model.updateOne(
+        { _id: lead._id },
+        { $set: noAnswerUpdate(lead, DEFAULT_TZ) }
       );
     }
-  } else {
-    await NewDealsLead.updateOne(
+  }
+
+  /**
+   * SIGNUP call — fired fire-and-forget from the controller after a consented
+   * sign-up. Waits WAIT_MS (the "we call you within a minute" promise), bursts,
+   * then stops or schedules the first daily callback.
+   *
+   * @param {object} lead  the lead doc (plain object)
+   */
+  async function scheduleSignupCall(lead) {
+    if (!lead || !lead._id) return;
+
+    await Model.updateOne(
       { _id: lead._id },
-      { $set: noAnswerUpdate(lead, DEFAULT_TZ) }
+      { $set: { lastCallAt: new Date(), callStatus: "pending", nextCallAt: null }, $inc: { callAttempts: 1 } }
     );
+
+    const { connected } = await enqueueBurst(
+      callPayload(lead, source),
+      { initialDelayMs: WAIT_MS, ...BURST_OPTS },
+      PRIORITY.SIGNUP
+    );
+
+    await applyOutcome(lead, connected);
   }
-}
 
-/**
- * SIGNUP call — fired fire-and-forget from the controller after a consented
- * sign-up. Waits WAIT_MS (the "we call you within a minute" promise), bursts,
- * then stops or schedules the first daily callback.
- *
- * @param {object} lead  the newDealsLeadModel doc (plain object)
- */
-async function scheduleNewDealsSignupCall(lead) {
-  if (!lead || !lead._id) return;
+  // ─── Daily sweep ──────────────────────────────────────────────────────────────
 
-  await NewDealsLead.updateOne(
-    { _id: lead._id },
-    { $set: { lastCallAt: new Date(), callStatus: "pending", nextCallAt: null }, $inc: { callAttempts: 1 } }
-  );
+  let sweeping = false;
 
-  const { connected } = await enqueueBurst(
-    callPayload(lead),
-    { initialDelayMs: WAIT_MS, ...BURST_OPTS },
-    PRIORITY.SIGNUP
-  );
+  async function sweepDueCalls() {
+    if (sweeping) return;
+    sweeping = true;
+    try {
+      const now = new Date();
+      const due = await Model.find({
+        callStatus: "no-answer",
+        nextCallAt: { $ne: null, $lte: now },
+        consent: true,
+        callingStopped: { $ne: true },
+      })
+        .sort({ nextCallAt: 1 })
+        .limit(SWEEP_BATCH)
+        .lean();
 
-  await applyOutcome(lead, connected);
-}
+      if (due.length === 0) return;
 
-// ─── Daily sweep ──────────────────────────────────────────────────────────────
+      const dialedNumbers = new Set();
+      for (const lead of due) {
+        // 7-day window over / already called today → no dial, just reschedule.
+        const skip = skipUpdate(lead, DEFAULT_TZ, now);
+        if (skip) {
+          await Model.updateOne({ _id: lead._id, callStatus: "no-answer" }, { $set: skip });
+          continue;
+        }
 
-let sweeping = false;
+        const num = lead.phoneNormalized || "";
+        if (num && dialedNumbers.has(num)) {
+          await Model.updateOne(
+            { _id: lead._id, callStatus: "no-answer" },
+            { $set: noAnswerUpdate(lead, DEFAULT_TZ) }
+          );
+          continue;
+        }
+        if (num) dialedNumbers.add(num);
 
-async function sweepDueCalls() {
-  if (sweeping) return;
-  sweeping = true;
-  try {
-    const now = new Date();
-    const due = await NewDealsLead.find({
-      callStatus: "no-answer",
-      nextCallAt: { $ne: null, $lte: now },
-      consent: true,
-      callingStopped: { $ne: true },
-    })
-      .sort({ nextCallAt: 1 })
-      .limit(SWEEP_BATCH)
-      .lean();
+        // Atomic claim so an overlapping tick can't re-dial the lead.
+        const claimed = await Model.findOneAndUpdate(
+          { _id: lead._id, callStatus: "no-answer", nextCallAt: { $lte: now } },
+          {
+            $set: { nextCallAt: nextFollowUpAt(lead, DEFAULT_TZ, now), lastCallAt: now },
+            $inc: { callAttempts: 1 },
+          },
+          { new: true }
+        ).lean();
+        if (!claimed) continue;
 
-    if (due.length === 0) return;
-
-    const dialedNumbers = new Set();
-    for (const lead of due) {
-      // 7-day window over / already called today → no dial, just reschedule.
-      const skip = skipUpdate(lead, DEFAULT_TZ, now);
-      if (skip) {
-        await NewDealsLead.updateOne({ _id: lead._id, callStatus: "no-answer" }, { $set: skip });
-        continue;
+        enqueueBurst({ ...callPayload(claimed, source), isFollowUp: true }, { ...BURST_OPTS, ...FOLLOW_UP_CALL_OPTS }, PRIORITY.SCHEDULED)
+          .then(({ connected }) => applyOutcome(claimed, connected))
+          .catch((e) => console.error(`[${logTag}] burst failed:`, e.message));
       }
-
-      const num = lead.phoneNormalized || "";
-      if (num && dialedNumbers.has(num)) {
-        await NewDealsLead.updateOne(
-          { _id: lead._id, callStatus: "no-answer" },
-          { $set: noAnswerUpdate(lead, DEFAULT_TZ) }
-        );
-        continue;
-      }
-      if (num) dialedNumbers.add(num);
-
-      // Atomic claim so an overlapping tick can't re-dial the lead.
-      const claimed = await NewDealsLead.findOneAndUpdate(
-        { _id: lead._id, callStatus: "no-answer", nextCallAt: { $lte: now } },
-        {
-          $set: { nextCallAt: nextFollowUpAt(lead, DEFAULT_TZ, now), lastCallAt: now },
-          $inc: { callAttempts: 1 },
-        },
-        { new: true }
-      ).lean();
-      if (!claimed) continue;
-
-      enqueueBurst({ ...callPayload(claimed), isFollowUp: true }, { ...BURST_OPTS, ...FOLLOW_UP_CALL_OPTS }, PRIORITY.SCHEDULED)
-        .then(({ connected }) => applyOutcome(claimed, connected))
-        .catch((e) => console.error("[new-deals-daily] burst failed:", e.message));
+    } catch (e) {
+      console.error(`[${logTag}] sweep error:`, e.message);
+    } finally {
+      sweeping = false;
     }
-  } catch (e) {
-    console.error("[new-deals-daily] sweep error:", e.message);
-  } finally {
-    sweeping = false;
   }
+
+  let task = null;
+
+  /** Start the every-minute daily-callback sweep. Call once, after the server boots. */
+  function start() {
+    if (task) return task;
+    task = cron.schedule("* * * * *", sweepDueCalls);
+    console.log(`[${logTag}] scheduler started — one follow-up call a day for ${FOLLOW_UP_DAYS} days, rotating 11:00 AM / 2:30 PM / 6:00 PM local (per-minute sweep).`);
+    return task;
+  }
+
+  return { scheduleSignupCall, start, sweepDueCalls };
 }
 
-let task = null;
-
-/** Start the every-minute daily-callback sweep. Call once, after the server boots. */
-function startNewDealsCallScheduler() {
-  if (task) return task;
-  task = cron.schedule("* * * * *", sweepDueCalls);
-  console.log(`[new-deals-daily] scheduler started — one follow-up call a day for ${FOLLOW_UP_DAYS} days, rotating 11:00 AM / 2:30 PM / 6:00 PM local (per-minute sweep).`);
-  return task;
-}
+const newDealsCalls = createBuyBoxCallScheduler({ Model: NewDealsLead, source: "new-deals", logTag: "new-deals-daily" });
+const facebookFormCalls = createBuyBoxCallScheduler({ Model: FacebookFormLead, source: "facebook-form", logTag: "facebook-form-daily" });
 
 module.exports = {
-  scheduleNewDealsSignupCall,
-  startNewDealsCallScheduler,
+  scheduleNewDealsSignupCall: newDealsCalls.scheduleSignupCall,
+  startNewDealsCallScheduler: newDealsCalls.start,
+  scheduleFacebookFormSignupCall: facebookFormCalls.scheduleSignupCall,
+  startFacebookFormCallScheduler: facebookFormCalls.start,
+  createBuyBoxCallScheduler,
   callPayload,
 };

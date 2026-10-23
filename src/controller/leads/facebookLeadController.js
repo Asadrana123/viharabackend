@@ -89,6 +89,11 @@ const receiveWebhook = (req, res) => {
 
   processCommentWebhook(req.body);
 
+  // Instant-form leads are now handled through Zernio (facebookFormLeadService:
+  // saved, emailed, and called only when the form carries call consent). This
+  // older path called every lead about one fixed property without a consent
+  // check, so it stays off unless FB_LEADGEN_DIRECT_CALLS=true.
+  if (process.env.FB_LEADGEN_DIRECT_CALLS !== "true") return;
   for (const id of leadgenIds) {
     processLead(id).catch((err) =>
       console.error(`❌ FB lead ${id} processing failed:`, err.message)

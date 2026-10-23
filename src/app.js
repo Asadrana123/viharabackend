@@ -44,6 +44,8 @@ const partnerLeadRoutes = require("./routes/leads/partnerLeadRoutes");
 const norCalLeadRoutes = require("./routes/leads/norCalLeadRoutes");
 const buyerListLeadRoutes = require("./routes/leads/buyerListLeadRoutes");
 const newDealsLeadRoutes = require("./routes/leads/newDealsLeadRoutes");
+// Facebook / Instagram instant-form leads (admin list; they arrive via the Zernio webhook).
+const facebookFormLeadRoutes = require("./routes/leads/facebookFormLeadRoutes");
 // Forms on landing pages made in Admin → Landing Pages (/lp/<slug>).
 const landingFormLeadRoutes = require("./routes/leads/landingFormLeadRoutes");
 const rb2bRoutes = require("./routes/leads/rb2bRoutes");
@@ -164,6 +166,7 @@ app.use("/api/v1/partner", partnerLeadRoutes);
 app.use("/api/v1/nor-cal", norCalLeadRoutes);
 app.use("/api/v1/buyer-list", buyerListLeadRoutes);
 app.use("/api/v1/new-deals", newDealsLeadRoutes);
+app.use("/api/v1/facebook-leads", facebookFormLeadRoutes);
 app.use("/api/v1/landing-forms", landingFormLeadRoutes);
 app.use("/api/v1/rb2b", rb2bRoutes);
 app.use("/api/webhooks/brevo", brevoWebhookRoutes);

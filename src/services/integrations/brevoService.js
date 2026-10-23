@@ -550,7 +550,9 @@ const syncBuyerListLead = (lead) => {
  * @param {object} lead  newDealsLeadModel doc (plain object) + smsOptInUrl,
  *                       marketsText ("Maryland, Baltimore"), dealText ("Baltimore, MD")
  */
-const syncNewDealsLead = (lead) => {
+// `source` is "new-deals" for the page, "facebook-form" for instant-form leads
+// (same list and attributes, so both get the same Brevo journeys).
+const syncNewDealsLead = (lead, { source = "new-deals" } = {}) => {
   const optedIn = lead.consent === true;
   const identity = buildBuyBoxIdentityAttributes(lead, optedIn, lead.consentTimestamp);
   return upsertBuyBoxContact(lead, {
@@ -562,8 +564,8 @@ const syncNewDealsLead = (lead) => {
       CONTACT_PREFERENCE: lead.contactPreference || "",
       ADVISOR_CALL: lead.advisorCallRequested === true,
       DEAL_INTEREST: lead.dealText || "",
-      LANDING_PAGE: "new-deals",
-      LEAD_SOURCE: "new-deals",
+      LANDING_PAGE: source,
+      LEAD_SOURCE: source,
       ...buildTrackingAttributes(lead, optedIn, lead.consentVersion),
       ...buildBuyBoxAttributes(lead),
     },

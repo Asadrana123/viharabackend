@@ -49,12 +49,14 @@ const AUCTION_SOURCE_PREFIX = "auction-";
 
 // Keys MUST match the `source` each scheduler stamps on its callPayload:
 //   norCalCallScheduler   → "nor-cal"
-//   newDealsCallScheduler → "new-deals"
+//   newDealsCallScheduler → "new-deals" (and "facebook-form" for instant-form leads)
 //   earlyAccessCallScheduler → "early-access"
 //   partnerCallScheduler  → "partner-program"
 const SOURCE_PROMPTS = {
   "nor-cal": norCalVoicePrompt,
   "new-deals": newDealsVoicePrompt,
+  // Facebook / Instagram instant-form leads get the same script as /new-deals.
+  "facebook-form": newDealsVoicePrompt,
   "early-access": earlyAccessVoicePrompt,
   "partner-program": partnerProgramVoicePrompt,
 };
