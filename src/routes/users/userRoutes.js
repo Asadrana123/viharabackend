@@ -12,7 +12,11 @@ router.get("/logout", LogOut);
 router.put("/save-property",isAuthenticated, saveProperty);
 router.put("/remove-property",isAuthenticated, removeProperty);
 router.get("/save-property/get", isAuthenticated,allsavedProperties);
-router.get("/get", isAuthenticated, getUser)
+// Logged-out visitors (no token cookie) get 200 { user: null } instead of a 401, so the site's
+// first load has no red error in the console. Anyone WITH a cookie goes through isAuthenticated
+// exactly as before (a bad or expired token is still a 401).
+const noTokenMeansNoUser = (req, res, next) => (req.cookies?.token ? next() : res.status(200).json({ user: null }));
+router.get("/get", noTokenMeansNoUser, isAuthenticated, getUser)
 // Admin-only: every user's email + phone.
 router.get("/getEmails", isAuthenticated, authorizeRoles("admin"), getAllEmailandPhone);
 router.post("/forgot/password", forgotPassword);
