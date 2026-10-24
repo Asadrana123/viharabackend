@@ -19,6 +19,7 @@
 
 const axios = require("axios");
 const CallLog = require("../../model/calling/callLogModel");
+const { MISSED_REASONS, deriveOutcome, deriveLeadScore } = require("./callOutcome");
 
 const VAPI_API_KEY = process.env.VAPI_API_KEY;
 const VAPI_ASSISTANT_ID = process.env.VAPI_ASSISTANT_ID;
@@ -127,6 +128,7 @@ const getCallSummaryForPhones = async (phones = []) => {
                 endedReason: "$endedReason",
                 durationSeconds: "$durationSeconds",
                 transcript: "$transcript",
+                grade: "$grade",
                 startedAt: "$startedAt",
                 createdAt: "$createdAt",
               },
@@ -140,7 +142,7 @@ const getCallSummaryForPhones = async (phones = []) => {
         phone: { $in: wanted },
         endedReason: { $nin: [...MISSED_REASONS, "voicemail"], $not: /error|failed/i },
       })
-        .select("phone endedReason durationSeconds transcript")
+        .select("phone endedReason durationSeconds transcript grade")
         .lean(),
     ]);
   } catch (err) {
@@ -191,8 +193,8 @@ const fetchRecentCalls = async ({ max = DEFAULT_SCAN } = {}) => {
 
 // ─── Mapping ──────────────────────────────────────────────────────────────────
 /**
- * Map a CallLog row into the admin-table shape (same fields as mapCall), reusing
- * the exact outcome + lead-score logic so the columns look identical.
+ * Map a CallLog row into the admin-table shape (same fields as mapCall). The
+ * stored grade (callGradeService) wins; rows without one use the rules.
  *
  * Note: `enriched` came from a VAPI-only prompt variable (prospect_research)
  * that CallLog does not persist, so it is reported as false here. It is not one
@@ -205,8 +207,9 @@ function mapCallLog(row) {
     endedReason: row.endedReason || "",
     transcript: row.transcript || "",
   };
-  const outcome = deriveOutcome(shim, durationSecs);
-  const score = deriveLeadScore(shim, outcome, durationSecs);
+  const grade = row.grade && row.grade.outcome ? row.grade : null;
+  const outcome = grade ? grade.outcome : deriveOutcome(shim, durationSecs);
+  const score = grade ? grade.score : deriveLeadScore(shim, outcome, durationSecs);
 
   return {
     id: row.vapiCallId || String(row._id || ""),
@@ -214,6 +217,8 @@ function mapCallLog(row) {
     phone: row.phone || "—",
     outcome,
     score,
+    gradeReason: grade ? grade.reason || "" : "",
+    gradedBy: grade ? grade.by : "rules",
     duration: formatDuration(durationSecs),
     durationSecs,
     enriched: false, // not derivable from CallLog (see note above)
@@ -229,8 +234,9 @@ function mapCallLog(row) {
 /** Map a raw VAPI call (from fetchRecentCalls) into the admin-table shape. */
 function mapCall(call) {
   const durationSecs = calcDuration(call.startedAt, call.endedAt);
-  const outcome = deriveOutcome(call, durationSecs);
-  const score = deriveLeadScore(call, outcome, durationSecs);
+  const shim = { endedReason: call.endedReason, transcript: call.transcript || call.artifact?.transcript };
+  const outcome = deriveOutcome(shim, durationSecs);
+  const score = deriveLeadScore(shim, outcome, durationSecs);
   const transcript = extractTranscript(call);
   return {
     id: call.id,
@@ -257,94 +263,6 @@ function calcDuration(startedAt, endedAt) {
   if (!startedAt || !endedAt) return 0;
   const diff = Math.floor((new Date(endedAt) - new Date(startedAt)) / 1000);
   return diff > 0 ? diff : 0;
-}
-
-const MISSED_REASONS = [
-  "no-answer",
-  "customer-did-not-answer",
-  "customer-busy",
-  "silence-timed-out",
-  "call-start-error",
-  "twilio-failed-to-connect-call",
-  "pipeline-error",
-];
-
-function deriveOutcome(call, durationSecs) {
-  const reason = (call.endedReason || "").toLowerCase();
-
-  if (MISSED_REASONS.includes(reason)) return "missed";
-  if (reason.includes("error") || reason.includes("failed")) return "missed";
-  if (reason === "voicemail") return "voicemail";
-
-  const transcript = (call.transcript || call.artifact?.transcript || "").toLowerCase();
-
-  if (durationSecs < 8 && !transcript.includes("user:")) return "missed";
-
-  if (
-    transcript.includes("remove me") ||
-    transcript.includes("stop calling") ||
-    transcript.includes("take me off") ||
-    transcript.includes("don't call")
-  ) return "negative";
-
-  if (
-    transcript.includes("call me back") ||
-    transcript.includes("call back") ||
-    transcript.includes("better time") ||
-    transcript.includes("tomorrow") ||
-    transcript.includes("friday") ||
-    transcript.includes("monday")
-  ) return "callback";
-
-  if (
-    transcript.includes("interested") ||
-    transcript.includes("book") ||
-    transcript.includes("schedule") ||
-    transcript.includes("tell me more") ||
-    transcript.includes("send me") ||
-    transcript.includes("advisor") ||
-    transcript.includes("yeah") && durationSecs > 60
-  ) return "positive";
-
-  if (
-    transcript.includes("not interested") ||
-    transcript.includes("not looking") ||
-    transcript.includes("no thanks") ||
-    transcript.includes("not right now")
-  ) return "negative";
-
-  if (transcript.includes("user:") && durationSecs > 30) return "negative";
-
-  return "missed";
-}
-
-function deriveLeadScore(call, outcome, durationSecs) {
-  if (outcome === "missed") return 0;
-  if (outcome === "voicemail") return 20;
-
-  const transcript = (call.transcript || call.artifact?.transcript || "").toLowerCase();
-  let score = 0;
-
-  if (outcome === "positive") score = 55;
-  if (outcome === "callback") score = 40;
-  if (outcome === "negative") score = 8;
-
-  if (durationSecs > 300) score += 25;
-  else if (durationSecs > 180) score += 18;
-  else if (durationSecs > 90) score += 10;
-  else if (durationSecs > 30) score += 4;
-
-  if (transcript.includes("tell me more")) score += 8;
-  if (transcript.includes("advisor")) score += 8;
-  if (transcript.includes("book") || transcript.includes("schedule")) score += 10;
-  if (transcript.includes("send me")) score += 6;
-  if (transcript.includes("platform")) score += 4;
-  if (transcript.includes("arv") || transcript.includes("spread")) score += 5;
-
-  if (transcript.includes("remove") || transcript.includes("stop")) score -= 15;
-  if (transcript.includes("not interested")) score -= 10;
-
-  return Math.max(0, Math.min(100, score));
 }
 
 function extractTranscript(call) {

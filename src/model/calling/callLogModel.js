@@ -38,6 +38,26 @@ const callLogSchema = new mongoose.Schema(
     structuredData: { type: mongoose.Schema.Types.Mixed, default: null },
     successEvaluation: { type: mongoose.Schema.Types.Mixed, default: null },
 
+    // Our own grade of the call (callGradeService): outcome + 0-100 score, set
+    // when the end-of-call report arrives. `by` is "ai" or "rules"; null on rows
+    // saved before grading existed (those fall back to the rules on read).
+    grade: {
+      type: new mongoose.Schema(
+        {
+          outcome: String, // missed | voicemail | negative | callback | positive
+          verdict: String, // Claude's finer label (not_now, hot, …); null for rules
+          score: Number,
+          reason: String,
+          signals: { type: mongoose.Schema.Types.Mixed, default: null },
+          by: String,
+          version: Number,
+          gradedAt: Date,
+        },
+        { _id: false }
+      ),
+      default: null,
+    },
+
     // Timing / cost.
     durationSeconds: { type: Number, default: 0 },
     startedAt: { type: Date, default: null },

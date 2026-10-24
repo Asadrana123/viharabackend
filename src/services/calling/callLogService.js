@@ -2,6 +2,7 @@
 const CallLog = require("../../model/calling/callLogModel");
 const { summarizeTranscript } = require("./callSummaryService");
 const { mapCallLog } = require("./vapiCallsService");
+const { gradeCall } = require("./callGradeService");
 const { notifyNewLead } = require("../shared/slackService");
 
 // VAPI puts the same data in slightly different places depending on version and
@@ -83,6 +84,7 @@ async function notifyIfInterested(saved) {
       extraFields: [
         { label: "Call Result", value: "🔥 Interested" },
         { label: "Lead Score", value: view.score },
+        view.gradeReason ? { label: "Why", value: view.gradeReason.slice(0, 300) } : null,
         { label: "Duration", value: view.duration },
         // Slack caps field text; clip long summaries so the message never fails.
         summary ? { label: "Summary", value: summary.slice(0, 700) } : null,
@@ -154,6 +156,14 @@ async function saveEndOfCallReport(message = {}) {
       console.error("[cb-debug] summarizeTranscript failed (non-fatal):", err.message);
     }
   }
+
+  // Grade it now so the admin table and the Slack ping below read the same
+  // verdict. gradeCall never throws — it falls back to the rules.
+  doc.grade = await gradeCall({
+    transcript: doc.transcript,
+    endedReason: doc.endedReason,
+    durationSecs: doc.durationSeconds,
+  });
 
   let saved;
   if (doc.vapiCallId) {

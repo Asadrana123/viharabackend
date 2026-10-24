@@ -17,6 +17,7 @@
 
 const { dispatchRegistrationCall } = require("./leadCallService");
 const { getCall } = require("./vapiService");
+const { isMachineText } = require("./callOutcome");
 
 const WAIT_MS = 60 * 1000;         // 60s before the first call, and before the retry
 const POLL_EVERY_MS = 10 * 1000;   // check call status every 10s
@@ -101,15 +102,25 @@ function userText(call) {
     .join(" ");
 }
 
+function bookedCallback(call) {
+  return callMessages(call).some((m) => {
+    if (m.role === "tool_call_result" && m.name === "scheduleCallback") return true;
+    return (m.toolCalls || []).some((tc) => (tc.function || tc).name === "scheduleCallback");
+  });
+}
+
 /**
  * @returns {boolean} true when the call was a real conversation (or a request
  * to stop / a booked callback) — i.e. the follow-up loop should end.
  */
 function hadMeaningfulConversation(call) {
-  // They booked a callback — the callback flow takes it from here.
-  if (JSON.stringify(callMessages(call)).includes("scheduleCallback")) return true;
+  // They booked a callback — the callback flow takes it from here. Only an
+  // actual tool call counts: the system message's prompt also names the tool.
+  if (bookedCallback(call)) return true;
 
   const said = userText(call).toLowerCase();
+  // A voicemail greeting transcribed as the person speaking.
+  if (isMachineText(said)) return false;
   if (STOP_PHRASES.some((p) => said.includes(p))) return true;
   if (INTEREST_PHRASES.some((p) => said.includes(p))) return true;
   return said.split(/\s+/).filter(Boolean).length >= MIN_USER_WORDS;
