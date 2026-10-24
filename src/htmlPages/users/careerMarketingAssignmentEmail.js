@@ -64,7 +64,8 @@ const careerMarketingAssignmentEmail = (firstName) => {
         </p>
 
         <p style="margin:0 0 15px 0;font-size:14px;line-height:1.6;color:#555;">
-          You may submit the assignment as a PDF, Google Doc, or presentation.
+          Please send us a deck of 8 to 10 slides (PDF or link), your ad creative files, and a 5-minute Loom
+          walking through your thinking. Share all links with view access.
         </p>
 
         <p style="margin:0 0 10px 0;font-size:14px;line-height:1.6;color:#555;">
