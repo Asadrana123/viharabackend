@@ -398,6 +398,9 @@ function processFacebookFormLeadWebhook(payload) {
 module.exports = {
   processFacebookFormLeadWebhook,
   handleLead,
+  saveLead,
+  getForm,
+  isValidLead: (fields) => isValidEmail(String(fields.email || "").trim().toLowerCase()) && Boolean(normalisePhone(fields.phone_number || fields.phone || "")),
   answersFrom,
   buyBoxFrom,
   consentGiven,

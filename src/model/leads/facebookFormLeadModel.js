@@ -56,6 +56,9 @@ facebookFormLeadSchema.add({
   leadgenIds: { type: [String], default: [], index: true },
   // Where consent came from: the form's call/text disclaimer ("form-disclaimer"), or "" (none).
   consentSource: { type: String, default: "" },
+  // Imported from Meta's history by scripts/importFacebookFormLeads.js: saved for
+  // the record only — no welcome email, Brevo, Slack or Maya call was sent.
+  importedFromHistory: { type: Boolean, default: false },
 });
 
 facebookFormLeadSchema.path("source").default("facebook-form");
