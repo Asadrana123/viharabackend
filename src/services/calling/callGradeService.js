@@ -9,7 +9,9 @@
 // the rules in callOutcome.js without asking Claude. If Claude is unavailable
 // the rules grade the rest too — a call is never left ungraded.
 //
-// Env: ANTHROPIC_API_KEY, optional CALL_GRADE_MODEL (default claude-opus-5-5).
+// Env: ANTHROPIC_API_KEY, optional CALL_GRADE_MODEL (default claude-sonnet-5-5).
+// Sonnet matched Opus on 170 real calls at half the price; Haiku read
+// voicemail and call-screening greetings as interested, so it is not used.
 
 const Anthropic = require("@anthropic-ai/sdk");
 const { userSaid, isMachineText, deriveOutcome, deriveLeadScore } = require("./callOutcome");
@@ -111,12 +113,14 @@ let client;
 async function askClaude(transcript) {
   // Runs inside the end-of-call webhook — keep it short; the rules cover a timeout.
   client = client || new Anthropic({ timeout: 20000, maxRetries: 1 });
+  const model = process.env.CALL_GRADE_MODEL || "claude-sonnet-5-5";
+  // Haiku has no server-side refusal fallback; the rules cover a refusal there.
+  const fallback = model.includes("haiku") ? {} : { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" };
   const response = await client.beta.messages.create({
-    model: process.env.CALL_GRADE_MODEL || "claude-opus-5-5",
+    model,
     max_tokens: 4000,
     output_config: { effort: "low", format: { type: "json_schema", schema: SCHEMA } },
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default",
+    ...fallback,
     system: SYSTEM,
     messages: [{ role: "user", content: `Transcript:\n\n${transcript}` }],
   });
