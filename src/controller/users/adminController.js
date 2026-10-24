@@ -451,6 +451,49 @@ exports.updateAuctionStartBid = catchAsyncError(
 );
 
 
+// Update the reserve price (admin only). The reserve is confidential, so
+// nothing is broadcast to the live room. An open round reads the property's
+// live reserve; a closed round keeps its own, so editing is blocked there.
+exports.updateAuctionReservePrice = catchAsyncError(
+  async (req, res, next) => {
+    const { auctionId } = req.params;
+    const reservePrice = req.body.reservePrice === '' || req.body.reservePrice == null
+      ? NaN
+      : Number(req.body.reservePrice);
+
+    if (!Number.isFinite(reservePrice) || reservePrice < 0) {
+      return next(new Errorhandler("reservePrice must be zero or a positive number", 400));
+    }
+    if (!mongoose.Types.ObjectId.isValid(auctionId)) {
+      return next(new Errorhandler("Invalid auction ID", 400));
+    }
+
+    const auction = await Product.findById(auctionId).select('currentRoundId');
+    if (!auction) {
+      return next(new Errorhandler("Auction not found", 404));
+    }
+    if (await currentRoundIsClosed(auction)) {
+      return next(new Errorhandler(ROUND_CLOSED_MESSAGE, 409));
+    }
+
+    const updatedAuction = await Product.findByIdAndUpdate(
+      auctionId,
+      { reservePrice },
+      { new: true, runValidators: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Reserve price updated",
+      auction: {
+        _id: updatedAuction._id,
+        reservePrice: updatedAuction.reservePrice
+      }
+    });
+  }
+);
+
+
 // ============================================================================
 // SELLER ASSIGNMENT (admin only)
 // A property can be assigned to MULTIPLE sellers. A non-admin user can open a

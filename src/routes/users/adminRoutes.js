@@ -9,6 +9,7 @@ const {
   updateAuctionDates,
   updateAuctionStatus,
   updateAuctionStartBid,
+  updateAuctionReservePrice,
   startNewAuction,
   getAuctionsWithSellers,
   assignSeller,
@@ -147,6 +148,12 @@ router.put(
   isAuthenticated,
   authorizeRoles("admin"),
   updateAuctionStartBid
+);
+router.put(
+  "/auction/:auctionId/reserve-price",
+  isAuthenticated,
+  authorizeRoles("admin"),
+  updateAuctionReservePrice
 );
 
 // Start a new auction for a property whose current auction has ended.
