@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { deriveOutcome, deriveLeadScore, userSaid } = require("./callOutcome");
-const { scoreFor } = require("./callGradeService");
+const { scoreFor, adminGrade } = require("./callGradeService");
 const { hadMeaningfulConversation } = require("./registrationCallService");
 
 const OPENER = "AI: Hi, Kevin. This is Maya from Vihara. You just filled in our form on Facebook about new bank owned deals. Is now an okay time for a quick two minutes?";
@@ -42,6 +42,18 @@ test("score table: verdict + signals, stop request zeroes it", () => {
   assert.equal(scoreFor("interested", { wantsDeals: true, gaveBudget: true }), 65);
   assert.equal(scoreFor("hot", { askedForAdvisor: true, bookedCallback: true, gaveBudget: true, gaveTimeline: true }), 100);
   assert.equal(scoreFor("interested", { requestedStop: true }), 0);
+});
+
+test("admin correction rescores and keeps the machine grade it replaced", () => {
+  const ai = { outcome: "positive", verdict: "interested", score: 60, reason: "r", signals: { wantsDeals: true }, by: "ai" };
+  const first = adminGrade("voicemail", ai);
+  assert.equal(first.outcome, "voicemail");
+  assert.equal(first.score, 0);
+  assert.equal(first.replaced, ai);
+  const second = adminGrade("hot", first, "wants an advisor");
+  assert.equal(second.score, 80);
+  assert.equal(second.reason, "wants an advisor");
+  assert.equal(second.replaced, ai);
 });
 
 test("the prompt naming scheduleCallback is not a booked callback", () => {

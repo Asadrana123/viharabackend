@@ -218,6 +218,7 @@ function mapCallLog(row) {
     outcome,
     score,
     gradeReason: grade ? grade.reason || "" : "",
+    gradeVerdict: grade ? grade.verdict || "" : "",
     gradedBy: grade ? grade.by : "rules",
     duration: formatDuration(durationSecs),
     durationSecs,

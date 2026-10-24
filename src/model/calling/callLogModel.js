@@ -49,9 +49,11 @@ const callLogSchema = new mongoose.Schema(
           score: Number,
           reason: String,
           signals: { type: mongoose.Schema.Types.Mixed, default: null },
-          by: String,
+          by: String, // "ai" | "rules" | "admin"
           version: Number,
           gradedAt: Date,
+          // On an admin correction: the grade it replaced (Claude's or the rules').
+          replaced: { type: mongoose.Schema.Types.Mixed, default: null },
         },
         { _id: false }
       ),

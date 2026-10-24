@@ -39,6 +39,7 @@ const DEFAULT_TZ = "America/New_York";
   const rows = await CallLog.find({ createdAt: { $gte: SINCE } }).sort({ createdAt: 1 }).lean();
   const counts = {};
   for (const row of rows) {
+    if (row.grade && row.grade.by === "admin") continue; // an admin's correction stands
     const before = mapCallLog(row);
     const input = { transcript: row.transcript, endedReason: row.endedReason, durationSecs: row.durationSeconds };
     const grade = RULES_ONLY ? gradeByRules(input) : await gradeCall(input);

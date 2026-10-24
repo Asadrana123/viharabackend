@@ -159,4 +159,28 @@ async function gradeCall({ transcript = "", endedReason = "", durationSecs = 0 }
   }
 }
 
-module.exports = { gradeCall, gradeByRules, scoreFor, GRADE_VERSION };
+/**
+ * An admin's correction. Keeps the signals Claude found (so "interested" still
+ * earns its signal points) and the grade it replaced, so corrections can later
+ * be used to check the model.
+ */
+function adminGrade(verdict, previous, note = "") {
+  const signals = (previous && previous.signals) || {};
+  // Re-correcting keeps the machine grade from the first correction.
+  const machine = previous && previous.by === "admin" ? previous.replaced || null : previous || null;
+  return {
+    outcome: OUTCOME_FOR[verdict],
+    verdict,
+    score: scoreFor(verdict, signals),
+    reason: String(note || "").trim() || (previous && previous.reason) || "",
+    signals: previous ? previous.signals || null : null,
+    by: "admin",
+    version: GRADE_VERSION,
+    gradedAt: new Date(),
+    replaced: machine,
+  };
+}
+
+const VERDICTS = Object.keys(OUTCOME_FOR);
+
+module.exports = { gradeCall, gradeByRules, scoreFor, adminGrade, VERDICTS, GRADE_VERSION };
