@@ -219,6 +219,23 @@ async function sendWelcomeOnce(lead) {
   );
 }
 
+/** Brevo contact (same New Deals list, tagged facebook-form); the result is saved on the lead. */
+async function syncToBrevo(doc) {
+  const brevo = await withTimeout(
+    syncNewDealsLead(
+      { ...doc, smsOptInUrl: newDealsPageUrl(), marketsText: (doc.buyBox?.states || []).map(stateName).join(", "), dealText: "" },
+      { source: SOURCE }
+    ),
+    BREVO_TIMEOUT_MS,
+    { success: false, error: "Brevo timeout" }
+  ).catch((e) => ({ success: false, error: e.message }));
+  await FacebookFormLead.updateOne(
+    { _id: doc._id },
+    { $set: { brevoSynced: brevo.success === true, brevoError: brevo.success ? "" : String(brevo.error || "") } }
+  ).catch(() => {});
+  return brevo;
+}
+
 // ─── Save ───────────────────────────────────────────────────────────────────
 
 /**
@@ -339,19 +356,7 @@ async function handleLead(payload) {
     return;
   }
 
-  // Brevo (same New Deals list, tagged facebook-form).
-  const brevo = await withTimeout(
-    syncNewDealsLead(
-      { ...doc, smsOptInUrl: newDealsPageUrl(), marketsText: (doc.buyBox?.states || []).map(stateName).join(", "), dealText: "" },
-      { source: SOURCE }
-    ),
-    BREVO_TIMEOUT_MS,
-    { success: false, error: "Brevo timeout" }
-  ).catch((e) => ({ success: false, error: e.message }));
-  await FacebookFormLead.updateOne(
-    { _id: doc._id },
-    { $set: { brevoSynced: brevo.success === true, brevoError: brevo.success ? "" : String(brevo.error || "") } }
-  ).catch(() => {});
+  await syncToBrevo(doc);
 
   sendWelcomeOnce(doc).catch((e) => console.error("[facebook-form] welcome email failed:", e.message));
 
@@ -400,6 +405,8 @@ module.exports = {
   handleLead,
   saveLead,
   getForm,
+  syncToBrevo,
+  sendWelcomeOnce,
   isValidLead: (fields) => isValidEmail(String(fields.email || "").trim().toLowerCase()) && Boolean(normalisePhone(fields.phone_number || fields.phone || "")),
   answersFrom,
   buyBoxFrom,
