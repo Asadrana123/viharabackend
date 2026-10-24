@@ -27,7 +27,37 @@ const WORKER_ID = process.env.RENDER_SERVICE_ID ? `render:${process.env.RENDER_S
 const PREVIEW_POLL_MS = 15000;
 const PREVIEW_TIMEOUT_MS = 30 * 60 * 1000;
 const BUILD_FAILED_INSTRUCTION =
-  "The live preview failed to build. Re-read every file you changed and fix anything that could break a production Create React App build: syntax errors, missing imports, unused variables or imports (lint warnings count as errors), and invalid JSX.";
+  "The live preview failed to build. Re-read every file you changed and fix anything that could break a production Next.js build: TypeScript type errors (wrong prop or state types, missing types, values that don't match), ESLint errors (unused imports or variables, unescaped ' or \" in JSX text, missing list keys, hooks called conditionally), a missing \"use client\" on a component with state, effects or event handlers, missing imports and invalid JSX.";
+
+// New pages need a route file so Next.js serves them. It's made here, not by
+// the agent: it only sets the SEO title and renders the agent's component.
+function routeFileFor(doc, page) {
+  const isLanding = doc.pageKey === NEW_LANDING_PAGE.key;
+  if (doc.pageKey !== NEW_PAGE.key && !isLanding) return null;
+  const target = isLanding ? NEW_LANDING_PAGE : NEW_PAGE;
+  const slug = doc.newPageSlug;
+  const name = page.label.replace(/^New (landing )?page:\s*/i, "").trim() || slug;
+  const title = JSON.stringify(`${name} | Vihara`);
+  const description = JSON.stringify(`${name} — Vihara, the real estate auction platform.`);
+  return {
+    path: target.route(slug),
+    content: `import type { Metadata } from "next";
+import { buildPageMetadata } from "@/lib/seo/metadata";
+import DesignedPage from "@/${target.entry(slug).replace(/\.tsx$/, "")}";
+
+// Made by the ${isLanding ? "landing page" : "design"} agent for "${name}". The page itself is the component above.
+export const metadata: Metadata = buildPageMetadata({
+  title: ${title},
+  description: ${description},
+  path: ${JSON.stringify(page.path)},
+});
+
+export default function Page() {
+  return <DesignedPage />;
+}
+`,
+  };
+}
 
 // Requests being worked on by this server process right now.
 const active = new Set();
@@ -39,11 +69,11 @@ function pageFor(doc) {
   const page = { label: doc.pageLabel, path: doc.pagePath };
   if (doc.pageKey === NEW_PAGE.key) {
     const folder = NEW_PAGE.folder(doc.newPageSlug);
-    return { page, editable: [], newFilesIn: folder, mustCreate: [`${folder}index.jsx`] };
+    return { page, editable: [], newFilesIn: folder, mustCreate: [NEW_PAGE.entry(doc.newPageSlug)] };
   }
   if (doc.pageKey === NEW_LANDING_PAGE.key) {
     const folder = NEW_LANDING_PAGE.folder(doc.newPageSlug);
-    return { page, editable: [], newFilesIn: folder, mustCreate: [`${folder}index.jsx`] };
+    return { page, editable: [], newFilesIn: folder, mustCreate: [NEW_LANDING_PAGE.entry(doc.newPageSlug)] };
   }
   if (doc.editable?.length) return { page, editable: doc.editable, newFilesIn: doc.newFilesIn, mustCreate: [] };
   const legacy = LEGACY_PAGES[doc.pageKey];
@@ -143,6 +173,12 @@ async function runLatestRound(id) {
       return;
     }
 
+    // First round of a new page: add its route file.
+    const route = routeFileFor(doc, page);
+    if (route && !(route.path in result.files) && (await github.readFile(route.path, doc.branch)) === null) {
+      result.files[route.path] = route.content;
+    }
+
     const filesChanged = Object.keys(result.files);
     const sha = await github.commitFiles(
       doc.branch,
@@ -193,7 +229,7 @@ async function waitForPreview(id) {
       say(`checking preview: ${err.message}`);
     }
     if (Date.now() - started > PREVIEW_TIMEOUT_MS) {
-      return fail(id, i, "The preview took too long to build. Check the \"Design preview\" run under GitHub → Actions, then click \"Try again\".");
+      return fail(id, i, "The preview took too long to build. Check this branch's build on Vercel, then click \"Try again\".");
     }
     await new Promise((r) => setTimeout(r, PREVIEW_POLL_MS));
   }

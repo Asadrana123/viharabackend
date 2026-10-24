@@ -9,9 +9,10 @@ const allowedOrigins = [
   "https://vihara-new-website-nodifys-projects.vercel.app"
 ];
 
-// Every Vercel preview of the website (one per design-agent change) gets its
-// own address. Allow any preview from our own Vercel team, and nothing else.
-const VERCEL_PREVIEW_ORIGIN = /^https:\/\/vihara-new-website-[a-z0-9-]+-nodifys-projects\.vercel\.app$/;
+// Every Vercel preview of the website (one per branch / design-agent change)
+// gets its own address. Allow previews of the Next.js site (vihara-next) and
+// the old CRA site from our own Vercel team, and nothing else.
+const VERCEL_PREVIEW_ORIGIN = /^https:\/\/(vihara-next|vihara-new-website)-[a-z0-9-]+-nodifys-projects\.vercel\.app$/;
 
 const isAllowedOrigin = (origin) =>
   !origin || allowedOrigins.includes(origin) || VERCEL_PREVIEW_ORIGIN.test(origin);

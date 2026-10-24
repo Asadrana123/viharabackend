@@ -1,8 +1,9 @@
 // config/designPages.js
 //
-// Settings for the pages admins can redesign. The pages themselves are found
-// automatically from the website's src/App.js (services/design/pageDiscovery.js);
-// this file only names them nicely, groups them, and says which to skip.
+// Settings for the pages admins can redesign. The website is the Next.js app
+// (vihara-next); its pages are found automatically from the app/ folder's
+// page.tsx files (services/design/pageDiscovery.js). This file only names them
+// nicely, groups them, says which to skip, and where new pages go.
 
 // Friendlier names than the ones made from the address.
 const PAGE_LABELS = {
@@ -49,44 +50,60 @@ function groupFor(p) {
   return "Website";
 }
 
-// Older requests were made from a fixed list; kept so they still work.
+// Older requests were made from a fixed list (in the old CRA site); kept so
+// they still open — now pointing at the same pages' folders in the Next.js app.
 const LEGACY_PAGES = {
-  home: { label: "Home page", path: "/", editable: ["src/components/HomePage/"] },
-  contactUs: { label: "Contact Us", path: "/contact-us", editable: ["src/components/ContactUs/"] },
-  aboutUs: { label: "About Us", path: "/about-us", editable: ["src/components/Company/AboutUS/"] },
-  careers: { label: "Careers", path: "/careers", editable: ["src/components/Careers/"] },
-  faqs: { label: "FAQs", path: "/faqs", editable: ["src/components/Resources/Faqs/"] },
-  guide: { label: "Buyer's Guide", path: "/guide", editable: ["src/components/Resources/Guide/"] },
-  leadership: { label: "Leadership", path: "/leadership", editable: ["src/components/LeaderShip/"] },
-  sellProperties: { label: "Sell Your Property", path: "/sell_properties", editable: ["src/components/SellProperties/"] },
-  newDeals: { label: "New Deals (landing page)", path: "/new-deals", editable: ["src/components/Landing/NewDealsPage.jsx", "src/components/Landing/NewDeals.css"] },
-  buyerList: { label: "Buyer List (landing page)", path: "/buyer-list", editable: ["src/components/Landing/BuyerListPage.jsx", "src/components/Landing/BuyerList.css"] },
-  notFound: { label: "Page Not Found (404)", path: "/this-page-does-not-exist", editable: ["src/components/NotFound/"] },
+  home: { label: "Home page", path: "/", editable: ["components/home/"] },
+  contactUs: { label: "Contact Us", path: "/contact-us", editable: ["components/contact-us/"] },
+  aboutUs: { label: "About Us", path: "/about-us", editable: ["components/about/"] },
+  careers: { label: "Careers", path: "/careers", editable: ["components/careers/"] },
+  faqs: { label: "FAQs", path: "/faqs", editable: ["components/resources/"] },
+  guide: { label: "Buyer's Guide", path: "/guide", editable: ["components/resources/"] },
+  leadership: { label: "Leadership", path: "/leadership", editable: ["components/leadership/"] },
+  sellProperties: { label: "Sell Your Property", path: "/sell_properties", editable: ["components/sell-properties/"] },
+  newDeals: { label: "New Deals (landing page)", path: "/new-deals", editable: ["components/new-deals/NewDealsPage.tsx", "components/new-deals/NewDeals.css"] },
+  buyerList: { label: "Buyer List (landing page)", path: "/buyer-list", editable: ["components/buyer-list/BuyerListPage.tsx"] },
+  notFound: { label: "Page Not Found (404)", path: "/this-page-does-not-exist", editable: [] },
 };
 
+// A new page made in Design Studio: its component in components/designed/<slug>/
+// and a route file (made automatically) under the marketing layout, so the site
+// header and footer wrap it, at /p/<slug>.
 const NEW_PAGE = {
   key: "new",
   label: "New page",
-  folder: (slug) => `src/components/Designed/${slug}/`,
+  folder: (slug) => `components/designed/${slug}/`,
+  entry: (slug) => `components/designed/${slug}/index.tsx`,
+  route: (slug) => `app/(marketing)/p/${slug}/page.tsx`,
   path: (slug) => `/p/${slug}`,
 };
 
-// Landing Pages tab: the designer uploads an HTML mockup for a page in the
-// Landing folder (or a new one). New landing pages are standalone (no site
-// header/footer) at /lp/<slug>, from src/components/Landing/pages/<slug>/.
-const LANDING_ROOT = "src/components/Landing/";
+// Landing Pages tab: the designer uploads an HTML mockup for a landing page (or
+// a new one). Landing pages are standalone (no site header/footer). New ones
+// live in components/landing/pages/<slug>/ with a route file at app/lp/<slug>/.
+// These folders hold the landing pages and their theme (their stylesheets).
+const LANDING_DIRS = [
+  "components/landing/",
+  "components/new-deals/",
+  "components/buyer-list/",
+  "components/northern-california/",
+  "components/partner/",
+  "components/property-auction/",
+];
 const NEW_LANDING_PAGE = {
   key: "new-landing",
   label: "New landing page",
-  folder: (slug) => `${LANDING_ROOT}pages/${slug}/`,
+  folder: (slug) => `components/landing/pages/${slug}/`,
+  entry: (slug) => `components/landing/pages/${slug}/index.tsx`,
+  route: (slug) => `app/lp/${slug}/page.tsx`,
   path: (slug) => `/lp/${slug}`,
 };
 // A new landing page starts from the newest landing theme: the New Deals page.
 const LANDING_REFERENCE = {
-  page: `${LANDING_ROOT}NewDealsPage.jsx`,
-  styles: [`${LANDING_ROOT}BuyerList.css`, `${LANDING_ROOT}NorthernCalifornia.css`, `${LANDING_ROOT}NewDeals.css`],
+  page: "components/new-deals/NewDealsPage.tsx",
+  styles: ["components/landing/shared/BuyerList.css", "components/northern-california/NorthernCalifornia.css", "components/new-deals/NewDeals.css"],
 };
-const isLandingFile = (file) => String(file || "").startsWith(LANDING_ROOT);
+const isLandingFile = (file) => LANDING_DIRS.some((d) => String(file || "").startsWith(d));
 
 // "Spring Auction Promo!" → "spring-auction-promo"
 const toSlug = (name) =>
@@ -103,7 +120,7 @@ module.exports = {
   groupFor,
   LEGACY_PAGES,
   NEW_PAGE,
-  LANDING_ROOT,
+  LANDING_DIRS,
   NEW_LANDING_PAGE,
   LANDING_REFERENCE,
   isLandingFile,

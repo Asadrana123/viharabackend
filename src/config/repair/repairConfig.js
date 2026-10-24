@@ -8,7 +8,7 @@
 //   REPAIR_AGENT_ENABLED      "true" to run the daily checks
 //   REPAIR_GITHUB_TOKEN       fine-grained token with Contents + Pull requests (read/write)
 //                             and Deployments (read) on BOTH repos below
-//   REPAIR_WEBSITE_REPO       "owner/name" (default Asadrana123/vihara-new-website)
+//   REPAIR_WEBSITE_REPO       "owner/name" (default Adarsh-Raut/vihara-next)
 //   REPAIR_BACKEND_REPO       "owner/name" (default Asadrana123/viharabackend)
 //   SLACK_REPAIR_CHANNEL_ID   Slack channel for incidents (default: #ads-weekly's id)
 //   REPAIR_SITE_URL           live site (default https://www.vihara.ai)
@@ -27,7 +27,7 @@ function getRepairConfig() {
         enabled: env.REPAIR_AGENT_ENABLED === "true",
         githubToken: env.REPAIR_GITHUB_TOKEN || "",
         repos: {
-            website: env.REPAIR_WEBSITE_REPO || "Asadrana123/vihara-new-website",
+            website: env.REPAIR_WEBSITE_REPO || "Adarsh-Raut/vihara-next",
             backend: env.REPAIR_BACKEND_REPO || "Asadrana123/viharabackend",
         },
         baseBranch: "main",

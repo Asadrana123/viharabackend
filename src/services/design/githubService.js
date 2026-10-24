@@ -10,7 +10,7 @@
 // ENV:
 //   DESIGN_GITHUB_TOKEN — fine-grained token with Contents, Pull requests and
 //                         Deployments (read) access to the website repo
-//   DESIGN_GITHUB_REPO  — "owner/name" (default Asadrana123/vihara-new-website)
+//   DESIGN_GITHUB_REPO  — "owner/name" (default Adarsh-Raut/vihara-next)
 //   DESIGN_BASE_BRANCH  — the branch the live site deploys from (default main)
 const axios = require("axios");
 
@@ -25,10 +25,12 @@ class GithubError extends Error {
 const treeCache = new Map();
 const blobCache = new Map();
 
-// The website's "Design preview" GitHub Action builds each design branch and
-// reports the preview under this environment. Vercel's own Git builds can't
-// prerender (no Chrome) and always fail, so they're ignored.
-const previewEnvironment = () => process.env.DESIGN_PREVIEW_ENVIRONMENT || "Design Preview";
+// The website (Next.js) is built by Vercel's own Git integration, which reports
+// each branch build to GitHub as a deployment in a "Preview" environment
+// (sometimes named "Preview – <project>"). DESIGN_PREVIEW_ENVIRONMENT, when
+// set, names one exact environment to use instead.
+const previewEnvironment = () => process.env.DESIGN_PREVIEW_ENVIRONMENT || "";
+const isPreviewEnvironment = (name) => /^preview\b/i.test(String(name || ""));
 
 /**
  * @param {Object} opts
@@ -157,14 +159,16 @@ function createGithubClient({ repo, token, baseBranch, label = "the agent", toke
   }
 
   /**
-   * The preview for a commit, from the deployment the preview Action reports to GitHub.
+   * The preview for a commit, from the preview deployment Vercel reports to GitHub.
    * @returns {Promise<{state: "pending"|"success"|"failure", url?: string}>}
    */
   async function previewForCommit(sha) {
     if (!sha) throw new GithubError("previewForCommit needs a commit sha");
-    const deployments = await call("get", "/deployments", null, {
-      params: { sha, environment: previewEnvironment(), per_page: 10 },
+    const exact = previewEnvironment();
+    const all = await call("get", "/deployments", null, {
+      params: { sha, per_page: 20, ...(exact ? { environment: exact } : {}) },
     });
+    const deployments = exact ? all : all.filter((d) => isPreviewEnvironment(d.environment));
     if (!deployments.length) return { state: "pending" };
     for (const d of deployments) {
       const statuses = await call("get", `/deployments/${d.id}/statuses`, null, { params: { per_page: 5 } });
@@ -237,7 +241,7 @@ function createGithubClient({ repo, token, baseBranch, label = "the agent", toke
 
 // The design agent's client: the website repo with the design token.
 const website = createGithubClient({
-  repo: () => process.env.DESIGN_GITHUB_REPO || "Asadrana123/vihara-new-website",
+  repo: () => process.env.DESIGN_GITHUB_REPO || "Adarsh-Raut/vihara-next",
   token: () => process.env.DESIGN_GITHUB_TOKEN,
   baseBranch: () => process.env.DESIGN_BASE_BRANCH || "main",
   label: "the design agent",

@@ -4,11 +4,11 @@
 // use. Admins can change these from the Brand Kit page (saved in MongoDB);
 // these values are used until they do, and for any field never saved.
 //
-// Keep in sync with vihara-new-website/src/styles/brand.css, which holds the
-// same values so pages look right before the saved kit has loaded.
+// Keep in sync with the website's (vihara-next) app/globals.css, which holds the
+// same --brand-… values so pages look right before the saved kit has loaded.
 
-// Fonts an admin may pick. The website uses Inter everywhere (loaded in
-// public/index.html), so it is the only choice: one font keeps every page
+// Fonts an admin may pick. The website uses Inter everywhere (loaded with
+// next/font in app/layout.tsx), so it is the only choice: one font keeps every page
 // consistent. Add a font here only if the website starts loading it too.
 const ALLOWED_FONTS = ["Inter"];
 

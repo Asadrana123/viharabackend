@@ -39,16 +39,16 @@ const SIGNUP_LIMITS = { files: 6, lines: 250 };
 const isSignupFix = (incident) => incident?.kind === "signup_issue";
 const limitsFor = (incident) => (isSignupFix(incident) ? SIGNUP_LIMITS : { files: MAX_FILES_CHANGED, lines: MAX_LINES_CHANGED });
 // Styling a sign-up fix may touch: the website's own stylesheets, never assets.
-const SIGNUP_STYLES = /^src\/.+\.(css|scss)$/;
+const SIGNUP_STYLES = /^(app|components)\/.+\.(css|scss)$/;
 const TEXT_FILE = /\.(jsx?|tsx?|mjs|cjs|css|scss|html|json|md)$/;
 
 // What each repo is, and what the agent may change in it.
 const REPOS = {
     website: {
-        about: "The website: React app on Vercel. Meta pixel and GTM load in public/index.html; conversions fire from src/services/capi.service.js and src/components/Landing/landing.helpers.js.",
-        readable: /^(src\/|public\/|package\.json$|\.github\/workflows\/)/,
+        about: "The website: Next.js (App Router, TypeScript) on Vercel. Routes are app/<route>/page.tsx, components in components/, shared code in lib/. Meta pixel, GTM, Clarity and RB2B load in components/ThirdPartyScripts.tsx; conversions fire from lib/services/capi.service.ts and lib/landing/helpers.ts.",
+        readable: /^(app\/|components\/|lib\/|context\/|hooks\/|types\/|public\/|middleware\.ts$|next\.config\.ts$|package\.json$|\.github\/workflows\/)/,
         // Code only: never styling, images or other assets.
-        writable: /^(src\/.+\.(jsx?|tsx?|json)|public\/index\.html)$/,
+        writable: /^(app|components|lib|context|hooks)\/.+\.(jsx?|tsx?|json)$/,
     },
     backend: {
         about: "The backend: Node/Express on Render. Server-side Meta Conversions API is src/services/integrations/metaCapiService.js; lead sign-up controllers are in src/controller/leads/.",
@@ -90,7 +90,7 @@ const repoProp = { type: "string", enum: Object.keys(REPOS), description: "\"web
 const TOOLS = [
     {
         name: "list_files",
-        description: "List files under a folder of a repo, e.g. folder \"src/components/Landing/\".",
+        description: "List files under a folder of a repo, e.g. folder \"components/property-auction/\" (website) or \"src/controller/leads/\" (backend).",
         input_schema: { type: "object", properties: { repo: repoProp, folder: { type: "string" } }, required: ["repo", "folder"], additionalProperties: false },
     },
     {
@@ -195,7 +195,7 @@ function systemPrompt(incident) {
     const { files: maxFiles, lines: maxLines } = limitsFor(incident);
     const intro = signup
         ? "The sign-up doctor found a likely reason an ad landing page gets visitors but few sign-ups, and a person asked in Slack for it to be fixed. Its evidence and suggested fix are below: check them against the code and the live page, then make the change that removes this reason, or explain exactly what a person must do when the fix is outside the code."
-        : "A daily check, or a technical action item in the daily Meta Ads report, found a broken technical thing (Meta tracking, Google Analytics tracking, an ad's landing page, a link, an ad that isn't delivering). Incidents about Google Analytics come from the daily Google Analytics check: look at ga_report first, then at the website code that sends the event or its parameters (src/services/capi.service.js, src/components/Landing/landing.helpers.js, public/index.html). When the item comes from the report, its suggestion (\"audit the page\", \"confirm the event fires\") is your task: do that audit yourself with the tools, then fix what is broken. Your job: find the real cause and fix it with the smallest safe change, or explain exactly what a person must do when the cause is outside the code.";
+        : "A daily check, or a technical action item in the daily Meta Ads report, found a broken technical thing (Meta tracking, Google Analytics tracking, an ad's landing page, a link, an ad that isn't delivering). Incidents about Google Analytics come from the daily Google Analytics check: look at ga_report first, then at the website code that sends the event or its parameters (lib/services/capi.service.ts, lib/landing/helpers.ts, components/ThirdPartyScripts.tsx). When the item comes from the report, its suggestion (\"audit the page\", \"confirm the event fires\") is your task: do that audit yourself with the tools, then fix what is broken. Your job: find the real cause and fix it with the smallest safe change, or explain exactly what a person must do when the cause is outside the code.";
     const scope = signup
         ? `2. Fix only this one reason. You may change the landing page's wording, layout, styling (the website's .css files) and form behaviour, but nothing unrelated: no refactors, no new packages, no redesign. Keep Vihara's brand (main colour #0c4bea). When the code is shared by every landing page (e.g. PropertyAuctionPage.jsx, landing.helpers.js), make sure the change is right for all of them, or limit it to the pages that need it. A fix may change at most ${maxFiles} files and ${maxLines} lines.`
         : `2. You only repair broken technical things. Fix only the cause of this incident: no refactors, no unrelated cleanups, no new packages, no new features, no changes to design, styling, layout or wording. You can't change CSS or assets, and a fix may change at most ${maxFiles} files and ${maxLines} lines.`;

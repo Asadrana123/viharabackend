@@ -14,7 +14,7 @@
 const github = require("./githubService");
 const { buildLandingTheme } = require("./designChecks");
 const { getClient, MODEL, addUsage } = require("./designAgentService");
-const { LANDING_ROOT, LANDING_REFERENCE } = require("../../config/designPages");
+const { LANDING_DIRS, LANDING_REFERENCE } = require("../../config/designPages");
 
 const MAX_UPLOAD_CHARS = 3 * 1024 * 1024;
 const MAX_MOCKUP_CHARS = 200000;
@@ -45,9 +45,9 @@ function cleanMockupHtml(raw) {
   return cleaned;
 }
 
-// Every stylesheet in the Landing folder: the look landing pages must keep.
+// Every stylesheet of the landing pages: the look landing pages must keep.
 async function landingTheme(ref) {
-  const files = (await github.listFiles(ref)).filter((f) => f.startsWith(LANDING_ROOT) && f.endsWith(".css"));
+  const files = (await github.listFiles(ref)).filter((f) => LANDING_DIRS.some((d) => f.startsWith(d)) && f.endsWith(".css"));
   const texts = await Promise.all(files.map((f) => github.readFile(f, ref)));
   return buildLandingTheme(texts.filter(Boolean));
 }
@@ -81,7 +81,7 @@ const REVIEW_SCHEMA = {
   additionalProperties: false,
 };
 
-const REVIEW_SYSTEM = `You check a designer's HTML mockup before a landing page is built from it on vihara.ai, a real estate auction website (React 18, Create React App, plain CSS).
+const REVIEW_SYSTEM = `You check a designer's HTML mockup before a landing page is built from it on vihara.ai, a real estate auction website (Next.js, React, TypeScript, plain CSS).
 
 How the build works: the mockup decides the STRUCTURE — sections, their order, layout (columns, grids, cards), and the text. The LOOK always stays the current landing theme: its colours, fonts, sizes, buttons, cards, shadows and radii. Fonts, colours, gradients and effects in the mockup are never copied; list the noticeable ones under "ignored" (that is expected, not a problem).
 
@@ -102,7 +102,7 @@ Be specific and short. Don't list things that are fine. Write for a designer, no
  * @returns {Promise<{ review: {summary, sections, blocked, ignored}, usage }>}
  */
 async function reviewMockup({ ref, mockupHtml, page, editable, isNew, notes }) {
-  const files = isNew ? [LANDING_REFERENCE.page] : editable.filter((f) => /\.jsx?$/.test(f));
+  const files = isNew ? [LANDING_REFERENCE.page] : editable.filter((f) => /\.(tsx?|jsx?)$/.test(f));
   let budget = MAX_PAGE_CODE_CHARS;
   const code = [];
   for (const f of files) {

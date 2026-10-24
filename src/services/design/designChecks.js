@@ -4,9 +4,9 @@
 // preview is built. Each returns a list of plain problems; the agent gets
 // them back and fixes them itself.
 //
-//   1. Code is valid (JSX/JS parses)
-//   2. Every import points at a file that exists or an installed package
-//   3. No unused imports (the live build treats lint warnings as errors)
+//   1. Code is valid (TSX/TS/JSX/JS parses)
+//   2. Every import points at a file that exists (relative or "@/…") or an installed package
+//   3. No unused imports, and "use client" where Next.js needs it
 //   4. Only Brand Kit colours and fonts (old colours already in a file are tolerated);
 //      for landing pages: only the colours, fonts and effects the Landing folder
 //      already uses, so a page can be restructured but never re-themed
@@ -18,7 +18,7 @@ const { parse } = require("@babel/parser");
 
 const CODE_EXT = /\.(jsx?|tsx?)$/;
 const STYLE_EXT = /\.css$/;
-const RESOLVE_EXT = ["", ".js", ".jsx", ".ts", ".tsx", ".css", "/index.js", "/index.jsx"];
+const RESOLVE_EXT = ["", ".tsx", ".ts", ".jsx", ".js", ".css", "/index.tsx", "/index.ts", "/index.jsx", "/index.js"];
 
 // Colours always fine: pure white/black, and transparent black/white shadows & overlays.
 const ALWAYS_OK_COLORS = new Set(["#fff", "#ffffff", "#000", "#000000", "transparent", "currentcolor", "inherit"]);
@@ -31,18 +31,24 @@ const OK_FONT_VALUE = /^(var\(--(brand-font-(display|heading|body)|v-font-(displ
 // Calls that load or save data, track analytics, or change app state/route. Redesigns must keep
 // every one of them exactly (layout around them may change freely).
 const DATA_CALLEE =
-  /^(apiClient|axios|fetch|dispatch|navigate|useDispatch|useSelector|useQuery|useMutation|useMutationQuery|localStorage|sessionStorage|grecaptcha|trackEvent|fbq|gtag)\b|\.(mutate|mutateAsync|refetch)$|^(get|post|put|patch|delete|create|update|submit|send|save|fetch|load)[A-Z]\w*$/;
+  /^(apiClient|axios|fetch|dispatch|navigate|router\.(push|replace)|useRouter|useDispatch|useSelector|useQuery|useMutation|useMutationQuery|localStorage|sessionStorage|grecaptcha|trackEvent|fbq|gtag)\b|\.(mutate|mutateAsync|refetch)$|^(get|post|put|patch|delete|create|update|submit|send|save|fetch|load)[A-Z]\w*$/;
 const DATA_IMPORT = /^[./]*(.*\/)?(api|services|features|store|context)\//;
 
 const normalizeColor = (c) => c.toLowerCase().replace(/\s+/g, "");
 
+// .ts files can't contain JSX (it clashes with <Type>value casts); everything else may.
 function parseCode(file, text) {
   return parse(text, {
     sourceType: "module",
-    plugins: ["jsx", "classProperties", "optionalChaining", "nullishCoalescingOperator", "dynamicImport"],
+    plugins: /\.ts$/.test(file) ? ["typescript"] : ["typescript", "jsx"],
     errorRecovery: false,
   });
 }
+
+// "@/components/x" → "components/x"; "./x" → relative to the file.
+const importBase = (file, source) =>
+  source.startsWith("@/") ? path.normalize(source.slice(2)) : path.normalize(path.join(path.dirname(file), source));
+const isLocalImport = (source) => source.startsWith(".") || source.startsWith("@/");
 
 function checkSyntax(file, text) {
   if (CODE_EXT.test(file)) {
@@ -82,15 +88,15 @@ function checkImports(file, text, fileExists, isKnownPackage) {
   for (const node of ast.program.body) {
     if (node.type !== "ImportDeclaration") continue;
     const source = node.source.value;
-    if (!source.startsWith(".")) {
+    if (!isLocalImport(source)) {
       // "@scope/pkg/sub" → "@scope/pkg", "pkg/sub" → "pkg"
       const pkg = source.split("/").slice(0, source.startsWith("@") ? 2 : 1).join("/");
-      if (isKnownPackage && !isKnownPackage(pkg)) {
+      if (isKnownPackage && !isKnownPackage(pkg) && !/^(node:|react$|react-dom$|next$)/.test(pkg)) {
         problems.push(`${file}: "${pkg}" isn't installed on the site — use only existing packages`);
       }
       continue;
     }
-    const base = path.normalize(path.join(path.dirname(file), source));
+    const base = importBase(file, source);
     if (!RESOLVE_EXT.some((ext) => fileExists(base + ext))) {
       problems.push(`${file}: imports "${source}", which doesn't exist`);
     }
@@ -121,6 +127,23 @@ function checkUnusedImports(file, text) {
     }
   }
   return problems;
+}
+
+// Next.js renders components on the server unless they start with "use client".
+// A component with state, effects, event handlers or browser APIs needs it, and
+// a file that had it must keep it (pages import it from a server component).
+const USE_CLIENT = /^\s*(?:\/\/[^\n]*\n\s*|\/\*[\s\S]*?\*\/\s*)*["']use client["']/;
+const CLIENT_ONLY = /\buse(State|Effect|LayoutEffect|Reducer|Ref|Context|Router|SearchParams|Pathname|Query|Mutation|Callback|Memo|Transition|Id)\s*(?:<[^>()]*>)?\s*\(|\bon[A-Z]\w*=\{|\b(window|document|localStorage|sessionStorage|navigator)\./;
+function checkClientDirective(file, text, original) {
+  if (!/\.(tsx|jsx)$/.test(file)) return [];
+  if (USE_CLIENT.test(text)) return [];
+  if (original && USE_CLIENT.test(original)) {
+    return [`${file}: keep "use client" as the very first line — the page renders this component in the browser`];
+  }
+  if (CLIENT_ONLY.test(text)) {
+    return [`${file}: uses state, effects, event handlers or browser APIs, so its very first line must be "use client";`];
+  }
+  return [];
 }
 
 /**
@@ -247,8 +270,8 @@ function walk(node, visit) {
 }
 
 // The data/auth/state "actions" in a file: data imports, data calls, form submits.
-function dataActions(text) {
-  const ast = parseCode("", text);
+function dataActions(file, text) {
+  const ast = parseCode(file, text);
   const actions = [];
   for (const node of ast.program.body) {
     if (node.type === "ImportDeclaration" && DATA_IMPORT.test(node.source.value)) {
@@ -273,8 +296,8 @@ function checkDataActions(file, text, original) {
   let before;
   let after;
   try {
-    before = dataActions(original);
-    after = dataActions(text);
+    before = dataActions(file, original);
+    after = dataActions(file, text);
   } catch {
     return []; // syntax problems are reported by checkSyntax
   }
@@ -298,7 +321,7 @@ function checkDataActions(file, text, original) {
 //   • the contact, consent and tracking fields the lead's backend needs
 //   • the consent wording, exactly
 // Loading data for display (get…, useQuery) may be dropped with its section.
-const LOCKED_CALL = /^(register|submit|send|save|create|post|update)[A-Z]\w*$|^fire\w*(Conversion|Conversions)$|^(trackEvent|gtag|fbq|navigate)$/;
+const LOCKED_CALL = /^(register|submit|send|save|create|post|update)[A-Z]\w*$|^fire\w*(Conversion|Conversions)$|^(trackEvent|gtag|fbq|navigate|router\.push|router\.replace)$/;
 const LOCKED_KEY =
   /^(full_?name|fullName|first_?name|firstName|last_?name|lastName|email|phone|consent|consentText|consentTimestamp|sms_?consent\w*|smsConsent\w*|timezone|event_?id|eventId|attribution|first_touch|last_touch|fbp|fbc|page_url|pageUrl|submitted_at|tier|buy_box|honeypot)$/;
 const CONSENT_WORDING_KEY = /consent_?text/i;
@@ -307,8 +330,8 @@ const NAME_KEY = /^(full_?name|fullName|first_?name|firstName)$/;
 const propKey = (p) => (p.key?.type === "Identifier" ? p.key.name : p.key?.type === "StringLiteral" ? p.key.value : null);
 
 // Locked call signatures and the lead payloads (objects with an email and a name or phone).
-function formFacts(text) {
-  const ast = parseCode("", text);
+function formFacts(file, text) {
+  const ast = parseCode(file, text);
   const calls = new Set();
   const payloads = [];
   const objects = []; // every object with a few fields: where a changed payload is looked for
@@ -322,7 +345,7 @@ function formFacts(text) {
       if (!LOCKED_CALL.test(callee)) return;
       const first = node.arguments[0];
       // Tracking and navigation are locked per event name / address; saves by function.
-      const withArg = /^(trackEvent|gtag|fbq|navigate)$/.test(callee) && first && /Literal$/.test(first.type);
+      const withArg = /^(trackEvent|gtag|fbq|navigate|router\.push|router\.replace)$/.test(callee) && first && /Literal$/.test(first.type);
       calls.add(withArg ? `${callee}(${squash(text.slice(first.start, first.end))})` : callee);
     } else if (node.type === "JSXAttribute" && node.name?.name === "onSubmit") {
       submits += 1;
@@ -356,7 +379,7 @@ function checkLandingDataActions(file, text, original) {
   if (!CODE_EXT.test(file)) return [];
   let after;
   try {
-    after = formFacts(text);
+    after = formFacts(file, text);
   } catch {
     return []; // syntax problems are reported by checkSyntax
   }
@@ -369,7 +392,7 @@ function checkLandingDataActions(file, text, original) {
   }
   let before;
   try {
-    before = formFacts(original);
+    before = formFacts(file, original);
   } catch {
     return [];
   }
@@ -414,6 +437,7 @@ function runChecks({ changed, originals, fileExists, isKnownPackage, brandKit, l
       ...checkSyntax(file, text),
       ...checkImports(file, text, fileExists, isKnownPackage),
       ...checkUnusedImports(file, text),
+      ...checkClientDirective(file, text, original),
       ...(landingTheme ? checkLandingTheme(file, text, original, landingTheme) : checkBrand(file, text, original, brandKit)),
       ...(landingTheme ? checkLandingDataActions(file, text, original) : checkDataActions(file, text, original))
     );

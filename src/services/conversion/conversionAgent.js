@@ -37,7 +37,7 @@ const PRUNE_AT_IMAGES = 7;
 const PRICE = { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5 };
 const TEXT_FILE = /\.(jsx?|tsx?|mjs|cjs|css|scss|html|json)$/;
 const REPOS = {
-    website: { about: "React website on Vercel. Landing pages: src/components/Landing/ (PropertyAuctionPage.jsx, landing.helpers.js, landing.config.js); pixel/GTM/Clarity in public/index.html; conversions in src/services/capi.service.js.", readable: /^(src\/|public\/|package\.json$)/ },
+    website: { about: "Next.js (App Router, TypeScript) website on Vercel. Landing pages: components/landing/ and components/property-auction/PropertyAuctionPage.tsx, with lib/landing/helpers.ts and lib/landing/config.ts; routes in app/<route>/page.tsx; pixel/GTM/Clarity in components/ThirdPartyScripts.tsx; conversions in lib/services/capi.service.ts.", readable: /^(app\/|components\/|lib\/|context\/|hooks\/|types\/|public\/|middleware\.ts$|next\.config\.ts$|package\.json$|\.github\/workflows\/)/ },
     backend: { about: "Node/Express backend on Render. Sign-up endpoints: src/controller/leads/; server-side Meta CAPI: src/services/integrations/metaCapiService.js.", readable: /^(src\/|package\.json$)/ },
 };
 const CATEGORIES = ["tracking", "traffic_quality", "message_match", "offer", "speed", "form", "ux", "trust", "technical", "other"];
@@ -88,7 +88,7 @@ const TOOLS = [
         description: "Google PageSpeed loads the page on a mid-range phone with slow 4G (or desktop) and returns: speed (first paint, largest paint, when it becomes usable), page weight, console errors, real visitors' speed when Google has it, and a screenshot of the first screen (full_page=true adds the whole page). Takes about 30-60 seconds. Note: Google's visit may show up as one page view in the pixel and Clarity.",
         input_schema: obj({ url: str("page link"), device: { type: "string", enum: ["mobile", "desktop"] }, full_page: { type: "boolean" } }, ["url"]),
     },
-    { name: "list_files", description: "List files under a folder of a repo.", input_schema: obj({ repo: repoProp, folder: str("e.g. src/components/Landing/") }) },
+    { name: "list_files", description: "List files under a folder of a repo.", input_schema: obj({ repo: repoProp, folder: str("e.g. components/property-auction/ (website) or src/controller/leads/ (backend)") }) },
     { name: "search_code", description: "Every line containing text (case-insensitive) in a repo's code, optionally under folder.", input_schema: obj({ repo: repoProp, text: str(""), folder: str("optional") }, ["repo", "text"]) },
     { name: "read_file", description: "Read a file from a repo (the live version).", input_schema: obj({ repo: repoProp, path: str("") }) },
     { name: "recent_commits", description: "Commits on the live branch, newest first; since/until ISO dates and path narrow it. Use it when sign-ups dropped on a date.", input_schema: obj({ repo: repoProp, since: str("optional"), until: str("optional"), path: str("optional") }, ["repo"]) },
@@ -122,7 +122,7 @@ const FORM_STEP = {
     browser:
         "6. The form: open the page on mobile first. How far down is the form? How many fields, and are any surprising (too many required fields, phone format, consent box)? Fill it with fake test details and press submit: do validation errors block it? Does a button do nothing? Would the request carry all fields? Then check desktop.",
     noBrowser:
-        "6. The form: look at the page_check screenshots (mobile first, full_page for the whole page) to see how far down the form is and what a visitor sees first. You can't click or type on the page, so read the form's code (website src/components/Landing/, e.g. PropertyAuctionPage.jsx, landing.helpers.js, landing.config.js) to learn its steps, fields, which are required, validation rules and limits (e.g. price ranges), and what happens on submit. Look for rules that would block or confuse a real visitor.",
+        "6. The form: look at the page_check screenshots (mobile first, full_page for the whole page) to see how far down the form is and what a visitor sees first. You can't click or type on the page, so read the form's code (website components/property-auction/PropertyAuctionPage.tsx, components/landing/, lib/landing/helpers.ts, lib/landing/config.ts) to learn its steps, fields, which are required, validation rules and limits (e.g. price ranges), and what happens on submit. Look for rules that would block or confuse a real visitor.",
 };
 
 function systemPrompt({ browser }) {
