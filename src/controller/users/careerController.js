@@ -15,7 +15,7 @@ const { ROLE_LABELS } = require("../../config/careerRoles");
 // generic confirmation email.
 const MARKETING_ASSIGNMENT_PDF = path.join(
   __dirname,
-  "../../assets/careers/Vihara-Marketing-Manager-Assignment.pdf"
+  "../../assets/careers/Vihara_Performance_Marketing_Assignment.pdf"
 );
 
 // ─── Submit application (public) ────────────────────────────────────────────
