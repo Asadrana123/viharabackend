@@ -49,7 +49,7 @@ const careerMarketingAssignmentEmail = (firstName) => {
         <div style="padding:20px;background-color:#f8f9fa;border-left:4px solid #0384fb;margin-bottom:20px;">
           <p style="margin:0 0 8px 0;font-size:14px;font-weight:bold;color:#333;">Assignment Deadline</p>
           <p style="margin:0;font-size:14px;line-height:1.6;color:#555;">
-            Please submit your completed assignment within <strong>4 days</strong> of receiving this email.
+            Please submit your completed assignment within <strong>3 days</strong> of receiving this email.
           </p>
         </div>
 
