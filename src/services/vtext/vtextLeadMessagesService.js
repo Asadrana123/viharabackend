@@ -76,4 +76,42 @@ async function getVtextMessagesForPhones(phones = []) {
   return byPhone;
 }
 
-module.exports = { getVtextMessagesForPhones };
+// Outbound statuses that count as "we texted them" / "the text did not go". Anything else (cancelled, an
+// AI draft waiting for approval) is neither.
+const TEXTED_STATUSES = ["queued", "waiting-window", "waiting-capacity", "assigned", "sending", "accepted", "sent", "delivered", "read"];
+const NOT_SENT_STATUSES = ["failed", "blocked", "unknown"];
+
+/**
+ * Light text state per lead phone, for the Leads tab's text filter (the summary rows carry no messages).
+ * @param {string[]} phones - raw lead phone numbers
+ * @returns {Promise<Record<string, { sent: number, failed: number, replied: boolean }>>} keyed by "+1XXXXXXXXXX";
+ *          a phone with no Vtext messages is missing from the result
+ */
+async function getVtextTextSummaryForPhones(phones = []) {
+  const unique = [...new Set((phones || []).map(normalisePhone).filter(Boolean))];
+  if (!unique.length) return {};
+  try {
+    const contacts = await VtextContact.find({ phoneE164: { $in: unique } }).select("_id phoneE164").lean();
+    if (!contacts.length) return {};
+    const phoneByContactId = new Map(contacts.map((c) => [String(c._id), c.phoneE164]));
+    const rows = await VtextMessage.aggregate([
+      { $match: { contactId: { $in: contacts.map((c) => c._id) } } },
+      {
+        $group: {
+          _id: "$contactId",
+          sent: { $sum: { $cond: [{ $and: [{ $eq: ["$direction", "out"] }, { $in: ["$status", TEXTED_STATUSES] }] }, 1, 0] } },
+          failed: { $sum: { $cond: [{ $and: [{ $eq: ["$direction", "out"] }, { $in: ["$status", NOT_SENT_STATUSES] }] }, 1, 0] } },
+          replies: { $sum: { $cond: [{ $eq: ["$direction", "in"] }, 1, 0] } },
+        },
+      },
+    ]);
+    const byPhone = {};
+    for (const r of rows) byPhone[phoneByContactId.get(String(r._id))] = { sent: r.sent, failed: r.failed, replied: r.replies > 0 };
+    return byPhone;
+  } catch (err) {
+    console.error("[vtext lead text summary] lookup failed:", err.message);
+    return {}; // best effort, like the other lead-list lookups
+  }
+}
+
+module.exports = { getVtextMessagesForPhones, getVtextTextSummaryForPhones };

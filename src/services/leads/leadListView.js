@@ -4,7 +4,8 @@
 //
 //   ?view=summary  Light rows for the Leads tab table: only the fields a row
 //                  shows (name, contact, tags, date) plus the latest call's
-//                  outcome + score and the call count. Email, text and note
+//                  outcome + score and the call count, and a light text state
+//                  (sent / failed / replied). Email, message and note
 //                  lookups are skipped and call transcripts never leave Mongo.
 //   ?id=<leadId>   Just that one lead, fully loaded (what the detail modal shows).
 //                  Ignores the list's test-name filter so any lead can be opened.
@@ -18,6 +19,7 @@ const {
   normalisePhone,
   PICKUP_OUTCOMES,
 } = require("../calling/vapiCallsService");
+const { getVtextTextSummaryForPhones } = require("../vtext/vtextLeadMessagesService");
 
 function listView(req) {
   const raw = String(req.query.id || "");
@@ -52,15 +54,19 @@ const listSelect = (view) => (view.summary ? [...ROW_FIELDS, ...CALL_STATE_FIELD
  * Calls for a page of leads. Resolves to `callsFor(phone)` →
  * { calls, callCount, pickedUp }. Summary mode reads only the newest call per
  * phone (plus counts); otherwise every call with its transcript.
+ * Summary mode also adds `texts` ({ sent, failed, replied }) for the text filter; full leads carry
+ * `messages` instead, which the filter reads.
  */
 async function callsForList(view, phones) {
   if (view.summary) {
-    const byPhone = await getCallSummaryForPhones(phones);
+    const [byPhone, textsByPhone] = await Promise.all([getCallSummaryForPhones(phones), getVtextTextSummaryForPhones(phones)]);
     return (phone) => {
-      const s = byPhone[normalisePhone(phone)];
+      const key = normalisePhone(phone);
+      const s = byPhone[key];
+      const texts = textsByPhone[key] || { sent: 0, failed: 0, replied: false };
       return s
-        ? { calls: [slimCall(s.latest)], callCount: s.count, pickedUp: s.pickedUp }
-        : { calls: [], callCount: 0, pickedUp: false };
+        ? { calls: [slimCall(s.latest)], callCount: s.count, pickedUp: s.pickedUp, texts }
+        : { calls: [], callCount: 0, pickedUp: false, texts };
     };
   }
   const byPhone = await getCallsForPhones(phones);
@@ -72,7 +78,7 @@ async function callsForList(view, phones) {
 
 const slimCall = (c) => ({ id: c.id, outcome: c.outcome, score: c.score, startedAt: c.startedAt });
 
-const SUMMARY_KEYS = ["_id", ...ROW_FIELDS, ...CALL_STATE_FIELDS, "propertyName", "leadType", "leadTypeLabel", "calls", "callCount", "pickedUp"];
+const SUMMARY_KEYS = ["_id", ...ROW_FIELDS, ...CALL_STATE_FIELDS, "propertyName", "leadType", "leadTypeLabel", "calls", "callCount", "pickedUp", "texts"];
 
 /** Summary rows: keep only what the table renders. */
 function shapeLeads(view, leads) {
