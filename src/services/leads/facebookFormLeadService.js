@@ -12,8 +12,10 @@
 //
 // Consent comes from the form itself: a form whose custom disclaimer says the
 // person agrees to calls / texts counts as consent for everyone who submits
-// it. A form without one (e.g. "Toorak Buyers – Financing") gets the lead
-// saved, synced and emailed, but never called.
+// it. A form without one (e.g. "Toorak Buyers – Financing") is still called:
+// an admin decided (2026-10-26) that every Facebook form lead gets Maya's
+// calls, recorded as consentSource "admin-override" (calls only; Vtext still
+// needs the form's own consent to text).
 //
 // The form's answers are kept as they were asked (question + chosen option)
 // and also mapped onto the buy box (states, strategy, financing, budget,
@@ -77,9 +79,19 @@ async function getForm(formId) {
   }
 }
 
-/** "I agree to receive calls and text messages from Vihara..." */
+// Admin decision recorded on leads whose form gave no call consent.
+const ADMIN_OVERRIDE_DATE = "2026-10-26";
+const adminOverrideConsent = (now, formName) => ({
+  consent: true,
+  consentSource: "admin-override",
+  consentText: `Admin approved calling every Facebook form lead on ${ADMIN_OVERRIDE_DATE}. The form${formName ? ` "${formName}"` : ""} had no call/text consent disclaimer.`,
+  consentVersion: `admin-override-${ADMIN_OVERRIDE_DATE}`,
+  consentTimestamp: now,
+});
+
+/** "I agree to receive calls and text messages from Vihara..." / "By submitting this form you opt in to calls, texts..." */
 const consentGiven = (text) =>
-  /\b(agree|consent)/i.test(text) && /\b(calls?|text|texts|sms|messages?)\b/i.test(text);
+  /\b(agree|consent|opt[\s-]?in)/i.test(text) && /\b(calls?|text|texts|sms|messages?)\b/i.test(text);
 
 // ─── Answers → buy box ──────────────────────────────────────────────────────
 
@@ -298,6 +310,9 @@ async function saveLead({ lead, form, fields }) {
     (email && (await FacebookFormLead.findOne({ email }))) ||
     (phoneNormalized && (await FacebookFormLead.findOne({ phoneNormalized }).sort({ createdAt: 1 })));
 
+  // No consent on this form and none on record → call anyway (admin override).
+  if (!consent && !existing?.consent) Object.assign(fieldsToSet, adminOverrideConsent(now, submission.formName));
+
   const addTo = (doc) =>
     FacebookFormLead.findByIdAndUpdate(
       doc._id,
@@ -411,5 +426,6 @@ module.exports = {
   answersFrom,
   buyBoxFrom,
   consentGiven,
+  adminOverrideConsent,
   isTestLead,
 };
