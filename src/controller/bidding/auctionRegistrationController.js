@@ -170,7 +170,7 @@ exports.submitAuctionRegistration = catchAsyncError(
           existingRegistration.showcaseSlug = attribution.showcaseSlug;
           existingRegistration.attributionSource = attribution.attributionSource;
           existingRegistration.attributedAt = attribution.attributedAt;
-          await existingRegistration.save();
+          await existingRegistration.save({ validateModifiedOnly: true });
           if (isSequenceOn(auction)) {
             sendPartnerReferralEmail({ property: auction, registration: existingRegistration, realtor: attributionRealtor });
           } else {
@@ -474,7 +474,9 @@ exports.updateRegistrationStatus = catchAsyncError(
 
     registration.status = status;
     registration.updatedAt = Date.now();
-    await registration.save();
+    // Validate only what changed: older registrations predate required fields
+    // like buyerType, and a status change shouldn't fail on those.
+    await registration.save({ validateModifiedOnly: true });
 
     // Get user and auction details for email notification
     const user = await User.findById(registration.userId);
