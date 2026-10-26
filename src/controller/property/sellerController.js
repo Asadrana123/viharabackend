@@ -143,7 +143,7 @@ exports.getSellerAuctions = catchAsyncError(async (req, res, next) => {
   const filter = isAdmin ? {} : { sellerIds: req.user._id };
 
   const auctions = await Product.find(filter)
-    .select("productName city state street status currentBid auctionEndDate currentRoundId")
+    .select("productName city state street image status startBid currentBid auctionStartDate auctionEndDate currentRoundId")
     .sort({ createdAt: -1 })
     .lean();
 
