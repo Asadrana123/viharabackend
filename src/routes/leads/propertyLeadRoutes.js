@@ -8,8 +8,13 @@ const { markQaTestRequest } = require("../../middleware/qaAgentAuth");
 const router = express.Router();
 const {
   registerAndCall,
+  registerForDeals,
   getLeadsByProperty,
 } = require("../../controller/leads/propertyLeadController");
+
+// Public — the deal finder (/find): one sign-up for several deals. Before
+// /:slug/register, which would otherwise take "finder" as a slug.
+router.post("/finder/register", markQaTestRequest, registerForDeals);
 
 // Public — auction registration from /auction/:slug. markQaTestRequest flags
 // requests from the QA agent so they skip calls/Slack/enrichment/Brevo/texts.

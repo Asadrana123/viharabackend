@@ -88,6 +88,7 @@ const LISTING_PROJECTION = {
     propertyType: 1, assetType: 1, onlineOrInPerson: 1, buyingType: 1, condition: 1,
     occupancyStatus: 1, isVacant: 1, reportedVacant: 1,
     startBid: 1, currentBid: 1, auctionStartDate: 1, auctionEndDate: 1, status: 1,
+    isLandingPage: 1, // the deal finder (/find) only offers deals that take leads
     "investmentData.valuation.ViharaValue": 1,
     "coordinates.parcel.lat": 1, "coordinates.parcel.lng": 1,
     "coordinates.block.lat": 1, "coordinates.block.lng": 1,

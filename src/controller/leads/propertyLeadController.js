@@ -234,6 +234,181 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
   })();
 });
 
+// Most deals one finder sign-up can follow at once.
+const FINDER_MAX_DEALS = 5;
+
+/**
+ * POST /api/v1/property-lead/finder/register   (public)
+ *
+ * The website's deal finder (/find): ONE person following SEVERAL deals.
+ *   - One lead per deal, stamped source `finder-<slug>`, so each shows in its own
+ *     Property Leads tab and gets that deal's own E1 + sale emails.
+ *   - ONE Maya call, for the first deal they picked that's new for them, and ONE
+ *     Slack post listing every deal. The other leads are never dialled (the call
+ *     sweep only picks up leads whose signup call already ran).
+ *   - A deal they already signed up for is skipped, not an error (`already`).
+ */
+const registerForDeals = catchAsyncError(async (req, res, next) => {
+  const picked = Array.isArray(req.body.propertySlugs) ? req.body.propertySlugs : [];
+  const slugs = [...new Set(picked.map((s) => String(s || "").trim().toLowerCase()).filter(Boolean))].slice(0, FINDER_MAX_DEALS);
+  if (!slugs.length) return next(new ErrorHandler("Pick at least one deal", 400));
+
+  const {
+    fullName, phone, email, needsFinancing, downPayment, timezone,
+    consent, consentText, consentTimestamp, eventId, smsConsent, smsConsentText,
+  } = req.body;
+  const extraAnswers = sanitizeFormAnswers(req.body.extraAnswers);
+
+  if (!fullName || !fullName.trim())
+    return next(new ErrorHandler("fullName is required", 400));
+  if (!email || !email.trim())
+    return next(new ErrorHandler("email is required", 400));
+  if (!phone || !phone.trim())
+    return next(new ErrorHandler("phone is required", 400));
+
+  const phoneNormalized = normalisePhone(phone);
+  if (!phoneNormalized)
+    return next(new ErrorHandler("Enter a valid phone number", 400));
+
+  // Published landing properties only (same rule as /:slug/register), in the order they were picked.
+  const products = await productModel
+    .find({ slug: { $in: slugs }, isLandingPage: true })
+    .select("_id slug productName street city state zipCode isLandingPage brevoListId emailSequenceEnabled startBid image features auctionStartDate auctionEndDate")
+    .lean();
+  const properties = slugs.map((s) => products.find((p) => p.slug === s)).filter(Boolean);
+  if (!properties.length)
+    return next(new ErrorHandler("These deals aren't open any more", 404));
+
+  const smsOptedIn = smsConsent === true;
+  const { firstTouch, lastTouch } = touchesFrom(req.body);
+  const isQaTest = req.isQaTest === true;
+
+  // ── One lead per deal — the (propertySlug, phoneNormalized) index skips repeats ──
+  const created = []; // [{ lead, property }]
+  const already = [];
+  for (const property of properties) {
+    try {
+      const lead = await PropertyLead.create({
+        extraAnswers,
+        propertySlug: property.slug,
+        fullName: fullName.trim(),
+        phone: phone.trim(),
+        phoneNormalized,
+        email: email.trim().toLowerCase(),
+        needsFinancing: needsFinancingFrom(needsFinancing),
+        downPayment: downPaymentFrom(downPayment, needsFinancing),
+        quotePrice: null,
+        timezone: timezone || "",
+        consent: consent === true,
+        consentText: consentText || "",
+        consentTimestamp: consentTimestamp ? new Date(consentTimestamp) : null,
+        smsConsent: smsOptedIn,
+        smsConsentText: smsOptedIn ? String(smsConsentText || "") : "",
+        smsConsentAt: smsOptedIn ? new Date() : null,
+        eventId: eventId || "",
+        source: `finder-${property.slug}`,
+        firstTouch,
+        lastTouch,
+        isQaTest,
+      });
+      created.push({ lead, property });
+    } catch (err) {
+      if (err && err.code === 11000) {
+        already.push(property.slug);
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  // ── ONE call: the first deal that's new for them (only with consent) ────────
+  const first = created[0];
+  let call = { attempted: false };
+  if (first && consent === true && isQaTest) {
+    call = { attempted: false, suppressedForQaTest: true };
+  } else if (first && consent === true) {
+    const { lead } = first;
+    scheduleSignupCall({
+      leadId: lead._id,
+      propertySlug: lead.propertySlug,
+      fullName: lead.fullName,
+      phone: lead.phone,
+      phoneNormalized: lead.phoneNormalized,
+      timezone: lead.timezone,
+      email: lead.email,
+      buyerType: lead.buyerType,
+      quotePrice: lead.quotePrice,
+      needsFinancing: lead.needsFinancing,
+      downPayment: lead.downPayment,
+    }).catch((e) => console.error(`[property-call:finder:${lead.propertySlug}] scheduling failed:`, e.message));
+    call = { attempted: true, propertySlug: lead.propertySlug };
+  }
+
+  res.status(200).json({
+    success: true,
+    created: created.map((c) => c.property.slug),
+    already,
+    call,
+    ...(isQaTest && { qaTest: { suppressed: [...(consent === true ? ["call"] : []), "slack", "enrichment", "brevo"] } }),
+  });
+
+  // QA test leads (and a sign-up with nothing new) stop here.
+  if (isQaTest || !created.length) return;
+
+  const dealName = (p) => [p.street || p.productName || p.slug, p.city].filter(Boolean).join(", ");
+  notifyNewLead({
+    leadType: "Deal Finder",
+    name: first.lead.fullName,
+    email: first.lead.email,
+    phone: first.lead.phone,
+    consent: first.lead.consent,
+    smsConsent: first.lead.smsConsent,
+    source: "finder",
+    extraFields: [
+      { label: "Deals", value: created.map((c) => dealName(c.property)).join("; ") },
+      ...(already.length ? [{ label: "Already following", value: already.join(", ") }] : []),
+      { label: "Needs Financing", value: needsFinancingLabel(first.lead.needsFinancing) },
+      ...(first.lead.downPayment ? [{ label: "Down Payment", value: first.lead.downPayment }] : []),
+      ...answersAsFields(first.lead.extraAnswers),
+    ],
+  }).catch((e) => console.error("[slack] finder notify failed:", e.message));
+
+  // Each deal's own E1 (when its email sequence is on). Never throws.
+  created.forEach(({ lead, property }) => onPropertyLeadSignup({ property, lead }));
+
+  // ── Enrich once for all the leads, then Brevo-sync each ─────────────────────
+  (async () => {
+    try {
+      const enrichment = await enrichPerson({
+        fullName: first.lead.fullName,
+        email: first.lead.email || undefined,
+        phone: first.lead.phoneNormalized,
+      });
+      if (enrichment) {
+        await PropertyLead.updateMany({ _id: { $in: created.map((c) => c.lead._id) } }, { $set: { enrichment } });
+      }
+    } catch (e) {
+      console.error("[property-enrich:finder] enrichment failed:", e.message);
+    }
+
+    created.forEach(({ lead, property }) => {
+      syncPropertyLead({
+        email: lead.email,
+        fullName: lead.fullName,
+        phone: lead.phoneNormalized,
+        leadSource: `${property.slug}-finder`,
+        registeringAs: lead.buyerType,
+        propertyName: property.city || property.productName || property.slug,
+        listId: property.brevoListId,
+        listingUrl: listingPageUrl(property.slug),
+        smsOptIn: lead.smsConsent,
+        smsOptInAt: lead.smsConsentAt,
+        smsOptInUrl: auctionPageUrl(property.slug),
+      }).catch((e) => console.error(`[brevo-sync:finder:${property.slug}] failed:`, e.message));
+    });
+  })();
+});
+
 /**
  * GET /api/v1/property-lead/:slug?page=&limit=   (admin)
  * Paginated leads for ONE property, for the Property Leads tab. Each lead is
@@ -281,4 +456,4 @@ const getLeadsByProperty = catchAsyncError(async (req, res, next) => {
   });
 });
 
-module.exports = { registerAndCall, getLeadsByProperty };
+module.exports = { registerAndCall, registerForDeals, getLeadsByProperty };
