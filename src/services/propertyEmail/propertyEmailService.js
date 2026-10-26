@@ -28,7 +28,7 @@ const Unsubscribe = require("../../model/integrations/unsubscribeModel");
 const { PROPERTY_EMAIL_TEMPLATES } = require("../../config/propertyEmailTemplates");
 const { getContactBlockStatus, sendTransactionalEmail } = require("../integrations/brevoService");
 const { notifyNewLead } = require("../shared/slackService");
-const { buildPropertyEmailParams, firstNameOf, propertyKeyOf } = require("./propertyEmailParams");
+const { buildPropertyEmailParams, dealParams, firstNameOf, propertyKeyOf } = require("./propertyEmailParams");
 
 const normEmail = (e) => String(e || "").trim().toLowerCase();
 
@@ -177,10 +177,13 @@ async function closeLeadsForContact(email, reason) {
 /**
  * Landing-page form submitted (quote or interest). Sends E1 unless they're
  * already on this property's early-access track (EA1 covered them).
- * @param {object} p.property  productModel doc
- * @param {object} p.lead      propertyLeadModel doc
+ * @param {object} p.property      productModel doc
+ * @param {object} p.lead          propertyLeadModel doc
+ * @param {boolean} [p.callingNow] Maya's signup call is going out now (E1 says "calling you now")
+ * @param {object[]} [p.otherDeals] the other deals a finder lead picked, listed in this E1
+ * @param {boolean} [p.sendEmail]  false = record only (a finder deal already listed in another E1)
  */
-async function onPropertyLeadSignup({ property, lead }) {
+async function onPropertyLeadSignup({ property, lead, callingNow = false, otherDeals = [], sendEmail = true }) {
   if (!isSequenceOn(property)) return;
   try {
     const record = await upsertLeadRecord({
@@ -190,14 +193,20 @@ async function onPropertyLeadSignup({ property, lead }) {
       source: "property_lead",
       set: lead.quotePrice ? { quoteAmount: lead.quotePrice } : {},
     });
-    if (record.status === "closed" || record.source === "early_access") return;
+    if (!sendEmail || record.status === "closed" || record.source === "early_access") return;
 
+    const last4 = String(lead.phoneNormalized || lead.phone || "").replace(/\D/g, "").slice(-4);
     await sendPropertyEmail({
       code: "E1",
       property,
       to: lead.email,
       name: lead.fullName,
-      extra: { FIRSTNAME: firstNameOf(lead.fullName), QUOTE_AMOUNT: record.quoteAmount },
+      extra: {
+        FIRSTNAME: firstNameOf(lead.fullName),
+        QUOTE_AMOUNT: record.quoteAmount,
+        ...(callingNow ? { MAYA_CALL_NOW: "yes", PHONE_LAST4: last4 || undefined } : {}),
+        ...dealParams(otherDeals),
+      },
       lead: record,
     });
   } catch (err) {

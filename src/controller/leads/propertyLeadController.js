@@ -194,7 +194,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
 
   // E1 confirmation from the backend email sequence (only when it's on for
   // this property — see propertyEmailService). Never throws.
-  onPropertyLeadSignup({ property, lead });
+  onPropertyLeadSignup({ property, lead, callingNow: call.attempted === true });
 
   // ── Enrich + Brevo sync in the background; update the lead in place ─────────
   (async () => {
@@ -373,8 +373,17 @@ const registerForDeals = catchAsyncError(async (req, res, next) => {
     ],
   }).catch((e) => console.error("[slack] finder notify failed:", e.message));
 
-  // Each deal's own E1 (when its email sequence is on). Never throws.
-  created.forEach(({ lead, property }) => onPropertyLeadSignup({ property, lead }));
+  // ONE E1, for the first deal, listing the others ("You're also following");
+  // the other deals only get their lead record. Never throws.
+  created.forEach(({ lead, property }, i) =>
+    onPropertyLeadSignup({
+      property,
+      lead,
+      callingNow: i === 0 && call.attempted === true,
+      otherDeals: i === 0 ? created.slice(1).map((c) => c.property) : [],
+      sendEmail: i === 0,
+    })
+  );
 
   // ── Enrich once for all the leads, then Brevo-sync each ─────────────────────
   (async () => {

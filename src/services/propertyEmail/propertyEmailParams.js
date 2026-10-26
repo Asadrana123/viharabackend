@@ -15,6 +15,11 @@
 //   AUCTION_TIME       single-day only                "11 AM to 3 PM PT"
 //   MULTI_DAY          "yes" when start and end fall on different local days
 //   AUCTION_CLOSE_TEXT auctionEndDate, local          "Saturday, October 17 at 3 PM PT"
+//   BOOKING_URL        advisor call (Cal.com) + UTM tags
+//   DEAL_2..5_*        the other deals a finder lead picked (dealParams): NAME, BID, DATE, URL
+//
+// Per recipient (passed in `extra`): FIRSTNAME, QUOTE_AMOUNT, MAYA_CALL_NOW ("yes"
+// when Maya is calling as the email goes out), PHONE_LAST4.
 //
 // "Local" is the property's time zone (resolvePropertyTimezone, from state/ZIP).
 // Flags are "yes" or left out — never "no" (templates treat any value as true).
@@ -24,11 +29,13 @@ const { listingPageUrl } = require("../../config/siteUrls");
 
 // Which params each template takes (required + optional). Anything else is
 // dropped, so an email never carries fields its template doesn't use.
+const OTHER_DEAL_FIELDS = [2, 3, 4, 5].flatMap((n) => ["NAME", "BID", "DATE", "URL"].map((k) => `DEAL_${n}_${k}`));
 const TEMPLATE_FIELDS = {
   E1: ["PROPERTY_SHORT", "PROPERTY_NAME", "LISTING_URL", "OPENING_BID", "IMAGE_URL",
-    "FACT_1", "FACT_2", "FACT_3", "AUCTION_DATE", "AUCTION_TIME", "QUOTE_AMOUNT", "NOTE"],
-  R1: ["PROPERTY_SHORT", "PROPERTY_NAME", "LISTING_URL", "OPENING_BID", "FACT_1", "FACT_2", "FACT_3",
-    "AUCTION_DATE", "AUCTION_TIME", "MULTI_DAY", "AUCTION_CLOSE_TEXT"],
+    "FACT_1", "FACT_2", "FACT_3", "AUCTION_DATE", "AUCTION_TIME", "QUOTE_AMOUNT", "NOTE",
+    "MAYA_CALL_NOW", "PHONE_LAST4", "BOOKING_URL", ...OTHER_DEAL_FIELDS],
+  R1: ["PROPERTY_SHORT", "PROPERTY_NAME", "LISTING_URL", "IMAGE_URL", "FACT_1", "FACT_2", "FACT_3",
+    "AUCTION_DATE", "AUCTION_TIME", "BOOKING_URL"],
   R2: ["PROPERTY_SHORT", "PROPERTY_NAME", "LISTING_URL", "OPENING_BID", "FACT_1", "FACT_2", "FACT_3",
     "AUCTION_DATE", "AUCTION_TIME", "MULTI_DAY", "AUCTION_CLOSE_TEXT"],
   PT1: ["PROPERTY_SHORT"],
@@ -57,6 +64,28 @@ const withUtm = (url, propertyKey, templateCode) => {
 
 // The spec's PROPERTY_ID: the property's slug (falls back to its _id).
 const propertyKeyOf = (property) => property.slug || String(property._id);
+
+// Advisor call booking page (same link the website's thank-you pages use).
+const ADVISOR_BOOKING_URL = "https://cal.com/vihara-ai-advisor/walkthrough";
+
+/**
+ * "YOU'RE ALSO FOLLOWING" rows in E1: the other deals a finder lead picked
+ * (up to 4), as DEAL_2_NAME / _BID / _DATE / _URL ... DEAL_5_*.
+ * @param {object[]} deals  productModel docs, in the order they were picked
+ */
+function dealParams(deals = [], templateCode = "E1") {
+  const out = {};
+  deals.slice(0, 4).forEach((d, i) => {
+    const n = i + 2;
+    const zone = resolvePropertyTimezone(d);
+    const open = d.auctionStartDate ? DateTime.fromJSDate(new Date(d.auctionStartDate), { zone }) : null;
+    out[`DEAL_${n}_NAME`] = [d.street || d.productName, d.city].filter(Boolean).join(", ") || undefined;
+    out[`DEAL_${n}_BID`] = formatMoney(d.startBid);
+    out[`DEAL_${n}_DATE`] = open && open.isValid ? open.toFormat("ccc, LLL d") : undefined;
+    out[`DEAL_${n}_URL`] = d.slug ? withUtm(listingPageUrl(d.slug), propertyKeyOf(d), templateCode) : undefined;
+  });
+  return out;
+}
 
 function auctionParams(property) {
   if (!property.auctionStartDate) return {};
@@ -103,6 +132,7 @@ function buildPropertyEmailParams(templateCode, property, extra = {}) {
     FACT_1: features[0],
     FACT_2: features[1],
     FACT_3: features[2],
+    BOOKING_URL: withUtm(ADVISOR_BOOKING_URL, propertyKeyOf(property), templateCode),
     ...auctionParams(property),
     ...extra,
     QUOTE_AMOUNT: formatMoney(extra.QUOTE_AMOUNT),
@@ -113,4 +143,4 @@ function buildPropertyEmailParams(templateCode, property, extra = {}) {
   return Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== ""));
 }
 
-module.exports = { buildPropertyEmailParams, firstNameOf, propertyKeyOf, TEMPLATE_FIELDS };
+module.exports = { buildPropertyEmailParams, dealParams, firstNameOf, propertyKeyOf, TEMPLATE_FIELDS };
