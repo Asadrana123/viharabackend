@@ -16,6 +16,7 @@ const {
 const { sendMessage, sendBulkMessages, listMessagesByStatus, retryMessage, cancelMessage, rerouteMessage, approveDraft } = require("../../controller/vtext/vtextMessageController");
 const { listConversationProperties, listConversations, getConversationMessages, updateConversation } = require("../../controller/vtext/vtextConversationController");
 const { getContact, updateContactConsent, markCallBooked } = require("../../controller/vtext/vtextContactController");
+const { getLeadThread } = require("../../controller/vtext/vtextLeadController");
 const { getStatsOverview } = require("../../controller/vtext/vtextStatsController");
 const { getVtextSettings, updateVtextSettings } = require("../../controller/vtext/vtextSettingsController");
 const {
@@ -41,6 +42,8 @@ router.get("/conversations/properties", listConversationProperties); // before /
 router.get("/conversations", listConversations);
 router.get("/conversations/:id/messages", getConversationMessages);
 router.patch("/conversations/:id", updateConversation);
+
+router.get("/lead-thread", getLeadThread);
 
 router.get("/contacts/:id", getContact);
 router.patch("/contacts/:id/consent", updateContactConsent);

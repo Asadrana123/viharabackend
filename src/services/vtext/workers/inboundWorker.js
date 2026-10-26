@@ -18,7 +18,7 @@ const { QUEUE_NAMES, QUEUE_PREFIX, getRouteQueue } = require("../queue/queues");
 const capacity = require("../vtextCapacityService");
 const { detectKeyword } = require("../vtextComplianceService");
 const { publishEvent } = require("../vtextEventsBus");
-const { findLeadRefs } = require("../vtextLeadLookupService");
+const { findLeadRefs, consentFromRef } = require("../vtextLeadLookupService");
 const { endFollowUp } = require("../vtextFollowUpService");
 const { notifyVtextAlert } = require("../../shared/slackService");
 const { notifyInboundNoDraft } = require("../vtextAlertService");
@@ -129,7 +129,7 @@ async function handleMessageReceived(event, line) {
   let contact = await VtextContact.findOne({ phoneE164: contactKey });
   if (!contact) {
     const leadRefs = from ? await findLeadRefs(from) : [];
-    const consentLead = leadRefs.find((r) => r.lead.smsConsent === true);
+    const consentLead = leadRefs.find((r) => r.consent.consented);
 
     contact = await VtextContact.create({
       phoneE164: contactKey,
@@ -141,15 +141,7 @@ async function handleMessageReceived(event, line) {
       timezone: from ? timezoneForPhone(from) : undefined,
       source: "inbound-unknown",
       leadRefs: leadRefs.map((r) => ({ leadType: r.leadType, leadId: r.leadId })),
-      consent: consentLead
-        ? {
-            status: "opted-in",
-            source: "lead-form",
-            capturedAt: consentLead.lead.smsConsentAt || new Date(),
-            consentText: consentLead.lead.smsConsentText,
-            evidence: { leadType: consentLead.leadType, leadId: consentLead.leadId },
-          }
-        : { status: "unknown" },
+      consent: consentLead ? consentFromRef(consentLead) : { status: "unknown" },
     });
   }
 

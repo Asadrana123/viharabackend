@@ -12,7 +12,7 @@ const { getRouteQueue } = require("./queue/queues");
 const { canSend, logGateDecision } = require("./vtextComplianceService");
 const { getSettings, isConsentRequired } = require("./vtextSettingsService");
 const { normalizeInternationalPhone } = require("../../utils/internationalPhone");
-const { findLeadRefs } = require("./vtextLeadLookupService");
+const { findLeadRefs, consentFromRef, applyLeadConsent } = require("./vtextLeadLookupService");
 const Errorhandler = require("../../utils/errorhandler");
 
 function normalizeAddress(raw) {
@@ -51,7 +51,7 @@ async function enqueueOutbound({ to: rawTo, body, media, origin, channelPolicy, 
     // already existed for the inbound direction. One shared lookup now
     // covers both.
     const leadRefs = !to.includes("@") ? await findLeadRefs(to) : [];
-    const consentLead = leadRefs.find((r) => r.lead.smsConsent === true);
+    const consentLead = leadRefs.find((r) => r.consent.consented);
 
     contact = await VtextContact.create({
       phoneE164: to,
@@ -59,21 +59,18 @@ async function enqueueOutbound({ to: rawTo, body, media, origin, channelPolicy, 
       name: contactName || leadRefs[0]?.name || undefined,
       source: "admin",
       leadRefs: leadRefs.map((r) => ({ leadType: r.leadType, leadId: r.leadId })),
-      consent: consentLead
-        ? {
-            status: "opted-in",
-            source: "lead-form",
-            capturedAt: consentLead.lead.smsConsentAt || new Date(),
-            consentText: consentLead.lead.smsConsentText,
-            evidence: { leadType: consentLead.leadType, leadId: consentLead.leadId },
-          }
-        : undefined,
+      consent: consentLead ? consentFromRef(consentLead) : undefined,
     });
   } else if (contactName && !contact.name) {
     // Existing contact with no name yet (e.g. created by an earlier send
     // before this lookup existed) — a freshly-provided name is still worth saving.
     contact.name = contactName;
     await contact.save();
+  }
+
+  // A contact made before its lead's consent counted (still "unknown") picks the consent up now.
+  if (contact.consent?.status === "unknown" && !contact.optOut?.isOptedOut && !to.includes("@")) {
+    await applyLeadConsent(contact, await findLeadRefs(to));
   }
 
   // See routeWorker.js's matching call for why lastInboundAt is passed here too.

@@ -38,10 +38,11 @@ const { getSettings, isConsentRequired } = require("../services/vtext/vtextSetti
 const { pingRedis } = require("../services/vtext/queue/connection");
 const { splitName } = require("../services/leads/buyBox");
 const { toUsSmsNumber } = require("../utils/usPhone");
+const { textingWindow } = require("../utils/textingWindow");
+const { priceRangeOf } = require("../services/leads/facebookPriceRange");
 
 const TEMPLATE_KEY = "facebook-form-intro";
 const GAP_MS = 1000;
-const CONTACT_KEYS = /^(full_name|first_name|last_name|email|phone_number|phone)$/;
 // The owner's exact wording, with the curly apostrophe.
 const TEMPLATE = "Hi {First_name}, this is Maya from Vihara. Got it: homes up to {price_range}. I’ll text you bank-owned deals that fit first. Reply STOP to opt out.";
 
@@ -73,16 +74,6 @@ function firstNameOf(lead) {
   return capitalise(first);
 }
 
-/** The price-range answer's label as the buyer saw it (falls back to the raw value only if it is itself a $ figure). */
-function priceRangeOf(lead) {
-  const a = (lead.answers || []).find((x) => !CONTACT_KEYS.test(x.key) && /price|budget|range/i.test(x.key));
-  if (!a) return null;
-  const label = String(a.label || "").trim();
-  if (label) return label;
-  const value = String(a.value || "").trim();
-  return value.includes("$") ? value : null;
-}
-
 /** True when "homes up to <label>" reads wrong (ranges, "Under X", "X+", "not sure"...). */
 function upToReadsWrong(label) {
   return /[–—-]|\bto\b|under|below|less|up to|over|more|plus|\+|above|sure|any/i.test(label);
@@ -97,15 +88,6 @@ function renderIntro(lead) {
   const text = TEMPLATE.replace("{First_name}", () => first).replace("{price_range}", () => price);
   if (/[{}]/.test(text)) return { skip: "unresolved placeholder in text" };
   return { text, first, price };
-}
-
-/** Is it inside texting hours in BOTH US Eastern and US Pacific (8 AM-9 PM each)? */
-function textingWindow(now) {
-  const hourIn = (tz) => Number(new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hourCycle: "h23" }).format(now));
-  const et = hourIn("America/New_York");
-  const pt = hourIn("America/Los_Angeles");
-  const ok = et >= 8 && et < 21 && pt >= 8 && pt < 21;
-  return { ok, et, pt };
 }
 
 /**
