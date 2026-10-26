@@ -26,6 +26,7 @@ const { request: zernioRequest } = require("../adsLoop/zernioClient");
 const { normalisePhone } = require("../calling/vapiCallsService");
 const { scheduleFacebookFormSignupCall } = require("../calling/newDealsCallScheduler");
 const { syncNewDealsLead, sendNewDealsWelcomeEmail } = require("../integrations/brevoService");
+const { maybeSendFacebookIntroText } = require("../vtext/vtextFacebookIntroService");
 const { notifyNewLead } = require("../shared/slackService");
 const { newDealsPageUrl } = require("../../config/siteUrls");
 const { splitName, isValidEmail, STATE_NAMES, stateName, labelList, priceRangeText, withTimeout } = require("./buyBox");
@@ -367,6 +368,9 @@ async function handleLead(payload) {
   } else if (!doc.consent) {
     console.log(`[facebook-form] no consent on form "${doc.formName}"; not calling ${doc.phoneNormalized}`);
   }
+
+  // Intro text through Vtext: new leads only, with form consent. Off unless FACEBOOK_AUTO_TEXT_ENABLED=true.
+  maybeSendFacebookIntroText({ doc, isNew }).catch((e) => console.error("[facebook-form-text] failed:", e.message));
 
   const box = doc.buyBox || {};
   notifyNewLead({
