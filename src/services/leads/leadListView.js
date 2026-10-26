@@ -41,8 +41,12 @@ const ROW_FIELDS = [
   "tier", "buyerType", "persona", "primaryMarket", "market", "markets", "formName",
 ];
 
+// Call state, so a row with no call can say why (no consent, stopped, QA test…).
+// Funnels without a field just leave it out.
+const CALL_STATE_FIELDS = ["consent", "callingStopped", "callAttempts", "callStatus", "nextCallAt", "isQaTest"];
+
 /** Mongo projection for the list query: row fields in summary mode, else everything. */
-const listSelect = (view) => (view.summary ? ROW_FIELDS.join(" ") : undefined);
+const listSelect = (view) => (view.summary ? [...ROW_FIELDS, ...CALL_STATE_FIELDS].join(" ") : undefined);
 
 /**
  * Calls for a page of leads. Resolves to `callsFor(phone)` →
@@ -68,7 +72,7 @@ async function callsForList(view, phones) {
 
 const slimCall = (c) => ({ id: c.id, outcome: c.outcome, score: c.score, startedAt: c.startedAt });
 
-const SUMMARY_KEYS = ["_id", ...ROW_FIELDS, "propertyName", "leadType", "leadTypeLabel", "calls", "callCount", "pickedUp"];
+const SUMMARY_KEYS = ["_id", ...ROW_FIELDS, ...CALL_STATE_FIELDS, "propertyName", "leadType", "leadTypeLabel", "calls", "callCount", "pickedUp"];
 
 /** Summary rows: keep only what the table renders. */
 function shapeLeads(view, leads) {
