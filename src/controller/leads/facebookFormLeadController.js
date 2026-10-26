@@ -10,6 +10,8 @@ const FacebookFormLead = require("../../model/leads/facebookFormLeadModel");
 const { getEmailEventsForEmails } = require("../../services/integrations/emailEventsService");
 const { getNotesForLeads } = require("../../services/leads/leadNotesService");
 const { listView, scopeQuery, unlessSummary, listSelect, callsForList, shapeLeads } = require("../../services/leads/leadListView");
+const { getVtextMessagesForPhones } = require("../../services/vtext/vtextLeadMessagesService");
+const { normalisePhone } = require("../../services/calling/vapiCallsService");
 
 const LEAD_NOTE_TYPE = "facebookForm"; // matches leadNoteModel.LEAD_TYPES
 
@@ -34,7 +36,8 @@ const getAllFacebookFormLeads = catchAsyncError(async (req, res) => {
     FacebookFormLead.aggregate([{ $group: { _id: "$formId", name: { $last: "$formName" }, leads: { $sum: 1 } } }, { $sort: { leads: -1 } }]),
   ]);
 
-  const [callsFor, eventsByEmail, notesByLead] = await Promise.all([
+  const [messagesByPhone, callsFor, eventsByEmail, notesByLead] = await Promise.all([
+    getVtextMessagesForPhones(unlessSummary(view, leads.map((l) => l.phone).filter(Boolean))),
     callsForList(view, leads.map((l) => l.phone).filter(Boolean)),
     getEmailEventsForEmails(unlessSummary(view, leads.map((l) => l.email).filter(Boolean))),
     getNotesForLeads(LEAD_NOTE_TYPE, unlessSummary(view, leads.map((l) => l._id))),
@@ -48,6 +51,7 @@ const getAllFacebookFormLeads = catchAsyncError(async (req, res) => {
       ...callsFor(lead.phone),
       emails: eventsByEmail[String(lead.email || "").toLowerCase()] || [],
       notes: notesByLead[String(lead._id)] || [],
+      messages: messagesByPhone[normalisePhone(lead.phone)] || [],
     }))),
     forms: forms.map((f) => ({ formId: f._id, name: f.name, leads: f.leads })),
     pagination: { page, limit, total, pages: Math.ceil(total / limit) },

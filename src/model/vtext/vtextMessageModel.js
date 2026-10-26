@@ -65,6 +65,11 @@ const vtextMessageSchema = new mongoose.Schema(
       // The property this text is about; routeWorker copies it onto the conversation.
       propertyId: { type: mongoose.Schema.Types.ObjectId, ref: "productModel" },
       replyToMessageId: { type: mongoose.Schema.Types.ObjectId, ref: "vtextMessageModel" },
+      // The lead this text was sent from, when an admin texted it from the Leads tab ("Text this lead").
+      leadRef: {
+        leadType: { type: String },
+        leadId: { type: mongoose.Schema.Types.ObjectId },
+      },
       sentBy: {
         adminId: { type: mongoose.Schema.Types.ObjectId },
         adminName: { type: String },

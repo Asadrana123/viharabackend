@@ -4,7 +4,9 @@
 // — real sends now go through the queue via vtextMessageService.enqueueOutbound.
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const { enqueueOutbound } = require("../../services/vtext/vtextMessageService");
-const { renderTemplateForProperty, loadTemplateAndProperty, renderTemplate, resolveContactVariables, checkRendered } = require("../../services/vtext/vtextTemplateService");
+const { renderTemplateForProperty, loadTemplateAndProperty, renderTemplate, resolveContactVariables, checkRendered, REQUIRED_CONTACT_KEYS } = require("../../services/vtext/vtextTemplateService");
+const { resolveLead } = require("../../services/vtext/vtextLeadLookupService");
+const VtextContact = require("../../model/vtext/vtextContactModel");
 const { approveDraft: approveDraftReply } = require("../../services/vtext/vtextDraftReplyService");
 const VtextMessage = require("../../model/vtext/vtextMessageModel");
 const VtextLine = require("../../model/vtext/vtextLineModel");
@@ -16,21 +18,48 @@ const CANCELLABLE_STATUSES = ["queued", "waiting-window", "waiting-capacity", "a
 /**
  * POST /api/v1/vtext/messages
  * Body: { to, body, channelPolicy?, isReplyToInbound?, idempotencyKey?, scheduledFor?, name? }
- * OR:   { to, templateId, propertyId, name?, ... } — body rendered from the template+property(+name) instead of typed directly.
+ * OR:   { to, templateId, propertyId?, name?, ... } — body rendered from the template (+ property, + name) instead of typed directly.
+ *       propertyId is only needed when the template uses a property variable.
+ * OR:   { leadType, leadId, body | templateId (+ propertyId?) } — the Leads tab's "Text this lead": the number, name and
+ *       {{price_range}} come from the lead itself (the client's `to` is ignored). Never a reply unless the lead has
+ *       texted us before. Texting hours (8 AM-9 PM) are only a warning in the UI (lead-thread's textingHours), never enforced here.
  * `name` is used both for the template's {{name}} and, when this is a brand-new contact, as its stored name.
  */
 const sendMessage = catchAsyncError(async (req, res) => {
-  const { to, templateId, propertyId, name, channelPolicy, isReplyToInbound, idempotencyKey, scheduledFor } = req.body;
+  const { templateId, propertyId, channelPolicy, idempotencyKey, scheduledFor, leadType, leadId } = req.body;
+  let { to, name, isReplyToInbound } = req.body;
   let { body } = req.body;
 
   const origin = { kind: "manual", sentBy: { adminId: req.user?._id, adminName: req.user?.name } };
+  let lead = null;
+  if (leadType || leadId) {
+    lead = await resolveLead(leadType, leadId);
+    if (!lead) return res.status(404).json({ success: false, message: "Lead not found" });
+    if (!lead.phone) return res.status(400).json({ success: false, message: "This lead has no valid US phone number to text." });
+    to = lead.phone;
+    name = name || lead.name;
+    origin.leadRef = { leadType, leadId: lead.leadId };
+    // Reaching out is not a reply. It becomes one only once they have texted us (the compliance gate then also
+    // checks that it was recent enough).
+    const contact = await VtextContact.findOne({ phoneE164: lead.phone }).select("lastInboundAt").lean();
+    isReplyToInbound = !!contact?.lastInboundAt;
+  }
+
   if (!body && templateId) {
-    const rendered = await renderTemplateForProperty(templateId, propertyId, name);
-    // {{quote_price}} only has a value for a signup text; a manual send has no quote to fill it with.
-    const problem = checkRendered(rendered.template.body, rendered.body, rendered.values, ["quote_price"]);
-    if (problem) return res.status(400).json({ success: false, message: `This template can't be sent from here: ${problem}` });
+    const rendered = await renderTemplateForProperty(templateId, propertyId, name, { priceRange: lead?.priceRange });
+    // {{quote_price}} only has a value for a signup text, and {{price_range}} only for a Facebook form lead; a plain manual send has neither.
+    const problem = checkRendered(rendered.template.body, rendered.body, rendered.values, REQUIRED_CONTACT_KEYS);
+    if (problem) {
+      const needsProperty = !propertyId && /unresolved placeholder/.test(problem);
+      return res.status(400).json({
+        success: false,
+        message: needsProperty ? "This template uses property details. Pick a property first." : `This template can't be sent from here: ${problem}`,
+      });
+    }
     body = rendered.body;
     origin.campaignId = templateId;
+    if (propertyId) origin.propertyId = propertyId;
+  } else if (propertyId && lead) {
     origin.propertyId = propertyId;
   }
 
@@ -76,7 +105,7 @@ const sendBulkMessages = catchAsyncError(async (req, res) => {
       const name = typeof entry === "string" ? undefined : entry.name;
       const values = { ...propertyValues, ...resolveContactVariables(name) };
       const rendered = renderTemplate(template.body, values);
-      return { to: phone, body: rendered, name, problem: checkRendered(template.body, rendered, values, ["quote_price"]) };
+      return { to: phone, body: rendered, name, problem: checkRendered(template.body, rendered, values, REQUIRED_CONTACT_KEYS) };
     });
     origin.campaignId = templateId;
     origin.propertyId = propertyId;

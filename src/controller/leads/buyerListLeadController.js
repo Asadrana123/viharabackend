@@ -15,6 +15,7 @@ const { buyerListPageUrl } = require("../../config/siteUrls");
 const { getEmailEventsForEmails } = require("../../services/integrations/emailEventsService");
 const { getNotesForLeads } = require("../../services/leads/leadNotesService");
 const { listView, scopeQuery, unlessSummary, listSelect, callsForList, shapeLeads } = require("../../services/leads/leadListView");
+const { getVtextMessagesForPhones } = require("../../services/vtext/vtextLeadMessagesService");
 const {
   str,
   isValidEmail,
@@ -239,7 +240,8 @@ const getAllBuyerListLeads = catchAsyncError(async (req, res) => {
 
   // Same per-lead extras as the other Leads tabs (calls by phone, email events,
   // advisor notes) so the shared admin list/detail renders identically.
-  const [callsFor, eventsByEmail, notesByLead] = await Promise.all([
+  const [messagesByPhone, callsFor, eventsByEmail, notesByLead] = await Promise.all([
+    getVtextMessagesForPhones(unlessSummary(view, leads.map((l) => l.phone).filter(Boolean))),
     callsForList(view, leads.map((l) => l.phone).filter(Boolean)),
     getEmailEventsForEmails(unlessSummary(view, leads.map((l) => l.email).filter(Boolean))),
     getNotesForLeads(LEAD_NOTE_TYPE, unlessSummary(view, leads.map((l) => l._id))),
@@ -253,6 +255,7 @@ const getAllBuyerListLeads = catchAsyncError(async (req, res) => {
       ...callsFor(lead.phone),
       emails: eventsByEmail[String(lead.email || "").toLowerCase()] || [],
       notes: notesByLead[String(lead._id)] || [],
+      messages: messagesByPhone[normalisePhone(lead.phone)] || [],
     }))),
     pagination: { page, limit, total, pages: Math.ceil(total / limit) },
   });

@@ -30,6 +30,7 @@ const PRODUCT_TEMPLATE_FIELDS =
 const TEMPLATE_VARIABLES = [
   { key: "name", label: "Contact first name", scope: "contact", example: "Jane" },
   { key: "quote_price", label: "Price the lead quoted", scope: "contact", example: "$540,000" },
+  { key: "price_range", label: "Price range the lead chose (Facebook form)", scope: "contact", example: "$300K–$500K" },
   { key: "property_name", label: "Property name", scope: "property", example: "Kings Point Village Estate" },
   { key: "property_address", label: "Property address", scope: "property", example: "1703 Brookside Pine Ln, Kingwood, TX 77345" },
   { key: "property_type", label: "Property type", scope: "property", example: "Single Family Home" },
@@ -86,10 +87,21 @@ function resolvePropertyVariables(product = {}) {
  * @param {string} [name] - contact's name (full or first); only a safe first name is used (see utils/firstName.js). Blank when unknown — never guessed.
  * @param {object} [extra]
  * @param {number} [extra.quotePrice] - the price the lead quoted on the auction page. Blank when there is none (manual sends).
+ * @param {string} [extra.priceRange] - the price range a Facebook form lead chose, as the form worded it. Blank when there is none.
  */
-function resolveContactVariables(name, { quotePrice } = {}) {
-  return { name: firstNameOf(name), quote_price: formatCurrency(quotePrice) };
+function resolveContactVariables(name, { quotePrice, priceRange } = {}) {
+  return { name: firstNameOf(name), quote_price: formatCurrency(quotePrice), price_range: String(priceRange || "") };
 }
+
+/** True when the template uses a property variable, so it can only be sent with a property picked. */
+function templateNeedsProperty(body) {
+  const propertyKeys = new Set(TEMPLATE_VARIABLES.filter((v) => v.scope === "property").map((v) => v.key));
+  for (const m of String(body || "").matchAll(/\{\{(\w+)\}\}/g)) if (propertyKeys.has(m[1])) return true;
+  return false;
+}
+
+/** Keys that must have a value whenever a template uses them: a send never goes out with these blank. */
+const REQUIRED_CONTACT_KEYS = ["quote_price", "price_range"];
 
 /** Preview values for the template editor — real property data if given, else the catalog's own examples; `name` uses its own example (or a given sample name) since it's never resolved from a property. */
 function buildPreviewValues(product, name) {
@@ -142,14 +154,18 @@ function checkRendered(templateBody, renderedText, values, requiredKeys = []) {
   return null;
 }
 
-/** Loads a property once — the shared half of a bulk send's per-recipient rendering, so the DB isn't hit once per number. */
+/**
+ * Loads a property once — the shared half of a bulk send's per-recipient rendering, so the DB isn't hit once per number.
+ * `propertyId` is optional: a template with no property variables ("generic" text) renders without one, and a template
+ * that does use a property variable then fails checkRendered with "unresolved placeholder" (see the callers).
+ */
 async function loadTemplateAndProperty(templateId, propertyId) {
   if (!templateId) throw new Errorhandler("templateId is required", 400);
-  if (!propertyId) throw new Errorhandler("propertyId is required", 400);
-  if (!mongoose.Types.ObjectId.isValid(propertyId)) throw new Errorhandler("Invalid property id", 400);
+  if (propertyId && !mongoose.Types.ObjectId.isValid(propertyId)) throw new Errorhandler("Invalid property id", 400);
 
   const template = await VtextTemplate.findById(templateId).lean();
   if (!template) throw new Errorhandler("Template not found", 404);
+  if (!propertyId) return { template, product: null, propertyValues: {} };
 
   const product = await Product.findById(propertyId).select(PRODUCT_TEMPLATE_FIELDS).lean();
   if (!product) throw new Errorhandler("Property not found", 404);
@@ -168,6 +184,8 @@ module.exports = {
   TEMPLATE_VARIABLES,
   PRODUCT_TEMPLATE_FIELDS,
   findUnknownPlaceholders,
+  templateNeedsProperty,
+  REQUIRED_CONTACT_KEYS,
   checkRendered,
   resolvePropertyVariables,
   resolveContactVariables,

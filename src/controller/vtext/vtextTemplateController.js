@@ -8,7 +8,13 @@ const {
   buildPreviewValues,
   renderTemplateForProperty,
   loadTemplateAndProperty,
+  templateNeedsProperty,
+  checkRendered,
 } = require("../../services/vtext/vtextTemplateService");
+const { resolveLead } = require("../../services/vtext/vtextLeadLookupService");
+
+/** A template as the admin UI gets it: plus whether it can only be sent with a property picked. */
+const withNeedsProperty = (template) => ({ ...template.toObject(), needsProperty: templateNeedsProperty(template.body) });
 
 /** 400 text for a body that uses a {{placeholder}} we don't have, or null when every one is known. */
 const unknownPlaceholderMessage = (body) => {
@@ -45,14 +51,14 @@ const createTemplate = catchAsyncError(async (req, res) => {
 /** GET /api/v1/vtext/templates */
 const listTemplates = catchAsyncError(async (req, res) => {
   const templates = await VtextTemplate.find().sort({ updatedAt: -1 });
-  return res.status(200).json({ success: true, templates });
+  return res.status(200).json({ success: true, templates: templates.map(withNeedsProperty) });
 });
 
 /** GET /api/v1/vtext/templates/:id */
 const getTemplate = catchAsyncError(async (req, res) => {
   const template = await VtextTemplate.findById(req.params.id);
   if (!template) return res.status(404).json({ success: false, message: "Template not found" });
-  return res.status(200).json({ success: true, template });
+  return res.status(200).json({ success: true, template: withNeedsProperty(template) });
 });
 
 const AUTO_SIGNUP_ROLES = ["", "quote_in_range", "quote_short"];
@@ -88,15 +94,34 @@ const deleteTemplate = catchAsyncError(async (req, res) => {
   return res.status(200).json({ success: true });
 });
 
-/** POST /api/v1/vtext/templates/:id/preview — body: { propertyId, name? } → the rendered text, for the Send tab's live preview before launching a send. */
+/**
+ * POST /api/v1/vtext/templates/:id/preview — body: { propertyId?, name?, leadType?, leadId? } → the rendered text, for the live preview before sending.
+ * propertyId is optional (a template with no property variables needs none); with leadType + leadId the lead's name and
+ * price range fill in, so the preview shows exactly what that lead would get. `problem` is why it could not be sent, if so.
+ */
 const previewTemplate = catchAsyncError(async (req, res) => {
-  const { propertyId, name } = req.body;
+  const { propertyId, leadType, leadId } = req.body;
+  let { name } = req.body;
+  let priceRange;
+  if (leadType || leadId) {
+    const lead = await resolveLead(leadType, leadId);
+    if (!lead) return res.status(404).json({ success: false, message: "Lead not found" });
+    name = name || lead.name;
+    priceRange = lead.priceRange;
+  }
   const { template, product } = await loadTemplateAndProperty(req.params.id, propertyId);
   // A quote template has no real quote in a preview, so show a sample: the starting bid for the in-range text, a little under it for the short one.
-  const startBid = Number(product.startBid) || 0;
+  const startBid = Number(product?.startBid) || 0;
   const quotePrice = req.body.quotePrice || (template.autoSignupRole === "quote_short" ? Math.max(startBid - 15000, 0) : startBid) || undefined;
-  const { body, property } = await renderTemplateForProperty(req.params.id, propertyId, name, { quotePrice });
-  return res.status(200).json({ success: true, body, property: { id: property._id, name: property.productName } });
+  const { body, property, values } = await renderTemplateForProperty(req.params.id, propertyId, name, { quotePrice, priceRange });
+  const problem = checkRendered(template.body, body, values, ["price_range"]);
+  return res.status(200).json({
+    success: true,
+    body,
+    problem,
+    needsProperty: templateNeedsProperty(template.body),
+    property: property ? { id: property._id, name: property.productName } : null,
+  });
 });
 
 module.exports = {

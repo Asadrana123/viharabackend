@@ -17,6 +17,7 @@ const { notifyNewLead } = require("../../services/shared/slackService");
 const { getEmailEventsForEmails } = require("../../services/integrations/emailEventsService");
 const { getNotesForLeads } = require("../../services/leads/leadNotesService");
 const { listView, scopeQuery, unlessSummary, listSelect, callsForList, shapeLeads } = require("../../services/leads/leadListView");
+const { getVtextMessagesForPhones } = require("../../services/vtext/vtextLeadMessagesService");
 const { scheduleNewDealsSignupCall } = require("../../services/calling/newDealsCallScheduler");
 const { newDealsPageUrl } = require("../../config/siteUrls");
 const { LIVE_DEALS, findDeal, dealLabel } = require("../../config/newDeals");
@@ -327,7 +328,8 @@ const getAllNewDealsLeads = catchAsyncError(async (req, res) => {
     NewDealsLead.countDocuments(scopeQuery(view, query)),
   ]);
 
-  const [callsFor, eventsByEmail, notesByLead] = await Promise.all([
+  const [messagesByPhone, callsFor, eventsByEmail, notesByLead] = await Promise.all([
+    getVtextMessagesForPhones(unlessSummary(view, leads.map((l) => l.phone).filter(Boolean))),
     callsForList(view, leads.map((l) => l.phone).filter(Boolean)),
     getEmailEventsForEmails(unlessSummary(view, leads.map((l) => l.email).filter(Boolean))),
     getNotesForLeads(LEAD_NOTE_TYPE, unlessSummary(view, leads.map((l) => l._id))),
@@ -342,6 +344,7 @@ const getAllNewDealsLeads = catchAsyncError(async (req, res) => {
       ...callsFor(lead.phone),
       emails: eventsByEmail[String(lead.email || "").toLowerCase()] || [],
       notes: notesByLead[String(lead._id)] || [],
+      messages: messagesByPhone[normalisePhone(lead.phone)] || [],
     }))),
     pagination: { page, limit, total, pages: Math.ceil(total / limit) },
   });
