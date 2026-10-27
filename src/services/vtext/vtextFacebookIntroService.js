@@ -4,12 +4,15 @@
 // call is scheduled (services/leads/facebookFormLeadService.js). The wording and the skip rules are shared
 // with the one-off script (services/leads/facebookIntroText.js).
 //
-// Consent: only a form whose disclaimer gives call / text consent (lead.consent + consentSource
-// "form-disclaimer"). No texting-hours check, same as the signup call. Off unless
+// Consent follows the Vtext consent switch, like the property signup text. Switch ON (the default): only a
+// form whose disclaimer gives call / text consent (lead.consent + consentSource "form-disclaimer"). Switch
+// OFF: every new lead is texted; Vtext's own gate still blocks opted-out contacts and bad numbers.
+// No texting-hours check, same as the signup call. Off unless
 // FACEBOOK_AUTO_TEXT_ENABLED=true (and VTEXT_ENABLED=true, since sending needs the Vtext queue).
 const VtextContact = require("../../model/vtext/vtextContactModel");
 const VtextMessage = require("../../model/vtext/vtextMessageModel");
 const { enqueueOutbound } = require("./vtextMessageService");
+const { getSettings, isConsentRequired } = require("./vtextSettingsService");
 const { toUsSmsNumber } = require("../../utils/usPhone");
 const { notifyVtextAlert } = require("../shared/slackService");
 const { TEMPLATE_KEY, keyFor, planLeads } = require("../leads/facebookIntroText");
@@ -53,11 +56,12 @@ async function alertNotTexted(doc, reason, notify = notifyVtextAlert) {
  * @param {object} params
  * @param {object} params.doc - the Facebook form lead record
  * @param {boolean} params.isNew - false for a repeat submission from someone already on file
- * @param {object} [deps] - injected by tests: { enqueueOutbound, lookupsFor, notify }
+ * @param {object} [deps] - injected by tests: { enqueueOutbound, lookupsFor, notify, consentRequired }
  */
 async function maybeSendFacebookIntroText({ doc, isNew }, deps = {}) {
   const send = deps.enqueueOutbound || enqueueOutbound;
   const lookup = deps.lookupsFor || lookupsFor;
+  const consentRequired = deps.consentRequired || (async () => isConsentRequired(await getSettings()));
   const id = doc?._id;
   const skip = async (reason) => {
     console.log(`[facebook-form-text] SKIPPED ${id} — ${reason}`);
@@ -67,7 +71,9 @@ async function maybeSendFacebookIntroText({ doc, isNew }, deps = {}) {
     if (!AUTO_ENABLED()) return await skip("VTEXT_ENABLED / FACEBOOK_AUTO_TEXT_ENABLED not both true");
     if (!isNew) return await skip("repeat submission, already on file");
     if (doc.importedFromHistory) return await skip("imported from history");
-    if (doc.consent !== true || doc.consentSource !== "form-disclaimer") return await skip("the form gave no call / text consent");
+    if ((await consentRequired()) && (doc.consent !== true || doc.consentSource !== "form-disclaimer")) {
+      return await skip("the form gave no call / text consent");
+    }
 
     const phone = toUsSmsNumber(doc.phoneNormalized) || toUsSmsNumber(doc.phone);
     const { sendable, skipped } = planLeads([doc], phone ? await lookup(doc, phone) : { contactsByPhone: new Map(), sentByKey: new Map(), phonesAlreadyTexted: new Set() });
