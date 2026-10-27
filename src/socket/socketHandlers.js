@@ -17,8 +17,11 @@ const {
   ensureCurrentRound,
   claimRoundClose,
   releaseRoundClose,
-  fillRoundResult
+  fillRoundResult,
+  startNewRound
 } = require('../services/bidding/auctionRoundService');
+const { resolvePropertyTimezone } = require('../utils/resolveTimezone');
+const { DateTime } = require('luxon');
 
 let activeAuctions;
 let userAuctions;
@@ -126,33 +129,34 @@ function scheduleLastHourReminder(auctionId, endTime) {
 // auctionCloseJob. The atomic claim on the round guarantees the seller report
 // goes out only once per round, and an auction whose end time hasn't passed is
 // never closed. Returns the final results, or null if there was nothing to close.
-// An auction that ends with no bids is not closed: it runs 10 more days.
-// One with a winning bid becomes "pending" — only an admin marks it "sold".
-const NO_BID_EXTENSION_DAYS = 10;
+// An auction that ends with no bids starts again as a new round 10 days later,
+// same times of day. One with a winning bid becomes "pending" — only an admin marks it "sold".
+const NO_BID_RERUN_DAYS = 10;
 
-// Push the end date out by NO_BID_EXTENSION_DAYS. The update only applies while
-// the end date is unchanged and there is still no bidder, so a browser and the
-// close job finishing at the same moment extend it once, and a last-second bid
-// is never lost.
-async function extendAuctionWithNoBids(auction) {
+// Close the bid-less round (no seller report) and open the next one with the
+// same terms, start and end moved NO_BID_RERUN_DAYS later on the property's
+// local calendar, so 11:00–15:15 stays 11:00–15:15 across daylight-saving
+// changes. The atomic claim on the round means a browser and the close job
+// finishing at the same moment start only one new round.
+async function rerunAuctionWithNoBids(auction) {
   const auctionId = String(auction._id);
-  const newEnd = new Date(new Date(auction.auctionEndDate).getTime() + NO_BID_EXTENSION_DAYS * 24 * 60 * 60 * 1000);
-  const updated = await Product.findOneAndUpdate(
-    { _id: auction._id, auctionEndDate: auction.auctionEndDate, currentBidder: null },
-    { $set: { auctionEndDate: newEnd } },
-    { new: true }
-  );
-  if (!updated) return;
+  const current = await ensureCurrentRound(auction);
+  const claimed = await claimRoundClose(current._id);
+  if (!claimed) return;
+  await fillRoundResult(claimed, auction, { highestBid: null, winnerId: null });
 
-  console.log(`⏩ No bids on auction ${auctionId} — end date moved to ${newEnd.toISOString()}`);
-  syncAuctionEndTime(auctionId, updated.auctionEndDate);
-  if (io) {
-    io.to(auctionId).emit('auction-dates-updated', {
-      auctionStartDate: updated.auctionStartDate,
-      auctionEndDate: updated.auctionEndDate,
-      endTime: updated.auctionEndDate
-    });
-  }
+  const zone = resolvePropertyTimezone(auction);
+  const later = (d) => DateTime.fromJSDate(new Date(d), { zone }).plus({ days: NO_BID_RERUN_DAYS }).toJSDate();
+  const { product, round } = await startNewRound(auction._id, {
+    auctionStartDate: later(auction.auctionStartDate || auction.auctionEndDate),
+    auctionEndDate: later(auction.auctionEndDate),
+    startBid: auction.startBid,
+    reservePrice: auction.reservePrice ?? null,
+    minIncrement: auction.minIncrement ?? null
+  });
+
+  console.log(`⏩ No bids on auction ${auctionId} — round ${round.roundNumber} runs ${round.auctionStartDate.toISOString()} → ${round.auctionEndDate.toISOString()}`);
+  resetAuctionRoom(auctionId, { auctionStartDate: product.auctionStartDate, auctionEndDate: product.auctionEndDate });
 }
 
 async function finalizeAuction(auctionId) {
@@ -162,7 +166,7 @@ async function finalizeAuction(auctionId) {
   }
 
   if (!auction.currentBidder) {
-    await extendAuctionWithNoBids(auction);
+    await rerunAuctionWithNoBids(auction);
     return null;
   }
 
