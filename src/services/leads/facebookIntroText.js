@@ -37,8 +37,12 @@ function firstNameOf(lead) {
   return capitalise(first);
 }
 
+// "Under $150K" would read "homes up to Under $150K", so renderIntro says "homes under $150K" for it.
+const UNDER_LABEL = /^under\s+\S/i;
+
 /** True when "homes up to <label>" reads wrong (ranges, "Under X", "X+", "not sure"...). */
 function upToReadsWrong(label) {
+  if (UNDER_LABEL.test(label)) return false; // renderIntro turns "Under $150K" into "homes under $150K"
   return /[–—-]|\bto\b|under|below|less|up to|over|more|plus|\+|above|sure|any/i.test(label);
 }
 
@@ -48,7 +52,10 @@ function renderIntro(lead) {
   if (!first) return { skip: "no usable first name" };
   const price = priceRangeOf(lead);
   if (!price) return { skip: "no price-range answer" };
-  const text = TEMPLATE.replace("{First_name}", () => first).replace("{price_range}", () => price);
+  const under = UNDER_LABEL.test(price);
+  const template = under ? TEMPLATE.replace("homes up to {price_range}", "homes {price_range}") : TEMPLATE;
+  const shown = under ? price.replace(/^under/i, "under") : price;
+  const text = template.replace("{First_name}", () => first).replace("{price_range}", () => shown);
   if (/[{}]/.test(text)) return { skip: "unresolved placeholder in text" };
   return { text, first, price };
 }

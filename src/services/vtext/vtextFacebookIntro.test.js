@@ -33,6 +33,15 @@ test("renders the shared wording", () => {
   assert.equal(renderIntro(lead({ answers: [] })).skip, "no price-range answer");
 });
 
+test('an "Under $150K" label reads "homes under $150K", not "homes up to Under $150K"', () => {
+  const under = (label) => lead({ answers: [{ key: "price_range", question: "Price?", value: "p0", label }] });
+  assert.equal(renderIntro(under("Under $150K")).text, "Hi John, this is Maya from Vihara. Got it: homes under $150K. I’ll text you bank-owned deals that fit first. Reply STOP to opt out.");
+  assert.equal(renderIntro(under("under $200K")).text.includes("homes under $200K."), true);
+  assert.equal(renderIntro(under("$150K–$300K")).text.includes("homes up to $150K–$300K."), true); // other labels unchanged
+  assert.equal(script.upToReadsWrong("Under $150K"), false);
+  assert.equal(script.upToReadsWrong("$500K+"), true);
+});
+
 test("the script still exports the shared helpers", () => {
   for (const k of ["run", "renderIntro", "firstNameOf", "planLeads", "capitalise", "keyFor", "TEMPLATE"]) assert.ok(script[k], k);
 });
