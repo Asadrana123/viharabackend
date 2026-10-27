@@ -11,7 +11,7 @@
 // this same queue/worker — this file grows, it doesn't get replaced.
 const { Worker } = require("bullmq");
 const { bullmqConnection } = require("../queue/connection");
-const { QUEUE_NAMES, QUEUE_PREFIX, getMaintenanceQueue, getRouteQueue } = require("../queue/queues");
+const { QUEUE_NAMES, QUEUE_PREFIX, getMaintenanceQueue, getRouteQueue, getLineQueue } = require("../queue/queues");
 const { getRedisClient } = require("../queue/connection");
 const VtextMessage = require("../../../model/vtext/vtextMessageModel");
 const VtextContact = require("../../../model/vtext/vtextContactModel");
@@ -22,7 +22,8 @@ const { getAdapter, listAdapters } = require("../channels/registry");
 const { evaluateAndMaybeQuarantine, statusBeforeOffline } = require("../vtextLineHealthService");
 const { runFollowUpSweep } = require("../vtextFollowUpService");
 const { sendAlertWithCooldown, getAlertWatermark, setAlertWatermark, isAlertingConfigured } = require("../vtextAlertService");
-const { dayKey } = require("../vtextCapacityService");
+const capacity = require("../vtextCapacityService");
+const { dayKey } = capacity;
 const { notifyVtextAlert } = require("../../shared/slackService");
 const { publishEvent } = require("../vtextEventsBus");
 
@@ -86,6 +87,82 @@ async function runUnconfirmedSendSweep() {
   return marked;
 }
 
+// "assigned" = routed to a line, waiting for that line's send job. A route job does nothing for it (routeWorker
+// only takes queued / waiting-*), so a message whose send job was lost (a Redis flush or outage) used to sit here
+// for good while every sweep logged "re-enqueued". Now:
+//  - the line is routable and a send job is still waiting / delayed / active -> leave it (it is just slow);
+//  - the line is routable and no send job exists -> add a fresh one (a unique job id: BullMQ ignores a repeated id);
+//  - the message has waited longer than STALE_ASSIGNED_HOURS -> mark it "unknown" (visible in Vtext -> Failed,
+//    counted in the failed-sends digest, can be retried by hand) instead of sending an old text on its own;
+//  - the line is not routable (offline, paused...) -> leave it: its jobs wait there until the line is back.
+const STALE_ASSIGNED_HOURS = () => Number(process.env.VTEXT_STALE_ASSIGNED_HOURS || 12);
+const STUCK_ASSIGNED_CODE = "stuck-assigned";
+
+async function recoverAssignedMessages(messages, deps = {}) {
+  const lineQueueFor = deps.getLineQueue || getLineQueue;
+  const routeQueueFor = deps.getRouteQueue || getRouteQueue;
+  const findLine = deps.findLine || ((id) => VtextLine.findById(id).lean());
+  const releaseCapacity = deps.release || capacity.release;
+  const now = deps.now ? deps.now() : Date.now();
+  const out = { resent: 0, expired: 0, waiting: 0, rerouted: 0 };
+
+  const byLine = new Map();
+  for (const m of messages) {
+    if (!m.lineId) {
+      // no line recorded: put it back in line for routing
+      const r = await VtextMessage.updateOne({ _id: m._id, status: "assigned" }, { $set: { status: "queued" } });
+      if (r.modifiedCount) {
+        await routeQueueFor().add("route", { messageId: String(m._id) }, { jobId: `route-${m._id}-sweep-${now}` });
+        out.rerouted += 1;
+      }
+      continue;
+    }
+    const key = String(m.lineId);
+    if (!byLine.has(key)) byLine.set(key, []);
+    byLine.get(key).push(m);
+  }
+
+  for (const [lineId, list] of byLine) {
+    const line = await findLine(lineId);
+    if (!line || !VtextLine.ROUTABLE_STATUSES.includes(line.status)) {
+      out.waiting += list.length;
+      continue;
+    }
+    const queue = lineQueueFor(lineId);
+    const live = new Set((await queue.getJobs(["waiting", "delayed", "active"])).map((j) => String(j?.data?.messageId)));
+
+    for (const m of list) {
+      if (live.has(String(m._id))) { out.waiting += 1; continue; }
+      const assignedAt = m.assignedAt || m.updatedAt || new Date(now);
+      const reservationDay = dayKey(assignedAt);
+
+      if (now - new Date(assignedAt).getTime() > STALE_ASSIGNED_HOURS() * 3_600_000) {
+        const r = await VtextMessage.updateOne(
+          { _id: m._id, status: "assigned" },
+          {
+            $set: {
+              status: "unknown",
+              failedAt: new Date(now),
+              error: { kind: "transient", code: STUCK_ASSIGNED_CODE, message: `Never sent: its send job was lost, and it waited over ${STALE_ASSIGNED_HOURS()} hours` },
+            },
+            $push: { statusHistory: { status: "unknown", at: new Date(now), detail: "stuck assigned, send job missing" } },
+          }
+        );
+        if (r.modifiedCount) {
+          await releaseCapacity(line, reservationDay, { wasReply: m.isReplyToInbound });
+          publishEvent({ type: "message.updated", messageId: String(m._id), conversationId: m.conversationId ? String(m.conversationId) : null, status: "unknown" });
+          out.expired += 1;
+        }
+        continue;
+      }
+
+      await queue.add("send", { messageId: String(m._id), reservationDay }, { jobId: `send-${m._id}-sweep-${now}` });
+      out.resent += 1;
+    }
+  }
+  return out;
+}
+
 async function runStuckMessageSweep() {
   const sendingCutoff = new Date(Date.now() - STUCK_SENDING_MIN * 60_000);
   const sendingResult = await VtextMessage.updateMany(
@@ -102,11 +179,20 @@ async function runStuckMessageSweep() {
     updatedAt: { $lt: queuedCutoff },
   });
   const routeQueue = getRouteQueue();
-  for (const message of stuckQueued) {
+  const toRoute = stuckQueued.filter((m) => m.status !== "assigned");
+  for (const message of toRoute) {
     await routeQueue.add("route", { messageId: String(message._id) }, { jobId: `route-${message._id}-sweep-${Date.now()}` });
   }
-  if (stuckQueued.length > 0) {
-    console.warn(`[vtext stuck-sweep] re-enqueued ${stuckQueued.length} message(s) stuck pre-send > ${STUCK_QUEUED_MIN}min`);
+  if (toRoute.length > 0) {
+    console.warn(`[vtext stuck-sweep] re-enqueued ${toRoute.length} message(s) stuck pre-send > ${STUCK_QUEUED_MIN}min`);
+  }
+
+  const assigned = stuckQueued.filter((m) => m.status === "assigned");
+  if (assigned.length > 0) {
+    const r = await recoverAssignedMessages(assigned);
+    if (r.resent || r.expired || r.rerouted) {
+      console.warn(`[vtext stuck-sweep] assigned message(s) with no send job: ${r.resent} re-sent, ${r.expired} marked "unknown" (too old), ${r.rerouted} put back for routing`);
+    }
   }
 
   await runUnconfirmedSendSweep();
@@ -299,7 +385,7 @@ async function runFailedSendDigest() {
     direction: "out",
     // "unknown" with no-receipt is a text BlueBubbles accepted that never got out (see runUnconfirmedSendSweep)
     $and: [
-      { $or: [{ status: "failed" }, { status: "unknown", "error.code": NO_RECEIPT_CODE }] },
+      { $or: [{ status: "failed" }, { status: "unknown", "error.code": { $in: [NO_RECEIPT_CODE, STUCK_ASSIGNED_CODE] } }] },
       // every path that fails a message sets failedAt; updatedAt covers a path that ever forgets
       { $or: [{ failedAt: window }, { failedAt: { $exists: false }, updatedAt: window }] },
     ],
@@ -312,7 +398,7 @@ async function runFailedSendDigest() {
     return;
   }
 
-  const kindOf = (m) => (m.error?.code === NO_RECEIPT_CODE ? "no delivery confirmation" : m.error?.kind || "unknown");
+  const kindOf = (m) => (m.error?.code === NO_RECEIPT_CODE ? "no delivery confirmation" : m.error?.code === STUCK_ASSIGNED_CODE ? "never sent (send job lost)" : m.error?.kind || "unknown");
   const expected = failed.filter((m) => kindOf(m) === "recipient").length;
   const attention = failed.length - expected;
   const breakdown = {};
@@ -500,6 +586,7 @@ module.exports = {
   runBacklogAlert,
   runFailedSendDigest,
   runUnconfirmedSendSweep,
+  recoverAssignedMessages,
   ensureMaintenanceSchedulers,
   startMaintenanceWorker,
   stopMaintenanceWorker,
