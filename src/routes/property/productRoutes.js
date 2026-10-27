@@ -2,6 +2,7 @@ const express = require("express");
 const {
     createProduct,
     getAllProducts,
+    aiSearchProducts,
     getProductById,
     getProductBySlug,
     getDefaultTerms,
@@ -15,11 +16,19 @@ const {
 } =require("../../controller/property/productController");
 const { deleteProduct } = require("../../controller/property/productDeleteController");
 const { isAuthenticated, authorizeRoles, optionalAuth } = require("../../middleware/auth");
+const formRateLimit = require("../../middleware/formRateLimit");
 const router = express.Router();
 
 router.post('/create', isAuthenticated, authorizeRoles("admin"), createProduct);
 router.post('/bulk', isAuthenticated, authorizeRoles("admin"), createProductsBulk);
 router.get('/get', optionalAuth, getAllProducts);
+
+// Public home page "Ask AI" search. Each search is a Claude call, so it's rate limited per visitor.
+router.post(
+    '/ai-search',
+    formRateLimit({ name: "ai-search", max: 10, windowMs: 60 * 1000, message: "Too many searches in a row. Please wait a minute and try again." }),
+    aiSearchProducts
+);
 
 // Admin listing management
 router.get('/admin/all', isAuthenticated, authorizeRoles("admin"), getAllProductsAdmin);

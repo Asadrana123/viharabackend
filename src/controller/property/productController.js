@@ -9,6 +9,7 @@ const {
     legalSections,
     getPropertyDisclaimers
 } = require("../../config/property/termsAndConditions");
+const { aiSearch, AiSearchError } = require("../../services/aiSearch/aiSearchService");
 
 // Admin — bulk-create from uploaded JSON. Each file may be one object or an array;
 // the frontend flattens them into a single array before sending.
@@ -115,6 +116,19 @@ exports.getAllProducts = catchAsyncError(async (req, res) => {
 
     const allProducts = [...publicProducts, ...testProducts];
     return res.json({ success: true, count: allProducts.length, allProducts });
+});
+
+// Public — home page "Ask AI": a free-text search answered by Claude from the
+// public listings. Returns the matches in ranked order, each with `aiReason`.
+exports.aiSearchProducts = catchAsyncError(async (req, res, next) => {
+    try {
+        const { summary, suggestion, results } = await aiSearch(req.body?.query, LISTING_PROJECTION);
+        return res.json({ success: true, summary, suggestion, count: results.length, results });
+    } catch (err) {
+        if (err instanceof AiSearchError) return next(new Errorhandler(err.message, err.status));
+        console.error("AI search failed:", err);
+        return next(new Errorhandler("AI search couldn't finish. Please try again.", 502));
+    }
 });
 
 // Public — resolve a property by its slug (used by detail + landing pages).

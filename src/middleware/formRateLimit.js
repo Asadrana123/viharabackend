@@ -14,17 +14,24 @@ const clientIp = (req) =>
  * @param {object} [opts]
  * @param {number} [opts.max=5]           submissions allowed per window
  * @param {number} [opts.windowMs=600000] window length (default 10 minutes)
+ * @param {string} [opts.name]            separate bucket per name (unnamed limiters share one)
+ * @param {string} [opts.message]         the 429 message
  */
-const formRateLimit = ({ max = 5, windowMs = 10 * 60 * 1000 } = {}) => (req, res, next) => {
+const formRateLimit = ({
+  max = 5,
+  windowMs = 10 * 60 * 1000,
+  name = "",
+  message = "Too many submissions. Please wait a few minutes and try again.",
+} = {}) => (req, res, next) => {
   const now = Date.now();
-  const ip = clientIp(req);
+  const ip = name ? `${name}:${clientIp(req)}` : clientIp(req);
   const recent = (buckets.get(ip) || []).filter((t) => now - t < windowMs);
 
   if (recent.length >= max) {
     buckets.set(ip, recent);
     return res.status(429).json({
       success: false,
-      message: "Too many submissions. Please wait a few minutes and try again.",
+      message,
     });
   }
 
