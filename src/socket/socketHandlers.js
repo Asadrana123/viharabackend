@@ -126,10 +126,44 @@ function scheduleLastHourReminder(auctionId, endTime) {
 // auctionCloseJob. The atomic claim on the round guarantees the seller report
 // goes out only once per round, and an auction whose end time hasn't passed is
 // never closed. Returns the final results, or null if there was nothing to close.
+// An auction that ends with no bids is not closed: it runs 10 more days.
+// One with a winning bid becomes "pending" — only an admin marks it "sold".
+const NO_BID_EXTENSION_DAYS = 10;
+
+// Push the end date out by NO_BID_EXTENSION_DAYS. The update only applies while
+// the end date is unchanged and there is still no bidder, so a browser and the
+// close job finishing at the same moment extend it once, and a last-second bid
+// is never lost.
+async function extendAuctionWithNoBids(auction) {
+  const auctionId = String(auction._id);
+  const newEnd = new Date(new Date(auction.auctionEndDate).getTime() + NO_BID_EXTENSION_DAYS * 24 * 60 * 60 * 1000);
+  const updated = await Product.findOneAndUpdate(
+    { _id: auction._id, auctionEndDate: auction.auctionEndDate, currentBidder: null },
+    { $set: { auctionEndDate: newEnd } },
+    { new: true }
+  );
+  if (!updated) return;
+
+  console.log(`⏩ No bids on auction ${auctionId} — end date moved to ${newEnd.toISOString()}`);
+  syncAuctionEndTime(auctionId, updated.auctionEndDate);
+  if (io) {
+    io.to(auctionId).emit('auction-dates-updated', {
+      auctionStartDate: updated.auctionStartDate,
+      auctionEndDate: updated.auctionEndDate,
+      endTime: updated.auctionEndDate
+    });
+  }
+}
+
 async function finalizeAuction(auctionId) {
   const auction = await Product.findById(auctionId);
   if (!auction || !auction.auctionEndDate || new Date(auction.auctionEndDate) > new Date()) {
     return null; // not found or not ended yet
+  }
+
+  if (!auction.currentBidder) {
+    await extendAuctionWithNoBids(auction);
+    return null;
   }
 
   const currentRound = await ensureCurrentRound(auction);
@@ -166,7 +200,7 @@ async function finalizeAuction(auctionId) {
     await Product.findByIdAndUpdate(auctionId, {
       currentBid: winningBidAmount,
       currentBidder: winnerId,
-      status: "sold"
+      status: "pending"
     });
 
     // Email the full closed-auction report (one PDF with the Terms &

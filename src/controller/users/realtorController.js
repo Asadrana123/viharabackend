@@ -519,6 +519,8 @@ function computeSaleStatus(product) {
     case "cancelled":
       return { label: "Cancelled", stage: -1 };
     case "pending":
+      // An auction that ended with a winning bid is "pending" until an admin marks it sold.
+      if (end && now > end) return { label: "Auction Closed", stage: 3 };
       return { label: "Coming Soon", stage: 0 };
     case "active":
     default:
