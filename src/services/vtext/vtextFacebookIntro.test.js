@@ -17,6 +17,7 @@ const deps = (over = {}) => ({
   enqueueOutbound: async (a) => { calls.push(a); return { message: { _id: "m1" } }; },
   lookupsFor: async () => empty(),
   notify: async (a) => { alerts.push(a); },
+  consentRequired: async () => true,
   ...over,
 });
 beforeEach(() => {
@@ -95,4 +96,25 @@ test("Slack alert only for leads somebody should look at", async () => {
 
 test("a failing Slack alert never breaks the send path", async () => {
   await maybeSendFacebookIntroText({ doc: lead({ answers: [] }), isNew: true }, deps({ notify: async () => { throw new Error("slack down"); } }));
+});
+
+test("the consent switch decides: ON needs the form's consent, OFF texts every new lead", async () => {
+  const override = lead({ consent: true, consentSource: "admin-override" });
+  const noConsent = lead({ consent: false, consentSource: "" });
+  const run = (doc, consentRequired) => maybeSendFacebookIntroText({ doc, isNew: true }, deps({ consentRequired: async () => consentRequired }));
+  await run(override, true);   // switch ON: the form gave no consent (admin override only covers calls) -> skip
+  await run(noConsent, true);  // switch ON -> skip
+  assert.equal(calls.length, 0);
+  await run(lead(), true);     // switch ON, form-disclaimer consent -> send
+  await run(override, false);  // switch OFF -> send
+  await run(noConsent, false); // switch OFF -> send
+  assert.equal(calls.length, 3);
+});
+
+test("with the switch OFF the other skip rules still apply", async () => {
+  const run = (over) => maybeSendFacebookIntroText({ doc: lead({ consent: false, consentSource: "", ...over }), isNew: true }, deps({ consentRequired: async () => false }));
+  await run({ answers: [] });
+  await run({ callingStopped: true });
+  await run({ phoneNormalized: "", phone: "" });
+  assert.equal(calls.length, 0);
 });
