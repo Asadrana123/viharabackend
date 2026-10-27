@@ -8,6 +8,7 @@ const {
   getAuctionBids,
   updateAuctionDates,
   updateAuctionStatus,
+  setAuctionArchived,
   updateAuctionStartBid,
   updateAuctionReservePrice,
   startNewAuction,
@@ -143,6 +144,10 @@ router.put('/auction/:auctionId/status',
   isAuthenticated,
   authorizeRoles("admin"),
   updateAuctionStatus);
+router.put('/auction/:auctionId/archive',
+  isAuthenticated,
+  authorizeRoles("admin"),
+  setAuctionArchived);
 router.put(
   "/auction/:auctionId/start-bid",
   isAuthenticated,

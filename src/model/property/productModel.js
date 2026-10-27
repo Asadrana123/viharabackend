@@ -180,6 +180,16 @@ const productSchema = new mongoose.Schema({
         enum: ['active', 'sold', 'cancelled', 'pending'],
         default: 'active'
     },
+    // Archived by an admin: the property, its leads and its auction
+    // registrations leave the admin tabs' main lists and show only under "Archived".
+    archived: {
+        type: Boolean,
+        default: false
+    },
+    archivedAt: {
+        type: Date,
+        default: null
+    },
     featured: {
         type: Boolean,
         default: false

@@ -378,10 +378,12 @@ exports.getRegistrationStatus = catchAsyncError(
 
 // Admin: Get all registration requests (with pagination)
 //   ?auctionId=  → one property's registrations
+//   ?archived=1  → without auctionId: archived properties' registrations
+//                  (otherwise those are left out)
 //   ?limit=all   → every match in one response (the admin view scrolls)
 exports.getAllRegistrations = catchAsyncError(
   async (req, res, next) => {
-    const { status, auctionId, page = 1, limit = 10 } = req.query;
+    const { status, auctionId, archived, page = 1, limit = 10 } = req.query;
 
     const query = {};
     if (status) {
@@ -392,6 +394,9 @@ exports.getAllRegistrations = catchAsyncError(
         return next(new Errorhandler("Invalid auctionId", 400));
       }
       query.auctionId = auctionId;
+    } else {
+      const archivedIds = await Product.distinct("_id", { archived: true });
+      query.auctionId = archived === "1" ? { $in: archivedIds } : { $nin: archivedIds };
     }
 
     const all = limit === "all";
@@ -424,6 +429,7 @@ exports.getAllRegistrations = catchAsyncError(
 
 // Admin: every property that has registrations, with per-status counts.
 // Properties with pending requests first, then by latest registration.
+// Archived properties come back flagged (property.archived) and are left out of `totals`.
 exports.getRegistrationProperties = catchAsyncError(
   async (req, res) => {
     const rows = await AuctionRegistration.aggregate([
@@ -441,14 +447,15 @@ exports.getRegistrationProperties = catchAsyncError(
     ]);
 
     const products = await Product.find({ _id: { $in: rows.map((r) => r._id) } })
-      .select("productName street city state image status auctionStartDate auctionEndDate")
+      .select("productName street city state image status archived auctionStartDate auctionEndDate")
       .lean();
     const productById = new Map(products.map((p) => [String(p._id), p]));
 
     const totals = { total: 0, pending: 0, approved: 0, rejected: 0 };
     const properties = rows.map(({ _id, ...counts }) => {
-      Object.keys(totals).forEach((k) => { totals[k] += counts[k] || 0; });
-      return { auctionId: _id, property: productById.get(String(_id)) || null, ...counts };
+      const property = productById.get(String(_id)) || null;
+      if (!property?.archived) Object.keys(totals).forEach((k) => { totals[k] += counts[k] || 0; });
+      return { auctionId: _id, property, ...counts };
     });
 
     res.status(200).json({ success: true, properties, totals });

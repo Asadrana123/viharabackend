@@ -13,6 +13,7 @@ const { resolvePropertyTimezone, wallClockToUtc, utcToWallClock } = require('../
 const { syncAuctionEndTime, syncAuctionStartBid, resetAuctionRoom } = require('../../socket/socketHandlers');
 const AuctionRound = require("../../model/bidding/auctionRoundModel");
 const { roundFilter, startNewRound } = require('../../services/bidding/auctionRoundService');
+const { resetSnapshot: resetBuyerMatchSnapshot } = require('../../services/buyerMatch/buyerMatchService');
 
 // Dates and the starting bid belong to the current auction round. Once that
 // round has closed they're history: the admin starts a new auction instead.
@@ -345,6 +346,40 @@ exports.startNewAuction = catchAsyncError(
 );
 
 
+// Archive / unarchive a property (admin only). Body: { archived: boolean }.
+// Nothing is deleted: the property, its leads and its registrations just move
+// out of the admin tabs' main lists into their "Archived" sections.
+exports.setAuctionArchived = catchAsyncError(
+  async (req, res, next) => {
+    const { auctionId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(auctionId)) {
+      return next(new Errorhandler("Invalid auction ID", 400));
+    }
+    if (typeof req.body.archived !== 'boolean') {
+      return next(new Errorhandler("archived must be true or false", 400));
+    }
+
+    const archived = req.body.archived;
+    const updatedAuction = await Product.findByIdAndUpdate(
+      auctionId,
+      { archived, archivedAt: archived ? new Date() : null },
+      { new: true }
+    ).select('archived archivedAt');
+    if (!updatedAuction) {
+      return next(new Errorhandler("Auction not found", 404));
+    }
+
+    // Buyer Match caches its property / lead lists; rebuild on the next request.
+    resetBuyerMatchSnapshot();
+
+    res.status(200).json({
+      success: true,
+      message: archived ? "Property archived" : "Property restored",
+      auction: updatedAuction
+    });
+  }
+);
+
 exports.updateAuctionStatus = catchAsyncError(
   async (req, res, next) => {
     const { auctionId } = req.params;
@@ -507,7 +542,7 @@ exports.updateAuctionReservePrice = catchAsyncError(
 exports.getAuctionsWithSellers = catchAsyncError(
   async (req, res) => {
     const auctions = await Product.find()
-      .select('productName street city state status sellerIds bankId createdAt')
+      .select('productName street city state status archived sellerIds bankId createdAt')
       .populate('sellerIds', 'name email')
       .populate('bankId', 'name')
       .sort({ createdAt: -1 })

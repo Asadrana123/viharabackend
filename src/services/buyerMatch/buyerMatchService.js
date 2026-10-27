@@ -108,6 +108,11 @@ async function getSnapshot({ refresh = false } = {}) {
   return building;
 }
 
+// Drop the cached snapshot (e.g. a property was archived) so the next request rebuilds it.
+function resetSnapshot() {
+  snapshot = null;
+}
+
 // ─── Filters ───────────────────────────────────────────────────────────────
 
 /**
@@ -487,5 +492,6 @@ module.exports = {
   matchesForSheet,
   leadActivity,
   getMatchContext,
+  resetSnapshot,
   SOURCE_OPTIONS,
 };

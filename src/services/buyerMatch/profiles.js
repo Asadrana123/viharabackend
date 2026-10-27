@@ -136,11 +136,12 @@ function toPropertyProfile(p) {
   };
 }
 
-/** Only properties a lead could still buy: active/pending and auction not over. */
+/** Only properties a lead could still buy: active/pending, not archived, and auction not over. */
 async function loadPropertyProfiles() {
   const now = new Date();
   const docs = await Product.find({
     status: { $in: ["active", "pending"] },
+    archived: { $ne: true },
     $or: [{ auctionEndDate: null }, { auctionEndDate: { $exists: false } }, { auctionEndDate: { $gte: now } }],
   })
     .select(
@@ -341,8 +342,9 @@ function buildLead(source, l, ctx) {
  */
 async function loadLeadProfiles() {
   const allProducts = await Product.find({ slug: { $ne: null } })
-    .select("slug city state county")
+    .select("slug city state county archived")
     .lean();
+  const archivedSlugs = new Set(allProducts.filter((p) => p.archived).map((p) => p.slug));
   const bySlug = new Map(
     allProducts.map((p) => [p.slug, { slug: p.slug, cityKey: normCity(p.city), state: toStateAbbr(p.state) }])
   );
@@ -365,7 +367,8 @@ async function loadLeadProfiles() {
         .map((l) => buildLead(source, l, ctx));
     })
   );
-  return perSource.flat();
+  // A lead who signed up only on archived properties' pages is archived with them.
+  return perSource.flat().filter((l) => !l.registeredSlugs.length || !l.registeredSlugs.every((s) => archivedSlugs.has(s)));
 }
 
 module.exports = {
