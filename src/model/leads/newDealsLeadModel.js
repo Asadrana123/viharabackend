@@ -45,6 +45,27 @@ const buyBoxSchema = new mongoose.Schema(
   { _id: false }
 );
 
+// "Request a property" (the website's /request) — what they asked us to look
+// for. Values: services/leads/propertyRequest.js. The latest request wins; a
+// sign-up without one leaves it as it was.
+const requestSchema = new mongoose.Schema(
+  {
+    types: { type: [String], default: [] },               // single_family | multi_family | condo; empty = any type
+    bedsMin: { type: Number, default: null },             // 1–6; null = any
+    condition: { type: String, default: "", trim: true }, // move_in | light_work | full_renovation | any
+    where: { type: String, default: "", trim: true },     // cities, counties or ZIPs (≤120)
+    notes: { type: String, default: "", trim: true },     // anything else (≤600)
+    purpose: { type: String, default: "", trim: true },   // live_in | rental | fix_flip
+    timeline: { type: String, default: "", trim: true },  // 30d | 90d | 180d
+    requestedAt: { type: Date, default: null },
+    // Request email (Brevo template 270), once per request.
+    emailSentAt: { type: Date, default: null },
+    emailMessageId: { type: String, default: "" },
+    emailError: { type: String, default: "" },
+  },
+  { _id: false }
+);
+
 const newDealsLeadSchema = new mongoose.Schema(
   {
     // The form asks for a full name; first/last are split from it (Brevo
@@ -58,6 +79,7 @@ const newDealsLeadSchema = new mongoose.Schema(
 
     buyBox: { type: buyBoxSchema, default: () => ({}) },
     tier: { type: String, enum: ["A", "B", "C"], default: "C" },
+    request: { type: requestSchema, default: null },
 
     // Spotlight deal they tapped ("bal-01" …) — see NEW_DEALS in landing.config.
     dealInterest: { type: String, default: "", trim: true },
@@ -119,5 +141,6 @@ newDealsLeadSchema.index({ email: 1 }, { unique: true });
 newDealsLeadSchema.index({ phoneNormalized: 1 });
 newDealsLeadSchema.index({ createdAt: -1 });
 newDealsLeadSchema.index({ callStatus: 1, nextCallAt: 1 });
+newDealsLeadSchema.index({ "request.requestedAt": -1 }, { sparse: true });
 
 module.exports = mongoose.model("newDealsLeadModel", newDealsLeadSchema);

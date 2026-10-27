@@ -7,11 +7,23 @@
 // daily until pickup; asking for an advisor transfers the call live.
 // After the Brevo contact is saved, the welcome email (template 189) goes out
 // once per person — see "New Deals page: welcome email (dev doc)".
+// "Request a property" (the website's /request) signs up here too, with
+// body.request: it's saved on the lead, fills the buy box's type/condition, and
+// the request email (template 270, PROPERTY_WANTED) goes out instead of the welcome.
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const ErrorHandler = require("../../utils/errorhandler");
 const NewDealsLead = require("../../model/leads/newDealsLeadModel");
 const { normalisePhone } = require("../../services/calling/vapiCallsService");
-const { syncNewDealsLead, sendNewDealsWelcomeEmail } = require("../../services/integrations/brevoService");
+const { syncNewDealsLead, sendNewDealsWelcomeEmail, sendPropertyRequestEmail } = require("../../services/integrations/brevoService");
+const {
+  requestFrom,
+  sameRequest,
+  requestWords,
+  applyRequestToBuyBox,
+  reportRow,
+  demandCounts,
+  reportCsv,
+} = require("../../services/leads/propertyRequest");
 const { sendEvent } = require("../../services/integrations/metaCapiService");
 const { notifyNewLead } = require("../../services/shared/slackService");
 const { getEmailEventsForEmails } = require("../../services/integrations/emailEventsService");
@@ -95,24 +107,10 @@ async function sendWelcomeOnce(lead) {
   ).lean();
   if (!claimed) return; // already sent (or being sent) for this person
 
-  const box = claimed.buyBox || {};
-  const deal = dealParts(claimed.dealInterest);
   const result = await sendNewDealsWelcomeEmail({
     email: claimed.email,
     name: claimed.fullName || claimed.firstName,
-    params: {
-      FIRSTNAME: claimed.firstName,
-      STRATEGY: labelList("strategy", box.strategy),
-      MARKETS: marketsText(box),
-      PRICE_RANGE: priceRangeText(box),
-      CONDITION: labelList("condition", box.condition),
-      FINANCING: labelList("financing", box.financing),
-      DOWN_PAYMENT: DOWN_PAYMENT_LABELS[box.down_payment] || "",
-      CONTACT_PREF: contactPrefsText(claimed),
-      ADVISOR_CALL: claimed.advisorCallRequested === true,
-      DEAL_MARKET: deal ? deal.market : "",
-      DEAL_PRICE: deal ? deal.price : "",
-    },
+    params: welcomeParams(claimed),
   });
 
   await NewDealsLead.updateOne(
@@ -120,6 +118,51 @@ async function sendWelcomeOnce(lead) {
     result.success
       ? { $set: { welcomeEmailMessageId: result.messageId || "", welcomeEmailError: "" } }
       : { $set: { welcomeEmailSentAt: null, welcomeEmailError: result.error || "send failed" } }
+  );
+}
+
+// The welcome email's params (template 189); the request email (270) reuses them.
+function welcomeParams(lead) {
+  const box = lead.buyBox || {};
+  const deal = dealParts(lead.dealInterest);
+  return {
+    FIRSTNAME: lead.firstName,
+    STRATEGY: labelList("strategy", box.strategy),
+    MARKETS: marketsText(box),
+    PRICE_RANGE: priceRangeText(box),
+    CONDITION: labelList("condition", box.condition),
+    FINANCING: labelList("financing", box.financing),
+    DOWN_PAYMENT: DOWN_PAYMENT_LABELS[box.down_payment] || "",
+    CONTACT_PREF: contactPrefsText(lead),
+    ADVISOR_CALL: lead.advisorCallRequested === true,
+    DEAL_MARKET: deal ? deal.market : "",
+    DEAL_PRICE: deal ? deal.price : "",
+  };
+}
+
+/**
+ * Request email (template 270) — once per request, claimed the same way as the
+ * welcome email (request.emailSentAt null → now; released if Brevo fails).
+ */
+async function sendRequestEmailOnce(lead) {
+  const claimed = await NewDealsLead.findOneAndUpdate(
+    { _id: lead._id, "request.requestedAt": { $ne: null }, "request.emailSentAt": null },
+    { $set: { "request.emailSentAt": new Date() } },
+    { new: true }
+  ).lean();
+  if (!claimed) return;
+
+  const result = await sendPropertyRequestEmail({
+    email: claimed.email,
+    name: claimed.fullName || claimed.firstName,
+    params: { ...welcomeParams(claimed), PROPERTY_WANTED: requestWords(claimed.request, (claimed.buyBox?.states || [])[0]) },
+  });
+
+  await NewDealsLead.updateOne(
+    { _id: claimed._id },
+    result.success
+      ? { $set: { "request.emailMessageId": result.messageId || "", "request.emailError": "" } }
+      : { $set: { "request.emailSentAt": null, "request.emailError": result.error || "send failed" } }
   );
 }
 
@@ -166,7 +209,8 @@ const registerNewDealsLead = catchAsyncError(async (req, res, next) => {
   if (!eventId) return next(new ErrorHandler("event_id is required", 400));
 
   const now = new Date();
-  const buyBox = buildBuyBox(body.buy_box, PROPERTY_TYPES);
+  const request = requestFrom(body.request);
+  const buyBox = applyRequestToBuyBox(buildBuyBox(body.buy_box, PROPERTY_TYPES), request);
   const rawDown = body.buy_box && body.buy_box.down_payment;
   buyBox.down_payment = buyBox.financing !== "cash" && DOWN_PAYMENTS.includes(rawDown) ? rawDown : "";
   const advisorCallRequested = body.advisor_call_requested === true;
@@ -208,12 +252,16 @@ const registerNewDealsLead = catchAsyncError(async (req, res, next) => {
     submittedAt: Number.isNaN(submittedAt.getTime()) ? now : submittedAt,
   };
 
+  // A new request replaces the last one; sending the same request again keeps its date and email.
+  const requestFor = (doc) =>
+    !request ? {} : sameRequest(doc && doc.request, request) ? {} : { request: { ...request, requestedAt: now } };
+
   // ── Dedupe by email OR phone (email match wins) ───────────────────────────
   const updateExisting = (doc) =>
     NewDealsLead.findByIdAndUpdate(
       doc._id,
       {
-        $set: { ...fields, ...(doc.firstTouch && doc.firstTouch.utm_source ? {} : { firstTouch }) },
+        $set: { ...fields, ...requestFor(doc), ...(doc.firstTouch && doc.firstTouch.utm_source ? {} : { firstTouch }) },
         $inc: { submissions: 1 },
       },
       { new: true }
@@ -229,7 +277,7 @@ const registerNewDealsLead = catchAsyncError(async (req, res, next) => {
     updated = true;
   } else {
     try {
-      lead = await NewDealsLead.create({ ...fields, firstTouch });
+      lead = await NewDealsLead.create({ ...fields, ...requestFor(null), firstTouch });
     } catch (err) {
       if (!(err && err.code === 11000)) throw err;
       const doc = await NewDealsLead.findOne({ email });
@@ -261,8 +309,13 @@ const registerNewDealsLead = catchAsyncError(async (req, res, next) => {
   // ── After the 200 ─────────────────────────────────────────────────────────
   const plain = lead.toObject();
 
-  // Welcome email — after the contact save above, once per person.
-  sendWelcomeOnce(plain).catch((e) => console.error("[new-deals] welcome email failed:", e.message));
+  // Welcome email — after the contact save above, once per person. A request
+  // gets the request email instead (once per request).
+  if (request) {
+    sendRequestEmailOnce(plain).catch((e) => console.error("[new-deals] request email failed:", e.message));
+  } else {
+    sendWelcomeOnce(plain).catch((e) => console.error("[new-deals] welcome email failed:", e.message));
+  }
 
   // Maya's signup call (+ daily retries) — only with consent.
   if (consent) {
@@ -291,7 +344,7 @@ const registerNewDealsLead = catchAsyncError(async (req, res, next) => {
 
   // Same Slack channel as the NorCal sign-ups (SLACK_LEADS_WEBHOOK_URL).
   notifyNewLead({
-    leadType: updated ? "New Deals (updated)" : "New Deals",
+    leadType: `${request ? "Property Request" : "New Deals"}${updated ? " (updated)" : ""}`,
     name: lead.fullName || lead.firstName,
     email: lead.email,
     phone: lead.phone,
@@ -299,7 +352,12 @@ const registerNewDealsLead = catchAsyncError(async (req, res, next) => {
     source: `new-deals · ${lead.firstTouch?.utm_source || "direct"}`,
     extraFields: [
       { label: "Tier", value: lead.tier },
-      { label: "Deal", value: dealLabel(lead.dealInterest) || "—" },
+      ...(request
+        ? [
+            { label: "Wants", value: requestWords(lead.request, buyBox.states[0]) },
+            ...(lead.request.notes ? [{ label: "Notes", value: lead.request.notes }] : []),
+          ]
+        : [{ label: "Deal", value: dealLabel(lead.dealInterest) || "—" }]),
       { label: "States", value: buyBox.states.join(", ") || "—" },
       { label: "Price", value: `${buyBox.price_min} – ${buyBox.price_max === null ? "3M+" : buyBox.price_max}` },
       { label: "Financing", value: labelList("financing", buyBox.financing) || "—" },
@@ -348,6 +406,40 @@ const getAllNewDealsLeads = catchAsyncError(async (req, res) => {
     }))),
     pagination: { page, limit, total, pages: Math.ceil(total / limit) },
   });
+});
+
+/**
+ * GET /api/v1/new-deals/requests?days=&state=&format=csv   (admin)
+ *
+ * The "Request a property" demand report: every request, newest first (name,
+ * contact, state, the request in words, budget, pay, timing, notes), plus
+ * counts by state, area, type, bedrooms and budget — each with how many of
+ * those people pay cash or want to buy within 90 days. ?format=csv downloads
+ * the rows. days = only requests from the last N days (default: all).
+ */
+const getPropertyRequests = catchAsyncError(async (req, res) => {
+  const query = {
+    "request.requestedAt": { $ne: null },
+    $and: TEST_NAME_FIELDS.map((f) => ({ [f]: { $not: TEST_NAME_REGEX } })),
+  };
+  const days = parseInt(req.query.days, 10);
+  if (days > 0) query["request.requestedAt"] = { $gte: new Date(Date.now() - Math.min(days, 3650) * 864e5) };
+  const state = String(req.query.state || "").toUpperCase();
+  if (/^[A-Z]{2}$/.test(state)) query["buyBox.states"] = state;
+
+  const leads = await NewDealsLead.find(query)
+    .select("fullName firstName lastName email phone buyBox request firstTouch createdAt updatedAt")
+    .sort({ "request.requestedAt": -1, _id: -1 })
+    .limit(5000)
+    .lean();
+  const rows = leads.map(reportRow);
+
+  if (req.query.format === "csv") {
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="property-requests-${new Date().toISOString().slice(0, 10)}.csv"`);
+    return res.status(200).send(reportCsv(rows));
+  }
+  res.status(200).json({ success: true, total: rows.length, requests: rows, counts: demandCounts(rows) });
 });
 
 // Public listing fields only — the deal cards on /new-deals.
@@ -399,4 +491,4 @@ const getNewDealsSpotlight = catchAsyncError(async (req, res) => {
   res.status(200).json({ success: true, deals: dealsCache.deals });
 });
 
-module.exports = { registerNewDealsLead, getAllNewDealsLeads, getNewDealsSpotlight };
+module.exports = { registerNewDealsLead, getAllNewDealsLeads, getNewDealsSpotlight, getPropertyRequests };

@@ -205,7 +205,13 @@ const SOURCES = [
     leadType: "newDeals",
     label: "New Deals (/new-deals)",
     model: NewDealsLead,
-    adapt: (l) => adaptBuyBox(l.buyBox),
+    // "Request a property": only the requested type with at least bedsMin beds (scoring.js hard filter).
+    adapt: (l) => ({
+      ...adaptBuyBox(l.buyBox),
+      ...(l.request && l.request.requestedAt
+        ? { request: { types: l.request.types || [], bedsMin: l.request.bedsMin || null }, minBeds: l.request.bedsMin || null }
+        : {}),
+    }),
   },
   {
     leadType: "norcal",
@@ -326,6 +332,7 @@ function buildLead(source, l, ctx) {
     timing: specific.timing || null,
     timingText: specific.timingText || "",
     registeredSlugs: specific.registeredSlugs || [],
+    request: specific.request || null,
 
     engagement: {
       connected: l.callStatus === "connected",

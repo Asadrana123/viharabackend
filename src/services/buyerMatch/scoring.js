@@ -16,6 +16,7 @@
 //      it `bad`, in `concerns` (what to check before calling).
 
 const { REGIONS } = require("./geo");
+const { fitsRequest } = require("../leads/propertyRequest");
 
 const WEIGHTS = {
   location: 35,
@@ -228,6 +229,9 @@ const isMatchable = (lead) => lead.locations.length > 0 || !!lead.budget;
  *   { score, confidence, rank, reasons[], concerns[], breakdown{} }
  */
 function scorePair(lead, prop, now = Date.now()) {
+  // A "Request a property" lead only ever sees the type and size they asked for.
+  if (lead.request && !fitsRequest(lead.request, prop)) return null;
+
   let known = 0;
   let sum = 0;
   const reasons = [];

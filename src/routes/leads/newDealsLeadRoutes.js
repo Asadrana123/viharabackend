@@ -1,7 +1,7 @@
 // routes/newDealsLeadRoutes.js
 const express = require("express");
 const router = express.Router();
-const { registerNewDealsLead, getAllNewDealsLeads, getNewDealsSpotlight } = require("../../controller/leads/newDealsLeadController");
+const { registerNewDealsLead, getAllNewDealsLeads, getNewDealsSpotlight, getPropertyRequests } = require("../../controller/leads/newDealsLeadController");
 const { isAuthenticated, authorizeRoles } = require("../../middleware/auth");
 const formRateLimit = require("../../middleware/formRateLimit");
 
@@ -10,6 +10,9 @@ router.post("/register", formRateLimit(), registerNewDealsLead);
 
 // Public — the spotlight deals' address, photo and specs for the page's cards.
 router.get("/deals", getNewDealsSpotlight);
+
+// Admin — "Request a property" demand report (?format=csv downloads it). Full PII.
+router.get("/requests", isAuthenticated, authorizeRoles("admin"), getPropertyRequests);
 
 // Admin — paginated New Deals leads (full PII — keep protected).
 router.get("/", isAuthenticated, authorizeRoles("admin"), getAllNewDealsLeads);

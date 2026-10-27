@@ -581,17 +581,14 @@ const syncNewDealsLead = (lead, { source = "new-deals" } = {}) => {
 // line. Retries up to 3 times, then gives up (caller logs + stores the error).
 const NEW_DEALS_WELCOME_TEMPLATE_ID = () =>
   toListId(process.env.BREVO_NEW_DEALS_WELCOME_TEMPLATE_ID) || 189;
+// "Request a property" email — same params as the welcome email plus
+// PROPERTY_WANTED (the request in words). BREVO_PROPERTY_REQUEST_TEMPLATE_ID overrides 270.
+const PROPERTY_REQUEST_TEMPLATE_ID = () =>
+  toListId(process.env.BREVO_PROPERTY_REQUEST_TEMPLATE_ID) || 270;
 const WELCOME_EMAIL_ATTEMPTS = 3;
 
-/**
- * @param {object} p
- * @param {string} p.email
- * @param {string} [p.name]    full name for the "to" header
- * @param {object} p.params    FIRSTNAME, STRATEGY, MARKETS, PRICE_RANGE, CONDITION,
- *                             FINANCING, CONTACT_PREF, ADVISOR_CALL, DEAL_MARKET, DEAL_PRICE
- * @returns {Promise<{ success: boolean, messageId?: string, attempts: number, error?: string }>}
- */
-const sendNewDealsWelcomeEmail = async ({ email, name, params = {} }) => {
+// One templated transactional email, with the retries described above.
+const sendTemplateEmail = async ({ templateId, label, email, name, params = {} }) => {
   if (!BREVO_API_KEY) return { success: false, attempts: 0, error: "BREVO_API_KEY not configured" };
   if (!email) return { success: false, attempts: 0, error: "missing email" };
 
@@ -599,7 +596,7 @@ const sendNewDealsWelcomeEmail = async ({ email, name, params = {} }) => {
     Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== "" && v !== false)
   );
   const body = {
-    templateId: NEW_DEALS_WELCOME_TEMPLATE_ID(),
+    templateId,
     to: [{ email, ...(name ? { name } : {}) }],
     params: cleanParams,
   };
@@ -611,20 +608,35 @@ const sendNewDealsWelcomeEmail = async ({ email, name, params = {} }) => {
         headers: { "api-key": BREVO_API_KEY, "Content-Type": "application/json" },
         timeout: 10000,
       });
-      console.log(`✅ Brevo New Deals welcome email sent to ${email} — messageId ${data?.messageId || "?"} (attempt ${attempt})`);
+      console.log(`✅ Brevo ${label} email sent to ${email} — messageId ${data?.messageId || "?"} (attempt ${attempt})`);
       return { success: true, messageId: data?.messageId || "", attempts: attempt };
     } catch (err) {
       lastError = String(err.response?.data?.message || err.message);
-      console.warn(`⚠️  Brevo New Deals welcome email attempt ${attempt}/${WELCOME_EMAIL_ATTEMPTS} failed for ${email}: ${lastError}`);
+      console.warn(`⚠️  Brevo ${label} email attempt ${attempt}/${WELCOME_EMAIL_ATTEMPTS} failed for ${email}: ${lastError}`);
       // A 4xx other than rate-limit won't fix itself on retry.
       const status = err.response?.status;
       if (status && status >= 400 && status < 500 && status !== 429) break;
       if (attempt < WELCOME_EMAIL_ATTEMPTS) await new Promise((r) => setTimeout(r, attempt * 1000));
     }
   }
-  console.error(`❌ Brevo New Deals welcome email failed for ${email}: ${lastError}`);
+  console.error(`❌ Brevo ${label} email failed for ${email}: ${lastError}`);
   return { success: false, attempts: WELCOME_EMAIL_ATTEMPTS, error: lastError };
 };
+
+/**
+ * @param {object} p
+ * @param {string} p.email
+ * @param {string} [p.name]    full name for the "to" header
+ * @param {object} p.params    FIRSTNAME, STRATEGY, MARKETS, PRICE_RANGE, CONDITION,
+ *                             FINANCING, CONTACT_PREF, ADVISOR_CALL, DEAL_MARKET, DEAL_PRICE
+ * @returns {Promise<{ success: boolean, messageId?: string, attempts: number, error?: string }>}
+ */
+const sendNewDealsWelcomeEmail = (p) =>
+  sendTemplateEmail({ ...p, templateId: NEW_DEALS_WELCOME_TEMPLATE_ID(), label: "New Deals welcome" });
+
+/** Same as sendNewDealsWelcomeEmail, template 270; params also carry PROPERTY_WANTED. */
+const sendPropertyRequestEmail = (p) =>
+  sendTemplateEmail({ ...p, templateId: PROPERTY_REQUEST_TEMPLATE_ID(), label: "property request" });
 
 // ============================================================================
 // OUTBOUND SMS  (admin-triggered — see outboundplan.md §4/§5.2)
@@ -821,6 +833,7 @@ module.exports = {
   syncBuyerListLead,
   syncNewDealsLead,
   sendNewDealsWelcomeEmail,
+  sendPropertyRequestEmail,
   syncOutboundSmsContact,
   trackEvent,
 };
