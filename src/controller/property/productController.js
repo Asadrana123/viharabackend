@@ -95,11 +95,12 @@ const LISTING_PROJECTION = {
 };
 
 // Public auctions page — only properties the admin flagged as visible.
+// Sold properties (only an admin marks a property sold) are never listed.
 exports.getAllProducts = catchAsyncError(async (req, res) => {
     const userEmail = req.user?.email || null;
 
     const publicProducts = await productModel
-        .find({ showOnAuctions: true, isTestProperty: { $ne: true } })
+        .find({ showOnAuctions: true, isTestProperty: { $ne: true }, status: { $ne: "sold" } })
         .select(LISTING_PROJECTION)
         .lean();
 
@@ -107,7 +108,7 @@ exports.getAllProducts = catchAsyncError(async (req, res) => {
     let testProducts = [];
     if (userEmail) {
         testProducts = await productModel
-            .find({ isTestProperty: true, allowedTestUsers: userEmail })
+            .find({ isTestProperty: true, allowedTestUsers: userEmail, status: { $ne: "sold" } })
             .select(LISTING_PROJECTION)
             .lean();
     }
