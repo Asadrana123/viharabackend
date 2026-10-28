@@ -17,6 +17,7 @@ const { getSettings, isConsentRequired } = require("../vtextSettingsService");
 const { evaluateAndMaybeQuarantine } = require("../vtextLineHealthService");
 const { publishEvent } = require("../vtextEventsBus");
 const smsFallback = require("../vtextSmsFallbackService");
+const { recordProviderOptOut } = require("../vtextOptOutService");
 
 async function rerouteExcluding(message, lineId) {
   message.excludeLineIds = [...(message.excludeLineIds || []), lineId];
@@ -138,6 +139,17 @@ async function processSendJob(lineId, job) {
       await message.save();
       await capacity.release(line, reservationDay, { wasReply: message.isReplyToInbound });
       publishEvent({ type: "message.updated", messageId: String(message._id), conversationId: message.conversationId ? String(message.conversationId) : null, status: message.status });
+      // Twilio refused the send because this number opted out of it (21610): record that here too, so no line texts them.
+      // And "not a valid mobile number" (21614) is a definite no: mark it a landline so the compliance gate stops further tries.
+      try {
+        if (err.code === "OPTED_OUT") await recordProviderOptOut(contact, { lineId: line._id, messageId: message._id, code: "21610" });
+        else if (err.code === "TWILIO_21614" && contact.phoneStatus !== "landline") {
+          contact.phoneStatus = "landline";
+          await contact.save();
+        }
+      } catch (e) {
+        console.error(`[vtext line-send] couldn't record the provider outcome for ${message._id}:`, e.message);
+      }
       // BlueBubbles said the iMessage could not be delivered: the same text goes out once by SMS (when switched on).
       if (line.channelType === smsFallback.IMESSAGE && smsFallback.isExplicitIMessageFailure(err.code)) {
         await smsFallback.maybeQueueSmsFallback(message, { trigger: "send-error", reason: err.code }).catch((e) => console.error(`[vtext sms-fallback] could not queue the fallback for ${message._id}:`, e.message));

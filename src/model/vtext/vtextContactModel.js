@@ -32,7 +32,7 @@ const vtextContactSchema = new mongoose.Schema(
       isOptedOut: { type: Boolean, default: false, index: true },
       at: { type: Date },
       keyword: { type: String },
-      method: { type: String, enum: ["keyword", "phrase", "admin", "import"] },
+      method: { type: String, enum: ["keyword", "phrase", "admin", "import", "provider"] }, // "provider": Twilio told us this number opted out (error 21610)
       viaLineId: { type: mongoose.Schema.Types.ObjectId, ref: "vtextLineModel" },
       viaMessageId: { type: mongoose.Schema.Types.ObjectId, ref: "vtextMessageModel" },
     },
