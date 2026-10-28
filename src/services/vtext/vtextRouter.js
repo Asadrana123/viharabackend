@@ -21,8 +21,9 @@ function resolveChannelCandidates(channelPolicy) {
     return channelPolicy.channels;
   }
   // No explicit channels -> every registered channel except "mock" (opt-in
-  // only, never a silent default for a real send).
-  return CHANNEL_TYPES.filter((type) => type !== "mock");
+  // only, never a silent default for a real send) and fallback-only channels
+  // (twilio-sms), which only carry a text when asked for by name.
+  return CHANNEL_TYPES.filter((type) => type !== "mock" && !getAdapter(type).capabilities.fallbackOnly);
 }
 
 /** True/false/null per the adapter's own checkReachability contract; refreshes a stale or never-checked cache entry. Only called for channels that don't reach every US number (capabilities.reachesAllUsNumbers === false). */

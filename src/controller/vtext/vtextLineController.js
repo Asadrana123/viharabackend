@@ -12,6 +12,7 @@ const { encryptCredentials, decryptCredentials } = require("../../utils/secretBo
 const { drainLine } = require("../../services/vtext/vtextLineDrainService");
 const { statusBeforeOffline } = require("../../services/vtext/vtextLineHealthService");
 const { normalizeInternationalPhone } = require("../../utils/internationalPhone");
+const { buildWebhookUrl } = require("../../services/vtext/vtextWebhookUrl");
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -34,19 +35,6 @@ function normalizeTestRecipient(raw) {
   }
   const normalized = normalizeInternationalPhone(trimmed);
   return normalized ? { ok: true, value: normalized } : { ok: false };
-}
-
-/**
- * The URL a provider (BlueBubbles, android-sms-gateway) POSTs inbound events to
- * for this line — the per-line webhookKey in the path is the actual security
- * boundary (vtextWebhookController.js), not a secret on the provider's side.
- * Returns null when VTEXT_PUBLIC_BASE_URL isn't configured (e.g. plain local
- * dev with no tunnel) — there's nothing reachable to build a URL to yet.
- */
-function buildWebhookUrl(line) {
-  const base = process.env.VTEXT_PUBLIC_BASE_URL;
-  if (!base) return null;
-  return `${base.replace(/\/$/, "")}/api/webhooks/vtext/${line.channelType}/${line.webhookKey}`;
 }
 
 /** Attaches the computed webhookUrl to a line object headed into a JSON response (never stored on the document itself — always derived from current env + the line's own fields). */

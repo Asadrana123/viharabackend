@@ -11,7 +11,8 @@ const { requireVtextEnabled } = require("../../middleware/vtextEnabled");
 
 router.use(requireVtextEnabled);
 
-router.post("/:channelType/:lineKey", receive);
+// Twilio posts form-encoded bodies (the app-level parser only reads JSON); other channels post JSON and are unaffected.
+router.post("/:channelType/:lineKey", express.urlencoded({ extended: false, limit: "1mb" }), receive);
 router.get("/:channelType/:lineKey", ping);
 
 module.exports = router;

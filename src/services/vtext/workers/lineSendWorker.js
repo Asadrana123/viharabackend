@@ -101,6 +101,7 @@ async function processSendJob(lineId, job) {
 
     message.status = "accepted";
     message.provider = { messageId: result.providerMessageId };
+    if (result.segments !== undefined) message.segments = result.segments; // carrier channels (Twilio) bill per segment
     message.sentAt = new Date();
     await message.save();
 

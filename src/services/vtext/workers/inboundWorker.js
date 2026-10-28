@@ -298,8 +298,9 @@ async function handleMessageReceived(event, line) {
   publishEvent({ type: "message.inbound", conversationId: String(conversation._id), contactId: String(contact._id) });
 }
 
-async function handleMessageStatus(event) {
-  let message = await VtextMessage.findOne({ "provider.messageId": event.providerMessageId });
+async function handleMessageStatus(event, line) {
+  // Scoped to the receiving line's channel when known: provider ids from different providers must never match each other.
+  let message = await VtextMessage.findOne({ ...(line ? { channelType: line.channelType } : {}), "provider.messageId": event.providerMessageId });
   // BlueBubbles can report the receipt under a different guid than the one we
   // stored at send time. We send our message _id as the tempGuid, so fall back to it.
   if (!message && event.tempGuid && mongoose.isValidObjectId(event.tempGuid)) {
@@ -315,6 +316,8 @@ async function handleMessageStatus(event) {
   const currentIdx = ORDER.indexOf(message.status);
   const incomingIdx = ORDER.indexOf(event.status);
   if (event.status === "failed") {
+    // A late "failed" must not overwrite a text that already reached the phone (carriers sometimes report both).
+    if (message.status === "delivered" || message.status === "read") return;
     message.status = "failed";
     message.error = { kind: event.errorKind || "line", code: event.errorCode, message: event.errorMessage };
     message.failedAt = event.at || new Date();
@@ -358,7 +361,7 @@ async function processInboundJob(job) {
   const adapter = getAdapter(webhookEvent.channelType);
   let events;
   try {
-    events = adapter.parseWebhook({ body: webhookEvent.body, headers: webhookEvent.headers, line }) || [];
+    events = adapter.parseWebhook({ body: webhookEvent.body, query: webhookEvent.query, headers: webhookEvent.headers, line }) || [];
   } catch (err) {
     webhookEvent.error = `parseWebhook threw: ${err.message}`;
     await webhookEvent.save();
@@ -369,7 +372,7 @@ async function processInboundJob(job) {
     if (event.type === "message.received") {
       await handleMessageReceived(event, line);
     } else if (event.type === "message.status") {
-      await handleMessageStatus(event);
+      await handleMessageStatus(event, line);
     } else if (event.type === "line.heartbeat") {
       await handleLineHeartbeat(event, line);
     }
@@ -404,4 +407,4 @@ async function stopInboundWorker() {
   }
 }
 
-module.exports = { processInboundJob, startInboundWorker, stopInboundWorker };
+module.exports = { processInboundJob, startInboundWorker, stopInboundWorker, handleMessageStatus, handleMessageReceived };
