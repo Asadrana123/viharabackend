@@ -59,7 +59,50 @@ facebookFormLeadSchema.add({
   // Imported from Meta's history by scripts/importFacebookFormLeads.js: saved for
   // the record only — no welcome email, Brevo, Slack or Maya call was sent.
   importedFromHistory: { type: Boolean, default: false },
+
+  // ── Toorak lead forms (config/toorakForms.js, handover 28 Oct 2026) ───────
+  // Every instant-form lead is tagged source "meta_leadform"; Toorak forms also
+  // carry their route (form key, kind, property) and the hot flag.
+  leadSource: { type: String, default: "meta_leadform" },
+  adsetId: { type: String, default: "" },
+  toorak: {
+    type: new mongoose.Schema(
+      {
+        key: { type: String, default: "" },       // "financing-v2", "ml-baltimore" … or "unknown"
+        kind: { type: String, default: "" },      // financing | property
+        known: { type: Boolean, default: true },  // false = a Toorak-named form not in the config yet
+        propertySlug: { type: String, default: "" },
+        listingUrl: { type: String, default: "" },
+      },
+      { _id: false }
+    ),
+    default: null,
+  },
+  // Hot = buying within 30 days, paying cash, or 20%+ down (services/leads/toorakLeads.js). Called first.
+  hot: { type: Boolean, default: false },
+  hotReasons: { type: [String], default: [] },
+  // Set by the team in Admin → Toorak Leads: contacted | unreachable | qualified | converted | disqualified.
+  // "" = follow the calls (new → contacted / unreachable).
+  leadStatus: { type: String, default: "" },
+  leadStatusHistory: {
+    type: [new mongoose.Schema({ status: String, by: String, at: Date }, { _id: false })],
+    default: [],
+  },
+  // The team found the number wrong (Admin → Toorak Leads). With a bounced email → auto "disqualified".
+  phoneInvalid: { type: Boolean, default: false },
+  // Toorak forms: the sms_consent checkbox (texts). Calls use `consent` with consentSource "form-checkbox".
+  smsConsent: { type: Boolean, default: false },
+  // Facebook's testing tool lead (dummy data, or no ad id and not organic). Saved, and only ever
+  // emailed / called at the internal test contacts (TOORAK_TEST_EMAIL / TOORAK_TEST_PHONE).
+  isTest: { type: Boolean, default: false },
+  // How this lead reached us: "webhook" (Zernio lead.received) or "poll" (the 15-minute safety net).
+  receivedVia: { type: String, default: "webhook" },
+  // Re-engagement email for leads from before the automation (src/scripts/toorakReengage.js), once per person.
+  reengageEmailSentAt: { type: Date, default: null },
+  reengageEmailError: { type: String, default: "" },
 });
+
+facebookFormLeadSchema.index({ "toorak.key": 1, createdAt: -1 });
 
 facebookFormLeadSchema.path("source").default("facebook-form");
 

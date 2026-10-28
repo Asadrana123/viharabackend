@@ -834,6 +834,7 @@ module.exports = {
   syncNewDealsLead,
   sendNewDealsWelcomeEmail,
   sendPropertyRequestEmail,
+  sendTemplateEmail,
   syncOutboundSmsContact,
   trackEvent,
 };

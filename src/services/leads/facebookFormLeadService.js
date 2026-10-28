@@ -21,6 +21,11 @@
 // and also mapped onto the buy box (states, strategy, financing, budget,
 // down payment) so Maya's script and the welcome email can use them.
 //
+// Toorak forms (config/toorakForms.js) are routed by form ID: tagged with their
+// form / property / listing link, flagged hot (services/leads/toorakLeads.js),
+// and a property form's lead gets that property's state and deal. A 15-minute
+// poll (toorakLeadPoller.js) catches leads the webhook missed.
+//
 // Off unless ZERNIO_LEADS_ENABLED=true.
 
 const FacebookFormLead = require("../../model/leads/facebookFormLeadModel");
@@ -29,8 +34,12 @@ const { normalisePhone } = require("../calling/vapiCallsService");
 const { scheduleFacebookFormSignupCall } = require("../calling/newDealsCallScheduler");
 const { syncNewDealsLead, sendNewDealsWelcomeEmail } = require("../integrations/brevoService");
 const { maybeSendFacebookIntroText } = require("../vtext/vtextFacebookIntroService");
-const { notifyNewLead } = require("../shared/slackService");
-const { newDealsPageUrl } = require("../../config/siteUrls");
+const { notifyNewLead, postToSlack } = require("../shared/slackService");
+const { newDealsPageUrl, listingPageUrl, getSiteUrl } = require("../../config/siteUrls");
+const { toorakFormFor } = require("../../config/toorakForms");
+const { findDeal } = require("../../config/newDeals");
+const { hotReasons, checkboxConsents, isToorakTestLead } = require("./toorakLeads");
+const { scheduleToorakCalls } = require("../calling/toorakCallScheduler");
 const { splitName, isValidEmail, STATE_NAMES, stateName, labelList, priceRangeText, withTimeout } = require("./buyBox");
 
 const SOURCE = "facebook-form";
@@ -93,6 +102,16 @@ const adminOverrideConsent = (now, formName) => ({
 /** "I agree to receive calls and text messages from Vihara..." / "By submitting this form you opt in to calls, texts..." */
 const consentGiven = (text) =>
   /\b(agree|consent|opt[\s-]?in)/i.test(text) && /\b(calls?|text|texts|sms|messages?)\b/i.test(text);
+
+/** Toorak route for this lead (config/toorakForms.js), with the property's listing link. null = not a Toorak form. */
+function toorakRouteFor(lead, form) {
+  const route = toorakFormFor(lead.formId, lead.formName || form?.name);
+  if (!route) return null;
+  return {
+    ...route,
+    listingUrl: route.propertySlug ? listingPageUrl(route.propertySlug) : `${getSiteUrl()}${route.path || "/auctions"}`,
+  };
+}
 
 // ─── Answers → buy box ──────────────────────────────────────────────────────
 
@@ -211,16 +230,29 @@ async function sendWelcomeOnce(lead) {
 
   const box = claimed.buyBox || {};
   const answer = (re) => claimed.answers.find((a) => re.test(a.key));
+  // The answer as the form showed it, when Zernio gave the option's label.
+  const asked = (key) => claimed.answers.find((a) => a.key === key)?.label || "";
+  const route = claimed.toorak ? toorakFormFor(claimed.formId, claimed.formName) : null;
   const result = await sendNewDealsWelcomeEmail({
     email: claimed.email,
     name: claimed.fullName || claimed.firstName,
     params: {
       FIRSTNAME: claimed.firstName,
-      STRATEGY: labelList("strategy", box.strategy),
-      MARKETS: (box.states || []).map(stateName).join(", "),
-      PRICE_RANGE: priceRangeText(box),
-      FINANCING: labelList("financing", box.financing),
+      // Toorak (marketing, 28 Oct): buying_for → STRATEGY, markets → MARKETS, price_range → PRICE_RANGE, how_pay → FINANCING.
+      STRATEGY: asked("buying_for") || labelList("strategy", box.strategy),
+      MARKETS: asked("markets") || (box.states || []).map(stateName).join(", "),
+      PRICE_RANGE: asked("price_range") || priceRangeText(box),
+      FINANCING: asked("how_pay") || labelList("financing", box.financing),
       DOWN_PAYMENT: answer(/down/)?.label || "",
+      ...(route
+        ? {
+            // Template 189's CTA goes to /auctions; a property-specific template will carry the listing link.
+            ...(route.address ? { DEAL_MARKET: route.address, ADVISOR_CALL: true } : {}),
+            // Maya calls every Toorak lead (admin, 28 Oct 2026), so the email says we'll call.
+            CONTACT_PREF: claimed.consent ? "call" : "email",
+            LISTING_URL: claimed.toorak.listingUrl || "",
+          }
+        : {}),
     },
   });
 
@@ -269,7 +301,16 @@ async function saveLead({ lead, form, fields }) {
   const phoneNormalized = normalisePhone(phone);
   const buyBox = buyBoxFrom(answers);
   const now = new Date();
-  const consent = form?.givesConsent === true;
+
+  // Toorak: a property form's state comes from its property (the form doesn't ask).
+  const toorak = toorakRouteFor(lead, form);
+  if (toorak?.state && !buyBox.states.length) buyBox.states = [toorak.state];
+  const hot = toorak ? hotReasons(answers) : [];
+
+  // Consent. Toorak forms: only the call_consent / sms_consent checkboxes count. Other forms: the
+  // form's disclaimer (and the admin override below).
+  const boxes = toorak ? checkboxConsents(lead.consents) : { call: false, sms: false };
+  const consent = toorak ? boxes.call : form?.givesConsent === true;
 
   const submission = {
     leadgenId: lead.leadgenId,
@@ -301,18 +342,49 @@ async function saveLead({ lead, form, fields }) {
     submittedAt: submission.submittedAt,
     eventId: `fb-${lead.leadgenId}`,
     attribution: { utm_source: lead.isOrganic ? "facebook" : "meta", utm_medium: lead.isOrganic ? "organic" : "paid", utm_content: lead.adId || "" },
+    // Tags from the handover: source, form, campaign / ad set / ad, property, created time (submittedAt).
+    leadSource: "meta_leadform",
+    adsetId: submission.adsetId,
+    receivedVia: lead.receivedVia === "poll" ? "poll" : "webhook",
+    ...(toorak
+      ? {
+          toorak: { key: toorak.key, kind: toorak.kind, known: toorak.known, propertySlug: toorak.propertySlug || "", listingUrl: toorak.listingUrl },
+          hot: hot.length > 0,
+          hotReasons: hot,
+          // The property's spotlight deal: Maya names it on a call.
+          ...(toorak.dealId && findDeal(toorak.dealId) ? { dealInterest: toorak.dealId } : {}),
+        }
+      : {}),
     // Consent only ever turns on: a later form without a disclaimer doesn't undo an earlier one.
     ...(consent
-      ? { consent: true, consentText: form.consentText, consentVersion: `fb-form-${submission.formId}`, consentTimestamp: now, consentSource: "form-disclaimer" }
+      ? toorak
+        ? {
+            consent: true,
+            consentText: "Ticked the call_consent checkbox on the form.",
+            consentVersion: `fb-form-${submission.formId}`,
+            consentTimestamp: now,
+            consentSource: "form-checkbox",
+          }
+        : {
+            consent: true,
+            consentText: form.consentText,
+            consentVersion: `fb-form-${submission.formId}`,
+            consentTimestamp: now,
+            consentSource: "form-disclaimer",
+          }
       : {}),
+    ...(boxes.sms ? { smsConsent: true } : {}),
   };
 
   const existing =
     (email && (await FacebookFormLead.findOne({ email }))) ||
     (phoneNormalized && (await FacebookFormLead.findOne({ phoneNormalized }).sort({ createdAt: 1 })));
 
-  // No consent on this form and none on record → call anyway (admin override).
-  if (!consent && !existing?.consent) Object.assign(fieldsToSet, adminOverrideConsent(now, submission.formName));
+  if (!consent && !existing?.consent) {
+    // No consent on this form and none on record → call anyway (admin override). Toorak too: the admin
+    // decided (28 Oct 2026) that Maya calls every Toorak lead, call_consent ticked or not.
+    Object.assign(fieldsToSet, adminOverrideConsent(now, submission.formName));
+  }
 
   const addTo = (doc) =>
     FacebookFormLead.findByIdAndUpdate(
@@ -326,6 +398,8 @@ async function saveLead({ lead, form, fields }) {
     const created = await FacebookFormLead.create({
       ...fieldsToSet,
       email,
+      // Only on a new record: a test lead merged into a real person must not mark them as a test.
+      isTest: lead.isTest === true || isTestLead(fields),
       formSubmissions: [submission],
       leadgenIds: [lead.leadgenId],
       submissions: 1,
@@ -347,6 +421,18 @@ async function handleLead(payload) {
   if (!lead.leadgenId) return;
 
   const form = lead.formId ? await getForm(lead.formId) : null;
+  const toorakForm = toorakRouteFor(lead, form);
+
+  // Facebook test leads. Toorak: with TOORAK_TEST_EMAIL + TOORAK_TEST_PHONE set, the whole flow runs on those
+  // internal contacts instead of the lead's (a real lead's number never gets anything); without them, saved only.
+  const test = toorakForm ? isToorakTestLead(lead, fields) : isTestLead(fields);
+  const testContacts = test && toorakForm ? internalTestContacts() : null;
+  if (test) lead.isTest = true;
+  if (testContacts) {
+    fields.email = testContacts.email;
+    fields.phone_number = testContacts.phone;
+  }
+
   const email = String(fields.email || "").trim().toLowerCase();
   const phoneNormalized = normalisePhone(fields.phone_number || fields.phone || "");
 
@@ -364,32 +450,69 @@ async function handleLead(payload) {
 
   const saved = await saveLead({ lead, form, fields });
   if (!saved) return; // already handled (Zernio retry / redelivery)
-  const { lead: doc, isNew, previous } = saved;
-  const test = isTestLead(fields);
+  let { lead: doc } = saved;
+  const { isNew, previous } = saved;
 
-  if (test) {
+  if (test && !testContacts) {
     console.log(`[facebook-form] test lead ${lead.leadgenId} saved; no Brevo, email, call or Slack.`);
     return;
+  }
+  if (testContacts) {
+    // Every test runs the full flow again on the internal record: fresh welcome email and calls.
+    doc = await FacebookFormLead.findByIdAndUpdate(
+      doc._id,
+      { $set: { isTest: true, welcomeEmailSentAt: null, callStatus: "pending", nextCallAt: null, callAttempts: 0 } },
+      { new: true }
+    ).lean();
+    console.log(`[facebook-form] test lead ${lead.leadgenId}: running the flow on the internal test contacts.`);
+  }
+
+  // A Toorak-named form that isn't in config/toorakForms.js: handled in the default Toorak queue, and the team is told.
+  if (doc.toorak && doc.toorak.known === false) {
+    postToSlack(process.env.SLACK_LEADS_WEBHOOK_URL, {
+      text:
+        `:warning: Lead from a Toorak form that isn't in config/toorakForms.js: "${lead.formName || "(no name)"}" (form ${lead.formId}). ` +
+        `It went to the default Toorak queue (${doc.toorak.kind}). Add the form ID to the config to route it properly.`,
+    }).catch((e) => console.error("[facebook-form] unknown Toorak form alert failed:", e.message));
   }
 
   await syncToBrevo(doc);
 
   sendWelcomeOnce(doc).catch((e) => console.error("[facebook-form] welcome email failed:", e.message));
 
-  // Maya: with consent, unless this person is already in (or done with) the call loop.
+  // Maya, unless this person is already in (or done with) the call loop.
+  // Toorak: 3 attempts (toorakCallScheduler), with the checkbox or the admin override.
+  // Other forms: with consent (incl. the admin override), the signup call + 7-day loop.
   const inLoop = previous && ["no-answer", "connected"].includes(previous.callStatus) && previous.consent;
-  if (doc.consent && !doc.callingStopped && !inLoop) {
-    scheduleFacebookFormSignupCall(doc).catch((e) => console.error("[facebook-form-call] scheduling failed:", e.message));
-  } else if (!doc.consent) {
-    console.log(`[facebook-form] no consent on form "${doc.formName}"; not calling ${doc.phoneNormalized}`);
+  let callNote;
+  if (doc.toorak) {
+    const at = testContacts || !inLoop ? await scheduleToorakCalls(doc).catch((e) => console.error("[toorak-calls] scheduling failed:", e.message)) : null;
+    callNote = at ? `yes, first try ${at.toISOString()}` : doc.consent ? "already in call loop" : "no: dial by hand";
+  } else {
+    if (doc.consent && !doc.callingStopped && !inLoop) {
+      scheduleFacebookFormSignupCall(doc).catch((e) => console.error("[facebook-form-call] scheduling failed:", e.message));
+    } else if (!doc.consent) {
+      console.log(`[facebook-form] no consent on form "${doc.formName}"; not calling ${doc.phoneNormalized}`);
+    }
+    callNote = doc.consent ? (inLoop ? "already in call loop" : "yes") : "no (form has no call consent)";
   }
 
   // Intro text through Vtext: new leads only, with form consent. Off unless FACEBOOK_AUTO_TEXT_ENABLED=true.
-  maybeSendFacebookIntroText({ doc, isNew }).catch((e) => console.error("[facebook-form-text] failed:", e.message));
+  // Toorak: never without the sms_consent checkbox.
+  if (!doc.toorak || doc.smsConsent) {
+    maybeSendFacebookIntroText({ doc, isNew }).catch((e) => console.error("[facebook-form-text] failed:", e.message));
+  }
 
-  const box = doc.buyBox || {};
+  // Hot Toorak lead: its own alert (name, phone, property / form, answers, admin link) instead of the usual one.
+  if (doc.toorak && doc.hot) {
+    postToSlack(process.env.SLACK_LEADS_WEBHOOK_URL, { text: hotLeadAlert(doc, { test: !!testContacts }) }).catch((e) =>
+      console.error("[slack] hot Toorak alert failed:", e.message)
+    );
+    return;
+  }
+
   notifyNewLead({
-    leadType: isNew ? "Facebook Form" : "Facebook Form (repeat)",
+    leadType: `${testContacts ? "[TEST] " : ""}${doc.toorak ? "Toorak" : "Facebook Form"}${isNew ? "" : " (repeat)"}`,
     name: doc.fullName || doc.firstName,
     email: doc.email,
     phone: doc.phone,
@@ -398,13 +521,40 @@ async function handleLead(payload) {
     extraFields: [
       { label: "Form", value: doc.formName || doc.formId },
       { label: "Ad", value: doc.adId || (doc.isOrganic ? "organic" : "—") },
+      ...(doc.toorak
+        ? [
+            { label: "Property", value: doc.toorak.propertySlug ? doc.toorak.listingUrl : "General (financing form)" },
+            ...(doc.hot ? [{ label: "Hot because", value: doc.hotReasons.join(", ") }] : []),
+          ]
+        : []),
+      ...(doc.receivedVia === "poll" ? [{ label: "Received via", value: "15-minute poll (the webhook missed it)" }] : []),
       ...doc.answers
         .filter((a) => !CONTACT_KEYS.test(a.key))
         .slice(0, 5)
         .map((a) => ({ label: a.question, value: a.label || a.value })),
-      { label: "Maya call", value: doc.consent ? (inLoop ? "already in call loop" : "yes") : "no (form has no call consent)" },
+      { label: "Maya call", value: callNote },
     ],
   }).catch((e) => console.error("[slack] facebook-form notify failed:", e.message));
+}
+
+/** TOORAK_TEST_EMAIL + TOORAK_TEST_PHONE: where a Toorak test lead's emails and calls go. null when either is missing. */
+function internalTestContacts() {
+  const email = String(process.env.TOORAK_TEST_EMAIL || "").trim().toLowerCase();
+  const phone = String(process.env.TOORAK_TEST_PHONE || "").trim();
+  return isValidEmail(email) && normalisePhone(phone) ? { email, phone } : null;
+}
+
+/** The hot-lead Slack alert: who, how to reach them, which form / property, their answers, and the admin link. */
+function hotLeadAlert(doc, { test = false } = {}) {
+  const answers = (doc.answers || []).filter((a) => !CONTACT_KEYS.test(a.key)).map((a) => `• ${a.question}: ${a.label || a.value}`);
+  return [
+    `${test ? "[TEST] " : ""}:fire: *Hot Toorak lead* — ${doc.hotReasons.join(", ")}`,
+    `*${doc.fullName || doc.firstName}* · ${doc.phone} · ${doc.email}`,
+    `Form: ${doc.formName || doc.formId}${doc.toorak.propertySlug ? ` · Property: ${doc.toorak.listingUrl}` : ""}`,
+    ...answers,
+    `Calls: ${doc.callingStopped ? "stopped — dial by hand" : "Maya (3 tries)"}`,
+    `Admin: ${getSiteUrl()}/admin/toorakLeads`,
+  ].join("\n");
 }
 
 /**
@@ -430,6 +580,9 @@ module.exports = {
   answersFrom,
   buyBoxFrom,
   consentGiven,
+  toorakRouteFor,
+  hotLeadAlert,
   adminOverrideConsent,
   isTestLead,
+  isEnabled,
 };
