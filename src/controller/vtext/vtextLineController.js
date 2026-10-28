@@ -288,6 +288,19 @@ const toggleDrainMode = catchAsyncError(async (req, res) => {
 const startWarmup = catchAsyncError(async (req, res) => {
   const line = await VtextLine.findById(req.params.id);
   if (!line) return res.status(404).json({ success: false, message: "Line not found" });
+
+  // A carrier SMS line has hard limits set by its approved campaign. The adapter's defaults are placeholders, so a
+  // person must enter the real ones (from the Twilio console) before the line can carry a single text.
+  if (getAdapter(line.channelType).capabilities.requiresExplicitLimits) {
+    const missing = ["perMinute", "perDay", "newRecipientsPerHour"].filter((key) => !(line.limits?.[key] > 0));
+    if (missing.length) {
+      return res.status(400).json({
+        success: false,
+        message: `Set this line's limits from the approved campaign before activating it. Missing: ${missing.join(", ")}.`,
+        missing,
+      });
+    }
+  }
   line.warmup.enabled = true;
   line.warmup.startedAt = new Date();
   await setLineStatus(line, "warming", "warm-up started by admin", req);

@@ -58,17 +58,22 @@ module.exports = {
     heartbeat: false, // Twilio is a cloud API; healthCheck() reads the Messaging Service instead
     fallbackOnly: true, // never part of default routing (see vtextRouter.resolveChannelCandidates)
     providerHandlesKeywords: true, // Twilio's Advanced Opt-Out answers STOP / START / HELP itself
+    requiresExplicitLimits: true, // a line cannot be activated until its limits are set by hand (see startWarmup)
   },
-  // PLACEHOLDERS. The real numbers come from the approved campaign's throughput
-  // and the carrier daily cap shown in the Twilio console. Fill in once we have
-  // the account. An empty warmupSchedule means no warm-up ramp (perDay applies from day 1).
+  // PLACEHOLDERS, deliberately low, and never trusted: a Twilio line cannot be activated until someone sets its own
+  // limits (perMinute, perDay, newRecipientsPerHour) from the approved campaign and the carrier daily cap shown in the
+  // Twilio console. The fallback only carries the texts an iMessage could not deliver, so low numbers cost little.
+  // No warm-up ramp: an approved campaign has its throughput from day one, so perDay applies immediately.
   defaultLimits: {
-    perMinute: 30,
-    perDay: 500,
-    newRecipientsPerHour: 100,
+    perMinute: 10,
+    perDay: 200,
+    newRecipientsPerHour: 60,
     replyReservePct: 10,
     jitterMs: { min: 0, max: 1000 },
     warmupSchedule: [],
+    // Skip the "halve the cap when few people reply" throttle (vtextCapacityService): fallback texts go to numbers
+    // that were never reachable on iMessage and reply less, and carriers already police SMS quality themselves.
+    replyRatioThrottle: false,
   },
 
   /**

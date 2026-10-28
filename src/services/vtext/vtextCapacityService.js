@@ -62,7 +62,11 @@ function effectiveDailyCap(line) {
 
   const sentLast7d = line.health?.sentLast7d ?? Infinity; // unknown (never rolled up) -> don't throttle on a guess
   const replyRatio7d = line.health?.replyRatio7d;
-  const throttled = sentLast7d >= THROTTLE_MIN_SENDS_7D && typeof replyRatio7d === "number" && replyRatio7d < THROTTLE_REPLY_RATIO;
+  const throttled =
+    limits.replyRatioThrottle !== false && // a channel can opt out (Twilio SMS fallback)
+    sentLast7d >= THROTTLE_MIN_SENDS_7D &&
+    typeof replyRatio7d === "number" &&
+    replyRatio7d < THROTTLE_REPLY_RATIO;
 
   return Math.max(0, Math.floor(warmupCap * (throttled ? THROTTLE_MULTIPLIER : 1)));
 }
