@@ -61,7 +61,10 @@ const getConversationMessages = catchAsyncError(async (req, res) => {
   if (!conversation) return res.status(404).json({ success: false, message: "Conversation not found" });
 
   const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
-  const messages = await VtextMessage.find({ conversationId: conversation._id }).sort({ createdAt: 1 }).limit(limit);
+  // ?scope=contact: every text with this person, across all lines. One person can have an iMessage thread and an SMS
+  // thread (the SMS fallback runs on a different line), and the admin should read them as one conversation.
+  const filter = req.query.scope === "contact" ? { contactId: conversation.contactId._id } : { conversationId: conversation._id };
+  const messages = await VtextMessage.find(filter).sort({ createdAt: 1 }).limit(limit);
 
   return res.status(200).json({ success: true, conversation, messages });
 });

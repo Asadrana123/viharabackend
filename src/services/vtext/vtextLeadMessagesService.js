@@ -19,6 +19,7 @@ const { normalisePhone } = require("../calling/vapiCallsService");
 const CHANNEL_LABEL = {
   "imessage-bluebubbles": "iMessage",
   "android-sms": "SMS",
+  "twilio-sms": "SMS",
   mock: "test",
 };
 
@@ -100,7 +101,8 @@ async function getVtextTextSummaryForPhones(phones = []) {
         $group: {
           _id: "$contactId",
           sent: { $sum: { $cond: [{ $and: [{ $eq: ["$direction", "out"] }, { $in: ["$status", TEXTED_STATUSES] }] }, 1, 0] } },
-          failed: { $sum: { $cond: [{ $and: [{ $eq: ["$direction", "out"] }, { $in: ["$status", NOT_SENT_STATUSES] }] }, 1, 0] } },
+          // An iMessage that did not go but was re-sent by SMS is not a lead we failed to reach: its SMS counts on its own.
+          failed: { $sum: { $cond: [{ $and: [{ $eq: ["$direction", "out"] }, { $in: ["$status", NOT_SENT_STATUSES] }, { $eq: [{ $ifNull: ["$fallback.messageId", null] }, null] }] }, 1, 0] } },
           replies: { $sum: { $cond: [{ $eq: ["$direction", "in"] }, 1, 0] } },
         },
       },
