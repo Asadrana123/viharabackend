@@ -23,6 +23,7 @@ const { endFollowUp } = require("../vtextFollowUpService");
 const { notifyVtextAlert } = require("../../shared/slackService");
 const { notifyInboundNoDraft } = require("../vtextAlertService");
 const { learnFromMessageStatus } = require("../../calling/facetime/iphoneLearning");
+const smsFallback = require("../vtextSmsFallbackService");
 
 const HELP_TEXT = process.env.VTEXT_HELP_TEXT || "This is Vihara. Reply STOP to opt out, or visit vihara.ai for more info.";
 const STOP_CONFIRM_TEXT = process.env.VTEXT_STOP_CONFIRM_TEXT || "You're unsubscribed and won't receive more messages from Vihara. Reply START to resubscribe.";
@@ -332,6 +333,20 @@ async function handleMessageStatus(event, line) {
   }
   await message.save();
   await learnFromMessageStatus(message, event); // FaceTime test: is this number on iPhone? Never throws.
+
+  // SMS fallback (off unless VTEXT_SMS_FALLBACK_ENABLED): an iMessage that was not delivered goes out once by SMS;
+  // one that turns out delivered stops a fallback that has not gone out yet. Never lets an error here lose the receipt.
+  try {
+    if (message.channelType === smsFallback.IMESSAGE) {
+      if (message.status === "failed" && smsFallback.isExplicitIMessageFailure(message.error?.code)) {
+        await smsFallback.maybeQueueSmsFallback(message, { trigger: "not-delivered", reason: message.error?.code });
+      } else if (message.status === "delivered" || message.status === "read") {
+        await smsFallback.onOriginalConfirmed(message);
+      }
+    }
+  } catch (err) {
+    console.error(`[vtext sms-fallback] receipt handling failed for message ${message._id}:`, err.message);
+  }
   publishEvent({ type: "message.updated", messageId: String(message._id), conversationId: message.conversationId ? String(message.conversationId) : null, status: message.status });
 }
 

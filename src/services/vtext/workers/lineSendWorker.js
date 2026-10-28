@@ -16,6 +16,7 @@ const { canSend, logGateDecision } = require("../vtextComplianceService");
 const { getSettings, isConsentRequired } = require("../vtextSettingsService");
 const { evaluateAndMaybeQuarantine } = require("../vtextLineHealthService");
 const { publishEvent } = require("../vtextEventsBus");
+const smsFallback = require("../vtextSmsFallbackService");
 
 async function rerouteExcluding(message, lineId) {
   message.excludeLineIds = [...(message.excludeLineIds || []), lineId];
@@ -80,6 +81,9 @@ async function processSendJob(lineId, job) {
     return;
   }
 
+  // An SMS fallback gets a last look first: the iMessage may have been delivered meanwhile, or texting hours closed.
+  if (message.fallbackOf && (await smsFallback.guardFallbackBeforeSend(message, contact, line, reservationDay))) return;
+
   message.status = "sending";
   await message.save();
 
@@ -134,6 +138,10 @@ async function processSendJob(lineId, job) {
       await message.save();
       await capacity.release(line, reservationDay, { wasReply: message.isReplyToInbound });
       publishEvent({ type: "message.updated", messageId: String(message._id), conversationId: message.conversationId ? String(message.conversationId) : null, status: message.status });
+      // BlueBubbles said the iMessage could not be delivered: the same text goes out once by SMS (when switched on).
+      if (line.channelType === smsFallback.IMESSAGE && smsFallback.isExplicitIMessageFailure(err.code)) {
+        await smsFallback.maybeQueueSmsFallback(message, { trigger: "send-error", reason: err.code }).catch((e) => console.error(`[vtext sms-fallback] could not queue the fallback for ${message._id}:`, e.message));
+      }
       // Permanent — tells BullMQ not to retry this job at all.
       throw new UnrecoverableError(err.message);
     }

@@ -26,6 +26,7 @@ const capacity = require("../vtextCapacityService");
 const { dayKey } = capacity;
 const { notifyVtextAlert } = require("../../shared/slackService");
 const { publishEvent } = require("../vtextEventsBus");
+const smsFallback = require("../vtextSmsFallbackService");
 
 const HEARTBEAT_KEY = "vtext:worker:lastHeartbeatAt";
 
@@ -81,6 +82,16 @@ async function runUnconfirmedSendSweep() {
     if (result.modifiedCount) {
       marked += 1;
       publishEvent({ type: "message.updated", messageId: String(c._id), conversationId: c.conversationId ? String(c.conversationId) : null, status: "unknown" });
+      // No receipt does not prove failure (the iMessage may have arrived), so this only sends by SMS in "auto" mode.
+      // The default "verify" mode leaves it for a person (the "Send by SMS" button on the Failed tab).
+      if (smsFallback.isEnabled() && smsFallback.noReceiptMode() === "auto") {
+        try {
+          const original = await VtextMessage.findById(c._id);
+          if (original) await smsFallback.maybeQueueSmsFallback(original, { trigger: "no-receipt-auto", reason: NO_RECEIPT_CODE });
+        } catch (err) {
+          console.error(`[vtext sms-fallback] could not queue the fallback for ${c._id}:`, err.message);
+        }
+      }
     }
   }
   if (marked > 0) console.warn(`[vtext stuck-sweep] ${marked} iMessage text(s) with no delivery receipt after ${UNCONFIRMED_MIN()}min -> marked "unknown"`);
