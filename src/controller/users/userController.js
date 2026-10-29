@@ -12,7 +12,6 @@ const createPasswordResetEmail =require('../../htmlPages/users/passwordResetEmai
 const createWelcomeEmail=require('../../htmlPages/users/welcomeEmail.js');
 const getCookieOptions = require("../../utils/cookieOptions");
 const mongoose = require('mongoose'); // Import mongoose
-const axios = require("axios");
 exports.CreateUser = catchAsyncError(
   async (req, res) => {
     // Destructure the request body with consent
@@ -401,30 +400,6 @@ exports.forgotPassword = catchAsyncError(
       User.resetPasswordExpire = undefined;
       await User.save({ validation: false });
       return next(new Errorhandler(error.message, 500));
-    }
-  }
-)
-exports.recaptcha = catchAsyncError(
-  async (req, res, next) => {
-    const { token } = req.body;
-    if (!token) {
-      return res.status(400).json({ success: false, message: "Token is missing." });
-    }
-    try {
-      const secretKey = '6LfUu5gqAAAAAOZ3fRsN5A5fTcus1NzxueGkmKZy';
-      const response = await axios.post(
-        `https://www.google.com/recaptcha/api/siteverify?secret=${secretKey}&response=${token}`
-      );
-      const { success } = response.data;
-
-      if (success) {
-        return res.json({ success: true, message: "CAPTCHA verified successfully!" });
-      } else {
-        return res.status(400).json({ success: false, message: "CAPTCHA verification failed." });
-      }
-    } catch (error) {
-      console.error("Error verifying CAPTCHA:", error);
-      return res.status(500).json({ success: false, message: "Server error." });
     }
   }
 )

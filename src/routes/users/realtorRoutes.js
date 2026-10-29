@@ -24,15 +24,17 @@ const {
   deleteSubmission
 } = require("../../controller/property/propertySubmissionController");
 const { isRealtorAuthenticated, requireApprovedRealtor } = require("../../middleware/realtorAuth");
+const formRateLimit = require("../../middleware/formRateLimit");
+const { verifyRecaptcha } = require("../../middleware/recaptcha");
 
 const router = express.Router();
 
 // Public
-router.post("/apply", applyRealtor);
-router.post("/login", loginRealtor);
+router.post("/apply", formRateLimit({ name: "realtor-apply" }), verifyRecaptcha, applyRealtor);
+router.post("/login", formRateLimit({ name: "realtor-login", max: 10, message: "Too many login attempts. Please wait a few minutes and try again." }), verifyRecaptcha, loginRealtor);
 router.post("/logout", logoutRealtor);
-router.post("/forgot/password", forgotPasswordRealtor);
-router.post("/password/reset/:token", resetPasswordRealtor);
+router.post("/forgot/password", formRateLimit({ name: "realtor-forgot-password" }), verifyRecaptcha, forgotPasswordRealtor);
+router.post("/password/reset/:token", formRateLimit({ name: "realtor-reset-password" }), verifyRecaptcha, resetPasswordRealtor);
 
 // Public showcase — the bare vanity URL /:slug fetches this.
 router.get("/showcase/:slug", getShowcase);
