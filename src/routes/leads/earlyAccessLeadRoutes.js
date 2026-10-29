@@ -1,5 +1,7 @@
 const express = require("express");
 const { isAuthenticated, authorizeRoles } = require("../../middleware/auth");
+const formRateLimit = require("../../middleware/formRateLimit");
+const { verifyRecaptcha } = require("../../middleware/recaptcha");
 const router = express.Router();
 const {
   registerAndCall,
@@ -7,7 +9,7 @@ const {
 } = require("../../controller/leads/earlyAccessLeadController");
 
 // Public — buyer-list submission from /early-access
-router.post("/register", registerAndCall);
+router.post("/register", formRateLimit({ name: "early-access" }), verifyRecaptcha, registerAndCall);
 
 // Admin — Early Access Leads tab
 router.get("/", isAuthenticated, authorizeRoles("admin"), getAllEarlyAccessLeads);
