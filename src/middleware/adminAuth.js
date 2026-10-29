@@ -31,8 +31,12 @@ exports.resolveAdvisor = catchAsyncError(async (req, res, next) => {
 
   // Admin first (that's where advisors normally live), then fall back to user.
   let advisor = await adminModel.findById(decoded.id).select("name email");
-  if (!advisor) advisor = await userModel.findById(decoded.id).select("name email isQaAccount");
-  if (!advisor) return next(new Errorhandler("Not authorized", 401));
+  if (!advisor) {
+    advisor = await userModel.findById(decoded.id).select("name email role isQaAccount");
+    if (!advisor) return next(new Errorhandler("Not authorized", 401));
+    // Only admins work with lead notes; a buyer or seller account is not an advisor.
+    if (advisor.role !== "admin") return next(new Errorhandler("Not authorized", 403));
+  }
   // QA agent sessions may read notes but never write them.
   if (advisor.isQaAccount && !["GET", "HEAD", "OPTIONS"].includes(req.method)) {
     return next(new Errorhandler("QA agent accounts are read-only here", 403));

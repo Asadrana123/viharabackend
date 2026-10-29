@@ -56,9 +56,6 @@ router.get(
    // At this point, Passport has already attached the user object to `req`
   // If authentication fails, redirect to the login page
   (req, res) => {
-    // Log the request object for debugging (optional)
-    console.log(req);
-
     // Send a welcome email to the authenticated user
     sendEmail(req.user.email, req.user.name);
 
