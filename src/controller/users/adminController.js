@@ -32,7 +32,6 @@ const getSellerAccessEmail = require('../../htmlPages/seller/sellerAccessEmail')
 // Create an admin account
 exports.CreateAdmin = catchAsyncError(
   async (req, res) => {
-    console.log(req.body);
     const adminData = {
       ...req.body,
       role: "admin"

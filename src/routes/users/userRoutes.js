@@ -1,10 +1,9 @@
 const express = require("express");
 const { submitForm, updateUserDetails, CreateUser, Login, LogOut,
     saveProperty, allsavedProperties, getUser, removeProperty,
-    getAllEmailandPhone, forgotPassword, resetPassword, sendOTP,
+    getAllEmailandPhone, forgotPassword, resetPassword,
     updatePassword,exportUserData,deleteAccount } = require("../../controller/users/userController");
 const { isAuthenticated, authorizeRoles } = require("../../middleware/auth");
-const { sendSmSOTP } = require("../../controller/users/otpController");
 const formRateLimit = require("../../middleware/formRateLimit");
 const { verifyRecaptcha } = require("../../middleware/recaptcha");
 const router = express.Router();
@@ -24,9 +23,6 @@ router.get("/getEmails", isAuthenticated, authorizeRoles("admin"), getAllEmailan
 router.post("/forgot/password", formRateLimit({ name: "forgot-password" }), verifyRecaptcha, forgotPassword);
 router.post("/password/reset/:token", formRateLimit({ name: "reset-password" }), verifyRecaptcha, resetPassword);
 router.put('/update/:userId',isAuthenticated, updateUserDetails);
-// The OTP senders aren't called from the Next site, so no captcha; the limits stop email/SMS floods.
-router.post('/send-otp', formRateLimit({ name: "send-otp", max: 3 }), sendOTP);
-router.post('/send-sms-otp', formRateLimit({ name: "send-sms-otp", max: 3 }), sendSmSOTP);
 router.post("/meeting-form", formRateLimit({ name: "meeting-form" }), verifyRecaptcha, submitForm)
 router.put("/update-password", isAuthenticated, updatePassword);
 // routes/userRoutes.js

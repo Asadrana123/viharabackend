@@ -7,7 +7,6 @@ const Errorhandler = require("../../utils/errorhandler");
 const sendToken = require("../../utils/getToken");
 const productModel = require("../../model/property/productModel");
 const sendEmail = require("../../utils/sendEmail");
-const { sendSmSOTP } = require("./otpController");
 const createPasswordResetEmail =require('../../htmlPages/users/passwordResetEmail.js');
 const createWelcomeEmail=require('../../htmlPages/users/welcomeEmail.js');
 const getCookieOptions = require("../../utils/cookieOptions");
@@ -84,14 +83,12 @@ exports.getAllEmailandPhone = catchAsyncError(
 exports.Login = catchAsyncError(
   async (req, res, next) => {
     const { email, password } = req.body;
-    console.log(email, password);
     const finduser = await userModel.findOne({ email }).select("+password").populate({
       path: 'savedProperties', // assuming 'savedProperties' is the field that references another collection
       model: 'productModel' // replace 'product' with the name of the model you are referencing
     });
     if (!finduser) return next(new Errorhandler("Invalid Email", 400));
     const matchPassword = await finduser.comparePassword(password);
-    console.log(matchPassword, "password");
     if (!matchPassword) return next(new Errorhandler("Invalid Password", 400));
     // sendEmail(
     //   req.body.email,
@@ -134,78 +131,45 @@ exports.Login = catchAsyncError(
     sendToken(finduser, 200, res, "----", { isSeller });
   }
 )
-exports.sendOTP = catchAsyncError(async (req, res) => {
-  const { email } = req.body;
-  const otp = Math.floor(1000 + Math.random() * 9000).toString();
-  sendEmail(
-    email,
-    "Hello user",
-    "Your OTP for Vihara",
-    `<!DOCTYPE html>
-      <html lang="en">
-      <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Your OTP for email change</title>
-          <style>
-              body { font-family: Arial, sans-serif; font-size: 14px; color: #333; }
-              .container { width: 90%; max-width: 600px; margin: 0 auto; background-color: #f4f4f4; border-radius: 8px;padding:20px }
-              .button { background-color: #28a745; color: #ffffff; padding: 10px 20px; text-align: center; text-decoration: none; display: inline-block; font-size: 16px; margin: 10px 0; cursor: pointer; border-radius: 5px; }
-              .footer { font-size: 12px; color: #666; }
-              .header { font-size: 24px; color: #333; }
-              .otp-text { font-size: 18px; font-weight: bold; color: #d9534f; }
-              .welcome-text { font-size: 16px; line-height: 1.6; }
-          </style>
-      </head>
-      <body>
-          <div class="container">
-              <p class="welcome-text">Your OTP for Vihara is:</p>
-              <p class="otp-text">${otp}</p>
-              <p class="welcome-text">Thank you for using Vihara!<br>Best Regards,<br>The Vihara Team</p>
-              <hr>
-              <p class="footer">If you have any questions, feel free to contact us at trisha@vihara.com.</p>
-          </div>
-      </body>
-      </html>`
-  );
-
-  res.status(200).json({
-    success: true,
-    otp: otp,
-    message: `OTP sent to ${email}`,
-  });
-});
 //catchAsyncError is a middleware function or wrapper that handles asynchronous errors.
 //next (next middleware function in the Express pipeline).
 //httpOnly: true: Ensures that the cookie is only accessible through HTTP(S) and cannot be accessed by client-side JavaScript, adding a layer of security.
+// Profile fields a user may change on their own account. Everything else in the body
+// (role, password, isQaAccount, governmentId, reset tokens, savedProperties...) is ignored.
+const PROFILE_FIELDS = ["name", "last_name", "email", "businessPhone", "city", "state", "userType"];
+
 exports.updateUserDetails = async (req, res) => {
   try {
     const { userId } = req.params;
-    const updates = req.body;
-    console.log(updates);
+    const updates = req.body || {};
     if (!mongoose.isValidObjectId(userId)) {
       return res.status(400).json({ message: 'Invalid User ID' });
     }
+    // Users can only update their own account.
+    if (String(userId) !== String(req.user._id)) {
+      return res.status(403).json({ message: 'You can only update your own account' });
+    }
 
-    const updateOperation = {
-      $set: {
-        ...updates,
-        ...(updates.notificationConsent !== undefined && {
-          'consents.dataProcessing.granted': updates.notificationConsent,
-          'consents.dataProcessing.grantedAt': updates.notificationConsent ? Date.now() : null,
-          'consents.dataProcessing.version': '1.1' // Update version if consent changes
-        })
+    const $set = {};
+    for (const field of PROFILE_FIELDS) {
+      if (updates[field] === undefined) continue;
+      if (typeof updates[field] !== 'string') {
+        return res.status(400).json({ message: `${field} must be text` });
       }
-    };
-
-    // Remove notificationConsent from updates to prevent duplicate processing
-    delete updateOperation.$set.notificationConsent;
+      $set[field] = updates[field];
+    }
+    if (updates.notificationConsent !== undefined) {
+      const granted = updates.notificationConsent === true;
+      $set['consents.dataProcessing.granted'] = granted;
+      $set['consents.dataProcessing.grantedAt'] = granted ? Date.now() : null;
+      $set['consents.dataProcessing.version'] = '1.1'; // Update version if consent changes
+    }
 
     const updatedUser = await userModel.findByIdAndUpdate(
-      userId,
-      updateOperation,
+      req.user._id,
+      { $set },
       { new: true, runValidators: true }
-    );
+    ).select('-resetPasswordToken -resetPasswordExpire');
 
     if (!updatedUser) {
       return res.status(404).json({ message: 'User not found' });
@@ -232,48 +196,44 @@ exports.LogOut = catchAsyncError(async (req, res, next) => {
       message: "User logout successfully",
     });
 });
+// Saved properties always belong to the logged-in user (req.user); any user_id in the
+// request is ignored, so one user can't read or change another user's list.
+const SAVED_USER_FIELDS = '-resetPasswordToken -resetPasswordExpire';
+
 exports.saveProperty = catchAsyncError(
   async (req, res, next) => {
-    const { product_id, user_id } = req.body;
-    console.log(user_id);
-    const findProduct = await productModel.findById(product_id);
+    const { product_id } = req.body;
+    if (!mongoose.isValidObjectId(product_id)) return next(new Errorhandler("Invalid property id", 400));
+    const findProduct = await productModel.findById(product_id).select('_id');
     if (!findProduct) return next(new Errorhandler("Product not found", 404));
-    const findUser = await userModel.findById(user_id).populate({
-      path: 'savedProperties', // assuming 'savedProperties' is the field that references another collection
-      model: 'productModel' // replace 'product' with the name of the model you are referencing
-    });
-    findUser.savedProperties.push(findProduct);
-    await findUser.save();
+    const findUser = await userModel.findByIdAndUpdate(
+      req.user._id,
+      { $addToSet: { savedProperties: findProduct._id } },
+      { new: true }
+    ).select(SAVED_USER_FIELDS).populate({ path: 'savedProperties', model: 'productModel' });
+    if (!findUser) return next(new Errorhandler("User not found", 404));
     return res.status(200).json({ sucess: true, message: "property saved sucessfully", user: findUser })
   }
 )
 exports.removeProperty = catchAsyncError(
   async (req, res, next) => {
-    const { product_id, user_id } = req.body;
-
-    const findProduct = await productModel.findById(product_id);
+    const { product_id } = req.body;
+    if (!mongoose.isValidObjectId(product_id)) return next(new Errorhandler("Invalid property id", 400));
+    const findProduct = await productModel.findById(product_id).select('_id');
     if (!findProduct) return next(new Errorhandler("Product not found", 404));
-
-    const findUser = await userModel.findById(user_id).populate({
-      path: 'savedProperties', // assuming 'savedProperties' is the field that references another collection
-      model: 'productModel' // replace 'product' with the name of the model you are referencing
-    });
-
-    // Remove the product from the savedProperties array
-    findUser.savedProperties = findUser.savedProperties.filter(
-      property => property._id.toString() !== product_id
-    );
-
-    await findUser.save();
+    const findUser = await userModel.findByIdAndUpdate(
+      req.user._id,
+      { $pull: { savedProperties: findProduct._id } },
+      { new: true }
+    ).select(SAVED_USER_FIELDS).populate({ path: 'savedProperties', model: 'productModel' });
+    if (!findUser) return next(new Errorhandler("User not found", 404));
     return res.status(200).json({ success: true, message: "Property removed successfully", user: findUser });
   }
 );
 
 exports.allsavedProperties = catchAsyncError(
   async (req, res, next) => {
-    const userId = req.query.user_id;
-    console.log(userId);
-    const findUser = await userModel.findById(userId).populate("savedProperties");
+    const findUser = await userModel.findById(req.user._id).select('savedProperties').populate("savedProperties");
     if (!findUser) return next(new Errorhandler("User not found", 404));
     return res.status(200).json({ sucess: true, savedProperties: findUser.savedProperties })
   }
