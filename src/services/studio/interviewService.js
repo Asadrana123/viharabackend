@@ -163,8 +163,17 @@ function editSection(profile, questions, key, text, now = new Date()) {
  * Claude Code) word for word, for an admin's import. Each answer is a quotation closed by
  * "(Name, YYYY-MM-DD[, follow-up])". Refuses text it cannot attribute rather than guess.
  */
-function parseInterviewBlock(markdown, questions) {
-  const text = String(markdown ?? "").replace(/\r\n/g, "\n");
+function parseInterviewBlock(markdown, questions, editorName = "") {
+  let text = String(markdown ?? "").replace(/\r\n/g, "\n").replace(/^﻿/, "");
+  // The whole file may be given: take this editor's section from it.
+  const wanted = String(editorName).trim().toLowerCase();
+  if (wanted && text.includes("## Editors")) {
+    const at = text.toLowerCase().indexOf(`\n### ${wanted}, started `);
+    if (at < 0) throw new Error(`This file has no section for ${editorName}.`);
+    const rest = text.slice(at + 1);
+    const end = rest.slice(4).search(/^##+ /m);
+    text = end < 0 ? rest : rest.slice(0, end + 4);
+  }
   const head = /^### (.+?), started (\d{4}-\d{2}-\d{2})\s*$/m.exec(text);
   if (!head) throw new Error("Paste the editor's whole section, starting with \"### Name, started YYYY-MM-DD\".");
   const name = head[1].trim();

@@ -74,6 +74,15 @@ test("reads a Claude Code interview word for word, and refuses text it cannot at
   assert.throws(() => parseInterviewBlock(block.replace("> (Preetham, 2026-10-29, follow-up)", ""), CORE_QUESTIONS), /without the editor's name/);
 });
 
+test("takes the editor's own section from the whole file", () => {
+  const section = "### Preetham, started 2026-10-29\n\n**Tools I use alongside the repo:**\n> CapCut\n> (Preetham, 2026-10-29)\n";
+  const file = `# How our video editors work\n\n## Editors\n\n### Template\n\n\`\`\`markdown\n### <Name>, started <YYYY-MM-DD>\n\n**Tools I use alongside the repo:**\n> <their words>\n\`\`\`\n\n${section}\n### Ravi, started 2026-10-30\n\n**Tools I use alongside the repo:**\n> Premiere\n> (Ravi, 2026-10-30)\n`;
+  const r = parseInterviewBlock(file.replace(/\n/g, "\r\n"), CORE_QUESTIONS, "preetham");
+  assert.equal(r.name, "Preetham");
+  assert.deepEqual(r.sections[0].entries.map((e) => e.text), ["CapCut"]);
+  assert.throws(() => parseInterviewBlock(file, CORE_QUESTIONS, "Asha"), /no section for Asha/);
+});
+
 test("reads skip words in English and Hinglish", () => {
   for (const w of ["skip", "Later", "baad me", "pata nahi", "don't know"]) assert.equal(isSkip(w), true, w);
   assert.equal(isSkip("I skip the intro shot"), false);

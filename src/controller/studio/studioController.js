@@ -150,7 +150,7 @@ const importInterview = catchAsyncError(async (req, res, next) => {
   const questions = await loadQuestions();
   let parsed;
   try {
-    parsed = parseInterviewBlock(req.body?.text, questions);
+    parsed = parseInterviewBlock(req.body?.text, questions, user.name);
   } catch (e) {
     return next(new ErrorHandler(e.message, 400));
   }
