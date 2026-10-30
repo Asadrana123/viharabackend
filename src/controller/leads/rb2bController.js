@@ -1,6 +1,7 @@
 // controller/rb2bController.js
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const RB2BVisitor = require("../../model/leads/rb2bVisitorModel");
+const { safeEqual } = require("../../utils/safeEqual");
 
 /**
  * RB2B's Webhook payload is a fixed set of space-keyed fields. Map it into our
@@ -41,7 +42,7 @@ const safeDate = (v) => {
  * in the background so RB2B never retries on our processing time.
  */
 const ingestVisitor = catchAsyncError(async (req, res) => {
-  if (req.params.token !== process.env.RB2B_WEBHOOK_TOKEN) {
+  if (!safeEqual(req.params.token, process.env.RB2B_WEBHOOK_TOKEN)) {
     return res.status(401).json({ success: false, message: "Invalid webhook token" });
   }
 

@@ -9,6 +9,8 @@
 // Covers both the central error handler and controllers that answer
 // res.status(500).json({ message: error.message }) themselves.
 
+const { logPath } = require("../utils/logPath");
+
 const GENERIC = "Something went wrong on our side. Please try again.";
 const DETAIL_KEYS = ["message", "error", "details", "stack"];
 
@@ -22,7 +24,7 @@ function hideServerErrors(req, res, next) {
     if (res.statusCode >= 500 && body && typeof body === "object" && !Array.isArray(body) && !maySeeDetails(req)) {
       const original = DETAIL_KEYS.filter((k) => k in body).map((k) => `${k}=${typeof body[k] === "string" ? body[k] : JSON.stringify(body[k])}`);
       if (original.length) {
-        console.error(`[hideServerErrors] ${req.method} ${req.originalUrl} ${res.statusCode}: ${original.join(" | ").slice(0, 2000)}`);
+        console.error(`[hideServerErrors] ${req.method} ${logPath(req)} ${res.statusCode}: ${original.join(" | ").slice(0, 2000)}`);
         body = { ...body };
         for (const k of DETAIL_KEYS) delete body[k];
         body.message = GENERIC;

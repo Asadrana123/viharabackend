@@ -1,5 +1,6 @@
 // controller/brevoWebhookController.js
 const catchAsyncError = require("../../middleware/catchAsyncError");
+const { safeEqual } = require("../../utils/safeEqual");
 const { ingestBrevoEvents } = require("../../services/integrations/emailEventsService");
 const { handleDeliverabilityEvents } = require("../../services/propertyEmail/propertyEmailService");
 
@@ -16,7 +17,7 @@ const isAuthorized = (req) => {
     return false;
   }
   const token = req.query.token || req.get("x-webhook-token") || "";
-  return token === WEBHOOK_SECRET;
+  return safeEqual(token, WEBHOOK_SECRET);
 };
 
 /**

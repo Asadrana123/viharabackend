@@ -10,6 +10,8 @@
 // webhook signature checks) is untouched. Multipart bodies are parsed later by
 // multer per route, so they aren't covered here.
 
+const { logPath } = require("../utils/logPath");
+
 const MAX_DEPTH = 20;
 
 function strip(value, depth, removed) {
@@ -29,7 +31,7 @@ function stripMongoOperators(req, res, next) {
   strip(req.body, 0, removed);
   strip(req.query, 0, removed);
   if (removed.length) {
-    console.warn(`[stripMongoOperators] removed ${[...new Set(removed)].join(", ")} from ${req.method} ${req.path}`);
+    console.warn(`[stripMongoOperators] removed ${[...new Set(removed)].join(", ")} from ${req.method} ${logPath(req)}`);
   }
   next();
 }

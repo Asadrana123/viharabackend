@@ -7,6 +7,7 @@ const { createCallbackRequest } = require("../../services/calling/voiceCallbackS
 const { saveEndOfCallReport } = require("../../services/calling/callLogService");
 
 const VAPI_WEBHOOK_SECRET = process.env.VAPI_WEBHOOK_SECRET;
+const { safeEqual } = require("../../utils/safeEqual");
 
 console.log("[cb-debug] voiceCallbackController loaded. secret set?", !!VAPI_WEBHOOK_SECRET);
 
@@ -33,7 +34,7 @@ function isAuthorized(req) {
   // call results or schedule callbacks.
   if (!VAPI_WEBHOOK_SECRET) return false;
   const provided = String(extractProvidedSecret(req) || "").trim();
-  return Boolean(provided) && provided === VAPI_WEBHOOK_SECRET;
+  return safeEqual(provided, VAPI_WEBHOOK_SECRET);
 }
 
 function parseArgs(raw) {
