@@ -104,6 +104,7 @@ app.use(dropPreviewCookies); // preview sites always count as logged out (see co
 app.use(cookieParser());
 app.use(cors(expressCorsOptions));
 app.use(bodyParser.json({ limit: "5mb", verify: (req, res, buf) => { req.rawBody = buf; } }));
+app.use(require("./middleware/stripMongoOperators")); // no $-operators from visitors reach MongoDB
 // MongoDB Connection with Connection Pooling
 mongoose.connect(process.env.DB_URI, {
   maxPoolSize: 50,

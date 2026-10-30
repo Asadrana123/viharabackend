@@ -83,6 +83,7 @@ exports.getAllEmailandPhone = catchAsyncError(
 exports.Login = catchAsyncError(
   async (req, res, next) => {
     const { email, password } = req.body;
+    if (typeof email !== "string" || typeof password !== "string") return next(new Errorhandler("Invalid Email", 400));
     const finduser = await userModel.findOne({ email }).select("+password").populate({
       path: 'savedProperties', // assuming 'savedProperties' is the field that references another collection
       model: 'productModel' // replace 'product' with the name of the model you are referencing
