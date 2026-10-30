@@ -7,7 +7,7 @@ const cors = require("cors");
 const app = express();
 
 // Import CORS configuration
-const { expressCorsOptions } = require("./config/corsConfig");
+const { expressCorsOptions, dropPreviewCookies } = require("./config/corsConfig");
 
 // Import routes
 const userRoutes = require("./routes/users/userRoutes");
@@ -100,6 +100,7 @@ const zernioWebhookRoutes = require("./routes/social/zernioWebhookRoutes");
 const { recoverAdsLoop } = require("./jobs/adsLoopJob");
 const { recoverRepairJob } = require("./jobs/repairJob");
 // Middleware
+app.use(dropPreviewCookies); // preview sites always count as logged out (see corsConfig)
 app.use(cookieParser());
 app.use(cors(expressCorsOptions));
 app.use(bodyParser.json({ limit: "5mb", verify: (req, res, buf) => { req.rawBody = buf; } }));

@@ -1,3 +1,6 @@
+const escapeHtml = (s) =>
+  String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
 function getErrorPage(message) {
     return `
     <!DOCTYPE html>
@@ -138,7 +141,7 @@ function getErrorPage(message) {
             <h1>Oops! Something went wrong</h1>
             
             <div class="message">
-                ${message}
+                ${escapeHtml(message)}
                 <br><br>
                 Please try again or contact our support team if the problem persists.
             </div>

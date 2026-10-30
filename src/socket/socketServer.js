@@ -1,7 +1,7 @@
 // socketServer.js
 const socketIO = require('socket.io');
 const jwt = require('jsonwebtoken');
-const { socketIOCorsOptions } = require('../config/corsConfig');
+const { socketIOCorsOptions, isPreviewOrigin } = require('../config/corsConfig');
 const User = require('../model/users/userModel');
 const { initializeHandlers, registerSocketHandlers } = require('./socketHandlers');
 const rateLimiter = require('../middleware/socketRateLimitMiddleware');
@@ -34,7 +34,8 @@ function initSocketServer(server) {
 
   io.use(async (socket, next) => {
     try {
-      const cookies = socket.handshake.headers.cookie;
+      // Preview sites always count as logged out (see corsConfig).
+      const cookies = isPreviewOrigin(socket.handshake.headers.origin) ? undefined : socket.handshake.headers.cookie;
 
       if (!cookies) {
         return next(new Error('Authentication error: Cookies missing'));
