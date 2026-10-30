@@ -1,5 +1,6 @@
 require('dotenv').config();
 const nodemailer = require('nodemailer');
+const { maskEmail } = require("./utils/maskPii");
 
 const transporter = nodemailer.createTransport({
     service: 'Gmail',
@@ -64,10 +65,10 @@ const sendReminders = async () => {
                 subject: '🏠 Auction Tomorrow — May 7, 2026 | 9AM–6PM PST | 1496 Adeline St, Oakland',
                 html: getHtml(email)
             });
-            console.log(`✅ Sent to ${email}`);
+            console.log(`✅ Sent to ${maskEmail(email)}`);
             sent++;
         } catch (err) {
-            console.error(`❌ Failed for ${email}:`, err.message);
+            console.error(`❌ Failed for ${maskEmail(email)}:`, err.message);
             failed++;
         }
     }

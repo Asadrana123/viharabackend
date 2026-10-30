@@ -68,10 +68,8 @@ const handleVapiWebhook = catchAsyncError(async (req, res, next) => {
     "| query secret?", !!(req.query && req.query.secret),
     "| header keys:", Object.keys(req.headers).join(",")
   );
+  // Type only: the message itself holds names, numbers and transcripts.
   console.log("[cb-debug] message.type =", req.body?.message?.type);
-  try {
-    console.log("[cb-debug] full message =", JSON.stringify(req.body?.message)?.slice(0, 2000));
-  } catch (_e) {}
 
   if (!isAuthorized(req)) {
     console.log("[cb-debug] AUTH FAILED → 401 (no matching secret in header or query)");
@@ -89,7 +87,6 @@ const handleVapiWebhook = catchAsyncError(async (req, res, next) => {
       const saved = await saveEndOfCallReport(message);
       console.log(
         "[cb-debug] SAVED call log", String(saved?._id),
-        "| phone", saved?.phone,
         "| endedReason", saved?.endedReason
       );
     } catch (err) {
@@ -104,7 +101,7 @@ const handleVapiWebhook = catchAsyncError(async (req, res, next) => {
   }
 
   const toolCalls = extractCallbackToolCalls(message);
-  console.log("[cb-debug] scheduleCallback tool calls found:", toolCalls.length, JSON.stringify(toolCalls));
+  console.log("[cb-debug] scheduleCallback tool calls found:", toolCalls.length);
 
   if (toolCalls.length === 0) {
     console.log("[cb-debug] no scheduleCallback in message. keys on message:", Object.keys(message));
@@ -114,7 +111,7 @@ const handleVapiWebhook = catchAsyncError(async (req, res, next) => {
   const call = message.call || {};
   const customer = call.customer || {};
   const metadata = call.metadata || {};
-  console.log("[cb-debug] customer.number =", customer.number, "| metadata =", JSON.stringify(metadata));
+  console.log("[cb-debug] call", call.id || "(no id)", "| metadata keys:", Object.keys(metadata).join(","));
 
   const results = [];
   for (const tc of toolCalls) {
@@ -131,7 +128,7 @@ const handleVapiWebhook = catchAsyncError(async (req, res, next) => {
         delayMinutes: tc.args.delayMinutes,
         callAtISO: tc.args.callAtISO,
       });
-      console.log("[cb-debug] SAVED callback", String(callback._id), "callAt", callback.callAt, "reply:", spokenReply);
+      console.log("[cb-debug] SAVED callback", String(callback._id), "callAt", callback.callAt);
       results.push({ toolCallId: tc.id, result: spokenReply });
     } catch (err) {
       console.error("[cb-debug] createCallbackRequest FAILED:", err.message, err.stack);
@@ -142,7 +139,7 @@ const handleVapiWebhook = catchAsyncError(async (req, res, next) => {
     }
   }
 
-  console.log("[cb-debug] returning results:", JSON.stringify(results));
+  console.log("[cb-debug] returning results:", results.length);
   return res.status(200).json({ results });
 });
 

@@ -1,5 +1,12 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+
+// Never send real email from tests: replace the sender before the controller loads it.
+const sentEmails = [];
+const sendEmailPath = require.resolve("../../utils/sendEmail");
+const fakeSendEmail = (to) => { sentEmails.push(to); };
+fakeSendEmail.sendEmailAsync = async (to) => { sentEmails.push(to); };
+require.cache[sendEmailPath] = { id: sendEmailPath, filename: sendEmailPath, loaded: true, exports: fakeSendEmail };
 const userModel = require("../../model/users/userModel");
 const productModel = require("../../model/property/productModel");
 const { updateUserDetails, Login, saveProperty, removeProperty, allsavedProperties } = require("./userController");
@@ -184,4 +191,29 @@ test("saveProperty rejects a non-id product_id", async () => {
     assert.equal(out.error.statuscode, 400);
     assert.equal(calls.length, 0);
   } finally { restore(); }
+});
+
+test("SA-025: signup keeps only the signup fields; role, QA flag, verified dates and reset fields are ignored", async () => {
+  const { CreateUser } = require("./userController");
+  const realCreate = userModel.create;
+  let created;
+  userModel.create = async (data) => { created = data; return { ...data, _id: ME, populate: async () => {}, getJWTToken: () => "t" }; };
+  try {
+    // catchAsyncError doesn't return its promise, so wait for the response instead.
+    let done;
+    const answered = new Promise((r) => { done = r; });
+    const res = { status() { return this; }, cookie() { return this; }, json() { done(); return this; } };
+    CreateUser({ body: {
+      name: "Jane", last_name: "Doe", email: "jane@example.test", password: "Long-Pass-1", consentToNotifications: true,
+      role: "admin", isQaAccount: true, email_verified_at: "2020-01-01", mobile_verified_at: "2020-01-01",
+      resetPasswordToken: "x", resetPasswordExpire: "2099-01-01", active: 1, tokenVersion: 9, savedProperties: [OTHER],
+    } }, res, (e) => done(e));
+    assert.equal(await answered, undefined, "no error");
+  } finally {
+    userModel.create = realCreate;
+  }
+  assert.deepEqual(sentEmails, ["jane@example.test"], "welcome email went to the fake sender");
+  const { consents, ...fields } = created;
+  assert.deepEqual(fields, { name: "Jane", last_name: "Doe", email: "jane@example.test", password: "Long-Pass-1" });
+  assert.equal(consents.dataProcessing.granted, true);
 });

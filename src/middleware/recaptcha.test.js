@@ -87,3 +87,17 @@ test("QA agent requests skip the check", async () => {
   const out = await run(makeReq({ headers: { "x-qa-agent-token": QA_TOKEN } }));
   assert.equal(out.nextCalled, true);
 });
+
+test("SA-033: tokens solved on our own sites pass, tokens solved elsewhere are refused", async () => {
+  const withHost = (hostname) => { axios.post = async () => ({ data: { tokenProperties: { valid: true, hostname } } }); };
+  for (const host of ["www.vihara.ai", "vihara.ai", "localhost", "vihara-next.vercel.app", "WWW.VIHARA.AI", undefined]) {
+    withHost(host);
+    assert.equal((await run(makeReq({ body: { recaptchaToken: "t" } }))).nextCalled, true, String(host));
+  }
+  for (const host of ["evil.example", "evilvihara.ai", "vihara.ai.evil.example", "other-app.vercel.app"]) {
+    withHost(host);
+    const out = await run(makeReq({ body: { recaptchaToken: "t" } }));
+    assert.equal(out.nextCalled, false, host);
+    assert.equal(out.status, 400, host);
+  }
+});

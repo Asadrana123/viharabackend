@@ -204,7 +204,8 @@ const getRows = async (
   if (excluded !== undefined) query.excluded = excluded === true || excluded === "true";
   if (activeMarket) query["csv.activeMarket"] = activeMarket;
   if (search) {
-    const re = new RegExp(String(search).trim(), "i");
+    // Escaped: search is plain text, and a crafted pattern could hang the server.
+    const re = new RegExp(String(search).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
     query.$or = [{ "csv.fullName": re }, { "csv.company": re }, { "keys.email": re }];
   }
 

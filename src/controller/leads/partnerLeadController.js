@@ -21,6 +21,7 @@ const LEAD_NOTE_TYPE = "partner";
 const TEST_NAME_REGEX = /\btest\b/i;
 const { syncPartnerLead } = require("../../services/integrations/brevoService");
 const { partnerPageUrl } = require("../../config/siteUrls");
+const { maskEmail } = require("../../utils/maskPii");
 
 /**
  * POST /api/v1/partner/register   (public)
@@ -105,7 +106,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
     }).catch((e) => console.error("[partner-call] scheduling failed:", e.message));
     call = { attempted: true };
   } else {
-    console.log(`[partner] no-consent application: ${lead.email}`);
+    console.log(`[partner] no-consent application: ${maskEmail(lead.email)}`);
   }
 
   // ── 3. Respond ──────────────────────────────────────────────────────────

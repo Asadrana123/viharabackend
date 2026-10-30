@@ -23,6 +23,7 @@ const VtextLine = require("../../../model/vtext/vtextLineModel");
 const { pickCallerNumberId } = require("../callerNumberPoolService");
 const { phoneKey } = require("../dailyDialGuard");
 const { notifyVtextAlert } = require("../../shared/slackService");
+const { maskPhone } = require("../../../utils/maskPii");
 
 const FACETIME_CALL_PREFIX = "ft_";
 
@@ -120,7 +121,7 @@ async function queueFacetimeCall({ line, phone, person, metadata, assistantOverr
   if (release) pendingReleases.set(String(job._id), release);
 
   const callId = `${FACETIME_CALL_PREFIX}${job._id}`;
-  console.log(`📱 FaceTime call queued: ${person.fullName} → ${e164} | Mac ${line.name} | Call ID: ${callId}`);
+  console.log(`📱 FaceTime call queued: ${person.fullName} → ${maskPhone(e164)} | Mac ${line.name} | Call ID: ${callId}`);
   return { success: true, callId, phone, channel: "facetime" };
 }
 
@@ -156,7 +157,7 @@ async function fallbackToPhone(jobId, reason) {
     );
     await FacetimeCallJob.updateOne({ _id: job._id }, { $set: { vapiCallId: data.id, channelUsed: "phone", finishedAt: new Date() } });
     pendingReleases.delete(String(job._id));
-    console.log(`↩️  FaceTime didn't ring (${reason}), phone call sent instead: ${job.fullName} → ${job.phone} | Vapi ${data.id}`);
+    console.log(`↩️  FaceTime didn't ring (${reason}), phone call sent instead: ${job.fullName} → ${maskPhone(job.phone)} | Vapi ${data.id}`);
   } catch (err) {
     const why = vapiError(err);
     await FacetimeCallJob.updateOne(
@@ -164,7 +165,7 @@ async function fallbackToPhone(jobId, reason) {
       { $set: { status: "failed", failureReason: `${reason}; phone fallback failed: ${why}`, finishedAt: new Date() }, $push: { events: { status: "failed", note: `phone fallback failed: ${why}` } } }
     );
     await releaseDial(job._id); // they got no call at all, so today's slot goes back
-    console.error(`❌ FaceTime fallback phone call failed: ${job.fullName} → ${job.phone}:`, why);
+    console.error(`❌ FaceTime fallback phone call failed: ${job.fullName} → ${maskPhone(job.phone)}:`, why);
   }
   await noteLineOutcome(job.lineId, false, reason);
   return job;
@@ -246,7 +247,7 @@ async function markAnswered(lineId, jobId) {
     const websocketCallUrl = call?.transport?.websocketCallUrl;
     if (!websocketCallUrl) throw new Error("Vapi did not return a websocket link");
     await FacetimeCallJob.updateOne({ _id: job._id }, { $set: { vapiCallId: call.id, channelUsed: "facetime" } });
-    console.log(`✅ FaceTime answered, Maya connected: ${job.fullName} → ${job.phone} | Vapi ${call.id}`);
+    console.log(`✅ FaceTime answered, Maya connected: ${job.fullName} → ${maskPhone(job.phone)} | Vapi ${call.id}`);
     return { websocketCallUrl, audioFormat: AUDIO_FORMAT };
   } catch (err) {
     const why = vapiError(err);
@@ -255,7 +256,7 @@ async function markAnswered(lineId, jobId) {
       { $set: { status: "failed", failureReason: `picked up, but Maya could not start: ${why}`, finishedAt: new Date() }, $push: { events: { status: "failed", note: why } } }
     );
     await noteLineOutcome(lineId, false, `Maya could not start: ${why}`);
-    console.error(`❌ FaceTime answered but the Vapi websocket call failed: ${job.phone}:`, why);
+    console.error(`❌ FaceTime answered but the Vapi websocket call failed: ${maskPhone(job.phone)}:`, why);
     throw new Error(`Maya could not start: ${why}`);
   }
 }

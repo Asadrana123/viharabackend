@@ -40,6 +40,7 @@ const { pollCallOutcome, DID_NOT_CONNECT_REASONS } = require("../calling/registr
 const { enqueueJob, PRIORITY } = require("../calling/callDispatchQueue");
 const { getUsageToday } = require("../calling/callerNumberPoolService");
 const { resolvePropertyTimezone } = require("../../utils/resolveTimezone");
+const { maskPhone } = require("../../utils/maskPii");
 
 // ─── Settings ──────────────────────────────────────────────────────────────
 
@@ -352,7 +353,7 @@ async function endCampaign(campaign, reason, admin = null) {
       })
     );
   }
-  console.log(`[buyer-match-call] ${ended.name} (${ended.phone}) about ${ended.propertyLabel}: ended — ${reason}`);
+  console.log(`[buyer-match-call] ${ended.name} (${maskPhone(ended.phone)}) about ${ended.propertyLabel}: ended — ${reason}`);
   return ended;
 }
 
@@ -408,7 +409,7 @@ async function startCampaign({ leadType, leadId, propertyId, takeover = false, a
     throw err;
   }
 
-  console.log(`[buyer-match-call] started: ${campaign.name} (${phone}) about ${campaign.propertyLabel}, tz ${tz}`);
+  console.log(`[buyer-match-call] started: ${campaign.name} (${maskPhone(phone)}) about ${campaign.propertyLabel}, tz ${tz}`);
   // Don't wait for the next minute tick when the first call is due now.
   if (campaign.nextCallAt <= new Date()) sweepDueCampaigns().catch(() => {});
   return publicCampaign(campaign.toObject());

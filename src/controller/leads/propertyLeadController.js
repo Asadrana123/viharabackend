@@ -23,6 +23,7 @@ const { notifyNewLead } = require("../../services/shared/slackService");
 const { onPropertyLeadSignup } = require("../../services/propertyEmail/propertyEmailService");
 const { auctionPageUrl, listingPageUrl } = require("../../config/siteUrls");
 const { touchesFrom, needsFinancingFrom, needsFinancingLabel, downPaymentFrom } = require("../../services/leads/buyBox");
+const { maskPhone } = require("../../utils/maskPii");
 
 // Single note discriminator for all property-auction leads. Lead ids are unique,
 // so one type is enough to keep notes from bleeding into other lead systems.
@@ -156,7 +157,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
     }).catch((e) => console.error(`[property-call:${slug}] scheduling failed:`, e.message));
     call = { attempted: true };
   } else {
-    console.log(`[property-lead:${slug}] no-consent registration: ${lead.phoneNormalized}`);
+    console.log(`[property-lead:${slug}] no-consent registration: ${maskPhone(lead.phoneNormalized)}`);
   }
 
   // ── Respond ────────────────────────────────────────────────────────────────

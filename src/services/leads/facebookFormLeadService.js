@@ -41,6 +41,7 @@ const { findDeal } = require("../../config/newDeals");
 const { hotReasons, checkboxConsents, isToorakTestLead } = require("./toorakLeads");
 const { scheduleToorakCalls } = require("../calling/toorakCallScheduler");
 const { splitName, isValidEmail, STATE_NAMES, stateName, labelList, priceRangeText, withTimeout } = require("./buyBox");
+const { maskPhone } = require("../../utils/maskPii");
 
 const SOURCE = "facebook-form";
 const BREVO_TIMEOUT_MS = 8000;
@@ -492,7 +493,7 @@ async function handleLead(payload) {
     if (doc.consent && !doc.callingStopped && !inLoop) {
       scheduleFacebookFormSignupCall(doc).catch((e) => console.error("[facebook-form-call] scheduling failed:", e.message));
     } else if (!doc.consent) {
-      console.log(`[facebook-form] no consent on form "${doc.formName}"; not calling ${doc.phoneNormalized}`);
+      console.log(`[facebook-form] no consent on form "${doc.formName}"; not calling ${maskPhone(doc.phoneNormalized)}`);
     }
     callNote = doc.consent ? (inLoop ? "already in call loop" : "yes") : "no (form has no call consent)";
   }

@@ -20,6 +20,14 @@ const { clientIp } = require("../utils/clientIp");
 
 let warnedUnconfigured = false;
 
+// Sites the captcha may be solved on: the same domains as the key's own list in
+// Google Cloud (subdomains included, as Google does). A token solved on any other
+// site using our public site key is refused. (Tick-box tokens carry no action,
+// so there is no action to check.)
+const ALLOWED_HOSTS = ["vihara.ai", "localhost", "vihara-next.vercel.app"];
+const isAllowedHost = (host) =>
+  ALLOWED_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
+
 async function verifyRecaptcha(req, res, next) {
   const bodyToken = req.body?.recaptchaToken;
   if (req.body && "recaptchaToken" in req.body) delete req.body.recaptchaToken;
@@ -55,6 +63,11 @@ async function verifyRecaptcha(req, res, next) {
     );
     if (!data?.tokenProperties?.valid) {
       // Expired or already-used tokens land here too (one check per token, valid 2 minutes).
+      return res.status(400).json({ success: false, message: "The captcha check failed or expired. Please tick \"I'm not a robot\" again." });
+    }
+    const host = String(data.tokenProperties.hostname || "").toLowerCase();
+    if (host && !isAllowedHost(host)) {
+      console.warn(`[recaptcha] token solved on another site (${host}); refused`);
       return res.status(400).json({ success: false, message: "The captcha check failed or expired. Please tick \"I'm not a robot\" again." });
     }
     next();

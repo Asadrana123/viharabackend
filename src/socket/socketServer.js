@@ -26,13 +26,6 @@ function initSocketServer(server) {
 
   initializeHandlers(io, activeAuctions, userAuctions, userSocketsMap, lastBroadcastTime, userBidThrottle);
 
-  io.use((socket, next) => {
-    if (!rateLimiter.canConnect(socket.userId)) {
-      return next(new Error('Too many connections'));
-    }
-    next();
-  });
-
   io.use(async (socket, next) => {
     try {
       // Preview sites always count as logged out (see corsConfig).
@@ -60,6 +53,12 @@ function initSocketServer(server) {
       // Signed out by a later password change or reset.
       if (!tokenVersionMatches(decoded, user)) {
         return next(new Error('Authentication error: Invalid token'));
+      }
+
+      // Per-account connection limit, now that we know who it is. Admins aren't limited:
+      // every admin-panel tab opens several live connections.
+      if (user.role !== 'admin' && !rateLimiter.canConnect(socket.userId)) {
+        return next(new Error('Too many connections'));
       }
 
       socket.user = user;

@@ -11,14 +11,16 @@ const createPasswordResetEmail =require('../../htmlPages/users/passwordResetEmai
 const createWelcomeEmail=require('../../htmlPages/users/welcomeEmail.js');
 const getCookieOptions = require("../../utils/cookieOptions");
 const mongoose = require('mongoose'); // Import mongoose
+const SIGNUP_FIELDS = ["name", "last_name", "email", "password", "businessPhone", "city", "state", "userType"];
 exports.CreateUser = catchAsyncError(
   async (req, res) => {
-    // Destructure the request body with consent
-    const {
-      consentToNotifications,
-      role, // Remove this if attacker sends it
-      ...userData
-    } = req.body;
+    // Only fields a visitor may set at signup. Everything else (role, isQaAccount,
+    // verified dates, reset tokens, active, tokenVersion, ...) keeps its default.
+    const { consentToNotifications } = req.body;
+    const userData = {};
+    for (const key of SIGNUP_FIELDS) {
+      if (req.body[key] !== undefined) userData[key] = req.body[key];
+    }
 
     
     // Create a new user with consent handling

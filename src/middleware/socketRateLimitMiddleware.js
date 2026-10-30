@@ -22,7 +22,7 @@ class SocketRateLimitMiddleware {
 
     // Global connection limits
     this.userConnections = new Map();
-    this.MAX_CONNECTIONS_PER_USER = 5;
+    this.MAX_CONNECTIONS_PER_USER = 10; // per account; admins are not limited (socketServer.js)
   }
 
   /**

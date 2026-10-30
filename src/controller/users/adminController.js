@@ -28,6 +28,7 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const { sendEmailAsync } = require('../../utils/sendEmail');
 const getSellerAccessEmail = require('../../htmlPages/seller/sellerAccessEmail');
+const { maskEmail } = require("../../utils/maskPii");
 
 // Create an admin account
 exports.CreateAdmin = catchAsyncError(
@@ -728,7 +729,7 @@ exports.inviteSeller = catchAsyncError(
       );
     } catch (err) {
       emailSent = false;
-      console.error(`Seller access email to ${user.email} failed:`, err);
+      console.error(`Seller access email to ${maskEmail(user.email)} failed:`, err);
     }
 
     // Fresh seller lists for the properties touched, so the UI can re-render.

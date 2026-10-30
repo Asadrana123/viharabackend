@@ -5,6 +5,7 @@ const getSuccessPage = require("../../htmlPages/shared/successPage");
 const getAlreadyUnsubscribedPage = require("../../htmlPages/integrations/alreadyUnsubscribedPage");
 const getErrorPage = require("../../htmlPages/shared/errorPage");
 const formRateLimit = require("../../middleware/formRateLimit");
+const { maskEmail } = require("../../utils/maskPii");
 
 // One-click unsubscribe from the links in older emails (?email=...). Those
 // links have no token, so they keep working exactly as sent. The email must be
@@ -31,7 +32,7 @@ router.get("/unsubscribe", formRateLimit({ name: "unsubscribe", max: 20 }), asyn
         
         // Save email to database
         await unsubscribedEmails.create({ email });
-        console.log(`Unsubscribed: ${email}`);
+        console.log(`Unsubscribed: ${maskEmail(email)}`);
         
         res.send(getSuccessPage(email));
     } catch (error) {
