@@ -16,9 +16,7 @@
 // check: the QA worker drives the forms headlessly and cannot tick the box.
 const axios = require("axios");
 const { hasValidQaAgentToken } = require("./qaAgentAuth");
-
-const clientIp = (req) =>
-  String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.ip || "";
+const { clientIp } = require("../utils/clientIp");
 
 let warnedUnconfigured = false;
 

@@ -5,10 +5,9 @@
 // from triggering a stream of Maya calls. Per process: fine for one Render
 // instance; swap for a shared store if the API is ever scaled out.
 
-const buckets = new Map(); // ip → [timestamps]
+const { clientIp } = require("../utils/clientIp");
 
-const clientIp = (req) =>
-  String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.ip || "unknown";
+const buckets = new Map(); // ip → [timestamps]
 
 /**
  * @param {object} [opts]
@@ -24,7 +23,8 @@ const formRateLimit = ({
   message = "Too many submissions. Please wait a few minutes and try again.",
 } = {}) => (req, res, next) => {
   const now = Date.now();
-  const ip = name ? `${name}:${clientIp(req)}` : clientIp(req);
+  const visitor = clientIp(req) || "unknown";
+  const ip = name ? `${name}:${visitor}` : visitor;
   const recent = (buckets.get(ip) || []).filter((t) => now - t < windowMs);
 
   if (recent.length >= max) {
