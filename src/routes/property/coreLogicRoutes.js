@@ -10,6 +10,11 @@ const {
   getPropertyValuation,
   getRentalEstimate
 } = require("../../controller/property/coreLogicController");
+const formRateLimit = require("../../middleware/formRateLimit");
+
+// Public, and each lookup is a paid CoreLogic call, so one visitor can't loop
+// over property ids. Results are also cached per property (see the controller).
+router.use(formRateLimit({ name: "corelogic", max: 20, message: "Too many requests. Please wait a few minutes and try again." }));
 
 /**
  * @route   GET /api/v1/corelogic/:id

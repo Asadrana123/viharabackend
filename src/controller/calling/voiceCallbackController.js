@@ -29,7 +29,9 @@ function extractProvidedSecret(req) {
 }
 
 function isAuthorized(req) {
-  if (!VAPI_WEBHOOK_SECRET) return true; // no secret configured → open
+  // No secret configured → refuse. An open webhook would let anyone post fake
+  // call results or schedule callbacks.
+  if (!VAPI_WEBHOOK_SECRET) return false;
   const provided = String(extractProvidedSecret(req) || "").trim();
   return Boolean(provided) && provided === VAPI_WEBHOOK_SECRET;
 }

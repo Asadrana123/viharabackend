@@ -17,7 +17,7 @@ app.use("/api/ebook", require("./integrations/eBookRoutes"));
 app.use("/api/sellProperty", require("./property/sellPropertyRoutes"));
 app.use("/api/capi", require("./integrations/metaCapiRoutes"));
 app.use("/api/facebook", require("./leads/facebookRoutes"));
-app.use((err, req, res, next) => res.status(err.statusCode || 500).json({ success: false }));
+app.use(require("../middleware/error")); // the real error middleware, as in app.js
 
 let server;
 let base;
