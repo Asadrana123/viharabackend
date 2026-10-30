@@ -4,6 +4,7 @@ const catchAsyncError = require("./catchAsyncError");
 const Errorhandler = require("../utils/errorhandler");
 const adminModel = require("../model/users/adminModel");
 const userModel = require("../model/users/userModel");
+const { tokenVersionMatches } = require("../utils/tokenVersion");
 
 /**
  * Resolves the logged-in advisor for note actions and sets req.advisor.
@@ -32,8 +33,8 @@ exports.resolveAdvisor = catchAsyncError(async (req, res, next) => {
   // Admin first (that's where advisors normally live), then fall back to user.
   let advisor = await adminModel.findById(decoded.id).select("name email");
   if (!advisor) {
-    advisor = await userModel.findById(decoded.id).select("name email role isQaAccount");
-    if (!advisor) return next(new Errorhandler("Not authorized", 401));
+    advisor = await userModel.findById(decoded.id).select("name email role isQaAccount tokenVersion");
+    if (!advisor || !tokenVersionMatches(decoded, advisor)) return next(new Errorhandler("Not authorized", 401));
     // Only admins work with lead notes; a buyer or seller account is not an advisor.
     if (advisor.role !== "admin") return next(new Errorhandler("Not authorized", 403));
   }

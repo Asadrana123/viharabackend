@@ -5,6 +5,10 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const express = require("express");
 
+// The renovation controller keeps logging after it has answered; output written while the test runner
+// reads results occasionally fails the whole file ("Unable to deserialize cloned data"), so keep it quiet.
+console.log = console.info = () => {};
+
 delete process.env.RECAPTCHA_API_KEY; // captcha off: these tests are about what comes after it
 delete process.env.VAPI_WEBHOOK_SECRET;
 delete process.env.BREVO_WEBHOOK_SECRET;

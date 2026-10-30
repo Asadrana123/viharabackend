@@ -3,6 +3,7 @@ const jwt = require("jsonwebtoken");
 const catchAsyncError = require("./catchAsyncError");
 const Errorhandler = require("../utils/errorhandler");
 const realtorModel = require("../model/users/realtorModel");
+const { tokenVersionMatches } = require("../utils/tokenVersion");
 
 /**
  * Realtor session auth.
@@ -36,6 +37,12 @@ exports.isRealtorAuthenticated = catchAsyncError(async (req, res, next) => {
     req.realtor = await realtorModel.findById(decoded.id);
     if (!req.realtor) {
         return next(new Errorhandler("Realtor account not found", 404));
+    }
+
+    // Signed out by a later password reset.
+    if (!tokenVersionMatches(decoded, req.realtor)) {
+        req.realtor = undefined;
+        return next(new Errorhandler("Invalid or expired token", 401));
     }
 
     next();

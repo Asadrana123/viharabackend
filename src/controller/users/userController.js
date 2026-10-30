@@ -83,14 +83,15 @@ exports.getAllEmailandPhone = catchAsyncError(
 exports.Login = catchAsyncError(
   async (req, res, next) => {
     const { email, password } = req.body;
-    if (typeof email !== "string" || typeof password !== "string") return next(new Errorhandler("Invalid Email", 400));
+    // One message for every failure, so login can't be used to check which emails have accounts.
+    if (typeof email !== "string" || typeof password !== "string") return next(new Errorhandler("Invalid email or password", 400));
     const finduser = await userModel.findOne({ email }).select("+password").populate({
       path: 'savedProperties', // assuming 'savedProperties' is the field that references another collection
       model: 'productModel' // replace 'product' with the name of the model you are referencing
     });
-    if (!finduser) return next(new Errorhandler("Invalid Email", 400));
+    if (!finduser) return next(new Errorhandler("Invalid email or password", 400));
     const matchPassword = await finduser.comparePassword(password);
-    if (!matchPassword) return next(new Errorhandler("Invalid Password", 400));
+    if (!matchPassword) return next(new Errorhandler("Invalid email or password", 400));
     // sendEmail(
     //   req.body.email,
     //   finduser.name,
@@ -278,9 +279,14 @@ exports.resetPassword = catchAsyncError(
     if (!User) {
       return next(new Errorhandler("resetPassword token is invalid or has been expired", 400));
     }
-    User.password = req.body.password;
+    const { password } = req.body;
+    if (typeof password !== "string" || password.length < 8) {
+      return next(new Errorhandler("Password must be at least 8 characters long", 400));
+    }
+    User.password = password;
     User.resetPasswordToken = undefined;
     User.resetPasswordExpire = undefined;
+    User.tokenVersion = (User.tokenVersion || 0) + 1; // signs out every other session
     await User.save({ validateBeforeSave: false })
     sendToken(User, 200, res);
   }
@@ -298,7 +304,7 @@ exports.updatePassword = catchAsyncError(
       return next(new Errorhandler("Passwords not matching", 400));
     }
 
-    if (newpassword.length < 8) {
+    if (typeof newpassword !== "string" || newpassword.length < 8) {
       return next(new Errorhandler("New password must be at least 8 characters long", 400));
     }
 
@@ -321,11 +327,12 @@ exports.updatePassword = catchAsyncError(
       return next(new Errorhandler("New password must be different from current password", 400));
     }
 
-    // Update password
+    // Update password and sign out every other session; this device gets a fresh cookie.
     user.password = newpassword;
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
     await user.save();
+    sendToken.setTokenCookie(res, user);
 
-    // Send success response (don't send token for password change)
     res.status(200).json({
       success: true,
       message: "Password updated successfully"

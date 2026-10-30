@@ -100,8 +100,21 @@ const zernioWebhookRoutes = require("./routes/social/zernioWebhookRoutes");
 const { recoverAdsLoop } = require("./jobs/adsLoopJob");
 const { recoverRepairJob } = require("./jobs/repairJob");
 // Middleware
+// Basic security headers. Not helmet: its cross-origin defaults could block the website
+// loading from the API or break the Google sign-in redirect.
+app.disable("x-powered-by");
+app.use((req, res, next) => {
+  res.set({
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY", // nothing embeds API pages (unsubscribe etc.) in a frame
+    "Content-Security-Policy": "frame-ancestors 'none'",
+    "Referrer-Policy": "no-referrer", // unsubscribe links carry an email address
+  });
+  next();
+});
 app.use(dropPreviewCookies); // preview sites always count as logged out (see corsConfig)
 app.use(cookieParser());
+app.use(require("./middleware/hideServerErrors")); // no raw internal error text to visitors on 500s
 app.use(cors(expressCorsOptions));
 app.use(bodyParser.json({ limit: "5mb", verify: (req, res, buf) => { req.rawBody = buf; } }));
 app.use(require("./middleware/stripMongoOperators")); // no $-operators from visitors reach MongoDB

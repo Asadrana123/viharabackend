@@ -707,6 +707,7 @@ exports.inviteSeller = catchAsyncError(
         // Hashed here: findByIdAndUpdate skips the pre-save hook.
         update.password = await bcrypt.hash(password, 10);
         update.updated_at = Date.now();
+        update.$inc = { tokenVersion: 1 }; // signs out the seller's older sessions
       }
       if (Object.keys(update).length) {
         await userModel.findByIdAndUpdate(user._id, update, { runValidators: true });

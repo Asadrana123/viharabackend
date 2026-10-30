@@ -3,6 +3,7 @@ const socketIO = require('socket.io');
 const jwt = require('jsonwebtoken');
 const { socketIOCorsOptions, isPreviewOrigin } = require('../config/corsConfig');
 const User = require('../model/users/userModel');
+const { tokenVersionMatches } = require('../utils/tokenVersion');
 const { initializeHandlers, registerSocketHandlers } = require('./socketHandlers');
 const rateLimiter = require('../middleware/socketRateLimitMiddleware');
 // Vtext's own, separate socket handlers (join/leave the admin room) — kept
@@ -52,9 +53,13 @@ function initSocketServer(server) {
       socket.userId = decoded.id;
 
       // Fetch name, email, and role
-      const user = await User.findById(decoded.id).select('name email role');
+      const user = await User.findById(decoded.id).select('name email role tokenVersion');
       if (!user) {
         return next(new Error('User not found'));
+      }
+      // Signed out by a later password change or reset.
+      if (!tokenVersionMatches(decoded, user)) {
+        return next(new Error('Authentication error: Invalid token'));
       }
 
       socket.user = user;
