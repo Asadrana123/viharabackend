@@ -158,6 +158,40 @@ function editSection(profile, questions, key, text, now = new Date()) {
   return section;
 }
 
+/**
+ * Reads an editor's section of the Creative OS's learning/video-editors.md (an interview taken in
+ * Claude Code) word for word, for an admin's import. Each answer is a quotation closed by
+ * "(Name, YYYY-MM-DD[, follow-up])". Refuses text it cannot attribute rather than guess.
+ */
+function parseInterviewBlock(markdown, questions) {
+  const text = String(markdown ?? "").replace(/\r\n/g, "\n");
+  const head = /^### (.+?), started (\d{4}-\d{2}-\d{2})\s*$/m.exec(text);
+  if (!head) throw new Error("Paste the editor's whole section, starting with \"### Name, started YYYY-MM-DD\".");
+  const name = head[1].trim();
+  const sections = [];
+  for (const q of questions) {
+    const marker = `**${q.label}:**`;
+    const from = text.indexOf(marker);
+    if (from < 0) continue;
+    const rest = text.slice(from + marker.length);
+    const end = rest.search(/^\*\*[^*\n]+:\*\*/m);
+    const lines = (end < 0 ? rest : rest.slice(0, end)).split("\n").filter((l) => l.startsWith(">")).map((l) => l.replace(/^> ?/, ""));
+    const entries = [];
+    let buffer = [];
+    for (const line of lines) {
+      const m = /^\((.+?), (\d{4}-\d{2}-\d{2})(, follow-up)?\)$/.exec(line.trim());
+      if (m && m[1].trim() === name) {
+        entries.push({ text: buffer.join("\n").trim(), kind: m[3] ? "follow-up" : "answer", at: new Date(`${m[2]}T00:00:00Z`) });
+        buffer = [];
+      } else buffer.push(line);
+    }
+    if (buffer.join("").trim()) throw new Error(`"${q.label}" has text without the editor's name and date; nothing was imported.`);
+    if (entries.length) sections.push({ key: q.key, label: q.label, status: "answered", entries });
+  }
+  if (!sections.length) throw new Error("No answers were found in the pasted text.");
+  return { name, startedAt: new Date(`${head[2]}T00:00:00Z`), sections };
+}
+
 /** answered / total, and the overall state, for lists. */
 function interviewStatus(profile, questions) {
   syncSections(profile, questions);
@@ -166,4 +200,4 @@ function interviewStatus(profile, questions) {
   return { answered, total, state: answered === total ? "interviewed" : answered > 0 ? "partial" : "not_started" };
 }
 
-module.exports = { judgeAnswer, startInterview, answerInterview, editSection, interviewStatus, syncSections, isSkip };
+module.exports = { judgeAnswer, startInterview, answerInterview, editSection, interviewStatus, syncSections, isSkip, parseInterviewBlock };

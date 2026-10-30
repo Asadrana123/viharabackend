@@ -10,7 +10,7 @@ const EditorProfile = require("../../model/studio/editorProfileModel");
 const StudioSettings = require("../../model/studio/studioSettingsModel");
 const userModel = require("../../model/users/userModel");
 const { CORE_QUESTIONS, CORE_KEYS } = require("../../config/studio/interviewQuestions");
-const { startInterview, answerInterview, editSection, interviewStatus, syncSections } = require("../../services/studio/interviewService");
+const { startInterview, answerInterview, editSection, interviewStatus, syncSections, parseInterviewBlock } = require("../../services/studio/interviewService");
 
 const KEY = /^[a-z][a-z0-9-]{1,30}$/;
 
@@ -139,6 +139,34 @@ const removeEditor = catchAsyncError(async (req, res, next) => {
   res.status(200).json({ success: true });
 });
 
+/**
+ * POST /api/v1/studio/editors/:userId/import  { text } (admin) - an interview taken in Claude Code,
+ * pasted from learning/video-editors.md, into the editor's profile, word for word. Refused when the
+ * editor already has answers in the Studio.
+ */
+const importInterview = catchAsyncError(async (req, res, next) => {
+  const user = await userModel.findById(req.params.userId);
+  if (!user || user.role !== "editor") return next(new ErrorHandler("Not an editor.", 404));
+  const questions = await loadQuestions();
+  let parsed;
+  try {
+    parsed = parseInterviewBlock(req.body?.text, questions);
+  } catch (e) {
+    return next(new ErrorHandler(e.message, 400));
+  }
+  const profile = await ownProfile(user);
+  if (profile.sections.some((s) => s.entries.length)) return next(new ErrorHandler("This editor already has answers in the Studio; nothing was imported.", 400));
+  profile.name = parsed.name;
+  profile.startedAt = parsed.startedAt;
+  profile.interviewedAt = parsed.startedAt;
+  profile.importedFrom = "claude-code";
+  profile.sections = parsed.sections;
+  syncSections(profile, questions);
+  profile.interview.state = "done";
+  await profile.save();
+  res.status(200).json({ success: true, profile: view(profile, questions) });
+});
+
 /** PUT /api/v1/studio/questions  { questions } (admin) - reword or add interview questions. */
 const updateQuestions = catchAsyncError(async (req, res, next) => {
   const list = Array.isArray(req.body?.questions) ? req.body.questions : null;
@@ -161,4 +189,4 @@ const updateQuestions = catchAsyncError(async (req, res, next) => {
   res.status(200).json({ success: true, questions: doc.questions });
 });
 
-module.exports = { me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, updateQuestions };
+module.exports = { me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, importInterview, updateQuestions };

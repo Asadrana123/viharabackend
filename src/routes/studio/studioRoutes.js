@@ -18,6 +18,7 @@ router.post("/profile/notes", c.addNote);
 router.get("/editors", authorizeRoles("admin"), c.listEditors);
 router.post("/editors", authorizeRoles("admin"), c.addEditor);
 router.delete("/editors/:userId", authorizeRoles("admin"), c.removeEditor);
+router.post("/editors/:userId/import", authorizeRoles("admin"), c.importInterview);
 router.put("/questions", authorizeRoles("admin"), c.updateQuestions);
 
 module.exports = router;

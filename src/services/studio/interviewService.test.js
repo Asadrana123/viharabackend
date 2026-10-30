@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { startInterview, answerInterview, editSection, interviewStatus, isSkip } = require("./interviewService");
+const { startInterview, answerInterview, editSection, interviewStatus, isSkip, parseInterviewBlock } = require("./interviewService");
 const { CORE_QUESTIONS } = require("../../config/studio/interviewQuestions");
 
 const NOW = new Date("2026-10-30T10:00:00Z");
@@ -58,6 +58,20 @@ test("an empty reply is refused, and a judge failure never blocks the interview"
   const failing = async () => ({ concrete: true, followup: "" });
   const r = await answerInterview(p, CORE_QUESTIONS, "no numbers here", failing, NOW);
   assert.match(r.reply, /^2\/7\./);
+});
+
+test("reads a Claude Code interview word for word, and refuses text it cannot attribute", () => {
+  const block = [
+    "### Preetham, started 2026-10-29", "", "Interviewed 2026-10-29 with the editor-interview skill.", "",
+    "**Tools I use alongside the repo:**", "> HyperFrames", ">", "> and Epidemic Sound", "> (Preetham, 2026-10-29)", "> Enhance this", "> (Preetham, 2026-10-29, follow-up)", "",
+    "**How I pace and cut:**", "not answered yet", "", "**Notes by date:**",
+  ].join("\n");
+  const r = parseInterviewBlock(block, CORE_QUESTIONS);
+  assert.equal(r.name, "Preetham");
+  assert.deepEqual(r.sections.map((s) => s.key), ["tools"]);
+  assert.deepEqual(r.sections[0].entries.map((e) => [e.kind, e.text]), [["answer", "HyperFrames\n\nand Epidemic Sound"], ["follow-up", "Enhance this"]]);
+  assert.throws(() => parseInterviewBlock("no heading", CORE_QUESTIONS), /whole section/);
+  assert.throws(() => parseInterviewBlock(block.replace("> (Preetham, 2026-10-29, follow-up)", ""), CORE_QUESTIONS), /without the editor's name/);
 });
 
 test("reads skip words in English and Hinglish", () => {

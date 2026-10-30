@@ -58,6 +58,8 @@ const editorProfileSchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true, maxLength: 40 },
     startedAt: { type: Date, default: Date.now },
     interviewedAt: { type: Date, default: null },
+    // "claude-code" when an admin imported an interview taken in Claude Code.
+    importedFrom: { type: String, default: null },
     sections: { type: [sectionSchema], default: [] },
     interview: {
       state: { type: String, enum: ["not_started", "in_progress", "done"], default: "not_started" },
