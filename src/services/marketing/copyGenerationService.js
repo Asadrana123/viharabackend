@@ -1,7 +1,7 @@
 // services/marketing/copyGenerationService.js
 //
 // Calls Gemini to write Marketing Engine copy. Same setup as
-// propertyDescriptionService: @google/generative-ai, gemini-2.5-flash,
+// propertyDescriptionService: @google/generative-ai, model from GEMINI_MODEL,
 // GEMINI_API_KEY, lazily created client.
 //
 // Gemini only writes wording. It never decides what is allowed; the caller
@@ -11,7 +11,7 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 const Errorhandler = require("../../utils/errorhandler");
 const prompts = require("./copyPrompts");
 
-const MODEL_NAME = "gemini-2.5-flash";
+const { GEMINI_MODEL: MODEL_NAME } = require("../geminiModel");
 const REQUEST_TIMEOUT_MS = 60000;
 const TEMPERATURE = 0.6;
 const REGENERATE_TEMPERATURE = 0.3;
