@@ -28,6 +28,18 @@ const decisionSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const cutSchema = new mongoose.Schema(
+  {
+    // Where the file is in the private bucket. Never sent to a browser.
+    key: { type: String, required: true },
+    name: { type: String, required: true },
+    sha256: { type: String, required: true },
+    bytes: { type: Number, required: true },
+    uploadedAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
 const studioVideoSchema = new mongoose.Schema(
   {
     // The fixed core id (D-023); the stage prefix changes, this never does.
@@ -49,6 +61,8 @@ const studioVideoSchema = new mongoose.Schema(
     durationSeconds: { type: Number, default: null },
     lastBuildAt: { type: Date, default: null },
     syncedAt: { type: Date, default: Date.now },
+    // The latest cut, for the Studio's player (services/studio/cutStorage.js).
+    cut: { type: cutSchema, default: null },
     feedback: { type: [feedbackSchema], default: [] },
   },
   { timestamps: true }

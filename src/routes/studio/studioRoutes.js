@@ -6,7 +6,9 @@ const c = require("../../controller/studio/studioController");
 const router = express.Router();
 
 // The Creative OS, with its shared key, before the sign-in check below.
-router.post("/videos/sync", c.syncVideos);
+router.post("/videos/sync", c.requireSyncKey, c.syncVideos);
+router.post("/videos/:coreId/cut-link", c.requireSyncKey, c.cutLink);
+router.post("/videos/:coreId/cut", c.requireSyncKey, c.confirmCut);
 
 // Editors and admins.
 router.use(isAuthenticated, authorizeRoles("editor", "admin"));

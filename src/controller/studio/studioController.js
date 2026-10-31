@@ -14,6 +14,7 @@ const userModel = require("../../model/users/userModel");
 const { CORE_QUESTIONS, CORE_KEYS } = require("../../config/studio/interviewQuestions");
 const { startInterview, answerInterview, editSection, interviewStatus, syncSections, parseInterviewBlock } = require("../../services/studio/interviewService");
 const { keyMatches, cleanBatch, cleanFeedback, undelivered } = require("../../services/studio/videoService");
+const { storage, cleanCut, uploadUrl, viewUrl, storedBytes } = require("../../services/studio/cutStorage");
 
 const KEY = /^[a-z][a-z0-9-]{1,30}$/;
 
@@ -192,13 +193,18 @@ const updateQuestions = catchAsyncError(async (req, res, next) => {
   res.status(200).json({ success: true, questions: doc.questions });
 });
 
-/** What the Studio shows of a video: people's names, never their account ids. */
-const videoView = (v) => ({ ...v, feedback: (v.feedback ?? []).map(({ _id, text, byName, at }) => ({ _id, text, byName, at })) });
+/** What the Studio shows of a video: people's names, never their account ids; a link to the cut, never where it is kept. */
+const videoView = async (v) => ({
+  ...v,
+  feedback: (v.feedback ?? []).map(({ _id, text, byName, at }) => ({ _id, text, byName, at })),
+  cut: v.cut ? { name: v.cut.name, bytes: v.cut.bytes, uploadedAt: v.cut.uploadedAt } : null,
+  cutUrl: await viewUrl(v.cut?.key),
+});
 
 /** GET /api/v1/studio/videos - every video, newest build first. */
 const listVideos = catchAsyncError(async (req, res) => {
   const videos = await StudioVideo.find({}).sort({ lastBuildAt: -1, updatedAt: -1 }).lean();
-  res.status(200).json({ success: true, videos: videos.map(videoView) });
+  res.status(200).json({ success: true, videos: await Promise.all(videos.map(videoView)) });
 });
 
 /** POST /api/v1/studio/videos/:coreId/feedback  { text } - a person's words on a video. Not a gate decision. */
@@ -214,7 +220,45 @@ const addVideoFeedback = catchAsyncError(async (req, res, next) => {
   const profile = await EditorProfile.findOne({ user: req.user._id }).select("name").lean();
   video.feedback.push({ text, byName: profile?.name || req.user.name || req.user.email, user: req.user._id });
   await video.save();
-  res.status(201).json({ success: true, video: videoView(video.toObject()) });
+  res.status(201).json({ success: true, video: await videoView(video.toObject()) });
+});
+
+/** The Creative OS's own routes: the shared key instead of a signed-in person. */
+const requireSyncKey = (req, res, next) => {
+  if (!process.env.STUDIO_SYNC_KEY) return next(new ErrorHandler("Studio video sync is not set up.", 503));
+  if (!keyMatches(process.env.STUDIO_SYNC_KEY, req.get("x-studio-key"))) return next(new ErrorHandler("Wrong sync key.", 401));
+  next();
+};
+
+/** POST /api/v1/studio/videos/:coreId/cut-link  { cut } - a short-lived link to upload this cut. */
+const cutLink = catchAsyncError(async (req, res, next) => {
+  if (!storage()) return next(new ErrorHandler("Cut storage is not set up.", 503));
+  const video = await StudioVideo.findOne({ coreId: String(req.params.coreId) }).select("coreId").lean();
+  if (!video) return next(new ErrorHandler("No such video.", 404));
+  let cut;
+  try {
+    cut = cleanCut(video.coreId, req.body?.cut);
+  } catch (e) {
+    return next(new ErrorHandler(e.message, 400));
+  }
+  res.status(200).json({ success: true, uploadUrl: await uploadUrl(cut.key) });
+});
+
+/** POST /api/v1/studio/videos/:coreId/cut  { cut } - the upload finished; the file is checked before it is shown. */
+const confirmCut = catchAsyncError(async (req, res, next) => {
+  if (!storage()) return next(new ErrorHandler("Cut storage is not set up.", 503));
+  const video = await StudioVideo.findOne({ coreId: String(req.params.coreId) });
+  if (!video) return next(new ErrorHandler("No such video.", 404));
+  let cut;
+  try {
+    cut = cleanCut(video.coreId, req.body?.cut);
+  } catch (e) {
+    return next(new ErrorHandler(e.message, 400));
+  }
+  if ((await storedBytes(cut.key)) !== cut.bytes) return next(new ErrorHandler("The uploaded file is missing or not the right size.", 409));
+  video.cut = { ...cut, uploadedAt: new Date() };
+  await video.save();
+  res.status(200).json({ success: true });
 });
 
 /**
@@ -224,8 +268,6 @@ const addVideoFeedback = catchAsyncError(async (req, res, next) => {
  * push fails halfway.
  */
 const syncVideos = catchAsyncError(async (req, res, next) => {
-  if (!process.env.STUDIO_SYNC_KEY) return next(new ErrorHandler("Studio video sync is not set up.", 503));
-  if (!keyMatches(process.env.STUDIO_SYNC_KEY, req.get("x-studio-key"))) return next(new ErrorHandler("Wrong sync key.", 401));
   let rows;
   try {
     rows = cleanBatch(req.body?.videos);
@@ -243,4 +285,4 @@ const syncVideos = catchAsyncError(async (req, res, next) => {
   res.status(200).json({ success: true, stored: rows.length, feedback: undelivered(pending) });
 });
 
-module.exports = { me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, importInterview, updateQuestions, listVideos, addVideoFeedback, syncVideos };
+module.exports = { me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, importInterview, updateQuestions, listVideos, addVideoFeedback, syncVideos, requireSyncKey, cutLink, confirmCut };
