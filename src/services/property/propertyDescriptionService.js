@@ -2,7 +2,7 @@
 //
 // Generates a clean, human-readable property description from parsed PropStream
 // facts using Google Gemini — matching the project's existing Gemini setup
-// (@google/generative-ai, model gemini-2.5-flash, key GEMINI_API_KEY).
+// (@google/generative-ai, model from GEMINI_MODEL, key GEMINI_API_KEY).
 //
 // Safety:
 //   - NO invented data: the prompt forbids adding features/amenities/numbers
@@ -12,7 +12,7 @@
 
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-const MODEL_NAME = "gemini-2.5-flash";
+const { GEMINI_MODEL: MODEL_NAME } = require("../geminiModel");
 
 // Lazily created so a missing key doesn't crash module load (unlike a service
 // that throws in its constructor) — the importer must degrade, not break.

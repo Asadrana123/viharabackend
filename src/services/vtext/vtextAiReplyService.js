@@ -2,8 +2,8 @@
 //
 // Pure generation — no DB writes, no queue calls. Drafts a reply to a real
 // inbound Vtext message using Google Gemini, matching the project's
-// existing Gemini setup (@google/generative-ai, model gemini-2.5-flash, key
-// GEMINI_API_KEY — same convention as propertyDescriptionService.js /
+// existing Gemini setup (@google/generative-ai, model from GEMINI_MODEL via
+// geminiModel.js, key GEMINI_API_KEY — same convention as propertyDescriptionService.js /
 // copyGenerationService.js).
 //
 // Deliberate deviation from that convention: those services fall back to a
@@ -20,7 +20,7 @@ const { resolvePropertyVariables, TEMPLATE_VARIABLES } = require("./vtextTemplat
 // unfamiliar key name as information it isn't sure how to use.
 const VARIABLE_LABELS = Object.fromEntries(TEMPLATE_VARIABLES.map((v) => [v.key, v.label]));
 
-const MODEL_NAME = "gemini-2.5-flash";
+const { GEMINI_MODEL: MODEL_NAME } = require("../geminiModel");
 
 let _client = null;
 function getClient() {
