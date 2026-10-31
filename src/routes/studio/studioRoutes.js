@@ -20,6 +20,8 @@ router.put("/profile/sections/:key", c.updateSection);
 router.post("/profile/notes", c.addNote);
 router.get("/videos", c.listVideos);
 router.post("/videos/:coreId/feedback", c.addVideoFeedback);
+router.get("/proposals", c.listProposals);
+router.post("/proposals/:id/decide", c.decideStudioProposal);
 
 // Admins only.
 router.get("/editors", authorizeRoles("admin"), c.listEditors);

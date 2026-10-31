@@ -10,11 +10,13 @@ const ErrorHandler = require("../../utils/errorhandler");
 const EditorProfile = require("../../model/studio/editorProfileModel");
 const StudioSettings = require("../../model/studio/studioSettingsModel");
 const StudioVideo = require("../../model/studio/studioVideoModel");
+const StudioProposal = require("../../model/studio/studioProposalModel");
 const userModel = require("../../model/users/userModel");
 const { CORE_QUESTIONS, CORE_KEYS } = require("../../config/studio/interviewQuestions");
 const { startInterview, answerInterview, editSection, interviewStatus, syncSections, parseInterviewBlock } = require("../../services/studio/interviewService");
 const { keyMatches, cleanBatch, cleanFeedback, undelivered } = require("../../services/studio/videoService");
 const { storage, cleanCut, uploadUrl, viewUrl, storedBytes } = require("../../services/studio/cutStorage");
+const { cleanProposals, decideProblem, canSee, cleanDecision, undeliveredDecisions } = require("../../services/studio/proposalService");
 
 const KEY = /^[a-z][a-z0-9-]{1,30}$/;
 
@@ -223,6 +225,40 @@ const addVideoFeedback = catchAsyncError(async (req, res, next) => {
   res.status(201).json({ success: true, video: await videoView(video.toObject()) });
 });
 
+/** The name and role a proposal is decided under. */
+async function decider(user) {
+  const profile = await EditorProfile.findOne({ user: user._id }).select("name").lean();
+  return { role: user.role, name: profile?.name || user.name || user.email };
+}
+
+const proposalView = ({ proposalId, kind, title, proposal, limits, forEditor, status, decision }) => ({ proposalId, kind, title, proposal, limits, forEditor, status, decision: { byName: decision?.byName ?? null, words: decision?.words ?? null, at: decision?.at ?? null } });
+
+/** GET /api/v1/studio/proposals - an editor's own; an admin sees all. */
+const listProposals = catchAsyncError(async (req, res) => {
+  const who = await decider(req.user);
+  const rows = await StudioProposal.find({}).sort({ proposalId: -1 }).lean();
+  res.status(200).json({ success: true, proposals: rows.filter((p) => canSee(p, who)).map(proposalView) });
+});
+
+/** POST /api/v1/studio/proposals/:id/decide  { decision, words } - the person's decision (D-043). */
+const decideStudioProposal = catchAsyncError(async (req, res, next) => {
+  let input;
+  try {
+    input = cleanDecision(req.body);
+  } catch (e) {
+    return next(new ErrorHandler(e.message, 400));
+  }
+  const proposal = await StudioProposal.findOne({ proposalId: String(req.params.id) });
+  if (!proposal) return next(new ErrorHandler("No such proposal.", 404));
+  const who = await decider(req.user);
+  const problem = decideProblem(proposal, who);
+  if (problem) return next(new ErrorHandler(problem, 403));
+  proposal.status = input.decision === "accept" ? "accepted" : "declined";
+  proposal.decision = { byName: who.name, words: input.words, at: new Date(), deliveredAt: null };
+  await proposal.save();
+  res.status(200).json({ success: true, proposal: proposalView(proposal.toObject()) });
+});
+
 /** The Creative OS's own routes: the shared key instead of a signed-in person. */
 const requireSyncKey = (req, res, next) => {
   if (!process.env.STUDIO_SYNC_KEY) return next(new ErrorHandler("Studio video sync is not set up.", 503));
@@ -269,8 +305,10 @@ const confirmCut = catchAsyncError(async (req, res, next) => {
  */
 const syncVideos = catchAsyncError(async (req, res, next) => {
   let rows;
+  let proposals;
   try {
     rows = cleanBatch(req.body?.videos);
+    proposals = cleanProposals(req.body?.proposals);
   } catch (e) {
     return next(new ErrorHandler(e.message, 400));
   }
@@ -282,7 +320,13 @@ const syncVideos = catchAsyncError(async (req, res, next) => {
     await StudioVideo.updateMany({ "feedback._id": { $in: ids } }, { $set: { "feedback.$[f].deliveredAt": now } }, { arrayFilters: [{ "f._id": { $in: ids } }] });
   }
   const pending = await StudioVideo.find({ "feedback.deliveredAt": null }).select("coreId feedback").lean();
-  res.status(200).json({ success: true, stored: rows.length, feedback: undelivered(pending) });
+  for (const { status, ...p } of proposals) {
+    await StudioProposal.updateOne({ proposalId: p.proposalId }, { $set: { ...p, syncedAt: now }, $setOnInsert: { status } }, { upsert: true });
+    // Decided on that side: this one is settled, and a decision made here has reached it.
+    if (status !== "proposed") await StudioProposal.updateOne({ proposalId: p.proposalId }, { $set: { status, "decision.deliveredAt": now } });
+  }
+  const decisions = undeliveredDecisions(await StudioProposal.find({ status: { $ne: "proposed" } }).lean());
+  res.status(200).json({ success: true, stored: rows.length, feedback: undelivered(pending), decisions });
 });
 
-module.exports = { me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, importInterview, updateQuestions, listVideos, addVideoFeedback, syncVideos, requireSyncKey, cutLink, confirmCut };
+module.exports = { me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, importInterview, updateQuestions, listVideos, addVideoFeedback, syncVideos, requireSyncKey, cutLink, confirmCut, listProposals, decideStudioProposal };
