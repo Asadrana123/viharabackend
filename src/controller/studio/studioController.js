@@ -1,16 +1,19 @@
 // controller/studio/studioController.js
 //
 // The Video Studio (vihara.ai/studio) for video editors: the interview, their profile and their
-// notes; and for admins, the editors and the interview's questions. Every answer is the editor's
-// own text, stored as typed (services/studio/interviewService.js).
+// notes; the videos and people's feedback on them; and for admins, the editors and the interview's
+// questions. Every answer is the editor's own text, stored as typed (services/studio/interviewService.js).
 
+const mongoose = require("mongoose");
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const ErrorHandler = require("../../utils/errorhandler");
 const EditorProfile = require("../../model/studio/editorProfileModel");
 const StudioSettings = require("../../model/studio/studioSettingsModel");
+const StudioVideo = require("../../model/studio/studioVideoModel");
 const userModel = require("../../model/users/userModel");
 const { CORE_QUESTIONS, CORE_KEYS } = require("../../config/studio/interviewQuestions");
 const { startInterview, answerInterview, editSection, interviewStatus, syncSections, parseInterviewBlock } = require("../../services/studio/interviewService");
+const { keyMatches, cleanBatch, cleanFeedback, undelivered } = require("../../services/studio/videoService");
 
 const KEY = /^[a-z][a-z0-9-]{1,30}$/;
 
@@ -189,4 +192,55 @@ const updateQuestions = catchAsyncError(async (req, res, next) => {
   res.status(200).json({ success: true, questions: doc.questions });
 });
 
-module.exports = { me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, importInterview, updateQuestions };
+/** What the Studio shows of a video: people's names, never their account ids. */
+const videoView = (v) => ({ ...v, feedback: (v.feedback ?? []).map(({ _id, text, byName, at }) => ({ _id, text, byName, at })) });
+
+/** GET /api/v1/studio/videos - every video, newest build first. */
+const listVideos = catchAsyncError(async (req, res) => {
+  const videos = await StudioVideo.find({}).sort({ lastBuildAt: -1, updatedAt: -1 }).lean();
+  res.status(200).json({ success: true, videos: videos.map(videoView) });
+});
+
+/** POST /api/v1/studio/videos/:coreId/feedback  { text } - a person's words on a video. Not a gate decision. */
+const addVideoFeedback = catchAsyncError(async (req, res, next) => {
+  let text;
+  try {
+    text = cleanFeedback(req.body?.text);
+  } catch (e) {
+    return next(new ErrorHandler(e.message, 400));
+  }
+  const video = await StudioVideo.findOne({ coreId: String(req.params.coreId) });
+  if (!video) return next(new ErrorHandler("No such video.", 404));
+  const profile = await EditorProfile.findOne({ user: req.user._id }).select("name").lean();
+  video.feedback.push({ text, byName: profile?.name || req.user.name || req.user.email, user: req.user._id });
+  await video.save();
+  res.status(201).json({ success: true, video: videoView(video.toObject()) });
+});
+
+/**
+ * POST /api/v1/studio/videos/sync  { videos, received } with the x-studio-key header. The Creative
+ * OS sends its job summaries and the ids of the feedback it has stored; the reply is the feedback
+ * it has not stored yet. An id is marked delivered only once it says so, so nothing is lost if a
+ * push fails halfway.
+ */
+const syncVideos = catchAsyncError(async (req, res, next) => {
+  if (!process.env.STUDIO_SYNC_KEY) return next(new ErrorHandler("Studio video sync is not set up.", 503));
+  if (!keyMatches(process.env.STUDIO_SYNC_KEY, req.get("x-studio-key"))) return next(new ErrorHandler("Wrong sync key.", 401));
+  let rows;
+  try {
+    rows = cleanBatch(req.body?.videos);
+  } catch (e) {
+    return next(new ErrorHandler(e.message, 400));
+  }
+  const now = new Date();
+  if (rows.length) await StudioVideo.bulkWrite(rows.map((r) => ({ updateOne: { filter: { coreId: r.coreId }, update: { $set: { ...r, syncedAt: now } }, upsert: true } })));
+  const received = (Array.isArray(req.body?.received) ? req.body.received : []).map(String).filter((id) => mongoose.isValidObjectId(id));
+  if (received.length) {
+    const ids = received.map((id) => new mongoose.Types.ObjectId(id));
+    await StudioVideo.updateMany({ "feedback._id": { $in: ids } }, { $set: { "feedback.$[f].deliveredAt": now } }, { arrayFilters: [{ "f._id": { $in: ids } }] });
+  }
+  const pending = await StudioVideo.find({ "feedback.deliveredAt": null }).select("coreId feedback").lean();
+  res.status(200).json({ success: true, stored: rows.length, feedback: undelivered(pending) });
+});
+
+module.exports = { me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, importInterview, updateQuestions, listVideos, addVideoFeedback, syncVideos };
