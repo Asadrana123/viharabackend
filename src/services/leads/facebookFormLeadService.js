@@ -553,7 +553,7 @@ function hotLeadAlert(doc, { test = false } = {}) {
     `Form: ${doc.formName || doc.formId}${doc.toorak.propertySlug ? ` · Property: ${doc.toorak.listingUrl}` : ""}`,
     ...answers,
     `Calls: ${doc.callingStopped ? "stopped — dial by hand" : "Maya (3 tries)"}`,
-    `Admin: ${getSiteUrl()}/admin/toorakLeads`,
+    `Admin: ${getSiteUrl()}/admin/leads?source=facebookForm`,
   ].join("\n");
 }
 

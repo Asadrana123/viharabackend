@@ -249,7 +249,7 @@ const getAllBuyerListLeads = catchAsyncError(async (req, res) => {
 
   res.status(200).json({
     success: true,
-    leads: shapeLeads(view, leads.map((lead) => ({
+    leads: await shapeLeads(view, leads.map((lead) => ({
       ...lead,
       fullName: lead.fullName || lead.firstName,
       ...callsFor(lead.phone),

@@ -395,7 +395,7 @@ const getAllNewDealsLeads = catchAsyncError(async (req, res) => {
 
   res.status(200).json({
     success: true,
-    leads: shapeLeads(view, leads.map((lead) => ({
+    leads: await shapeLeads(view, leads.map((lead) => ({
       ...lead,
       fullName: lead.fullName || lead.firstName,
       dealInterestLabel: dealLabel(lead.dealInterest),

@@ -4,7 +4,7 @@
 // form on Zernio's side too: new | contacted | unreachable | qualified |
 // converted | disqualified (Zernio's "Update a lead's status", lead_gen_update_lead).
 //
-// Our own record is the source of truth (Admin → Toorak Leads); this is a
+// Our own record is the source of truth (Admin → Leads → Facebook Forms); this is a
 // best-effort copy and never throws. Zernio's docs don't state the REST path
 // yet, so it's OFF until ZERNIO_LEAD_STATUS_WRITEBACK=true, and the method /
 // path can be changed without a deploy:

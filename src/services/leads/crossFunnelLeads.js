@@ -74,7 +74,7 @@ async function sendCrossFunnelList(req, res, { sources, keep, notesInSummary = f
 
   res.status(200).json({
     success: true,
-    leads: shapeLeads(view, pageLeads),
+    leads: await shapeLeads(view, pageLeads),
     pagination: all
       ? { page: 1, limit: total, total, pages: 1 }
       : { page, limit, total, pages: Math.ceil(total / limit) },

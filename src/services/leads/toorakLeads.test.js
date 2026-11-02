@@ -122,7 +122,7 @@ test("hot alert has name, phone, property, answers and the admin link", () => {
     toorak: { propertySlug: "2529-2531-e-monument-st-baltimore", listingUrl: "https://www.vihara.ai/listing/2529-2531-e-monument-st-baltimore" },
     hotReasons: ["Paying cash"], answers: [{ key: "how_pay", question: "How will you pay?", value: "cash", label: "Cash" }],
   });
-  for (const part of ["Ana Diaz", "+14105550123", "/listing/2529-2531-e-monument-st-baltimore", "How will you pay?: Cash", "/admin/toorakLeads", "Maya (3 tries)"]) {
+  for (const part of ["Ana Diaz", "+14105550123", "/listing/2529-2531-e-monument-st-baltimore", "How will you pay?: Cash", "/admin/leads?source=facebookForm", "Maya (3 tries)"]) {
     assert.ok(text.includes(part), part);
   }
 });

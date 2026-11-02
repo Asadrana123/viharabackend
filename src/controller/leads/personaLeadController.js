@@ -21,7 +21,7 @@ const getAllPersonaLeads = catchAsyncError(async (req, res) => {
 
   res.status(200).json({
     success: true,
-    leads: shapeLeads(view, leads),
+    leads: await shapeLeads(view, leads),
     pagination: { page, limit, total, pages: Math.ceil(total / limit) },
   });
 });

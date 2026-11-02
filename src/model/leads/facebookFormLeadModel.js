@@ -81,14 +81,14 @@ facebookFormLeadSchema.add({
   // Hot = buying within 30 days, paying cash, or 20%+ down (services/leads/toorakLeads.js). Called first.
   hot: { type: Boolean, default: false },
   hotReasons: { type: [String], default: [] },
-  // Set by the team in Admin → Toorak Leads: contacted | unreachable | qualified | converted | disqualified.
+  // Set by the team in Admin → Leads → Facebook Forms: contacted | unreachable | qualified | converted | disqualified.
   // "" = follow the calls (new → contacted / unreachable).
   leadStatus: { type: String, default: "" },
   leadStatusHistory: {
     type: [new mongoose.Schema({ status: String, by: String, at: Date }, { _id: false })],
     default: [],
   },
-  // The team found the number wrong (Admin → Toorak Leads). With a bounced email → auto "disqualified".
+  // The team found the number wrong (Admin → Leads → Facebook Forms). With a bounced email → auto "disqualified".
   phoneInvalid: { type: Boolean, default: false },
   // Toorak forms: the sms_consent checkbox (texts). Calls use `consent` with consentSource "form-checkbox".
   smsConsent: { type: Boolean, default: false },

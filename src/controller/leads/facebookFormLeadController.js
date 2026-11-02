@@ -22,7 +22,8 @@ const LEAD_NOTE_TYPE = "facebookForm"; // matches leadNoteModel.LEAD_TYPES
 
 /**
  * GET /api/v1/facebook-leads?page=&limit=&formId=   (admin)
- * Newest first. ?view=summary for light rows, ?id= for one full lead.
+ * The dial queue: hot first, then newest. Facebook's test leads are left out.
+ * ?view=summary for light rows, ?id= for one full lead.
  */
 const getAllFacebookFormLeads = catchAsyncError(async (req, res) => {
   const page = Math.max(1, parseInt(req.query.page) || 1);
@@ -31,28 +32,31 @@ const getAllFacebookFormLeads = catchAsyncError(async (req, res) => {
   const view = listView(req);
   if (view.badId) return res.status(400).json({ success: false, message: "Invalid id" });
 
-  const query = {};
+  const query = { isTest: { $ne: true } };
   if (typeof req.query.formId === "string" && req.query.formId) query.formId = req.query.formId;
 
   const [leads, total, forms] = await Promise.all([
-    FacebookFormLead.find(scopeQuery(view, query)).select(listSelect(view)).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit).lean(),
+    FacebookFormLead.find(scopeQuery(view, query)).select(listSelect(view)).sort({ hot: -1, createdAt: -1, _id: -1 }).skip(skip).limit(limit).lean(),
     FacebookFormLead.countDocuments(scopeQuery(view, query)),
     // The forms seen so far, for the tab's filter.
     FacebookFormLead.aggregate([{ $group: { _id: "$formId", name: { $last: "$formName" }, leads: { $sum: 1 } } }, { $sort: { leads: -1 } }]),
   ]);
 
-  const [messagesByPhone, callsFor, eventsByEmail, notesByLead] = await Promise.all([
+  const [messagesByPhone, callsFor, eventsByEmail, notesByLead, bounced] = await Promise.all([
     getVtextMessagesForPhones(unlessSummary(view, leads.map((l) => l.phone).filter(Boolean))),
     callsForList(view, leads.map((l) => l.phone).filter(Boolean)),
     getEmailEventsForEmails(unlessSummary(view, leads.map((l) => l.email).filter(Boolean))),
     getNotesForLeads(LEAD_NOTE_TYPE, unlessSummary(view, leads.map((l) => l._id))),
+    bouncedEmails(leads.map((l) => String(l.email || "").toLowerCase()).filter(Boolean)),
   ]);
 
   res.status(200).json({
     success: true,
-    leads: shapeLeads(view, leads.map((lead) => ({
+    leads: await shapeLeads(view, leads.map((lead) => ({
       ...lead,
       fullName: lead.fullName || lead.firstName,
+      emailBounced: bounced.has(String(lead.email || "").toLowerCase()),
+      status: leadStatusOf(lead, { emailBounced: bounced.has(String(lead.email || "").toLowerCase()) }),
       ...callsFor(lead.phone),
       emails: eventsByEmail[String(lead.email || "").toLowerCase()] || [],
       notes: notesByLead[String(lead._id)] || [],
@@ -81,13 +85,17 @@ async function bouncedEmails(emails) {
 /**
  * GET /api/v1/facebook-leads/toorak?status=&formId=   (admin)
  * Per-form report (total, hot, each status) and the dial queue: hot first,
- * then newest. Test leads are left out.
+ * then newest. Test leads are left out. ?report=1 → just the report.
  */
 const getToorakLeads = catchAsyncError(async (req, res) => {
   const base = { toorak: { $ne: null }, isTest: { $ne: true } };
   const all = await FacebookFormLead.find(base).select(QUEUE_FIELDS).sort({ hot: -1, createdAt: -1 }).lean();
   const bounced = await bouncedEmails([...new Set(all.map((l) => String(l.email || "").toLowerCase()).filter(Boolean))]);
   const isBounced = (l) => bounced.has(String(l.email || "").toLowerCase());
+
+  if (req.query.report) {
+    return res.status(200).json({ success: true, statuses: LEAD_STATUSES, forms: formReport(all, formNameOf, bounced) });
+  }
 
   const status = String(req.query.status || "");
   const formId = String(req.query.formId || "");
