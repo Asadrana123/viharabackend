@@ -33,10 +33,12 @@ function cleanUpdate(u) {
   const state = String(u?.state ?? "");
   if (!/^\d{6,}\.\d{1,9}$/.test(runId)) throw new Error(`"${runId}" is not a run id.`);
   if (!STATES.has(state)) throw new Error(`${runId}: unknown state "${state}".`);
+  // A build refused for parts not made yet goes back to generate, whatever version the server runs.
+  const unmade = state === "ready-to-build" && /generated assets are missing/i.test(String(u?.error ?? ""));
   return {
     runId,
     fields: {
-      state,
+      state: unmade ? "approved" : state,
       coreId: u?.coreId ? clip(u.coreId, 80) : null,
       concepts: Array.isArray(u?.concepts) ? u.concepts.slice(0, 12).map(concept) : [],
       hooks: Array.isArray(u?.hooks) ? u.hooks.slice(0, 12).map(hook) : [],

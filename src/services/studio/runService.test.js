@@ -15,6 +15,13 @@ test("keeps what the page needs and leaves the rest of a concept out", () => {
   assert.deepEqual(fields.hooks[0], { id: "H1", visual: "V", vo: "Line", onScreen: ["a", "b"] });
 });
 
+test("a build refused for parts not made yet goes back to generate", () => {
+  const u = (error) => cleanUpdate({ runId: "1793500000.000001", state: "ready-to-build", error }).fields.state;
+  assert.equal(u("Generated assets are missing. Run npm run video -- generate"), "approved");
+  assert.equal(u("The build failed: render"), "ready-to-build");
+  assert.equal(u(null), "ready-to-build");
+});
+
 test("refuses an update it cannot read", () => {
   assert.throws(() => cleanUpdate({ runId: "../x", state: "gate-a" }), /not a run id/);
   assert.throws(() => cleanUpdate({ runId: "1793500000.1", state: "live" }), /unknown state/);
