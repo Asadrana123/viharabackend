@@ -325,6 +325,12 @@ const pollRuns = catchAsyncError(async (req, res, next) => {
   } catch (e) {
     return next(new ErrorHandler(e.message, 400));
   }
+  // Finished steps first, so the update from a step's own finish is not taken for a newer step waiting.
+  const done = (Array.isArray(req.body?.done) ? req.body.done : []).map(String).filter((id) => mongoose.isValidObjectId(id));
+  if (done.length) {
+    const ids = done.map((id) => new mongoose.Types.ObjectId(id));
+    await StudioRun.updateMany({ "commands._id": { $in: ids } }, { $set: { "commands.$[c].doneAt": new Date() } }, { arrayFilters: [{ "c._id": { $in: ids } }] });
+  }
   for (const { runId, fields } of updates) {
     // A person may have acted since: only the latest step's result moves the state on.
     const run = await StudioRun.findOne({ runId });
@@ -334,11 +340,6 @@ const pollRuns = catchAsyncError(async (req, res, next) => {
     const given = Object.fromEntries(Object.entries(rest).filter(([k, v]) => (Array.isArray(v) ? v.length : v !== null) || k === "error"));
     Object.assign(run, given, waiting > 1 ? {} : { state });
     await run.save();
-  }
-  const done = (Array.isArray(req.body?.done) ? req.body.done : []).map(String).filter((id) => mongoose.isValidObjectId(id));
-  if (done.length) {
-    const ids = done.map((id) => new mongoose.Types.ObjectId(id));
-    await StudioRun.updateMany({ "commands._id": { $in: ids } }, { $set: { "commands.$[c].doneAt": new Date() } }, { arrayFilters: [{ "c._id": { $in: ids } }] });
   }
   if (ready) await StudioReady.updateOne({ key: "videos" }, { $set: { rows: ready, checkedAt: new Date() } }, { upsert: true });
   const open = await StudioRun.find({ commands: { $elemMatch: { doneAt: null } } }).lean();

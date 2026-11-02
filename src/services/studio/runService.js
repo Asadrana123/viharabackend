@@ -111,7 +111,8 @@ function clipCommand(run, body) {
 }
 
 function buildCommand(run) {
-  if (run.state !== "ready-to-build") throw new Error("This video is not ready to build.");
+  const allApproved = run.state === "clips" && run.clips?.length > 0 && run.clips.every((c) => c.state === "approved");
+  if (run.state !== "ready-to-build" && !allApproved) throw new Error("This video is not ready to build.");
   return { command: { type: "build" }, state: "building" };
 }
 

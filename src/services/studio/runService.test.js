@@ -62,6 +62,8 @@ test("a clip must exist, and a rejection says why", () => {
 
 test("the build waits for the clips, and a cut needs words for a change", () => {
   assert.equal(buildCommand(run({ state: "ready-to-build" })).state, "building");
+  assert.equal(buildCommand(run({ state: "clips", clips: [{ state: "approved" }] })).state, "building");
+  assert.throws(() => buildCommand(run({ state: "clips", clips: [{ state: "approved" }, { state: "pending" }] })), /not ready to build/);
   assert.throws(() => buildCommand(run({ state: "clips" })), /not ready to build/);
   const cut = run({ state: "cut" });
   assert.equal(cutCommand(cut, { decision: "approve" }).state, "done");
