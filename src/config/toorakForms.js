@@ -16,7 +16,9 @@
 //   calls    only with the form's call_consent checkbox ticked; no admin
 //            override. 3 attempts (T+5 min, +1 h, next day), 8 AM–9 PM in the
 //            property's / market's time zone (services/calling/toorakCallScheduler.js)
-//   texts    only with sms_consent ticked
+//   texts    the Vtext intro text (services/leads/facebookIntroText.js) follows the
+//            Vtext consent switch, like other Facebook leads (decided 2 Nov 2026):
+//            switch ON = only with sms_consent ticked, switch OFF = every new lead
 //   no consent → email only, and the team dials by hand from Admin → Leads → Facebook Forms
 //
 // Archived forms (the non-v2 versions) send no leads and aren't listed. A new
@@ -72,4 +74,7 @@ function toorakFormFor(formId, formName) {
   };
 }
 
-module.exports = { TOORAK_FORMS, TOORAK_FORM_IDS, toorakFormFor };
+/** A known form's config by its route key ("ml-baltimore"), or null. */
+const toorakFormByKey = (key) => Object.values(TOORAK_FORMS).find((f) => f.key === key) || null;
+
+module.exports = { TOORAK_FORMS, TOORAK_FORM_IDS, toorakFormFor, toorakFormByKey };

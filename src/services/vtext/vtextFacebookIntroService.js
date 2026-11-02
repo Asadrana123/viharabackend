@@ -5,8 +5,10 @@
 // with the one-off script (services/leads/facebookIntroText.js).
 //
 // Consent follows the Vtext consent switch, like the property signup text. Switch ON (the default): only a
-// form whose disclaimer gives call / text consent (lead.consent + consentSource "form-disclaimer"). Switch
-// OFF: every new lead is texted; Vtext's own gate still blocks opted-out contacts and bad numbers.
+// form whose disclaimer gives call / text consent (lead.consent + consentSource "form-disclaimer"), or a
+// ticked sms_consent checkbox (smsConsent, Toorak forms). Switch OFF: every new lead is texted; Vtext's own
+// gate still blocks opted-out contacts and bad numbers. Toorak leads get their own wording (property or
+// financing, see facebookIntroText.js) under the template key "toorak-intro".
 // No texting-hours check, same as the signup call. Off unless
 // FACEBOOK_AUTO_TEXT_ENABLED=true (and VTEXT_ENABLED=true, since sending needs the Vtext queue).
 const VtextContact = require("../../model/vtext/vtextContactModel");
@@ -15,15 +17,18 @@ const { enqueueOutbound } = require("./vtextMessageService");
 const { getSettings, isConsentRequired } = require("./vtextSettingsService");
 const { toUsSmsNumber } = require("../../utils/usPhone");
 const { notifyVtextAlert } = require("../shared/slackService");
-const { TEMPLATE_KEY, keyFor, planLeads } = require("../leads/facebookIntroText");
+const { INTRO_TEMPLATE_KEYS, keyFor, planLeads } = require("../leads/facebookIntroText");
 
 const AUTO_ENABLED = () => process.env.VTEXT_ENABLED === "true" && process.env.FACEBOOK_AUTO_TEXT_ENABLED === "true";
+
+/** Text consent from the form: its disclaimer, or the sms_consent checkbox (Toorak). Call-only consent doesn't count. */
+const hasTextConsent = (doc) => doc.smsConsent === true || (doc.consent === true && doc.consentSource === "form-disclaimer");
 
 /** What planLeads needs to know about this one lead's phone: its contact, an earlier message with this key, an earlier intro to the number. */
 async function lookupsFor(lead, phone) {
   const contact = await VtextContact.findOne({ phoneE164: phone }).select("phoneE164 optOut consent phoneStatus").lean();
   const prior = await VtextMessage.findOne({ idempotencyKey: keyFor(lead._id) }).select("idempotencyKey status").lean();
-  const earlierIntro = contact ? await VtextMessage.exists({ "origin.templateKey": TEMPLATE_KEY, contactId: contact._id }) : null;
+  const earlierIntro = contact ? await VtextMessage.exists({ "origin.templateKey": { $in: INTRO_TEMPLATE_KEYS }, contactId: contact._id }) : null;
   return {
     contactsByPhone: new Map(contact ? [[phone, contact]] : []),
     sentByKey: new Map(prior ? [[keyFor(lead._id), prior]] : []),
@@ -71,7 +76,7 @@ async function maybeSendFacebookIntroText({ doc, isNew }, deps = {}) {
     if (!AUTO_ENABLED()) return await skip("VTEXT_ENABLED / FACEBOOK_AUTO_TEXT_ENABLED not both true");
     if (!isNew) return await skip("repeat submission, already on file");
     if (doc.importedFromHistory) return await skip("imported from history");
-    if ((await consentRequired()) && (doc.consent !== true || doc.consentSource !== "form-disclaimer")) {
+    if ((await consentRequired()) && !hasTextConsent(doc)) {
       return await skip("the form gave no call / text consent");
     }
 
@@ -79,11 +84,11 @@ async function maybeSendFacebookIntroText({ doc, isNew }, deps = {}) {
     const { sendable, skipped } = planLeads([doc], phone ? await lookup(doc, phone) : { contactsByPhone: new Map(), sentByKey: new Map(), phonesAlreadyTexted: new Set() });
     if (!sendable.length) return await skip(skipped[0]?.reason || "not sendable");
 
-    const { text, first } = sendable[0];
+    const { text, first, templateKey } = sendable[0];
     const { message, blocked, reason } = await send({
       to: phone,
       body: text,
-      origin: { kind: "automation", templateKey: TEMPLATE_KEY, leadRef: { leadType: "facebookForm", leadId: id } },
+      origin: { kind: "automation", templateKey, leadRef: { leadType: "facebookForm", leadId: id } },
       contactName: doc.fullName || first,
       idempotencyKey: keyFor(id),
     });

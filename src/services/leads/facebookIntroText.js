@@ -3,15 +3,29 @@
 // The Facebook / Instagram form lead intro text: its wording and the rules for who gets it. Shared by
 // scripts/textFacebookFormLeads.js (one-off, by hand) and services/vtext/vtextFacebookIntroService.js
 // (automatic, on each new lead), so both agree on the text and on who is skipped.
-// The wording lives in TEMPLATE only. Change it there.
+// The wording lives in TEMPLATE / TOORAK_TEMPLATES only. Change it there.
+//
+// Toorak leads (config/toorakForms.js) get their own wording, since their property
+// forms ask no price question: a property form's lead hears about that property and
+// gets its listing link, a financing form's lead gets the auctions link.
 const { splitName } = require("./buyBox");
 const { toUsSmsNumber } = require("../../utils/usPhone");
 const { priceRangeOf } = require("./facebookPriceRange");
+const { toorakFormByKey } = require("../../config/toorakForms");
 
 const TEMPLATE_KEY = "facebook-form-intro";
 // The owner's exact wording, with the curly apostrophe.
 const TEMPLATE = "Hi {First_name}, this is Maya from Vihara. Got it: homes up to {price_range}. I’ll text you bank-owned deals that fit first. Reply STOP to opt out.";
 const keyFor = (leadId) => `fb-intro-text-${leadId}`;
+
+const TOORAK_TEMPLATE_KEY = "toorak-intro";
+// Draft wording (2026-11-02), pending sign-off.
+const TOORAK_TEMPLATES = {
+  property: "Hi {First_name}, this is Maya from Vihara. Thanks for asking about {address}. Photos and details are here: {listing_url} Any questions about it, just text me here. Reply STOP to opt out.",
+  financing: "Hi {First_name}, this is Maya from Vihara. Thanks for asking about financing. Here are the bank-owned homes up for auction now: {listing_url} Any questions, just text me here. Reply STOP to opt out.",
+};
+// Every intro template key: a number that got any of them doesn't get another.
+const INTRO_TEMPLATE_KEYS = [TEMPLATE_KEY, TOORAK_TEMPLATE_KEY];
 
 
 /** "jOHN" / "JOHN" / "john" -> "John"; "McDonald", "Mary-Ann", "O'Neil" keep/get sensible case. */
@@ -46,10 +60,26 @@ function upToReadsWrong(label) {
   return /[–—-]|\bto\b|under|below|less|up to|over|more|plus|\+|above|sure|any/i.test(label);
 }
 
-/** { text } or { skip: reason } */
+/** A Toorak lead's text: the property's name and listing link, or the financing form's auctions link. */
+function renderToorakIntro(lead, first) {
+  const { kind, key, listingUrl } = lead.toorak;
+  if (!listingUrl) return { skip: "Toorak lead has no listing link" };
+  // A property form not in config/toorakForms.js has no address to name: it gets the general wording.
+  const address = kind === "property" ? toorakFormByKey(key)?.address : null;
+  const template = address ? TOORAK_TEMPLATES.property : TOORAK_TEMPLATES.financing;
+  const text = template
+    .replace("{First_name}", () => first)
+    .replace("{address}", () => address || "")
+    .replace("{listing_url}", () => listingUrl);
+  if (/[{}]/.test(text)) return { skip: "unresolved placeholder in text" };
+  return { text, first, templateKey: TOORAK_TEMPLATE_KEY };
+}
+
+/** { text, first, templateKey } or { skip: reason } */
 function renderIntro(lead) {
   const first = firstNameOf(lead);
   if (!first) return { skip: "no usable first name" };
+  if (lead.toorak) return renderToorakIntro(lead, first);
   const price = priceRangeOf(lead);
   if (!price) return { skip: "no price-range answer" };
   const under = UNDER_LABEL.test(price);
@@ -57,7 +87,7 @@ function renderIntro(lead) {
   const shown = under ? price.replace(/^under/i, "under") : price;
   const text = template.replace("{First_name}", () => first).replace("{price_range}", () => shown);
   if (/[{}]/.test(text)) return { skip: "unresolved placeholder in text" };
-  return { text, first, price };
+  return { text, first, price, templateKey: TEMPLATE_KEY };
 }
 
 /**
@@ -95,4 +125,4 @@ function planLeads(leads, { contactsByPhone, sentByKey, phonesAlreadyTexted }) {
   return { sendable, skipped };
 }
 
-module.exports = { TEMPLATE_KEY, TEMPLATE, keyFor, capitalise, firstNameOf, upToReadsWrong, renderIntro, planLeads };
+module.exports = { TEMPLATE_KEY, TEMPLATE, TOORAK_TEMPLATE_KEY, TOORAK_TEMPLATES, INTRO_TEMPLATE_KEYS, keyFor, capitalise, firstNameOf, upToReadsWrong, renderIntro, planLeads };

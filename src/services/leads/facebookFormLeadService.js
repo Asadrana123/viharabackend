@@ -14,8 +14,8 @@
 // person agrees to calls / texts counts as consent for everyone who submits
 // it. A form without one (e.g. "Toorak Buyers – Financing") is still called:
 // an admin decided (2026-10-26) that every Facebook form lead gets Maya's
-// calls, recorded as consentSource "admin-override" (calls only; Vtext still
-// needs the form's own consent to text).
+// calls, recorded as consentSource "admin-override" (calls only; Vtext texts
+// follow the Vtext consent switch, see vtextFacebookIntroService.js).
 //
 // The form's answers are kept as they were asked (question + chosen option)
 // and also mapped onto the buy box (states, strategy, financing, budget,
@@ -498,11 +498,10 @@ async function handleLead(payload) {
     callNote = doc.consent ? (inLoop ? "already in call loop" : "yes") : "no (form has no call consent)";
   }
 
-  // Intro text through Vtext: new leads only, with form consent. Off unless FACEBOOK_AUTO_TEXT_ENABLED=true.
-  // Toorak: never without the sms_consent checkbox.
-  if (!doc.toorak || doc.smsConsent) {
-    maybeSendFacebookIntroText({ doc, isNew }).catch((e) => console.error("[facebook-form-text] failed:", e.message));
-  }
+  // Intro text through Vtext: new leads only. Consent follows the Vtext consent switch (form disclaimer or
+  // the sms_consent checkbox when ON, every lead when OFF), Toorak leads included, with their own wording.
+  // Off unless FACEBOOK_AUTO_TEXT_ENABLED=true.
+  maybeSendFacebookIntroText({ doc, isNew }).catch((e) => console.error("[facebook-form-text] failed:", e.message));
 
   // Hot Toorak lead: its own alert (name, phone, property / form, answers, admin link) instead of the usual one.
   if (doc.toorak && doc.hot) {

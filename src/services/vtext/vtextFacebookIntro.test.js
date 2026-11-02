@@ -127,3 +127,60 @@ test("with the switch OFF the other skip rules still apply", async () => {
   await run({ phoneNormalized: "", phone: "" });
   assert.equal(calls.length, 0);
 });
+
+// ── Toorak leads (config/toorakForms.js) ─────────────────────────────────────
+const { TOORAK_TEMPLATE_KEY, INTRO_TEMPLATE_KEYS } = require("../leads/facebookIntroText");
+
+const toorakLead = (toorak, over = {}) =>
+  lead({ consent: true, consentSource: "admin-override", answers: [{ key: "timeline", question: "When?", value: "within_30_days", label: "Within 30 days" }], toorak, ...over });
+const baltimore = { key: "ml-baltimore", kind: "property", known: true, propertySlug: "2529-2531-e-monument-st-baltimore", listingUrl: "https://vihara.ai/listing/2529-2531-e-monument-st-baltimore" };
+const financing = { key: "financing-v2", kind: "financing", known: true, propertySlug: "", listingUrl: "https://vihara.ai/auctions" };
+
+test("Toorak property lead: names the property and links its listing, no price answer needed", () => {
+  const r = renderIntro(toorakLead(baltimore));
+  assert.equal(r.text, "Hi John, this is Maya from Vihara. Thanks for asking about 2529-2531 E Monument St, Baltimore. Photos and details are here: https://vihara.ai/listing/2529-2531-e-monument-st-baltimore Any questions about it, just text me here. Reply STOP to opt out.");
+  assert.equal(r.templateKey, TOORAK_TEMPLATE_KEY);
+});
+
+test("Toorak financing lead: the financing wording with the auctions link", () => {
+  const r = renderIntro(toorakLead(financing));
+  assert.equal(r.text, "Hi John, this is Maya from Vihara. Thanks for asking about financing. Here are the bank-owned homes up for auction now: https://vihara.ai/auctions Any questions, just text me here. Reply STOP to opt out.");
+  assert.equal(r.templateKey, TOORAK_TEMPLATE_KEY);
+});
+
+test("Toorak edge cases: unknown property form gets the general wording; no link or no name is skipped", () => {
+  const unknown = renderIntro(toorakLead({ key: "unknown", kind: "property", known: false, listingUrl: "https://vihara.ai/auctions" }));
+  assert.match(unknown.text, /Thanks for asking about financing/);
+  assert.equal(renderIntro(toorakLead({ ...baltimore, listingUrl: "" })).skip, "Toorak lead has no listing link");
+  assert.equal(renderIntro(toorakLead(baltimore, { fullName: "", firstName: "there", email: "a@b.com" })).skip, "no usable first name");
+});
+
+test("Toorak follows the consent switch like other Facebook leads", async () => {
+  const run = (doc, consentRequired) => maybeSendFacebookIntroText({ doc, isNew: true }, deps({ consentRequired: async () => consentRequired }));
+  await run(toorakLead(baltimore), true);                                          // switch ON, no box -> skip
+  await run(toorakLead(baltimore, { consentSource: "form-checkbox" }), true);       // call box only -> skip
+  assert.equal(calls.length, 0);
+  await run(toorakLead(baltimore, { smsConsent: true }), true);                     // switch ON, sms box -> send
+  await run(toorakLead(financing), false);                                          // switch OFF -> send
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].origin.templateKey, TOORAK_TEMPLATE_KEY);
+  assert.equal(calls[0].idempotencyKey, "fb-intro-text-lead1");
+  assert.match(calls[0].body, /2529-2531 E Monument St/);
+  assert.match(calls[1].body, /financing/);
+});
+
+test("the sms_consent box counts as text consent on any form; other leads keep the old template key", async () => {
+  await maybeSendFacebookIntroText({ doc: lead({ consent: false, consentSource: "", smsConsent: true }), isNew: true }, deps());
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].origin.templateKey, TEMPLATE_KEY);
+  assert.deepEqual(INTRO_TEMPLATE_KEYS, [TEMPLATE_KEY, TOORAK_TEMPLATE_KEY]);
+});
+
+test("Toorak skip rules still apply: repeat, stopped, opted out", async () => {
+  const run = (doc, isNew = true, over = {}) => maybeSendFacebookIntroText({ doc, isNew }, deps({ consentRequired: async () => false, ...over }));
+  await run(toorakLead(baltimore), false);
+  await run(toorakLead(baltimore, { callingStopped: true }));
+  await run(toorakLead(baltimore), true, { lookupsFor: async () => ({ ...empty(), contactsByPhone: new Map([["+14155550123", { optOut: { isOptedOut: true } }]]) }) });
+  await run(toorakLead(baltimore), true, { lookupsFor: async () => ({ ...empty(), phonesAlreadyTexted: new Set(["+14155550123"]) }) });
+  assert.equal(calls.length, 0);
+});
