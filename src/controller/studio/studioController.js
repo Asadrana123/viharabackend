@@ -206,9 +206,16 @@ const videoView = async (v) => ({
   cutUrl: await viewUrl(v.cut?.key),
 });
 
-/** GET /api/v1/studio/videos - every video, newest build first. */
+/** An admin sees every video; an editor sees the ones they started in the Studio. */
+async function visibleVideos(user) {
+  if (user.role === "admin") return {};
+  const own = await StudioRun.find({ requestedBy: user._id, coreId: { $ne: null } }).select("coreId").lean();
+  return { coreId: { $in: own.map((r) => r.coreId) } };
+}
+
+/** GET /api/v1/studio/videos - the videos this person may see, newest build first. */
 const listVideos = catchAsyncError(async (req, res) => {
-  const videos = await StudioVideo.find({}).sort({ lastBuildAt: -1, updatedAt: -1 }).lean();
+  const videos = await StudioVideo.find(await visibleVideos(req.user)).sort({ lastBuildAt: -1, updatedAt: -1 }).lean();
   res.status(200).json({ success: true, videos: await Promise.all(videos.map(videoView)) });
 });
 
@@ -220,7 +227,7 @@ const addVideoFeedback = catchAsyncError(async (req, res, next) => {
   } catch (e) {
     return next(new ErrorHandler(e.message, 400));
   }
-  const video = await StudioVideo.findOne({ coreId: String(req.params.coreId) });
+  const video = await StudioVideo.findOne({ $and: [{ coreId: String(req.params.coreId) }, await visibleVideos(req.user)] });
   if (!video) return next(new ErrorHandler("No such video.", 404));
   const profile = await EditorProfile.findOne({ user: req.user._id }).select("name").lean();
   video.feedback.push({ text, byName: profile?.name || req.user.name || req.user.email, user: req.user._id });
@@ -270,9 +277,10 @@ const runView = async (r) => {
 
 /** GET /api/v1/studio/runs - the videos in progress, newest first, and the properties ready for one. */
 const listRuns = catchAsyncError(async (req, res) => {
-  const runs = await StudioRun.find({}).sort({ createdAt: -1 }).limit(50).lean();
+  const isAdmin = req.user.role === "admin";
+  const runs = await StudioRun.find(isAdmin ? {} : { requestedBy: req.user._id }).sort({ createdAt: -1 }).limit(100).lean();
   const ready = await StudioReady.findOne({ key: "videos" }).lean();
-  res.status(200).json({ success: true, runs: await Promise.all(runs.map(runView)), ready: ready?.rows ?? [], checkedAt: ready?.checkedAt ?? null });
+  res.status(200).json({ success: true, isAdmin, runs: await Promise.all(runs.map(runView)), ready: ready?.rows ?? [], checkedAt: ready?.checkedAt ?? null });
 });
 
 /** POST /api/v1/studio/runs  { propertyId } - starts a video for a property the server says is ready. */
