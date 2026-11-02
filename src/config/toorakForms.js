@@ -17,7 +17,7 @@
 //            override. 3 attempts (T+5 min, +1 h, next day), 8 AM–9 PM in the
 //            property's / market's time zone (services/calling/toorakCallScheduler.js)
 //   texts    only with sms_consent ticked
-//   no consent → email only, and the team dials by hand from Admin → Toorak Leads
+//   no consent → email only, and the team dials by hand from Admin → Leads → Facebook Forms
 //
 // Archived forms (the non-v2 versions) send no leads and aren't listed. A new
 // form whose name starts "Toorak" or "ML-Toorak" but isn't here is still

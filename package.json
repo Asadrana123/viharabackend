@@ -7,6 +7,8 @@
  },
  "dependencies": {
   "@anthropic-ai/sdk": "^0.131.0",
+  "@aws-sdk/client-s3": "^3.1161.0",
+  "@aws-sdk/s3-request-presigner": "^3.1161.0",
   "@babel/parser": "^7.29.9",
   "@google-analytics/data": "^7.2.1",
   "@google/genai": "^2.8.0",

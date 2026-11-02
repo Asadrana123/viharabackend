@@ -1,16 +1,27 @@
 // controller/studio/studioController.js
 //
 // The Video Studio (vihara.ai/studio) for video editors: the interview, their profile and their
-// notes; and for admins, the editors and the interview's questions. Every answer is the editor's
-// own text, stored as typed (services/studio/interviewService.js).
+// notes; the videos and people's feedback on them; and for admins, the editors and the interview's
+// questions. Every answer is the editor's own text, stored as typed (services/studio/interviewService.js).
 
+const mongoose = require("mongoose");
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const ErrorHandler = require("../../utils/errorhandler");
 const EditorProfile = require("../../model/studio/editorProfileModel");
 const StudioSettings = require("../../model/studio/studioSettingsModel");
+const StudioVideo = require("../../model/studio/studioVideoModel");
+const StudioProposal = require("../../model/studio/studioProposalModel");
+const StudioRun = require("../../model/studio/studioRunModel");
+const StudioReady = require("../../model/studio/studioReadyModel");
+const StudioProblem = require("../../model/studio/studioProblemModel");
 const userModel = require("../../model/users/userModel");
 const { CORE_QUESTIONS, CORE_KEYS } = require("../../config/studio/interviewQuestions");
-const { startInterview, answerInterview, editSection, interviewStatus, syncSections } = require("../../services/studio/interviewService");
+const { startInterview, answerInterview, editSection, interviewStatus, syncSections, parseInterviewBlock } = require("../../services/studio/interviewService");
+const { keyMatches, cleanBatch, cleanFeedback, undelivered } = require("../../services/studio/videoService");
+const { storage, cleanCut, uploadUrl, viewUrl, storedBytes } = require("../../services/studio/cutStorage");
+const { cleanProposals, decideProblem, canSee, cleanDecision, undeliveredDecisions } = require("../../services/studio/proposalService");
+const { cleanProblem, cleanReply, problemView } = require("../../services/studio/problemService");
+const { newRunId, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand, generateCommand, clipCommand, buildCommand, cutCommand, cleanSlot } = require("../../services/studio/runService");
 
 const KEY = /^[a-z][a-z0-9-]{1,30}$/;
 
@@ -139,6 +150,34 @@ const removeEditor = catchAsyncError(async (req, res, next) => {
   res.status(200).json({ success: true });
 });
 
+/**
+ * POST /api/v1/studio/editors/:userId/import  { text } (admin) - an interview taken in Claude Code,
+ * pasted from learning/video-editors.md, into the editor's profile, word for word. Refused when the
+ * editor already has answers in the Studio.
+ */
+const importInterview = catchAsyncError(async (req, res, next) => {
+  const user = await userModel.findById(req.params.userId);
+  if (!user || user.role !== "editor") return next(new ErrorHandler("Not an editor.", 404));
+  const questions = await loadQuestions();
+  let parsed;
+  try {
+    parsed = parseInterviewBlock(req.body?.text, questions, user.name);
+  } catch (e) {
+    return next(new ErrorHandler(e.message, 400));
+  }
+  const profile = await ownProfile(user);
+  if (profile.sections.some((s) => s.entries.length)) return next(new ErrorHandler("This editor already has answers in the Studio; nothing was imported.", 400));
+  profile.name = parsed.name;
+  profile.startedAt = parsed.startedAt;
+  profile.interviewedAt = parsed.startedAt;
+  profile.importedFrom = "claude-code";
+  profile.sections = parsed.sections;
+  syncSections(profile, questions);
+  profile.interview.state = "done";
+  await profile.save();
+  res.status(200).json({ success: true, profile: view(profile, questions) });
+});
+
 /** PUT /api/v1/studio/questions  { questions } (admin) - reword or add interview questions. */
 const updateQuestions = catchAsyncError(async (req, res, next) => {
   const list = Array.isArray(req.body?.questions) ? req.body.questions : null;
@@ -161,4 +200,300 @@ const updateQuestions = catchAsyncError(async (req, res, next) => {
   res.status(200).json({ success: true, questions: doc.questions });
 });
 
-module.exports = { me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, updateQuestions };
+/** What the Studio shows of a video: people's names, never their account ids; a link to the cut, never where it is kept. */
+const videoView = async (v) => ({
+  ...v,
+  feedback: (v.feedback ?? []).map(({ _id, text, byName, at }) => ({ _id, text, byName, at })),
+  cut: v.cut ? { name: v.cut.name, bytes: v.cut.bytes, uploadedAt: v.cut.uploadedAt } : null,
+  cutUrl: await viewUrl(v.cut?.key),
+});
+
+/** An admin sees every video; an editor sees the ones they started in the Studio. */
+async function visibleVideos(user) {
+  if (user.role === "admin") return {};
+  const own = await StudioRun.find({ requestedBy: user._id, coreId: { $ne: null } }).select("coreId").lean();
+  return { coreId: { $in: own.map((r) => r.coreId) } };
+}
+
+/** GET /api/v1/studio/videos - the videos this person may see, newest build first. */
+const listVideos = catchAsyncError(async (req, res) => {
+  const videos = await StudioVideo.find(await visibleVideos(req.user)).sort({ lastBuildAt: -1, updatedAt: -1 }).lean();
+  res.status(200).json({ success: true, videos: await Promise.all(videos.map(videoView)) });
+});
+
+/** POST /api/v1/studio/videos/:coreId/feedback  { text } - a person's words on a video. Not a gate decision. */
+const addVideoFeedback = catchAsyncError(async (req, res, next) => {
+  let text;
+  try {
+    text = cleanFeedback(req.body?.text);
+  } catch (e) {
+    return next(new ErrorHandler(e.message, 400));
+  }
+  const video = await StudioVideo.findOne({ $and: [{ coreId: String(req.params.coreId) }, await visibleVideos(req.user)] });
+  if (!video) return next(new ErrorHandler("No such video.", 404));
+  const profile = await EditorProfile.findOne({ user: req.user._id }).select("name").lean();
+  video.feedback.push({ text, byName: profile?.name || req.user.name || req.user.email, user: req.user._id });
+  await video.save();
+  res.status(201).json({ success: true, video: await videoView(video.toObject()) });
+});
+
+/** The name and role a proposal is decided under. */
+async function decider(user) {
+  const profile = await EditorProfile.findOne({ user: user._id }).select("name").lean();
+  return { role: user.role, name: profile?.name || user.name || user.email };
+}
+
+const proposalView = ({ proposalId, kind, title, proposal, limits, forEditor, status, decision }) => ({ proposalId, kind, title, proposal, limits, forEditor, status, decision: { byName: decision?.byName ?? null, words: decision?.words ?? null, at: decision?.at ?? null } });
+
+/** GET /api/v1/studio/proposals - an editor's own; an admin sees all. */
+const listProposals = catchAsyncError(async (req, res) => {
+  const who = await decider(req.user);
+  const rows = await StudioProposal.find({}).sort({ proposalId: -1 }).lean();
+  res.status(200).json({ success: true, proposals: rows.filter((p) => canSee(p, who)).map(proposalView) });
+});
+
+/** POST /api/v1/studio/proposals/:id/decide  { decision, words } - the person's decision (D-043). */
+const decideStudioProposal = catchAsyncError(async (req, res, next) => {
+  let input;
+  try {
+    input = cleanDecision(req.body);
+  } catch (e) {
+    return next(new ErrorHandler(e.message, 400));
+  }
+  const proposal = await StudioProposal.findOne({ proposalId: String(req.params.id) });
+  if (!proposal) return next(new ErrorHandler("No such proposal.", 404));
+  const who = await decider(req.user);
+  const problem = decideProblem(proposal, who);
+  if (problem) return next(new ErrorHandler(problem, 403));
+  proposal.status = input.decision === "accept" ? "accepted" : "declined";
+  proposal.decision = { byName: who.name, words: input.words, at: new Date(), deliveredAt: null };
+  await proposal.save();
+  res.status(200).json({ success: true, proposal: proposalView(proposal.toObject()) });
+});
+
+const runView = async (r) => {
+  const { runId, propertyId, requestedByName, coreId, state, concepts, hooks, plan, error, clips, cut, spent, media } = r;
+  const urls = Object.fromEntries(await Promise.all(Object.entries(media ?? {}).map(async ([slot, m]) => [slot, await viewUrl(m.key)])));
+  return { runId, propertyId, requestedByName, coreId, state, concepts, hooks, plan, error, clips, cut, spent, urls };
+};
+
+/** GET /api/v1/studio/runs - the videos in progress, newest first, and the properties ready for one. */
+const listRuns = catchAsyncError(async (req, res) => {
+  const isAdmin = req.user.role === "admin";
+  const runs = await StudioRun.find(isAdmin ? {} : { requestedBy: req.user._id }).sort({ createdAt: -1 }).limit(100).lean();
+  const ready = await StudioReady.findOne({ key: "videos" }).lean();
+  res.status(200).json({ success: true, isAdmin, runs: await Promise.all(runs.map(runView)), ready: ready?.rows ?? [], checkedAt: ready?.checkedAt ?? null });
+});
+
+/** POST /api/v1/studio/runs  { propertyId } - starts a video for a property the server says is ready. */
+const startRun = catchAsyncError(async (req, res, next) => {
+  const propertyId = String(req.body?.propertyId ?? "");
+  const ready = await StudioReady.findOne({ key: "videos" }).lean();
+  if (!ready?.rows.some((r) => r.propertyId === propertyId && r.ready)) return next(new ErrorHandler("That property is not ready for a video.", 400));
+  const { name } = await decider(req.user);
+  const run = await StudioRun.create({ runId: newRunId(), propertyId, requestedBy: req.user._id, requestedByName: name, state: "queued", commands: [{ type: "open", byName: name }] });
+  res.status(201).json({ success: true, run: await runView(run.toObject()) });
+});
+
+/** One of the person's steps on a run: a pick or Gate A, collected by the server. */
+const runStep = (build) =>
+  catchAsyncError(async (req, res, next) => {
+    const run = await StudioRun.findOne({ runId: String(req.params.id) });
+    if (!run) return next(new ErrorHandler("No such video.", 404));
+    const problem = actProblem(run, req.user);
+    if (problem) return next(new ErrorHandler(problem, 403));
+    let step;
+    try {
+      step = build(run, req.body);
+    } catch (e) {
+      return next(new ErrorHandler(e.message, 400));
+    }
+    const { name } = await decider(req.user);
+    run.commands.push({ ...step.command, byName: name });
+    run.state = step.state;
+    run.error = null;
+    await run.save();
+    res.status(200).json({ success: true, run: await runView(run.toObject()) });
+  });
+const pickForRun = runStep(pickCommand);
+const gateForRun = runStep(gateCommand);
+const generateForRun = runStep(generateCommand);
+const clipForRun = runStep(clipCommand);
+const buildForRun = runStep(buildCommand);
+const cutForRun = runStep(cutCommand);
+
+/**
+ * POST /api/v1/studio/runs/poll  { updates, done, ready } with the x-studio-key header. The server
+ * says what finished and collects what is waiting. A step stays waiting until it says it is done.
+ */
+const pollRuns = catchAsyncError(async (req, res, next) => {
+  let updates;
+  let ready;
+  try {
+    updates = cleanUpdates(req.body?.updates);
+    ready = req.body?.ready === undefined ? null : cleanReady(req.body.ready);
+  } catch (e) {
+    return next(new ErrorHandler(e.message, 400));
+  }
+  // Finished steps first, so the update from a step's own finish is not taken for a newer step waiting.
+  const done = (Array.isArray(req.body?.done) ? req.body.done : []).map(String).filter((id) => mongoose.isValidObjectId(id));
+  if (done.length) {
+    const ids = done.map((id) => new mongoose.Types.ObjectId(id));
+    await StudioRun.updateMany({ "commands._id": { $in: ids } }, { $set: { "commands.$[c].doneAt": new Date() } }, { arrayFilters: [{ "c._id": { $in: ids } }] });
+  }
+  for (const { runId, fields } of updates) {
+    // A person may have acted since: only the latest step's result moves the state on.
+    const run = await StudioRun.findOne({ runId });
+    if (!run) continue;
+    const waiting = run.commands.filter((c) => !c.doneAt).length;
+    const { state, ...rest } = fields;
+    const given = Object.fromEntries(Object.entries(rest).filter(([k, v]) => (Array.isArray(v) ? v.length : v !== null) || k === "error"));
+    Object.assign(run, given, waiting > 1 ? {} : { state });
+    await run.save();
+  }
+  if (ready) await StudioReady.updateOne({ key: "videos" }, { $set: { rows: ready, checkedAt: new Date() } }, { upsert: true });
+  const open = await StudioRun.find({ commands: { $elemMatch: { doneAt: null } } }).lean();
+  const commands = open.flatMap((r) => r.commands.filter((c) => !c.doneAt).map((c) => ({ id: String(c._id), runId: r.runId, propertyId: r.propertyId, type: c.type, what: c.what, choice: c.choice, decision: c.decision, words: c.words, byName: c.byName })));
+  res.status(200).json({ success: true, commands });
+});
+
+/** POST /api/v1/studio/runs/:id/file-link  { slot, cut } - a run's animatic, clip or cut. */
+const fileLink = catchAsyncError(async (req, res, next) => {
+  if (!storage()) return next(new ErrorHandler("Cut storage is not set up.", 503));
+  const run = await StudioRun.findOne({ runId: String(req.params.id) }).select("coreId").lean();
+  if (!run?.coreId) return next(new ErrorHandler("No such video.", 404));
+  let cut;
+  try {
+    cut = cleanCut(`${run.coreId}/${cleanSlot(req.body?.slot)}`, req.body?.cut);
+  } catch (e) {
+    return next(new ErrorHandler(e.message, 400));
+  }
+  res.status(200).json({ success: true, uploadUrl: await uploadUrl(cut.key) });
+});
+
+/** POST /api/v1/studio/runs/:id/file  { slot, cut } - the upload finished; checked before it is shown. */
+const confirmFile = catchAsyncError(async (req, res, next) => {
+  if (!storage()) return next(new ErrorHandler("Cut storage is not set up.", 503));
+  const run = await StudioRun.findOne({ runId: String(req.params.id) });
+  if (!run?.coreId) return next(new ErrorHandler("No such video.", 404));
+  let cut;
+  let slot;
+  try {
+    slot = cleanSlot(req.body?.slot);
+    cut = cleanCut(`${run.coreId}/${slot}`, req.body?.cut);
+  } catch (e) {
+    return next(new ErrorHandler(e.message, 400));
+  }
+  if ((await storedBytes(cut.key)) !== cut.bytes) return next(new ErrorHandler("The uploaded file is missing or not the right size.", 409));
+  run.media = { ...(run.media ?? {}), [slot]: cut };
+  run.markModified("media");
+  await run.save();
+  res.status(200).json({ success: true });
+});
+
+/** GET /api/v1/studio/problems - this person's reports; an admin sees everyone's. */
+const listProblems = catchAsyncError(async (req, res) => {
+  const isAdmin = req.user.role === "admin";
+  const rows = await StudioProblem.find(isAdmin ? {} : { user: req.user._id }).sort({ createdAt: -1 }).limit(200).lean();
+  res.status(200).json({ success: true, isAdmin, problems: rows.map(problemView) });
+});
+
+/** POST /api/v1/studio/problems  { text, video } */
+const reportProblem = catchAsyncError(async (req, res, next) => {
+  let input;
+  try {
+    input = cleanProblem(req.body);
+  } catch (e) {
+    return next(new ErrorHandler(e.message, 400));
+  }
+  const { name } = await decider(req.user);
+  const problem = await StudioProblem.create({ ...input, user: req.user._id, byName: name });
+  res.status(201).json({ success: true, problem: problemView(problem.toObject()) });
+});
+
+/** POST /api/v1/studio/problems/:id/resolve  { reply } (admin) */
+const resolveProblem = catchAsyncError(async (req, res, next) => {
+  let reply;
+  try {
+    reply = cleanReply(req.body);
+  } catch (e) {
+    return next(new ErrorHandler(e.message, 400));
+  }
+  if (!mongoose.isValidObjectId(req.params.id)) return next(new ErrorHandler("No such report.", 404));
+  const { name } = await decider(req.user);
+  const problem = await StudioProblem.findByIdAndUpdate(req.params.id, { status: "resolved", reply, resolvedBy: name, resolvedAt: new Date() }, { new: true });
+  if (!problem) return next(new ErrorHandler("No such report.", 404));
+  res.status(200).json({ success: true, problem: problemView(problem.toObject()) });
+});
+
+/** The Creative OS's own routes: the shared key instead of a signed-in person. */
+const requireSyncKey = (req, res, next) => {
+  if (!process.env.STUDIO_SYNC_KEY) return next(new ErrorHandler("Studio video sync is not set up.", 503));
+  if (!keyMatches(process.env.STUDIO_SYNC_KEY, req.get("x-studio-key"))) return next(new ErrorHandler("Wrong sync key.", 401));
+  next();
+};
+
+/** POST /api/v1/studio/videos/:coreId/cut-link  { cut } - a short-lived link to upload this cut. */
+const cutLink = catchAsyncError(async (req, res, next) => {
+  if (!storage()) return next(new ErrorHandler("Cut storage is not set up.", 503));
+  const video = await StudioVideo.findOne({ coreId: String(req.params.coreId) }).select("coreId").lean();
+  if (!video) return next(new ErrorHandler("No such video.", 404));
+  let cut;
+  try {
+    cut = cleanCut(video.coreId, req.body?.cut);
+  } catch (e) {
+    return next(new ErrorHandler(e.message, 400));
+  }
+  res.status(200).json({ success: true, uploadUrl: await uploadUrl(cut.key) });
+});
+
+/** POST /api/v1/studio/videos/:coreId/cut  { cut } - the upload finished; the file is checked before it is shown. */
+const confirmCut = catchAsyncError(async (req, res, next) => {
+  if (!storage()) return next(new ErrorHandler("Cut storage is not set up.", 503));
+  const video = await StudioVideo.findOne({ coreId: String(req.params.coreId) });
+  if (!video) return next(new ErrorHandler("No such video.", 404));
+  let cut;
+  try {
+    cut = cleanCut(video.coreId, req.body?.cut);
+  } catch (e) {
+    return next(new ErrorHandler(e.message, 400));
+  }
+  if ((await storedBytes(cut.key)) !== cut.bytes) return next(new ErrorHandler("The uploaded file is missing or not the right size.", 409));
+  video.cut = { ...cut, uploadedAt: new Date() };
+  await video.save();
+  res.status(200).json({ success: true });
+});
+
+/**
+ * POST /api/v1/studio/videos/sync  { videos, received } with the x-studio-key header. The Creative
+ * OS sends its job summaries and the ids of the feedback it has stored; the reply is the feedback
+ * it has not stored yet. An id is marked delivered only once it says so, so nothing is lost if a
+ * push fails halfway.
+ */
+const syncVideos = catchAsyncError(async (req, res, next) => {
+  let rows;
+  let proposals;
+  try {
+    rows = cleanBatch(req.body?.videos);
+    proposals = cleanProposals(req.body?.proposals);
+  } catch (e) {
+    return next(new ErrorHandler(e.message, 400));
+  }
+  const now = new Date();
+  if (rows.length) await StudioVideo.bulkWrite(rows.map((r) => ({ updateOne: { filter: { coreId: r.coreId }, update: { $set: { ...r, syncedAt: now } }, upsert: true } })));
+  const received = (Array.isArray(req.body?.received) ? req.body.received : []).map(String).filter((id) => mongoose.isValidObjectId(id));
+  if (received.length) {
+    const ids = received.map((id) => new mongoose.Types.ObjectId(id));
+    await StudioVideo.updateMany({ "feedback._id": { $in: ids } }, { $set: { "feedback.$[f].deliveredAt": now } }, { arrayFilters: [{ "f._id": { $in: ids } }] });
+  }
+  const pending = await StudioVideo.find({ "feedback.deliveredAt": null }).select("coreId feedback").lean();
+  for (const { status, ...p } of proposals) {
+    await StudioProposal.updateOne({ proposalId: p.proposalId }, { $set: { ...p, syncedAt: now }, $setOnInsert: { status } }, { upsert: true });
+    // Decided on that side: this one is settled, and a decision made here has reached it.
+    if (status !== "proposed") await StudioProposal.updateOne({ proposalId: p.proposalId }, { $set: { status, "decision.deliveredAt": now } });
+  }
+  const decisions = undeliveredDecisions(await StudioProposal.find({ status: { $ne: "proposed" } }).lean());
+  res.status(200).json({ success: true, stored: rows.length, feedback: undelivered(pending), decisions });
+});
+
+module.exports = { me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, importInterview, updateQuestions, listVideos, addVideoFeedback, syncVideos, requireSyncKey, cutLink, confirmCut, listProposals, decideStudioProposal, listRuns, startRun, pickForRun, gateForRun, generateForRun, clipForRun, buildForRun, cutForRun, pollRuns, fileLink, confirmFile, listProblems, reportProblem, resolveProblem };

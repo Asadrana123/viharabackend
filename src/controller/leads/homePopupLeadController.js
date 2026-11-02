@@ -92,7 +92,7 @@ const getAllHomePopupLeads = catchAsyncError(async (req, res) => {
 
   res.status(200).json({
     success: true,
-    leads: shapeLeads(view, leads.map((lead) => ({
+    leads: await shapeLeads(view, leads.map((lead) => ({
       ...lead,
       // Shown as a tag on the row.
       buyerType: BUYER_TYPE_LABELS[lead.buyerType] || lead.buyerType,

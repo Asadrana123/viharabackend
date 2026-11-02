@@ -10,7 +10,7 @@
 // qualified / converted / disqualified are set by the team in admin, and a
 // status set by hand always wins. One automatic rule: a wrong phone number
 // (marked by the team) AND a bounced email → disqualified. Measured per form
-// in Admin → Toorak Leads.
+// in Admin → Leads → Facebook Forms.
 
 const LEAD_STATUSES = ["new", "contacted", "unreachable", "qualified", "converted", "disqualified"];
 const MANUAL_STATUSES = LEAD_STATUSES.filter((s) => s !== "new");

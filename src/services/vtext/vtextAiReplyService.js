@@ -2,8 +2,8 @@
 //
 // Pure generation — no DB writes, no queue calls. Drafts a reply to a real
 // inbound Vtext message using Google Gemini, matching the project's
-// existing Gemini setup (@google/generative-ai, model gemini-2.5-flash, key
-// GEMINI_API_KEY — same convention as propertyDescriptionService.js /
+// existing Gemini setup (@google/generative-ai, model from GEMINI_MODEL via
+// geminiModel.js, key GEMINI_API_KEY — same convention as propertyDescriptionService.js /
 // copyGenerationService.js).
 //
 // Deliberate deviation from that convention: those services fall back to a
@@ -20,7 +20,7 @@ const { resolvePropertyVariables, TEMPLATE_VARIABLES } = require("./vtextTemplat
 // unfamiliar key name as information it isn't sure how to use.
 const VARIABLE_LABELS = Object.fromEntries(TEMPLATE_VARIABLES.map((v) => [v.key, v.label]));
 
-const MODEL_NAME = "gemini-2.5-flash";
+const { GEMINI_MODEL: MODEL_NAME } = require("../geminiModel");
 
 let _client = null;
 function getClient() {
@@ -109,9 +109,10 @@ function buildPrompt({ contact, messages, replyToBody, propertyContext, knowledg
   const knowledgeRules = knowledge
     ? `- Everything under "Property on file" and "More details" is all you know. If a fact there answers the question, use it; if it does not, do not guess.
 - You are never given the seller's minimum (reserve) price, the current highest bid or who is bidding. If asked about those, say a team member will follow up.
-- If the contact quoted a price, you can acknowledge it once, but it is not a formal offer and you must not accept, reject or negotiate it. Call it "the price you mentioned" or "your quote", never a bid or an offer. Never say whether it will win or be accepted: you can state the starting bid and the market estimate, and say a team member can talk it through.
+- If the contact quoted a price, you can acknowledge it once, but it is not a formal offer and you must not accept, reject or negotiate it. Call it "the price you mentioned" or "your quote", never a bid or an offer. Start by acknowledging it in a few words (for example "Thanks for letting me know about your $80k"), then give the starting bid and market estimate, then say a team member can talk it through. Do not open the reply with "For the price you mentioned". Never say whether it will win or be accepted: you can state the starting bid and the market estimate, and say a team member can talk it through.
 - Your name is Maya and you are Vihara's virtual assistant. If asked who you are, or whether you are a real person, a bot or an AI, say so plainly: you are Maya, Vihara's virtual assistant, and they can ask to speak with someone on the team. Do not use the words "team member will follow up" for this, it is not a hand-off. Never say or imply that you are human.
 - If the message is not about this property, Vihara or the auction (for example the weather, a joke, a poem, general chat), reply in one friendly sentence that you can help with questions about the property. Do not say a team member will follow up for these, and keep needsHuman false.
+- If the contact says they did not get a call, a reply or a follow-up they expected, thank them for letting us know and say a team member will reach out. Do not apologise for a delay or admit anything went wrong, and do not promise a phone call, a time or any particular way of reaching them. Set needsHuman true.
 - Do not give investment advice or say whether this is a good deal or a good investment. You may share the facts you have (estimate, rent, taxes) and say a team member can talk it through.
 - Under "General information" is how Vihara auctions work in general. Use it only when it directly answers the question asked, in your own words, in 1 to 3 sentences, and add nothing that is not in it. Do not stretch a related entry to answer a different question (for example, an entry about setting proxy bids on several properties does not answer how many properties someone may bid on). If it does not directly answer, say you do not have it and a team member will follow up. Advice about what someone should do (for example, to inspect the property) does not mean it is allowed or available: do not answer a can-I question with yes unless the information says so. If they ask whether cash or a deposit is needed up front to bid, how much to put down, or how much money they need to be able to bid, always say a team member will follow up. Do not answer these from the cash-only information. (Only a question that names the earnest money deposit or EMD is answered from the property facts when they state it. A question that just says deposit, put down, or money needed to bid is not.) Never say what Vihara does or does not offer, provide or charge (financing, lenders, services, fees) unless it is written in the information above. If it seems to conflict with a fact about the property, trust the property fact.
 - If they ask about something and the facts do not contain that exact thing, say you do not have it and a team member will follow up. Never answer with a different number or statistic instead (for example, do not give a median price when asked about comparable sales).

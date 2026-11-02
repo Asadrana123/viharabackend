@@ -2,7 +2,7 @@
 //
 // One-off: tag the Facebook form leads saved BEFORE Toorak routing existed
 // (config/toorakForms.js) with their Toorak route, property, listing link and
-// hot flag, so they show in Admin → Toorak Leads. Records only: no email,
+// hot flag, so they show in Admin → Leads → Facebook Forms. Records only: no email,
 // Brevo, Slack, text or call. Safe to run twice.
 //
 // Toorak leads leave the 7-day call loop for the 3-attempt schedule

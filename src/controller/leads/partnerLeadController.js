@@ -214,7 +214,7 @@ const getAllPartnerLeads = catchAsyncError(async (req, res) => {
 
   res.status(200).json({
     success: true,
-    leads: shapeLeads(view, leadsWithCalls),
+    leads: await shapeLeads(view, leadsWithCalls),
     pagination: { page, limit, total, pages: Math.ceil(total / limit) },
   });
 });

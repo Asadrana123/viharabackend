@@ -5,8 +5,9 @@
 //   ?view=summary  Light rows for the Leads tab table: only the fields a row
 //                  shows (name, contact, tags, date) plus the latest call's
 //                  outcome + score and the call count, and a light text state
-//                  (sent / failed / replied). Email, message and note
-//                  lookups are skipped and call transcripts never leave Mongo.
+//                  (sent / failed / replied) and email state (emailStats).
+//                  Full email, message and note lookups are skipped and call
+//                  transcripts never leave Mongo.
 //   ?id=<leadId>   Just that one lead, fully loaded (what the detail modal shows).
 //                  Ignores the list's test-name filter so any lead can be opened.
 //
@@ -20,6 +21,8 @@ const {
   PICKUP_OUTCOMES,
 } = require("../calling/vapiCallsService");
 const { getVtextTextSummaryForPhones } = require("../vtext/vtextLeadMessagesService");
+const { getEmailSummaryForEmails } = require("../integrations/emailEventsService");
+const { fundingOf } = require("./leadFunding");
 
 function listView(req) {
   const raw = String(req.query.id || "");
@@ -41,14 +44,18 @@ const unlessSummary = (view, list) => (view.summary ? [] : list);
 const ROW_FIELDS = [
   "fullName", "firstName", "lastName", "name", "email", "phone", "createdAt",
   "tier", "buyerType", "persona", "primaryMarket", "market", "markets", "formName",
+  "formId", "hot", "hotReasons", "leadStatus", "phoneInvalid", "smsConsent",
 ];
+
+// Read on the server (funding, the All Leads filter); they don't go out on a row.
+const SERVER_ONLY_FIELDS = ["needsFinancing", "buyBox.financing", "answers", "isTest", "propertySlug"];
 
 // Call state, so a row with no call can say why (no consent, stopped, QA test…).
 // Funnels without a field just leave it out.
 const CALL_STATE_FIELDS = ["consent", "callingStopped", "callAttempts", "callStatus", "nextCallAt", "isQaTest"];
 
 /** Mongo projection for the list query: row fields in summary mode, else everything. */
-const listSelect = (view) => (view.summary ? [...ROW_FIELDS, ...CALL_STATE_FIELDS].join(" ") : undefined);
+const listSelect = (view) => (view.summary ? [...ROW_FIELDS, ...CALL_STATE_FIELDS, ...SERVER_ONLY_FIELDS].join(" ") : undefined);
 
 /**
  * Calls for a page of leads. Resolves to `callsFor(phone)` →
@@ -78,14 +85,23 @@ async function callsForList(view, phones) {
 
 const slimCall = (c) => ({ id: c.id, outcome: c.outcome, score: c.score, startedAt: c.startedAt });
 
-const SUMMARY_KEYS = ["_id", ...ROW_FIELDS, ...CALL_STATE_FIELDS, "propertyName", "leadType", "leadTypeLabel", "calls", "callCount", "pickedUp", "texts"];
+const SUMMARY_KEYS = [
+  "_id", ...ROW_FIELDS, ...CALL_STATE_FIELDS, "propertyName", "leadType", "leadTypeLabel", "calls", "callCount", "pickedUp", "texts",
+  "funding", "emailStats", "status", "emailBounced",
+];
 
-/** Summary rows: keep only what the table renders. */
-function shapeLeads(view, leads) {
-  if (!view.summary) return leads;
-  return leads.map((lead) => {
+/**
+ * Every lead gets `funding` (cash / financing / not sure). Summary rows keep
+ * only what the table renders, plus `emailStats`; full leads carry `emails`.
+ */
+async function shapeLeads(view, leads) {
+  const withFunding = leads.map((lead) => ({ ...lead, funding: fundingOf(lead) }));
+  if (!view.summary) return withFunding;
+  const statsByEmail = await getEmailSummaryForEmails(leads.map((l) => l.email).filter(Boolean));
+  return withFunding.map((lead) => {
     const row = {};
     for (const k of SUMMARY_KEYS) if (lead[k] !== undefined) row[k] = lead[k];
+    row.emailStats = statsByEmail[String(lead.email || "").toLowerCase()];
     return row;
   });
 }

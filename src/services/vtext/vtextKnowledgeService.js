@@ -27,6 +27,7 @@ const TOP_K = Number(process.env.RAG_VTEXT_TOP_K || 5);
 const MIN_SCORE = Number(process.env.RAG_VTEXT_MIN_SCORE || 0.4);
 const MAX_CHARS = Number(process.env.RAG_VTEXT_MAX_CHARS || 1500);
 const TIMEOUT_MS = Number(process.env.VTEXT_RAG_TIMEOUT_MS || 6000);
+const REWRITE_TIMEOUT_MS = Number(process.env.VTEXT_RAG_REWRITE_TIMEOUT_MS || 8000); // gemini-3.8-flash sometimes thinks despite budget 0: 1.7s without, about 4s with
 const REWRITE_MAX_MESSAGE_CHARS = 60; // longer messages already read as a full question
 const FAQ_TOP_K = Number(process.env.RAG_VTEXT_FAQ_TOP_K || 2);
 const FAQ_MIN_SCORE = Number(process.env.RAG_VTEXT_FAQ_MIN_SCORE || 0.62);
@@ -138,10 +139,10 @@ async function rewriteQuery({ messages, replyToBody }) {
     const model = client.getGenerativeModel({ model: MODEL_NAME });
     const result = await withTimeout(
       model.generateContent({ contents: [{ role: "user", parts: [{ text: prompt }] }],
-        // Thinking off: this is a one-line rewrite, and thinking roughly doubled its time (about 1.1s vs 2.3s measured).
+        // Thinking off: this is a one-line rewrite, and thinking roughly doubled its time (about 1.1s vs 2.3s measured on 2.5 Flash). 3.8 Flash only sometimes honours a budget of 0.
         generationConfig: { temperature: 0, thinkingConfig: { thinkingBudget: 0 } },
       }),
-      Math.min(TIMEOUT_MS, 4000),
+      REWRITE_TIMEOUT_MS,
       "query rewrite"
     );
     const rewritten = String(result?.response?.text() || "").trim().replace(/^["']|["']$/g, "");
