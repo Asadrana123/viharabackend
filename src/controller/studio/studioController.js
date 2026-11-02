@@ -11,12 +11,15 @@ const EditorProfile = require("../../model/studio/editorProfileModel");
 const StudioSettings = require("../../model/studio/studioSettingsModel");
 const StudioVideo = require("../../model/studio/studioVideoModel");
 const StudioProposal = require("../../model/studio/studioProposalModel");
+const StudioRun = require("../../model/studio/studioRunModel");
+const StudioReady = require("../../model/studio/studioReadyModel");
 const userModel = require("../../model/users/userModel");
 const { CORE_QUESTIONS, CORE_KEYS } = require("../../config/studio/interviewQuestions");
 const { startInterview, answerInterview, editSection, interviewStatus, syncSections, parseInterviewBlock } = require("../../services/studio/interviewService");
 const { keyMatches, cleanBatch, cleanFeedback, undelivered } = require("../../services/studio/videoService");
 const { storage, cleanCut, uploadUrl, viewUrl, storedBytes } = require("../../services/studio/cutStorage");
 const { cleanProposals, decideProblem, canSee, cleanDecision, undeliveredDecisions } = require("../../services/studio/proposalService");
+const { newRunId, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand } = require("../../services/studio/runService");
 
 const KEY = /^[a-z][a-z0-9-]{1,30}$/;
 
@@ -259,6 +262,116 @@ const decideStudioProposal = catchAsyncError(async (req, res, next) => {
   res.status(200).json({ success: true, proposal: proposalView(proposal.toObject()) });
 });
 
+const runView = async (r) => {
+  const { runId, propertyId, requestedByName, coreId, state, concepts, hooks, plan, error, animatic } = r;
+  return { runId, propertyId, requestedByName, coreId, state, concepts, hooks, plan, error, animaticUrl: await viewUrl(animatic?.key) };
+};
+
+/** GET /api/v1/studio/runs - the videos in progress, newest first, and the properties ready for one. */
+const listRuns = catchAsyncError(async (req, res) => {
+  const runs = await StudioRun.find({}).sort({ createdAt: -1 }).limit(50).lean();
+  const ready = await StudioReady.findOne({ key: "videos" }).lean();
+  res.status(200).json({ success: true, runs: await Promise.all(runs.map(runView)), ready: ready?.rows ?? [], checkedAt: ready?.checkedAt ?? null });
+});
+
+/** POST /api/v1/studio/runs  { propertyId } - starts a video for a property the server says is ready. */
+const startRun = catchAsyncError(async (req, res, next) => {
+  const propertyId = String(req.body?.propertyId ?? "");
+  const ready = await StudioReady.findOne({ key: "videos" }).lean();
+  if (!ready?.rows.some((r) => r.propertyId === propertyId && r.ready)) return next(new ErrorHandler("That property is not ready for a video.", 400));
+  const { name } = await decider(req.user);
+  const run = await StudioRun.create({ runId: newRunId(), propertyId, requestedBy: req.user._id, requestedByName: name, state: "queued", commands: [{ type: "open", byName: name }] });
+  res.status(201).json({ success: true, run: await runView(run.toObject()) });
+});
+
+/** One of the person's steps on a run: a pick or Gate A, collected by the server. */
+const runStep = (build) =>
+  catchAsyncError(async (req, res, next) => {
+    const run = await StudioRun.findOne({ runId: String(req.params.id) });
+    if (!run) return next(new ErrorHandler("No such video.", 404));
+    const problem = actProblem(run, req.user);
+    if (problem) return next(new ErrorHandler(problem, 403));
+    let step;
+    try {
+      step = build(run, req.body);
+    } catch (e) {
+      return next(new ErrorHandler(e.message, 400));
+    }
+    const { name } = await decider(req.user);
+    run.commands.push({ ...step.command, byName: name });
+    run.state = step.state;
+    run.error = null;
+    await run.save();
+    res.status(200).json({ success: true, run: await runView(run.toObject()) });
+  });
+const pickForRun = runStep(pickCommand);
+const gateForRun = runStep(gateCommand);
+
+/**
+ * POST /api/v1/studio/runs/poll  { updates, done, ready } with the x-studio-key header. The server
+ * says what finished and collects what is waiting. A step stays waiting until it says it is done.
+ */
+const pollRuns = catchAsyncError(async (req, res, next) => {
+  let updates;
+  let ready;
+  try {
+    updates = cleanUpdates(req.body?.updates);
+    ready = req.body?.ready === undefined ? null : cleanReady(req.body.ready);
+  } catch (e) {
+    return next(new ErrorHandler(e.message, 400));
+  }
+  for (const { runId, fields } of updates) {
+    // A person may have acted since: only the latest step's result moves the state on.
+    const run = await StudioRun.findOne({ runId });
+    if (!run) continue;
+    const waiting = run.commands.filter((c) => !c.doneAt).length;
+    const { state, ...rest } = fields;
+    const given = Object.fromEntries(Object.entries(rest).filter(([k, v]) => (Array.isArray(v) ? v.length : v !== null) || k === "error"));
+    Object.assign(run, given, waiting > 1 ? {} : { state });
+    await run.save();
+  }
+  const done = (Array.isArray(req.body?.done) ? req.body.done : []).map(String).filter((id) => mongoose.isValidObjectId(id));
+  if (done.length) {
+    const ids = done.map((id) => new mongoose.Types.ObjectId(id));
+    await StudioRun.updateMany({ "commands._id": { $in: ids } }, { $set: { "commands.$[c].doneAt": new Date() } }, { arrayFilters: [{ "c._id": { $in: ids } }] });
+  }
+  if (ready) await StudioReady.updateOne({ key: "videos" }, { $set: { rows: ready, checkedAt: new Date() } }, { upsert: true });
+  const open = await StudioRun.find({ commands: { $elemMatch: { doneAt: null } } }).lean();
+  const commands = open.flatMap((r) => r.commands.filter((c) => !c.doneAt).map((c) => ({ id: String(c._id), runId: r.runId, propertyId: r.propertyId, type: c.type, what: c.what, choice: c.choice, decision: c.decision, words: c.words, byName: c.byName })));
+  res.status(200).json({ success: true, commands });
+});
+
+/** POST /api/v1/studio/runs/:id/animatic-link  { cut } */
+const animaticLink = catchAsyncError(async (req, res, next) => {
+  if (!storage()) return next(new ErrorHandler("Cut storage is not set up.", 503));
+  const run = await StudioRun.findOne({ runId: String(req.params.id) }).select("coreId").lean();
+  if (!run?.coreId) return next(new ErrorHandler("No such video.", 404));
+  let cut;
+  try {
+    cut = cleanCut(`${run.coreId}/animatic`, req.body?.cut);
+  } catch (e) {
+    return next(new ErrorHandler(e.message, 400));
+  }
+  res.status(200).json({ success: true, uploadUrl: await uploadUrl(cut.key) });
+});
+
+/** POST /api/v1/studio/runs/:id/animatic  { cut } - the upload finished; checked before it is shown. */
+const confirmAnimatic = catchAsyncError(async (req, res, next) => {
+  if (!storage()) return next(new ErrorHandler("Cut storage is not set up.", 503));
+  const run = await StudioRun.findOne({ runId: String(req.params.id) });
+  if (!run?.coreId) return next(new ErrorHandler("No such video.", 404));
+  let cut;
+  try {
+    cut = cleanCut(`${run.coreId}/animatic`, req.body?.cut);
+  } catch (e) {
+    return next(new ErrorHandler(e.message, 400));
+  }
+  if ((await storedBytes(cut.key)) !== cut.bytes) return next(new ErrorHandler("The uploaded file is missing or not the right size.", 409));
+  run.animatic = cut;
+  await run.save();
+  res.status(200).json({ success: true });
+});
+
 /** The Creative OS's own routes: the shared key instead of a signed-in person. */
 const requireSyncKey = (req, res, next) => {
   if (!process.env.STUDIO_SYNC_KEY) return next(new ErrorHandler("Studio video sync is not set up.", 503));
@@ -329,4 +442,4 @@ const syncVideos = catchAsyncError(async (req, res, next) => {
   res.status(200).json({ success: true, stored: rows.length, feedback: undelivered(pending), decisions });
 });
 
-module.exports = { me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, importInterview, updateQuestions, listVideos, addVideoFeedback, syncVideos, requireSyncKey, cutLink, confirmCut, listProposals, decideStudioProposal };
+module.exports = { me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, importInterview, updateQuestions, listVideos, addVideoFeedback, syncVideos, requireSyncKey, cutLink, confirmCut, listProposals, decideStudioProposal, listRuns, startRun, pickForRun, gateForRun, pollRuns, animaticLink, confirmAnimatic };

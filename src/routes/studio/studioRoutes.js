@@ -9,6 +9,9 @@ const router = express.Router();
 router.post("/videos/sync", c.requireSyncKey, c.syncVideos);
 router.post("/videos/:coreId/cut-link", c.requireSyncKey, c.cutLink);
 router.post("/videos/:coreId/cut", c.requireSyncKey, c.confirmCut);
+router.post("/runs/poll", c.requireSyncKey, c.pollRuns);
+router.post("/runs/:id/animatic-link", c.requireSyncKey, c.animaticLink);
+router.post("/runs/:id/animatic", c.requireSyncKey, c.confirmAnimatic);
 
 // Editors and admins.
 router.use(isAuthenticated, authorizeRoles("editor", "admin"));
@@ -20,6 +23,10 @@ router.put("/profile/sections/:key", c.updateSection);
 router.post("/profile/notes", c.addNote);
 router.get("/videos", c.listVideos);
 router.post("/videos/:coreId/feedback", c.addVideoFeedback);
+router.get("/runs", c.listRuns);
+router.post("/runs", c.startRun);
+router.post("/runs/:id/pick", c.pickForRun);
+router.post("/runs/:id/gate", c.gateForRun);
 router.get("/proposals", c.listProposals);
 router.post("/proposals/:id/decide", c.decideStudioProposal);
 
