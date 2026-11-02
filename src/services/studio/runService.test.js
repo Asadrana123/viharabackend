@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand } = require("./runService");
+const { newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand, generateCommand, clipCommand, buildCommand, cutCommand, cleanSlot } = require("./runService");
 
 const run = (over = {}) => ({ state: "concept-choice", requestedBy: "u1", requestedByName: "Dinesh", concepts: [{ id: "C1" }], hooks: [{ id: "H1" }], plan: { errors: [] }, ...over });
 
@@ -43,4 +43,34 @@ test("Gate A needs words for a change, and a plan with errors cannot be approved
   assert.throws(() => gateCommand(gate, { decision: "reject" }), /Say what/);
   assert.throws(() => gateCommand(run(), { decision: "approve" }), /not waiting for Gate A/);
   assert.throws(() => gateCommand(run({ state: "gate-a", plan: { errors: ["bad"] } }), { decision: "approve" }), /errors/);
+});
+
+test("generates only for an approved plan within the limit, counting what was spent (D-044)", () => {
+  const ok = run({ state: "approved", spent: 6, plan: { price: { total: 9 } } });
+  assert.deepEqual(generateCommand(ok), { command: { type: "generate" }, state: "generating" });
+  assert.throws(() => generateCommand(run({ state: "approved", spent: 6, plan: { price: { total: 9.01 } } })), /over the \$15 limit/);
+  assert.throws(() => generateCommand(run({ state: "gate-a" })), /not waiting to generate/);
+});
+
+test("a clip must exist, and a rejection says why", () => {
+  const r = run({ state: "clips", clips: [{ ref: "a/b" }] });
+  assert.equal(clipCommand(r, { ref: "a/b", decision: "approve" }).command.choice, "a/b");
+  assert.throws(() => clipCommand(r, { ref: "a/b", decision: "reject" }), /what is wrong/);
+  assert.throws(() => clipCommand(r, { ref: "x", decision: "approve" }), /no clip x/);
+  assert.throws(() => clipCommand(run(), { ref: "a/b", decision: "approve" }), /not waiting for its clips/);
+});
+
+test("the build waits for the clips, and a cut needs words for a change", () => {
+  assert.equal(buildCommand(run({ state: "ready-to-build" })).state, "building");
+  assert.throws(() => buildCommand(run({ state: "clips" })), /not ready to build/);
+  const cut = run({ state: "cut" });
+  assert.equal(cutCommand(cut, { decision: "approve" }).state, "done");
+  assert.equal(cutCommand(cut, { decision: "revise", words: "0:14 fast" }).state, "revision");
+  assert.throws(() => cutCommand(cut, { decision: "reject" }), /Say what/);
+});
+
+test("a file goes only in a known slot", () => {
+  assert.equal(cleanSlot("clip-rent-day-rent-counter"), "clip-rent-day-rent-counter");
+  assert.equal(cleanSlot("cut"), "cut");
+  assert.throws(() => cleanSlot("../x"), /not a file slot/);
 });

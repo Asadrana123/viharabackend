@@ -19,7 +19,7 @@ const { startInterview, answerInterview, editSection, interviewStatus, syncSecti
 const { keyMatches, cleanBatch, cleanFeedback, undelivered } = require("../../services/studio/videoService");
 const { storage, cleanCut, uploadUrl, viewUrl, storedBytes } = require("../../services/studio/cutStorage");
 const { cleanProposals, decideProblem, canSee, cleanDecision, undeliveredDecisions } = require("../../services/studio/proposalService");
-const { newRunId, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand } = require("../../services/studio/runService");
+const { newRunId, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand, generateCommand, clipCommand, buildCommand, cutCommand, cleanSlot } = require("../../services/studio/runService");
 
 const KEY = /^[a-z][a-z0-9-]{1,30}$/;
 
@@ -263,8 +263,9 @@ const decideStudioProposal = catchAsyncError(async (req, res, next) => {
 });
 
 const runView = async (r) => {
-  const { runId, propertyId, requestedByName, coreId, state, concepts, hooks, plan, error, animatic } = r;
-  return { runId, propertyId, requestedByName, coreId, state, concepts, hooks, plan, error, animaticUrl: await viewUrl(animatic?.key) };
+  const { runId, propertyId, requestedByName, coreId, state, concepts, hooks, plan, error, clips, cut, spent, media } = r;
+  const urls = Object.fromEntries(await Promise.all(Object.entries(media ?? {}).map(async ([slot, m]) => [slot, await viewUrl(m.key)])));
+  return { runId, propertyId, requestedByName, coreId, state, concepts, hooks, plan, error, clips, cut, spent, urls };
 };
 
 /** GET /api/v1/studio/runs - the videos in progress, newest first, and the properties ready for one. */
@@ -306,6 +307,10 @@ const runStep = (build) =>
   });
 const pickForRun = runStep(pickCommand);
 const gateForRun = runStep(gateCommand);
+const generateForRun = runStep(generateCommand);
+const clipForRun = runStep(clipCommand);
+const buildForRun = runStep(buildCommand);
+const cutForRun = runStep(cutCommand);
 
 /**
  * POST /api/v1/studio/runs/poll  { updates, done, ready } with the x-studio-key header. The server
@@ -341,33 +346,36 @@ const pollRuns = catchAsyncError(async (req, res, next) => {
   res.status(200).json({ success: true, commands });
 });
 
-/** POST /api/v1/studio/runs/:id/animatic-link  { cut } */
-const animaticLink = catchAsyncError(async (req, res, next) => {
+/** POST /api/v1/studio/runs/:id/file-link  { slot, cut } - a run's animatic, clip or cut. */
+const fileLink = catchAsyncError(async (req, res, next) => {
   if (!storage()) return next(new ErrorHandler("Cut storage is not set up.", 503));
   const run = await StudioRun.findOne({ runId: String(req.params.id) }).select("coreId").lean();
   if (!run?.coreId) return next(new ErrorHandler("No such video.", 404));
   let cut;
   try {
-    cut = cleanCut(`${run.coreId}/animatic`, req.body?.cut);
+    cut = cleanCut(`${run.coreId}/${cleanSlot(req.body?.slot)}`, req.body?.cut);
   } catch (e) {
     return next(new ErrorHandler(e.message, 400));
   }
   res.status(200).json({ success: true, uploadUrl: await uploadUrl(cut.key) });
 });
 
-/** POST /api/v1/studio/runs/:id/animatic  { cut } - the upload finished; checked before it is shown. */
-const confirmAnimatic = catchAsyncError(async (req, res, next) => {
+/** POST /api/v1/studio/runs/:id/file  { slot, cut } - the upload finished; checked before it is shown. */
+const confirmFile = catchAsyncError(async (req, res, next) => {
   if (!storage()) return next(new ErrorHandler("Cut storage is not set up.", 503));
   const run = await StudioRun.findOne({ runId: String(req.params.id) });
   if (!run?.coreId) return next(new ErrorHandler("No such video.", 404));
   let cut;
+  let slot;
   try {
-    cut = cleanCut(`${run.coreId}/animatic`, req.body?.cut);
+    slot = cleanSlot(req.body?.slot);
+    cut = cleanCut(`${run.coreId}/${slot}`, req.body?.cut);
   } catch (e) {
     return next(new ErrorHandler(e.message, 400));
   }
   if ((await storedBytes(cut.key)) !== cut.bytes) return next(new ErrorHandler("The uploaded file is missing or not the right size.", 409));
-  run.animatic = cut;
+  run.media = { ...(run.media ?? {}), [slot]: cut };
+  run.markModified("media");
   await run.save();
   res.status(200).json({ success: true });
 });
@@ -442,4 +450,4 @@ const syncVideos = catchAsyncError(async (req, res, next) => {
   res.status(200).json({ success: true, stored: rows.length, feedback: undelivered(pending), decisions });
 });
 
-module.exports = { me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, importInterview, updateQuestions, listVideos, addVideoFeedback, syncVideos, requireSyncKey, cutLink, confirmCut, listProposals, decideStudioProposal, listRuns, startRun, pickForRun, gateForRun, pollRuns, animaticLink, confirmAnimatic };
+module.exports = { me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, importInterview, updateQuestions, listVideos, addVideoFeedback, syncVideos, requireSyncKey, cutLink, confirmCut, listProposals, decideStudioProposal, listRuns, startRun, pickForRun, gateForRun, generateForRun, clipForRun, buildForRun, cutForRun, pollRuns, fileLink, confirmFile };

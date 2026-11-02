@@ -6,7 +6,10 @@
 
 const crypto = require("node:crypto");
 
-const STATES = new Set(["queued", "concepts", "concept-choice", "hooks", "hook-choice", "package", "gate-a", "approved", "rejected", "failed"]);
+const STATES = new Set(["queued", "concepts", "concept-choice", "hooks", "hook-choice", "package", "gate-a", "approved", "generating", "clips", "ready-to-build", "building", "cut", "revision", "done", "rejected", "failed"]);
+// The limit for a video (D-044). The server checks it again against what was really spent.
+const VIDEO_LIMIT_USD = 15;
+const SLOT = /^(animatic|cut|clip-[a-z0-9-]{1,80})$/;
 const MAX_WORDS = 2000;
 
 const clip = (value, max) => String(value ?? "").slice(0, max);
@@ -38,6 +41,9 @@ function cleanUpdate(u) {
       concepts: Array.isArray(u?.concepts) ? u.concepts.slice(0, 12).map(concept) : [],
       hooks: Array.isArray(u?.hooks) ? u.hooks.slice(0, 12).map(hook) : [],
       plan: plan(u?.plan),
+      clips: Array.isArray(u?.clips) ? u.clips.slice(0, 100).map((c) => ({ ref: clip(c?.ref, 120), state: clip(c?.state, 30), note: c?.note ? clip(c.note, 500) : null, slot: clip(c?.slot, 90) })) : [],
+      cut: u?.cut ? { name: clip(u.cut.name, 120), state: clip(u.cut.state, 30), seconds: Number(u.cut.seconds) || 0 } : null,
+      spent: Number(u?.spent) || 0,
       error: u?.error ? clip(u.error, 800) : null,
     },
   };
@@ -84,4 +90,45 @@ function gateCommand(run, body) {
   return { command: { type: "gate", decision, words }, state: decision === "revise" ? "package" : decision === "approve" ? "approved" : "rejected" };
 }
 
-module.exports = { newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };
+/** Generate at the price shown, for an approved plan within the limit. Also a retry after a partial run. */
+function generateCommand(run) {
+  if (run.state !== "approved") throw new Error("This video is not waiting to generate now.");
+  const price = run.plan?.price?.total ?? 0;
+  if ((run.spent ?? 0) + price > VIDEO_LIMIT_USD) throw new Error(`This is over the $${VIDEO_LIMIT_USD} limit for a video. An admin decides what happens next.`);
+  return { command: { type: "generate" }, state: "generating" };
+}
+
+/** One clip at Gate B. A rejection says why. */
+function clipCommand(run, body) {
+  if (run.state !== "clips") throw new Error("This video is not waiting for its clips now.");
+  const ref = String(body?.ref ?? "");
+  if (!run.clips.some((c) => c.ref === ref)) throw new Error(`There is no clip ${ref}.`);
+  const decision = String(body?.decision ?? "");
+  if (decision !== "approve" && decision !== "reject") throw new Error("Approve or reject.");
+  const words = String(body?.words ?? "").trim();
+  if (decision === "reject" && !words) throw new Error("Say what is wrong with this clip.");
+  return { command: { type: "clip", choice: ref, decision, words: words.slice(0, MAX_WORDS) }, state: "clips" };
+}
+
+function buildCommand(run) {
+  if (run.state !== "ready-to-build") throw new Error("This video is not ready to build.");
+  return { command: { type: "build" }, state: "building" };
+}
+
+/** The cut (Gate C). A change or a rejection needs the person's words. */
+function cutCommand(run, body) {
+  if (run.state !== "cut") throw new Error("This video has no cut waiting.");
+  const decision = String(body?.decision ?? "");
+  if (!["approve", "revise", "reject"].includes(decision)) throw new Error("Approve, ask for a change, or reject.");
+  const words = String(body?.words ?? "").trim();
+  if (decision !== "approve" && !words) throw new Error("Say what should change, or why not.");
+  return { command: { type: "cut", decision, words: words.slice(0, MAX_WORDS) }, state: decision === "approve" ? "done" : decision === "reject" ? "rejected" : "revision" };
+}
+
+function cleanSlot(slot) {
+  const s = String(slot ?? "");
+  if (!SLOT.test(s)) throw new Error(`"${s}" is not a file slot.`);
+  return s;
+}
+
+module.exports = { VIDEO_LIMIT_USD, generateCommand, clipCommand, buildCommand, cutCommand, cleanSlot, newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };

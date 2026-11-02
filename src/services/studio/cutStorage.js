@@ -10,7 +10,7 @@ const { S3Client, PutObjectCommand, GetObjectCommand, HeadObjectCommand } = requ
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 
 const SHA256 = /^[a-f0-9]{64}$/;
-const FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,100}\.mp4$/;
+const FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,100}\.(mp4|png|jpg|jpeg)$/;
 const MAX_BYTES = 500 * 1e6;
 const UPLOAD_SECONDS = 15 * 60;
 const VIEW_SECONDS = 2 * 60 * 60;
@@ -40,16 +40,16 @@ function cleanCut(coreId, cut) {
   const name = String(cut?.name ?? "");
   const bytes = Number(cut?.bytes);
   if (!SHA256.test(sha256)) throw new Error("A cut needs its SHA-256.");
-  if (!FILE_NAME.test(name)) throw new Error("A cut is an .mp4 with a plain file name.");
+  if (!FILE_NAME.test(name)) throw new Error("A cut is an .mp4 or an image with a plain file name.");
   if (!Number.isInteger(bytes) || bytes < 1 || bytes > MAX_BYTES) throw new Error(`A cut is 1 byte to ${MAX_BYTES / 1e6} MB.`);
   // Named by content, so a new cut never replaces the file behind a link already handed out.
-  return { key: `cuts/${coreId}/${sha256}.mp4`, name, sha256, bytes };
+  return { key: `cuts/${coreId}/${sha256}${name.slice(name.lastIndexOf("."))}`, name, sha256, bytes };
 }
 
 async function uploadUrl(key, env = process.env) {
   const s = storage(env);
   if (!s) return null;
-  return getSignedUrl(s.client, new PutObjectCommand({ Bucket: s.bucket, Key: key, ContentType: "video/mp4" }), { expiresIn: UPLOAD_SECONDS });
+  return getSignedUrl(s.client, new PutObjectCommand({ Bucket: s.bucket, Key: key }), { expiresIn: UPLOAD_SECONDS });
 }
 
 async function viewUrl(key, env = process.env) {

@@ -10,7 +10,7 @@ const mongoose = require("mongoose");
 
 const commandSchema = new mongoose.Schema(
   {
-    type: { type: String, enum: ["open", "pick", "gate"], required: true },
+    type: { type: String, enum: ["open", "pick", "gate", "generate", "clip", "build", "cut"], required: true },
     what: { type: String, default: null },
     choice: { type: String, default: null },
     decision: { type: String, default: null },
@@ -34,7 +34,11 @@ const runSchema = new mongoose.Schema(
     concepts: { type: [mongoose.Schema.Types.Mixed], default: [] },
     hooks: { type: [mongoose.Schema.Types.Mixed], default: [] },
     plan: { type: mongoose.Schema.Types.Mixed, default: null },
-    animatic: { type: mongoose.Schema.Types.Mixed, default: null },
+    clips: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    cut: { type: mongoose.Schema.Types.Mixed, default: null },
+    spent: { type: Number, default: 0 },
+    // Files in the private bucket, by slot: animatic, clip-<ref>, cut. Keys never reach a browser.
+    media: { type: mongoose.Schema.Types.Mixed, default: {} },
     error: { type: String, default: null },
     commands: { type: [commandSchema], default: [] },
   },
