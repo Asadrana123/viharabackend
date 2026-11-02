@@ -13,12 +13,14 @@ const StudioVideo = require("../../model/studio/studioVideoModel");
 const StudioProposal = require("../../model/studio/studioProposalModel");
 const StudioRun = require("../../model/studio/studioRunModel");
 const StudioReady = require("../../model/studio/studioReadyModel");
+const StudioProblem = require("../../model/studio/studioProblemModel");
 const userModel = require("../../model/users/userModel");
 const { CORE_QUESTIONS, CORE_KEYS } = require("../../config/studio/interviewQuestions");
 const { startInterview, answerInterview, editSection, interviewStatus, syncSections, parseInterviewBlock } = require("../../services/studio/interviewService");
 const { keyMatches, cleanBatch, cleanFeedback, undelivered } = require("../../services/studio/videoService");
 const { storage, cleanCut, uploadUrl, viewUrl, storedBytes } = require("../../services/studio/cutStorage");
 const { cleanProposals, decideProblem, canSee, cleanDecision, undeliveredDecisions } = require("../../services/studio/proposalService");
+const { cleanProblem, cleanReply, problemView } = require("../../services/studio/problemService");
 const { newRunId, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand, generateCommand, clipCommand, buildCommand, cutCommand, cleanSlot } = require("../../services/studio/runService");
 
 const KEY = /^[a-z][a-z0-9-]{1,30}$/;
@@ -389,6 +391,41 @@ const confirmFile = catchAsyncError(async (req, res, next) => {
   res.status(200).json({ success: true });
 });
 
+/** GET /api/v1/studio/problems - this person's reports; an admin sees everyone's. */
+const listProblems = catchAsyncError(async (req, res) => {
+  const isAdmin = req.user.role === "admin";
+  const rows = await StudioProblem.find(isAdmin ? {} : { user: req.user._id }).sort({ createdAt: -1 }).limit(200).lean();
+  res.status(200).json({ success: true, isAdmin, problems: rows.map(problemView) });
+});
+
+/** POST /api/v1/studio/problems  { text, video } */
+const reportProblem = catchAsyncError(async (req, res, next) => {
+  let input;
+  try {
+    input = cleanProblem(req.body);
+  } catch (e) {
+    return next(new ErrorHandler(e.message, 400));
+  }
+  const { name } = await decider(req.user);
+  const problem = await StudioProblem.create({ ...input, user: req.user._id, byName: name });
+  res.status(201).json({ success: true, problem: problemView(problem.toObject()) });
+});
+
+/** POST /api/v1/studio/problems/:id/resolve  { reply } (admin) */
+const resolveProblem = catchAsyncError(async (req, res, next) => {
+  let reply;
+  try {
+    reply = cleanReply(req.body);
+  } catch (e) {
+    return next(new ErrorHandler(e.message, 400));
+  }
+  if (!mongoose.isValidObjectId(req.params.id)) return next(new ErrorHandler("No such report.", 404));
+  const { name } = await decider(req.user);
+  const problem = await StudioProblem.findByIdAndUpdate(req.params.id, { status: "resolved", reply, resolvedBy: name, resolvedAt: new Date() }, { new: true });
+  if (!problem) return next(new ErrorHandler("No such report.", 404));
+  res.status(200).json({ success: true, problem: problemView(problem.toObject()) });
+});
+
 /** The Creative OS's own routes: the shared key instead of a signed-in person. */
 const requireSyncKey = (req, res, next) => {
   if (!process.env.STUDIO_SYNC_KEY) return next(new ErrorHandler("Studio video sync is not set up.", 503));
@@ -459,4 +496,4 @@ const syncVideos = catchAsyncError(async (req, res, next) => {
   res.status(200).json({ success: true, stored: rows.length, feedback: undelivered(pending), decisions });
 });
 
-module.exports = { me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, importInterview, updateQuestions, listVideos, addVideoFeedback, syncVideos, requireSyncKey, cutLink, confirmCut, listProposals, decideStudioProposal, listRuns, startRun, pickForRun, gateForRun, generateForRun, clipForRun, buildForRun, cutForRun, pollRuns, fileLink, confirmFile };
+module.exports = { me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, importInterview, updateQuestions, listVideos, addVideoFeedback, syncVideos, requireSyncKey, cutLink, confirmCut, listProposals, decideStudioProposal, listRuns, startRun, pickForRun, gateForRun, generateForRun, clipForRun, buildForRun, cutForRun, pollRuns, fileLink, confirmFile, listProblems, reportProblem, resolveProblem };

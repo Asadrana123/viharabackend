@@ -31,6 +31,9 @@ router.post("/runs/:id/generate", c.generateForRun);
 router.post("/runs/:id/clip", c.clipForRun);
 router.post("/runs/:id/build", c.buildForRun);
 router.post("/runs/:id/cut", c.cutForRun);
+router.get("/problems", c.listProblems);
+router.post("/problems", c.reportProblem);
+router.post("/problems/:id/resolve", authorizeRoles("admin"), c.resolveProblem);
 router.get("/proposals", c.listProposals);
 router.post("/proposals/:id/decide", c.decideStudioProposal);
 
