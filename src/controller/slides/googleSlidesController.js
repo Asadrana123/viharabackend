@@ -5,6 +5,11 @@
 // Google sends them to GET /callback → we save the token and send them back
 // to the admin panel's Slides Agent tab.
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
+
+// The state is signed with its own key, derived from the login secret, so it can
+// never be accepted as a login cookie (login tokens are signed with the secret itself).
+const stateKey = () => crypto.createHmac("sha256", String(process.env.secret)).update("google-slides-oauth-state").digest("hex");
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const ErrorHandler = require("../../utils/errorhandler");
 const googleAuth = require("../../services/slides/googleAuthService");
@@ -29,7 +34,7 @@ exports.connect = catchAsyncError(async (req, res, next) => {
   if (req.user.isQaAccount) return next(new ErrorHandler("QA agent admin accounts are read-only", 403));
   const state = jwt.sign(
     { purpose: STATE_PURPOSE, id: String(req.user._id), name: adminName(req.user) },
-    process.env.secret,
+    stateKey(),
     { expiresIn: "30m" }
   );
   try {
@@ -45,7 +50,7 @@ exports.callback = async (req, res) => {
 
   let admin;
   try {
-    admin = jwt.verify(state, process.env.secret);
+    admin = jwt.verify(state, stateKey());
     if (admin.purpose !== STATE_PURPOSE) throw new Error("wrong state");
   } catch {
     return backToAdmin(res, "expired");

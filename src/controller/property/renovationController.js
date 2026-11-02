@@ -109,6 +109,14 @@ exports.generateRenovationImages = async (req, res) => {
       return res.status(404).json({ success: false, error: "Property not found" });
     }
 
+    // The server downloads this image, so it must be one of the property's own
+    // photos (the only ones the picker offers). Any other URL would let a visitor
+    // make our server fetch internal or arbitrary addresses.
+    const propertyImages = [property.image, ...(property.otherImages || [])].filter(Boolean);
+    if (typeof selectedImage !== "string" || !propertyImages.includes(selectedImage)) {
+      return res.status(400).json({ success: false, error: "Please pick one of this property's photos" });
+    }
+
     const { prompt, negativePrompt } = BflPromptBuilder.buildPrompts(
       { city: property.city, state: property.state, propertyType: property.propertyType },
       renovationData

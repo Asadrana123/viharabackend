@@ -28,7 +28,6 @@ const { startAdsLoopJob } = require('./jobs/adsLoopJob');
 const { startRepairJob } = require('./jobs/repairJob');
 const { startSignupDoctorJob } = require('./jobs/signupDoctorJob');
 const { startFacetimeSweep } = require('./services/calling/facetime/facetimeSweep');
-require('./passport');
 
 const PORT = process.env.PORT || 8000;
 

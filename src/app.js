@@ -7,7 +7,7 @@ const cors = require("cors");
 const app = express();
 
 // Import CORS configuration
-const { expressCorsOptions } = require("./config/corsConfig");
+const { expressCorsOptions, dropPreviewCookies } = require("./config/corsConfig");
 
 // Import routes
 const userRoutes = require("./routes/users/userRoutes");
@@ -17,7 +17,6 @@ const contactRoutes = require("./routes/integrations/contactRoutes");
 const sellPropertyRoutes = require("./routes/property/sellPropertyRoutes");
 const saveSearchRoutes = require("./routes/property/savedSearch");
 const auctionRegistrationRoutes = require("./routes/bidding/auctionRegistrationRoutes");
-const authRoutes = require("./routes/users/auth");
 const biddingRoutes = require("./routes/bidding/biddingRoutes");
 const ebookRoutes = require("./routes/integrations/eBookRoutes");
 const userPreferencesRoutes = require("./routes/users/userPreferencesRoutes");
@@ -101,9 +100,24 @@ const zernioWebhookRoutes = require("./routes/social/zernioWebhookRoutes");
 const { recoverAdsLoop } = require("./jobs/adsLoopJob");
 const { recoverRepairJob } = require("./jobs/repairJob");
 // Middleware
+// Basic security headers. Not helmet: its cross-origin defaults could block the website
+// loading from the API or break the Google sign-in redirect.
+app.disable("x-powered-by");
+app.use((req, res, next) => {
+  res.set({
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY", // nothing embeds API pages (unsubscribe etc.) in a frame
+    "Content-Security-Policy": "frame-ancestors 'none'",
+    "Referrer-Policy": "no-referrer", // unsubscribe links carry an email address
+  });
+  next();
+});
+app.use(dropPreviewCookies); // preview sites always count as logged out (see corsConfig)
 app.use(cookieParser());
+app.use(require("./middleware/hideServerErrors")); // no raw internal error text to visitors on 500s
 app.use(cors(expressCorsOptions));
 app.use(bodyParser.json({ limit: "5mb", verify: (req, res, buf) => { req.rawBody = buf; } }));
+app.use(require("./middleware/stripMongoOperators")); // no $-operators from visitors reach MongoDB
 // MongoDB Connection with Connection Pooling
 mongoose.connect(process.env.DB_URI, {
   maxPoolSize: 50,
@@ -143,7 +157,6 @@ app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/product', productRoutes);
 app.use("/api/saveContact", contactRoutes);
 app.use("/api/sellProperty", sellPropertyRoutes);
-app.use("/auth", authRoutes);
 app.use("/api/user/save-searches", saveSearchRoutes);
 app.use('/api/auction-registration', auctionRegistrationRoutes);
 app.use('/api/bidding', biddingRoutes);

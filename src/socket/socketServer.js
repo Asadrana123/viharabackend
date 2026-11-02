@@ -1,8 +1,9 @@
 // socketServer.js
 const socketIO = require('socket.io');
 const jwt = require('jsonwebtoken');
-const { socketIOCorsOptions } = require('../config/corsConfig');
+const { socketIOCorsOptions, isPreviewOrigin } = require('../config/corsConfig');
 const User = require('../model/users/userModel');
+const { tokenVersionMatches } = require('../utils/tokenVersion');
 const { initializeHandlers, registerSocketHandlers } = require('./socketHandlers');
 const rateLimiter = require('../middleware/socketRateLimitMiddleware');
 // Vtext's own, separate socket handlers (join/leave the admin room) — kept
@@ -25,16 +26,10 @@ function initSocketServer(server) {
 
   initializeHandlers(io, activeAuctions, userAuctions, userSocketsMap, lastBroadcastTime, userBidThrottle);
 
-  io.use((socket, next) => {
-    if (!rateLimiter.canConnect(socket.userId)) {
-      return next(new Error('Too many connections'));
-    }
-    next();
-  });
-
   io.use(async (socket, next) => {
     try {
-      const cookies = socket.handshake.headers.cookie;
+      // Preview sites always count as logged out (see corsConfig).
+      const cookies = isPreviewOrigin(socket.handshake.headers.origin) ? undefined : socket.handshake.headers.cookie;
 
       if (!cookies) {
         return next(new Error('Authentication error: Cookies missing'));
@@ -51,9 +46,19 @@ function initSocketServer(server) {
       socket.userId = decoded.id;
 
       // Fetch name, email, and role
-      const user = await User.findById(decoded.id).select('name email role');
+      const user = await User.findById(decoded.id).select('name email role tokenVersion');
       if (!user) {
         return next(new Error('User not found'));
+      }
+      // Signed out by a later password change or reset.
+      if (!tokenVersionMatches(decoded, user)) {
+        return next(new Error('Authentication error: Invalid token'));
+      }
+
+      // Per-account connection limit, now that we know who it is. Admins aren't limited:
+      // every admin-panel tab opens several live connections.
+      if (user.role !== 'admin' && !rateLimiter.canConnect(socket.userId)) {
+        return next(new Error('Too many connections'));
       }
 
       socket.user = user;

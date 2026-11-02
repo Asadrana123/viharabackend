@@ -4,6 +4,7 @@ const userModel = require("../model/users/userModel");
 const adminModel = require("../model/users/adminModel");
 
 const jwt = require("jsonwebtoken");
+const { tokenVersionMatches } = require("../utils/tokenVersion");
 
 const QA_SAFE_METHODS = ["GET", "HEAD", "OPTIONS"];
 
@@ -23,6 +24,12 @@ exports.isAuthenticated = catchAsyncError(async (req, res, next) => {
 
     if (!req.user) {
       return next(new Errorhandler("User not found", 404));
+    }
+
+    // Signed out by a later password change or reset.
+    if (!tokenVersionMatches(decodedData, req.user)) {
+      req.user = undefined;
+      return next(new Errorhandler("Invalid or expired token", 401));
     }
 
     // QA agent admin sessions may look but never change anything.
@@ -68,7 +75,8 @@ exports.optionalAuth = async (req, res, next) => {
         if (!token) return next();
 
         const decodedData = jwt.verify(token, process.env.secret);
-        req.user = await userModel.findById(decodedData.id).select('email role');
+        const user = await userModel.findById(decodedData.id).select('email role tokenVersion');
+        if (tokenVersionMatches(decodedData, user)) req.user = user;
     } catch {
         // Invalid/expired token — treat as unauthenticated, don't block
     }

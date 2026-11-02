@@ -33,6 +33,7 @@
 const { runCallBurst } = require("./registrationCallService");
 const MatchCallCampaign = require("../../model/calling/matchCallCampaignModel");
 const { normalisePhone } = require("./vapiCallsService");
+const { maskPhone } = require("../../utils/maskPii");
 
 /**
  * Buyer Match takeover: while an admin-started call schedule is active for a
@@ -89,7 +90,7 @@ let pumpTimer = null;  // pending "start the next burst" timer, if any
  */
 async function enqueueBurst(payload, opts = {}, priority = PRIORITY.SCHEDULED) {
   if (await isTakenOverByBuyerMatch(payload)) {
-    console.log(`[dispatch] follow-up to ${payload.phone} skipped — Buyer Match calls are running for this number`);
+    console.log(`[dispatch] follow-up to ${maskPhone(payload.phone)} skipped — Buyer Match calls are running for this number`);
     return { connected: false, suppressed: true };
   }
   return enqueueJob(() => runCallBurst(payload, opts), priority);

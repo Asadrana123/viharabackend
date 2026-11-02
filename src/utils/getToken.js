@@ -1,7 +1,7 @@
 // This utility function sends a JWT token in response and cookies
 const getCookieOptions = require("./cookieOptions");
-const sendToken = (user, statusCode, res, _message, extraUserFields = {}) => {
-    // Generate JWT token
+// Sets the login cookie with a fresh JWT for this user.
+const setTokenCookie = (res, user) => {
     const token = user.getJWTToken();
     const cookieExpire = parseInt(process.env.cookie_expire, 10) || 30;
 
@@ -9,9 +9,12 @@ const sendToken = (user, statusCode, res, _message, extraUserFields = {}) => {
         ...getCookieOptions(),
         expires: new Date(Date.now() + cookieExpire * 24 * 60 * 60 * 1000),
     };
+    return res.cookie("token", token, options);
+};
 
+const sendToken = (user, statusCode, res, _message, extraUserFields = {}) => {
     // Send response with user info, token and set cookie
-    res.status(statusCode).cookie("token", token, options).json({
+    setTokenCookie(res.status(statusCode), user).json({
         success: true,
         user: {
             _id: user._id,
@@ -30,3 +33,4 @@ const sendToken = (user, statusCode, res, _message, extraUserFields = {}) => {
 };
 
 module.exports = sendToken;
+sendToken.setTokenCookie = setTokenCookie;

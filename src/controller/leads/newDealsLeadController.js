@@ -34,6 +34,7 @@ const { scheduleNewDealsSignupCall } = require("../../services/calling/newDealsC
 const { newDealsPageUrl } = require("../../config/siteUrls");
 const { LIVE_DEALS, findDeal, dealLabel } = require("../../config/newDeals");
 const Product = require("../../model/property/productModel");
+const { maskPhone } = require("../../utils/maskPii");
 const TEST_NAME_FIELDS = ["fullName", "firstName"];
 const {
   str,
@@ -321,7 +322,7 @@ const registerNewDealsLead = catchAsyncError(async (req, res, next) => {
   if (consent) {
     scheduleNewDealsSignupCall(plain).catch((e) => console.error("[new-deals-call] scheduling failed:", e.message));
   } else {
-    console.log(`[new-deals] no-consent sign-up — not calling ${lead.phoneNormalized}`);
+    console.log(`[new-deals] no-consent sign-up — not calling ${maskPhone(lead.phoneNormalized)}`);
   }
 
   if (isProductionPageUrl(pageUrl)) {

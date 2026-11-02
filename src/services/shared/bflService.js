@@ -129,7 +129,9 @@ class BflService {
   async fetchImageAsBase64(imageUrl) {
     const response = await axios.get(imageUrl, {
       responseType: "arraybuffer",
-      timeout: BFL_CONFIG.requestTimeoutMs
+      timeout: BFL_CONFIG.requestTimeoutMs,
+      maxContentLength: 25 * 1024 * 1024, // listing photos are a few MB; refuse anything huge
+      maxRedirects: 3
     });
 
     return Buffer.from(response.data).toString("base64");

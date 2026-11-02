@@ -189,9 +189,14 @@ exports.resetPasswordRealtor = catchAsyncError(async (req, res, next) => {
   if (!realtor) {
     return next(new Errorhandler("resetPassword token is invalid or has been expired", 400));
   }
-  realtor.password = req.body.password;
+  const { password } = req.body;
+  if (typeof password !== "string" || password.length < 8) {
+    return next(new Errorhandler("Password must be at least 8 characters long", 400));
+  }
+  realtor.password = password;
   realtor.resetPasswordToken = undefined;
   realtor.resetPasswordExpire = undefined;
+  realtor.tokenVersion = (realtor.tokenVersion || 0) + 1; // signs out every other session
   await realtor.save({ validateBeforeSave: false });
   return issueRealtorToken(realtor, 200, res, "Password reset successful");
 });

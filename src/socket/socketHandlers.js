@@ -674,26 +674,35 @@ function registerSocketHandlers(socket) {
     }
   });
 
+  // Browsers ping this every second while an auction page is open. The time
+  // left is worked out here from the server's own end time; the number the
+  // browser sends is ignored, so nobody can push a fake countdown to the room.
   socket.on('auction-timer', async (data) => {
-    const now = Date.now();
-    const lastBroadcast = lastBroadcastTime.get(`timer:${data.auctionId}`) || 0;
+    const auctionId = data && typeof data.auctionId === 'string' ? data.auctionId : null;
+    if (!auctionId || !socket.rooms.has(auctionId)) return; // only sockets that joined this auction
 
-    if (!rateLimiter.isAllowed(socket.userId, 'auction-timer', data.auctionId)) {
+    const now = Date.now();
+    const lastBroadcast = lastBroadcastTime.get(`timer:${auctionId}`) || 0;
+
+    if (!rateLimiter.isAllowed(socket.userId, 'auction-timer', auctionId)) {
       return;
     }
 
-    if (now - lastBroadcast > BROADCAST_THROTTLE) {
-      socket.to(data.auctionId).emit('timer-update', data.timeLeft);
-      lastBroadcastTime.set(`timer:${data.auctionId}`, now);
+    const auctionData = activeAuctions.get(auctionId);
+    if (!auctionData || !auctionData.endTime) return;
+    const timeLeft = new Date(auctionData.endTime).getTime() - now;
 
-      const auctionData = activeAuctions.get(data.auctionId);
-      if (auctionData) {
+    if (now - lastBroadcast > BROADCAST_THROTTLE) {
+      socket.to(auctionId).emit('timer-update', Math.max(0, timeLeft));
+      lastBroadcastTime.set(`timer:${auctionId}`, now);
+
+      {
         let newStatus = auctionData.auctionStatus;
 
-        if (data.timeLeft <= 0) {
+        if (timeLeft <= 0) {
           if (auctionData.auctionStatus !== "ended") {
             console.log('🎯 Auction ending, finalizing winner...');
-            await finalizeAuction(data.auctionId);
+            await finalizeAuction(auctionId);
           }
           // finalizeAuction marks the in-memory auction "ended" once the DB close
           // succeeds. If this browser's clock ran ahead of the real end time the
@@ -705,9 +714,9 @@ function registerSocketHandlers(socket) {
 
         if (newStatus !== auctionData.auctionStatus) {
           auctionData.auctionStatus = newStatus;
-          activeAuctions.set(data.auctionId, auctionData);
+          activeAuctions.set(auctionId, auctionData);
           if (newStatus !== "ended") {
-            io.to(data.auctionId).emit('auction-status', auctionData);
+            io.to(auctionId).emit('auction-status', auctionData);
           }
         }
       }

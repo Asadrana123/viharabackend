@@ -1,8 +1,6 @@
-const adminModel = require("../../model/users/adminModel");
 const userModel = require("../../model/users/userModel");
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const Errorhandler = require("../../utils/errorhandler");
-const sendToken = require("../../utils/getToken");
 const ManualBid = require("../../model/bidding/manualBiddingModel");
 const AutoBidding = require("../../model/bidding/autoBiddingModel");
 const Product = require("../../model/property/productModel");
@@ -28,16 +26,29 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const { sendEmailAsync } = require('../../utils/sendEmail');
 const getSellerAccessEmail = require('../../htmlPages/seller/sellerAccessEmail');
+const { maskEmail } = require("../../utils/maskPii");
 
-// Create an admin account
+// Admin panel "Create User": makes a normal site account (users collection, the one
+// login reads) with the role picked on the form. The admin stays signed in as
+// themselves: no login cookie is set for the new account.
+const CREATE_USER_FIELDS = ["name", "last_name", "email", "password", "businessPhone", "city", "state", "userType"];
+const CREATE_USER_ROLES = ["user", "admin"]; // the form's choices
 exports.CreateAdmin = catchAsyncError(
-  async (req, res) => {
-    const adminData = {
-      ...req.body,
-      role: "admin"
-    };
-    const newAdmin = await adminModel.create(adminData);
-    sendToken(newAdmin, 201, res);
+  async (req, res, next) => {
+    const role = req.body.role || "user";
+    if (!CREATE_USER_ROLES.includes(role)) {
+      return next(new Errorhandler("Role must be user or admin", 400));
+    }
+    const userData = { role };
+    for (const key of CREATE_USER_FIELDS) {
+      if (req.body[key] !== undefined) userData[key] = req.body[key];
+    }
+    const newUser = await userModel.create(userData);
+    res.status(201).json({
+      success: true,
+      message: "User created successfully",
+      user: { _id: newUser._id, name: newUser.name, last_name: newUser.last_name, email: newUser.email, role: newUser.role, userType: newUser.userType },
+    });
   }
 );
 
@@ -707,6 +718,7 @@ exports.inviteSeller = catchAsyncError(
         // Hashed here: findByIdAndUpdate skips the pre-save hook.
         update.password = await bcrypt.hash(password, 10);
         update.updated_at = Date.now();
+        update.$inc = { tokenVersion: 1 }; // signs out the seller's older sessions
       }
       if (Object.keys(update).length) {
         await userModel.findByIdAndUpdate(user._id, update, { runValidators: true });
@@ -727,7 +739,7 @@ exports.inviteSeller = catchAsyncError(
       );
     } catch (err) {
       emailSent = false;
-      console.error(`Seller access email to ${user.email} failed:`, err);
+      console.error(`Seller access email to ${maskEmail(user.email)} failed:`, err);
     }
 
     // Fresh seller lists for the properties touched, so the UI can re-render.

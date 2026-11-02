@@ -5,6 +5,7 @@ const PersonaLead = require("../../model/leads/personaLeadModel");
 const { scheduleRegistrationCall } = require("../../services/calling/registrationCallService");
 const { enrichPerson } = require("../../services/shared/fullenrichService");
 const { syncPersonaLead } = require("../../services/integrations/brevoService");
+const { maskEmail } = require("../../utils/maskPii");
 /**
  * POST /api/v1/lead/register   (public)
  * Persists every persona-1 lead, then (only with consent) schedules the
@@ -30,7 +31,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       .catch((e) => console.error("[lead-call] scheduling failed:", e.message));
     call = { attempted: true };
   } else {
-    console.log(`[lead] email-only (no consent): ${email}`);
+    console.log(`[lead] email-only (no consent): ${maskEmail(email)}`);
   }
 
   // ── 2. Respond instantly — enrich + save run in the background ──────────
