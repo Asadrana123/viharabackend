@@ -44,7 +44,7 @@ function cleanUpdate(u) {
       clips: Array.isArray(u?.clips) ? u.clips.slice(0, 100).map((c) => ({ ref: clip(c?.ref, 120), state: clip(c?.state, 30), note: c?.note ? clip(c.note, 500) : null, slot: clip(c?.slot, 90) })) : [],
       cut: u?.cut ? { name: clip(u.cut.name, 120), state: clip(u.cut.state, 30), seconds: Number(u.cut.seconds) || 0 } : null,
       spent: Number(u?.spent) || 0,
-      error: u?.error ? clip(u.error, 800) : null,
+      error: u?.error ? clip(u.error, 2000) : null,
     },
   };
 }
