@@ -169,14 +169,14 @@ test("Toorak edge cases: unknown property form and no first name are skipped; no
 // Noon Pacific on a weekday: inside the hours for the 415 test number.
 const DAYTIME = () => new Date("2026-11-03T20:00:00Z");
 
-test("Toorak needs the text consent box, whatever the consent switch says", async () => {
+test("Toorak follows the consent switch: ON needs the text box, OFF texts every new lead", async () => {
   const run = (doc, consentRequired) => maybeSendFacebookIntroText({ doc, isNew: true }, deps({ consentRequired: async () => consentRequired, now: DAYTIME }));
-  await run(toorakLead(baltimore, { smsConsent: false }), false);                   // switch OFF, no box -> skip
-  await run(toorakLead(baltimore, { smsConsent: undefined, consentSource: "form-checkbox" }), true); // call box only -> skip
+  await run(toorakLead(baltimore, { smsConsent: false }), true);                    // switch ON, no box -> skip
+  await run(toorakLead(baltimore, { smsConsent: undefined, consentSource: "form-checkbox" }), true); // switch ON, call box only -> skip
   assert.equal(calls.length, 0);
   assert.equal(alerts.length, 0); // no consent is expected, not a Slack alert
   await run(toorakLead(baltimore), true);                                            // switch ON, sms box -> send
-  await run(toorakLead(financing, { _id: "lead2" }), false);                         // switch OFF, sms box -> send
+  await run(toorakLead(financing, { _id: "lead2", smsConsent: false }), false);      // switch OFF, no box (v2 forms) -> send
   assert.equal(calls.length, 2);
   assert.equal(calls[0].origin.templateKey, TOORAK_TEMPLATE_KEY);
   assert.equal(calls[0].idempotencyKey, "fb-intro-text-lead1");

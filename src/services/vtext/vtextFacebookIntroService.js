@@ -10,8 +10,10 @@
 // blocks opted-out contacts and bad numbers.
 //
 // Toorak leads (Prajwal, 3 Nov 2026): their own wording (property or financing, see facebookIntroText.js)
-// under the template key "toorak-intro"; texted ONLY with the sms_consent box ticked, whatever the switch
-// says; and only 9 AM to 8 PM in the lead's time zone (utils/textingHours.js), so a lead that comes in at
+// under the template key "toorak-intro"; consent follows the Vtext consent switch (switch ON = only with the
+// sms_consent box ticked, switch OFF = every new Toorak lead: Prajwal's override from 3 Nov 2026 while the
+// v2 forms, which have no consent box, are live; turn the switch ON once the v3 forms are);
+// and only 9 AM to 8 PM in the lead's time zone (utils/textingHours.js), so a lead that comes in at
 // night is texted at 9 AM. Other Facebook leads have no texting-hours check, same as the signup call.
 // Off unless FACEBOOK_AUTO_TEXT_ENABLED=true (and VTEXT_ENABLED=true, since sending needs the Vtext queue).
 const VtextContact = require("../../model/vtext/vtextContactModel");
@@ -81,8 +83,8 @@ async function maybeSendFacebookIntroText({ doc, isNew }, deps = {}) {
     if (!isNew) return await skip("repeat submission, already on file");
     if (doc.importedFromHistory) return await skip("imported from history");
     if (doc.toorak) {
-      // Toorak: the sms_consent box, whatever the switch says.
-      if (doc.smsConsent !== true) return await skip("Toorak lead did not tick text consent");
+      // Toorak: with the switch ON, only the sms_consent box counts (not the form's call consent).
+      if ((await consentRequired()) && doc.smsConsent !== true) return await skip("Toorak lead did not tick text consent");
     } else if ((await consentRequired()) && !hasTextConsent(doc)) {
       return await skip("the form gave no call / text consent");
     }
