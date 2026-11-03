@@ -1,6 +1,7 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const { lineCapacity, totalsOf, historyOf, lastDays, resetsAt } = require("./vtextCapacityReport");
+const { warmupComplete } = require("./vtextCapacityService");
 
 const DAY = 24 * 60 * 60 * 1000;
 // 3 Nov 2026, 3 PM New York.
@@ -84,4 +85,14 @@ test("history: saved caps win, other days are estimated from warm-up, days befor
   assert.deepEqual(h.map((d) => d.limit), [0, 10, 8, 10]);
   assert.deepEqual(h.map((d) => d.estimated), [false, true, false, true]);
   assert.deepEqual([h[2].used, h[2].sent, h[2].failed, h[2].replies], [6, 5, 1, 2]);
+});
+
+test("warm-up complete: the default schedule counts when the line has none of its own (the prod line's case)", () => {
+  const started = (days) => ({ enabled: true, startedAt: new Date(NOW.getTime() - days * DAY), schedule: [] });
+  assert.equal(warmupComplete(line({ status: "warming", warmup: started(31.5) }), NOW), true); // day 32 of 29
+  assert.equal(warmupComplete(line({ status: "warming", warmup: started(27.5) }), NOW), false); // day 28
+  assert.equal(warmupComplete(line({ status: "warming", warmup: started(28.5) }), NOW), true); // day 29: full limit reached
+  assert.equal(warmupComplete(line({ warmup: { ...started(10), schedule: [{ fromDay: 1, perDay: 20 }, { fromDay: 5, perDay: 40 }] } }), NOW), true);
+  assert.equal(warmupComplete(line({ warmup: { enabled: true } }), NOW), false); // never started
+  assert.equal(warmupComplete(line({ warmup: { enabled: false, startedAt: new Date(NOW.getTime() - 60 * DAY) } }), NOW), false);
 });

@@ -47,6 +47,15 @@ function warmupStep(line, limits, at = new Date()) {
   return { day, lastStepDay: schedule[schedule.length - 1].fromDay, perDay: Math.min(applicable.perDay, limits.perDay) };
 }
 
+/**
+ * True once a line has reached the last step of its warm-up schedule: its own schedule, or the channel's
+ * default when it has none (the same schedule the cap uses). The daily rollover then moves it to "active".
+ */
+function warmupComplete(line, at = new Date()) {
+  const step = warmupStep(line, limitsFor(line), at);
+  return !!step && step.day >= step.lastStepDay;
+}
+
 /** Perday cap from the warm-up schedule for "days since warmup started", or the full limit if warmup is off/not started/complete. */
 function warmupPerDay(line, limits, at = new Date()) {
   return warmupStep(line, limits, at)?.perDay ?? limits.perDay;
@@ -205,6 +214,7 @@ module.exports = {
   dayKey,
   limitsFor,
   warmupStep,
+  warmupComplete,
   isThrottled,
   coldCapOf,
   effectiveDailyCap,

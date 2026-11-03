@@ -323,11 +323,10 @@ async function runDailyRollover() {
     line.health.sentLast7d = sent;
     line.health.replyRatio7d = sent > 0 ? inbound / sent : 0;
 
+    // A line with no schedule of its own warms up on the channel's default one (the cap already uses it), so
+    // the check reads the same schedule; before, such a line stayed "warming" for good.
     if (line.status === "warming" && line.warmup?.startedAt) {
-      const daysSinceStart = Math.floor((Date.now() - new Date(line.warmup.startedAt).getTime()) / (24 * 60 * 60 * 1000)) + 1;
-      const schedule = line.warmup.schedule || [];
-      const scheduleComplete = schedule.length > 0 && daysSinceStart > Math.max(...schedule.map((s) => s.fromDay));
-      if (scheduleComplete) {
+      if (capacity.warmupComplete(line)) {
         line.status = "active";
         line.statusReason = "warm-up schedule complete";
         line.statusChangedAt = new Date();
