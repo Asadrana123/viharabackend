@@ -88,7 +88,7 @@ const LEAD_NOTE_TYPE = "newDeals"; // matches leadNoteModel.LEAD_TYPES
 // "Maryland, Michigan, Baltimore" — states then cities, as the buyer picked them.
 const marketsText = (box = {}) => [...(box.states || []).map(stateName), ...(box.cities || [])].join(", ");
 
-// "Baltimore, MD" / "$65,900" for a spotlight deal id.
+// "Baltimore, MD" / "$58,687" (starting bid) for a spotlight deal id.
 const dealParts = (id) => {
   const d = findDeal(id);
   return d ? { market: `${d.city}, ${d.state}`, price: `$${d.price.toLocaleString("en-US")}` } : null;

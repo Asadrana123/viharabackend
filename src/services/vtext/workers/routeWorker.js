@@ -49,6 +49,14 @@ async function processRouteJob(job) {
     return;
   }
 
+  // A held message (scheduledFor, e.g. a Toorak text waiting for 9 AM) never goes early, however this job
+  // got here (a re-queue, the stuck sweep, an admin retry): put it back for the rest of the wait.
+  const waitMs = message.scheduledFor ? new Date(message.scheduledFor).getTime() - Date.now() : 0;
+  if (waitMs > 1000) {
+    await requeueRoute(message._id, waitMs);
+    return;
+  }
+
   const contact = await VtextContact.findById(message.contactId);
   if (!contact) {
     message.status = "failed";

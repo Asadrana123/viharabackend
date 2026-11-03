@@ -17,7 +17,7 @@ const { sendMessage, sendBulkMessages, listMessagesByStatus, retryMessage, cance
 const { listConversationProperties, listConversations, getConversationMessages, updateConversation } = require("../../controller/vtext/vtextConversationController");
 const { getContact, updateContactConsent, markCallBooked } = require("../../controller/vtext/vtextContactController");
 const { getLeadThread } = require("../../controller/vtext/vtextLeadController");
-const { getStatsOverview } = require("../../controller/vtext/vtextStatsController");
+const { getStatsOverview, getCapacity, getCapacityHistory } = require("../../controller/vtext/vtextStatsController");
 const { getVtextSettings, updateVtextSettings } = require("../../controller/vtext/vtextSettingsController");
 const {
   getTemplateVariables, createTemplate, listTemplates, getTemplate, updateTemplate, deleteTemplate, previewTemplate,
@@ -34,6 +34,8 @@ router.get("/health", health);
 router.use(requireVtextEnabled);
 
 router.get("/stats/overview", getStatsOverview);
+router.get("/capacity", getCapacity);
+router.get("/capacity/history", getCapacityHistory);
 
 router.get("/settings", getVtextSettings);
 router.patch("/settings", updateVtextSettings);

@@ -15,7 +15,8 @@
 // and a lead (or phone number) that already has one is skipped.
 // A lead is skipped, with the reason printed, when it has no first name, no
 // price-range answer, no valid US number, was stopped by an admin, has opted
-// out of texts, or shares a phone number with an earlier lead.
+// out of texts, or shares a phone number with an earlier lead. Toorak leads are
+// never included (they get their own automatic text).
 //
 // Only sends between 11 AM and 9 PM Eastern (= 8 AM-9 PM Pacific); outside that
 // it refuses. There is no override.
@@ -39,7 +40,7 @@ const { pingRedis } = require("../services/vtext/queue/connection");
 const { toUsSmsNumber } = require("../utils/usPhone");
 const { textingWindow } = require("../utils/textingWindow");
 const { priceRangeOf } = require("../services/leads/facebookPriceRange");
-const { TEMPLATE_KEY, TEMPLATE, keyFor, capitalise, firstNameOf, upToReadsWrong, renderIntro, planLeads } = require("../services/leads/facebookIntroText");
+const { TEMPLATE_KEY, TEMPLATE, INTRO_TEMPLATE_KEYS, keyFor, capitalise, firstNameOf, upToReadsWrong, renderIntro, planLeads } = require("../services/leads/facebookIntroText");
 
 const GAP_MS = 1000;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -67,7 +68,9 @@ async function run({ argv = process.argv.slice(2), clock = () => new Date(), gap
     }
   }
 
-  const all = await FacebookFormLead.find({}).sort({ createdAt: 1, _id: 1 }).lean();
+  // Toorak leads are left out: new ones get their own text automatically, and old ones get the
+  // re-engagement email instead (scripts/toorakReengage.js), not a "just now" text.
+  const all = await FacebookFormLead.find({ toorak: null }).sort({ createdAt: 1, _id: 1 }).lean();
   out.counted = all.length;
 
   const phones = [...new Set(all.map((l) => toUsSmsNumber(l.phoneNormalized) || toUsSmsNumber(l.phone)).filter(Boolean))];
@@ -77,7 +80,7 @@ async function run({ argv = process.argv.slice(2), clock = () => new Date(), gap
   const sent = await VtextMessage.find({ idempotencyKey: { $in: keys } }).select("idempotencyKey status").lean();
   const sentByKey = new Map(sent.map((m) => [m.idempotencyKey, m]));
   // Same person on two lead records: a text with this template to the contact already counts.
-  const introMsgs = await VtextMessage.find({ "origin.templateKey": TEMPLATE_KEY, contactId: { $in: contacts.map((c) => c._id) } }).select("contactId").lean();
+  const introMsgs = await VtextMessage.find({ "origin.templateKey": { $in: INTRO_TEMPLATE_KEYS }, contactId: { $in: contacts.map((c) => c._id) } }).select("contactId").lean();
   const textedContactIds = new Set(introMsgs.map((m) => String(m.contactId)));
   const phonesAlreadyTexted = new Set(contacts.filter((c) => textedContactIds.has(String(c._id))).map((c) => c.phoneE164));
 

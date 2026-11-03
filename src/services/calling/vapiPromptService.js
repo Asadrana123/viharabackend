@@ -132,7 +132,7 @@ const PROMPT_VARIABLES = [
     key: "prospect_deal_interest",
     label: "Spotlight deal the prospect tapped (New Deals)",
     scope: "contact",
-    example: "the Baltimore deal listed at $65,900",
+    example: "the Baltimore deal with a starting bid of $58,687",
   },
   {
     key: "prospect_advisor_requested",
