@@ -104,12 +104,17 @@ function generateCommand(run) {
 function clipCommand(run, body) {
   if (run.state !== "clips") throw new Error("This video is not waiting for its clips now.");
   const ref = String(body?.ref ?? "");
-  if (!run.clips.some((c) => c.ref === ref)) throw new Error(`There is no clip ${ref}.`);
+  const target = run.clips.find((c) => c.ref === ref);
+  if (!target) throw new Error(`There is no clip ${ref}.`);
+  if (target.state !== "pending") throw new Error(`This clip is already ${target.state}.`);
   const decision = String(body?.decision ?? "");
   if (decision !== "approve" && decision !== "reject") throw new Error("Approve or reject.");
   const words = String(body?.words ?? "").trim();
   if (decision === "reject" && !words) throw new Error("Say what is wrong with this clip.");
-  return { command: { type: "clip", choice: ref, decision, words: words.slice(0, MAX_WORDS) }, state: "clips" };
+  const state = decision === "approve" ? "approved" : "rejected";
+  // Shown at once; the server records it and confirms on its next round.
+  const clips = run.clips.map((c) => (c.ref === ref ? { ...c, state, note: words || null } : c));
+  return { command: { type: "clip", choice: ref, decision, words: words.slice(0, MAX_WORDS) }, state: "clips", clips };
 }
 
 function buildCommand(run) {

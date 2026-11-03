@@ -60,8 +60,10 @@ test("generates only for an approved plan within the limit, counting what was sp
 });
 
 test("a clip must exist, and a rejection says why", () => {
-  const r = run({ state: "clips", clips: [{ ref: "a/b" }] });
+  const r = run({ state: "clips", clips: [{ ref: "a/b", state: "pending" }] });
   assert.equal(clipCommand(r, { ref: "a/b", decision: "approve" }).command.choice, "a/b");
+  assert.equal(clipCommand(r, { ref: "a/b", decision: "approve" }).clips[0].state, "approved");
+  assert.throws(() => clipCommand(run({ state: "clips", clips: [{ ref: "a/b", state: "approved" }] }), { ref: "a/b", decision: "approve" }), /already approved/);
   assert.throws(() => clipCommand(r, { ref: "a/b", decision: "reject" }), /what is wrong/);
   assert.throws(() => clipCommand(r, { ref: "x", decision: "approve" }), /no clip x/);
   assert.throws(() => clipCommand(run(), { ref: "a/b", decision: "approve" }), /not waiting for its clips/);

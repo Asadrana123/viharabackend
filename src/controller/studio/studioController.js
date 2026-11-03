@@ -312,6 +312,7 @@ const runStep = (build) =>
     run.commands.push({ ...step.command, byName: name });
     run.state = step.state;
     run.error = null;
+    if (step.clips) run.clips = step.clips;
     await run.save();
     res.status(200).json({ success: true, run: await runView(run.toObject()) });
   });
@@ -348,6 +349,8 @@ const pollRuns = catchAsyncError(async (req, res, next) => {
     const waiting = run.commands.filter((c) => !c.doneAt).length;
     const { state, ...rest } = fields;
     const given = Object.fromEntries(Object.entries(rest).filter(([k, v]) => (Array.isArray(v) ? v.length : v !== null) || k === "error"));
+    // With steps still waiting, this update is older than what the person sees.
+    if (waiting > 0) delete given.clips;
     Object.assign(run, given, waiting > 1 ? {} : { state });
     await run.save();
   }
