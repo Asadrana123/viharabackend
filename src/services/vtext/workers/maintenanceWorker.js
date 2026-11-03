@@ -174,9 +174,12 @@ async function runStuckMessageSweep() {
   }
 
   const queuedCutoff = new Date(Date.now() - STUCK_QUEUED_MIN * 60_000);
+  // A message held for later (scheduledFor in the future) isn't stuck: its delayed job sends it on time,
+  // and if that job is lost, this sweep picks it up once the time has come.
   const stuckQueued = await VtextMessage.find({
     status: { $in: ["queued", "assigned", "waiting-capacity", "waiting-window"] },
     updatedAt: { $lt: queuedCutoff },
+    $or: [{ scheduledFor: null }, { scheduledFor: { $lte: new Date() } }],
   });
   const routeQueue = getRouteQueue();
   const toRoute = stuckQueued.filter((m) => m.status !== "assigned");

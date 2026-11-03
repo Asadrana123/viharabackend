@@ -102,9 +102,10 @@ function renderIntro(lead, now = new Date()) {
  * Decide, per lead, whether it gets the text. Pure apart from the lookups it is handed.
  * @param {object[]} leads - FacebookFormLead docs, oldest first
  * @param {object} lookups - { contactsByPhone: Map, sentByKey: Map(key -> message), sentToContact: Set(phone) }
+ * @param {object} [opts] - { now }: when the text will go out (decides a Toorak text's sale sentence)
  * @returns {{ sendable: object[], skipped: object[] }}
  */
-function planLeads(leads, { contactsByPhone, sentByKey, phonesAlreadyTexted }) {
+function planLeads(leads, { contactsByPhone, sentByKey, phonesAlreadyTexted }, { now = new Date() } = {}) {
   const sendable = [];
   const skipped = [];
   const seenPhone = new Map();
@@ -126,7 +127,7 @@ function planLeads(leads, { contactsByPhone, sentByKey, phonesAlreadyTexted }) {
     if (contact?.optOut?.isOptedOut || contact?.consent?.status === "opted-out") { skip("contact opted out of texts"); continue; }
     if (contact?.phoneStatus === "invalid" || contact?.phoneStatus === "landline") { skip(`bad number (phone status "${contact.phoneStatus}")`); continue; }
 
-    const r = renderIntro(lead);
+    const r = renderIntro(lead, now);
     if (r.skip) { skip(r.skip); continue; }
     sendable.push({ lead, id, phone, ...r });
   }

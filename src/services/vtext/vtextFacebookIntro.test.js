@@ -132,7 +132,7 @@ test("with the switch OFF the other skip rules still apply", async () => {
 const { TOORAK_TEMPLATE_KEY, INTRO_TEMPLATE_KEYS } = require("../leads/facebookIntroText");
 
 const toorakLead = (toorak, over = {}) =>
-  lead({ consent: true, consentSource: "admin-override", answers: [{ key: "timeline", question: "When?", value: "within_30_days", label: "Within 30 days" }], toorak, ...over });
+  lead({ consent: true, consentSource: "admin-override", smsConsent: true, answers: [{ key: "timeline", question: "When?", value: "within_30_days", label: "Within 30 days" }], toorak, ...over });
 const baltimore = { key: "ml-baltimore", kind: "property", known: true, propertySlug: "2529-2531-e-monument-st-baltimore", listingUrl: "https://vihara.ai/listing/2529-2531-e-monument-st-baltimore" };
 const financing = { key: "financing-v2", kind: "financing", known: true, propertySlug: "", listingUrl: "https://vihara.ai/auctions" };
 
@@ -166,18 +166,37 @@ test("Toorak edge cases: unknown property form and no first name are skipped; no
   assert.equal(renderIntro(toorakLead(baltimore, { fullName: "", firstName: "there", email: "a@b.com" })).skip, "no usable first name");
 });
 
-test("Toorak follows the consent switch like other Facebook leads", async () => {
-  const run = (doc, consentRequired) => maybeSendFacebookIntroText({ doc, isNew: true }, deps({ consentRequired: async () => consentRequired }));
-  await run(toorakLead(baltimore), true);                                          // switch ON, no box -> skip
-  await run(toorakLead(baltimore, { consentSource: "form-checkbox" }), true);       // call box only -> skip
+// Noon Pacific on a weekday: inside the hours for the 415 test number.
+const DAYTIME = () => new Date("2026-11-03T20:00:00Z");
+
+test("Toorak needs the text consent box, whatever the consent switch says", async () => {
+  const run = (doc, consentRequired) => maybeSendFacebookIntroText({ doc, isNew: true }, deps({ consentRequired: async () => consentRequired, now: DAYTIME }));
+  await run(toorakLead(baltimore, { smsConsent: false }), false);                   // switch OFF, no box -> skip
+  await run(toorakLead(baltimore, { smsConsent: undefined, consentSource: "form-checkbox" }), true); // call box only -> skip
   assert.equal(calls.length, 0);
-  await run(toorakLead(baltimore, { smsConsent: true }), true);                     // switch ON, sms box -> send
-  await run(toorakLead(financing), false);                                          // switch OFF -> send
+  assert.equal(alerts.length, 0); // no consent is expected, not a Slack alert
+  await run(toorakLead(baltimore), true);                                            // switch ON, sms box -> send
+  await run(toorakLead(financing, { _id: "lead2" }), false);                         // switch OFF, sms box -> send
   assert.equal(calls.length, 2);
   assert.equal(calls[0].origin.templateKey, TOORAK_TEMPLATE_KEY);
   assert.equal(calls[0].idempotencyKey, "fb-intro-text-lead1");
+  assert.equal(calls[0].scheduledFor, undefined); // daytime: goes now
   assert.match(calls[0].body, /2529-2531 E Monument St/);
   assert.match(calls[1].body, /financing/);
+});
+
+test("other Facebook leads still follow the switch", async () => {
+  await maybeSendFacebookIntroText({ doc: lead({ consent: false, consentSource: "" }), isNew: true }, deps({ consentRequired: async () => false }));
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].scheduledFor, undefined);
+});
+
+test("a Toorak lead at night is held until 9 AM in its time zone, worded for then", async () => {
+  // 11 PM Pacific on Nov 6 -> 9 AM Pacific on Nov 7 (17:00Z), which is after Baltimore's sale started (16:00Z).
+  await maybeSendFacebookIntroText({ doc: toorakLead(baltimore), isNew: true }, deps({ now: () => new Date("2026-11-07T07:00:00Z") }));
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].scheduledFor.toISOString(), "2026-11-07T17:00:00.000Z");
+  assert.doesNotMatch(calls[0].body, /Saturday/);
 });
 
 test("the sms_consent box counts as text consent on any form; other leads keep the old template key", async () => {
@@ -188,7 +207,7 @@ test("the sms_consent box counts as text consent on any form; other leads keep t
 });
 
 test("Toorak skip rules still apply: repeat, stopped, opted out", async () => {
-  const run = (doc, isNew = true, over = {}) => maybeSendFacebookIntroText({ doc, isNew }, deps({ consentRequired: async () => false, ...over }));
+  const run = (doc, isNew = true, over = {}) => maybeSendFacebookIntroText({ doc, isNew }, deps({ consentRequired: async () => false, now: DAYTIME, ...over }));
   await run(toorakLead(baltimore), false);
   await run(toorakLead(baltimore, { callingStopped: true }));
   await run(toorakLead(baltimore), true, { lookupsFor: async () => ({ ...empty(), contactsByPhone: new Map([["+14155550123", { optOut: { isOptedOut: true } }]]) }) });

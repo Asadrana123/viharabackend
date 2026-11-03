@@ -59,7 +59,7 @@ function withTimeout(promise, ms, label) {
  * property) goes first and is marked `current`; the rest follow, newest first. Capped.
  * @returns {Promise<Array<{ slug: string, quotePrice: number|null, buyerType: string, current: boolean, product: object }>>}
  */
-async function loadProperties(contact, conversationId) {
+async function loadProperties(contact, conversationId, toorak = null) {
   const ids = (contact?.leadRefs || []).filter((r) => r.leadType === "property").map((r) => r.leadId);
   const or = [];
   if (ids.length) or.push({ _id: { $in: ids } });
@@ -80,6 +80,8 @@ async function loadProperties(contact, conversationId) {
 
   const bySlug = new Map();
   if (currentProduct?.slug) bySlug.set(currentProduct.slug, { slug: currentProduct.slug, quotePrice: null, buyerType: "" });
+  // A Toorak lead's home (the Facebook ad it came from) counts as a property of theirs.
+  if (toorak?.propertySlug && !bySlug.has(toorak.propertySlug)) bySlug.set(toorak.propertySlug, { slug: toorak.propertySlug, quotePrice: null, buyerType: "" });
   for (const lead of leads) {
     if (!lead.propertySlug) continue;
     const have = bySlug.get(lead.propertySlug);
@@ -97,7 +99,8 @@ async function loadProperties(contact, conversationId) {
 
   return [...bySlug.values()]
     .filter((e) => productBySlug.has(e.slug))
-    .map((e) => ({ slug: e.slug, quotePrice: e.quotePrice, buyerType: e.buyerType, current: !!currentProduct && e.slug === currentProduct.slug, product: productBySlug.get(e.slug) }));
+    // No conversation property known: the Toorak ad's home is the one the conversation is about.
+    .map((e) => ({ slug: e.slug, quotePrice: e.quotePrice, buyerType: e.buyerType, current: e.slug === (currentProduct?.slug || toorak?.propertySlug), product: productBySlug.get(e.slug) }));
 }
 
 /** What a NorCal lead told us on the form. Empty when the contact is not a NorCal lead. */
@@ -241,7 +244,7 @@ async function reportRagFailure(reason, contact) {
  *   propertyContext: object|null,
  * }>} propertyContext is the first property's key facts, the same shape buildPropertyContext returns (the Slack alert uses it).
  */
-async function buildReplyKnowledge({ contact, messages, replyToBody, conversationId }) {
+async function buildReplyKnowledge({ contact, messages, replyToBody, conversationId, toorak = null }) {
   const out = {
     properties: [],
     leadDetails: [],
@@ -253,7 +256,7 @@ async function buildReplyKnowledge({ contact, messages, replyToBody, conversatio
   };
 
   try {
-    const [properties, norCalDetails] = await Promise.all([loadProperties(contact, conversationId), loadNorCalDetails(contact)]);
+    const [properties, norCalDetails] = await Promise.all([loadProperties(contact, conversationId, toorak), loadNorCalDetails(contact)]);
     out.properties = properties.map((p) => ({
       slug: p.slug,
       name: p.product.productName || p.slug,
