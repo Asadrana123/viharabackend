@@ -5,11 +5,16 @@
 //
 // Env:
 //   ANTHROPIC_API_KEY
+//   META_ADS_ANALYST_MODEL   optional, default claude-opus-5-5
+//   META_ADS_ANALYST_EFFORT  optional, default high
 
 const Anthropic = require("@anthropic-ai/sdk");
 
 // Created on first use so a missing key fails the report, not server startup.
 let client;
+
+const MODEL = (process.env.META_ADS_ANALYST_MODEL || "").trim() || "claude-opus-5-5";
+const EFFORT = (process.env.META_ADS_ANALYST_EFFORT || "").trim() || "high";
 
 const SYSTEM_PROMPT = `You are the performance marketing analyst for Vihara, a US real estate auction platform (vihara.ai). Vihara runs Meta (Facebook/Instagram) ads mainly to collect buyer and investor leads.
 
@@ -34,10 +39,10 @@ Rules:
 async function analyzeMetaAds(rows) {
     client = client || new Anthropic();
     const response = await client.beta.messages.create({
-        model: "claude-opus-5-5",
+        model: MODEL,
         max_tokens: 16000,
         thinking: { type: "adaptive" },
-        output_config: { effort: "high" },
+        output_config: { effort: EFFORT },
         // If a safety classifier declines, the API retries on a fallback model in the same call.
         betas: ["server-side-fallback-2026-07-01"],
         fallbacks: "default",

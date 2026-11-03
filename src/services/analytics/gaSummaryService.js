@@ -9,6 +9,7 @@
 //
 // Env:
 //   ANTHROPIC_API_KEY
+//   GA_SUMMARY_MODEL  optional, default claude-sonnet-5-5
 
 const Anthropic = require("@anthropic-ai/sdk");
 const { buildSummaryFacts } = require("./gaReportFormatter");
@@ -16,7 +17,7 @@ const { buildSummaryFacts } = require("./gaReportFormatter");
 // Created on first use so a missing key fails the report, not server startup.
 let client;
 
-const MODEL = "claude-sonnet-5-5";
+const MODEL = (process.env.GA_SUMMARY_MODEL || "").trim() || "claude-sonnet-5-5";
 const MAX_ATTEMPTS = 2;
 
 const SYSTEM_PROMPT = `You write the analysis at the top of Vihara's daily website report. Vihara is a US real estate auction platform (vihara.ai). The report goes to the marketing and product team's Slack channel, and the full tables follow your text.
