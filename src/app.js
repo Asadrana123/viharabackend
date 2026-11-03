@@ -97,6 +97,8 @@ const adsLoopRoutes = require("./routes/adsLoop/adsLoopRoutes");
 const googleSlidesRoutes = require("./routes/slides/googleSlidesRoutes");
 // Zernio webhooks (signed): comment.received drives the Instagram comment auto-reply.
 const zernioWebhookRoutes = require("./routes/social/zernioWebhookRoutes");
+// Cal.com webhooks (signed): advisor-call bookings, for the Vtext reminder texts.
+const calcomWebhookRoutes = require("./routes/integrations/calcomWebhookRoutes");
 const { recoverAdsLoop } = require("./jobs/adsLoopJob");
 const { recoverRepairJob } = require("./jobs/repairJob");
 // Middleware
@@ -217,6 +219,7 @@ app.use("/api/v1/google-slides", googleSlidesRoutes);
 // FaceTime test (Maya over FaceTime audio via a Mac). Inert unless FACETIME_ENABLED=true.
 app.use("/api/v1/facetime", require("./routes/calling/facetimeRoutes"));
 app.use("/api/webhooks/zernio", zernioWebhookRoutes);
+app.use("/api/webhooks/calcom", calcomWebhookRoutes);
 
 // D7 (sendify-infra.md §2): fail loudly at boot if CHANNEL_TYPES has an enum
 // entry with no registered adapter, rather than discovering it the first

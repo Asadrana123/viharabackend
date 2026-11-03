@@ -14,6 +14,7 @@ const { startToorakLeadPoller } = require('./services/leads/toorakLeadPoller');
 const { startToorakCallScheduler } = require('./services/calling/toorakCallScheduler');
 const { startVoiceCallbackScheduler } = require('./services/calling/voiceCallbackScheduler'); // ← ADD
 const { startPropertyCallScheduler } = require('./services/calling/propertyCallScheduler'); // unified /auction/:slug scheduler
+const { startCalcomReminderScheduler } = require('./services/calcom/calcomReminderScheduler');
 const { startMatchCallScheduler } = require('./services/buyerMatch/matchCallService'); // admin-started Buyer Match calls
 const { startBrevoBackfillJob } = require('./jobs/brevoBackfillJob'); // ← ADD
 const { startAuctionCloseJob } = require('./jobs/auctionCloseJob');
@@ -78,6 +79,10 @@ server.listen(PORT, () => {
 
   // Buyer Match calls an admin started: 12:30 PM + 6:00 PM buyer-local, up to 7 days.
   startMatchCallScheduler();
+
+  // Cal.com advisor-call reminders as Vtext texts (every-minute sweep).
+  // Off unless CALCOM_REMINDERS_ENABLED=true and VTEXT_ENABLED=true.
+  startCalcomReminderScheduler();
 
   // FaceTime test: catches FaceTime calls a Mac didn't finish (falls back to a phone call)
   // and Macs that stopped checking in. Off unless FACETIME_ENABLED=true.
