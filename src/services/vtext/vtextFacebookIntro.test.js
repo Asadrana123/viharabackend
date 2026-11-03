@@ -136,22 +136,33 @@ const toorakLead = (toorak, over = {}) =>
 const baltimore = { key: "ml-baltimore", kind: "property", known: true, propertySlug: "2529-2531-e-monument-st-baltimore", listingUrl: "https://vihara.ai/listing/2529-2531-e-monument-st-baltimore" };
 const financing = { key: "financing-v2", kind: "financing", known: true, propertySlug: "", listingUrl: "https://vihara.ai/auctions" };
 
-test("Toorak property lead: names the property and links its listing, no price answer needed", () => {
-  const r = renderIntro(toorakLead(baltimore));
-  assert.equal(r.text, "Hi John, this is Maya from Vihara. Thanks for asking about 2529-2531 E Monument St, Baltimore. Photos and details are here: https://vihara.ai/listing/2529-2531-e-monument-st-baltimore Any questions about it, just text me here. Reply STOP to opt out.");
+const BEFORE_SALE = new Date("2026-11-03T15:00:00Z");
+
+test("Toorak property lead: names the home and the sale day, no link, no price answer needed", () => {
+  const r = renderIntro(toorakLead(baltimore), BEFORE_SALE);
+  assert.equal(r.text, "Hey John, it's Maya, Vihara's AI assistant. You asked about 2529-2531 E Monument St, Baltimore on Facebook. Still interested? It sells online this Saturday, Nov 7. Reply STOP to opt out.");
   assert.equal(r.templateKey, TOORAK_TEMPLATE_KEY);
 });
 
-test("Toorak financing lead: the financing wording with the auctions link", () => {
-  const r = renderIntro(toorakLead(financing));
-  assert.equal(r.text, "Hi John, this is Maya from Vihara. Thanks for asking about financing. Here are the bank-owned homes up for auction now: https://vihara.ai/auctions Any questions, just text me here. Reply STOP to opt out.");
+test("Toorak property lead: the sale sentence goes once that home's sale starts (11 AM local)", () => {
+  const nola = { ...baltimore, key: "ml-1983-law-st" };
+  // 11:30 AM Eastern = 10:30 AM Central: Baltimore's sale has started, New Orleans' hasn't.
+  const at = new Date("2026-11-07T16:30:00Z");
+  assert.equal(renderIntro(toorakLead(baltimore), at).text, "Hey John, it's Maya, Vihara's AI assistant. You asked about 2529-2531 E Monument St, Baltimore on Facebook. Still interested? Reply STOP to opt out.");
+  assert.match(renderIntro(toorakLead(nola), at).text, /1983 Law St, New Orleans on Facebook\. Still interested\? It sells online this Saturday, Nov 7\./);
+  assert.doesNotMatch(renderIntro(toorakLead(nola), new Date("2026-11-07T17:00:00Z")).text, /Saturday/);
+});
+
+test("Toorak financing lead: asks the area and offers the advisor call", () => {
+  const r = renderIntro(toorakLead(financing), BEFORE_SALE);
+  assert.equal(r.text, "Hey John, it's Maya, Vihara's AI assistant. You asked about financing a home on Facebook. What area are you looking in? Or if you'd rather talk it through, a 15 min advisor call is no cost: cal.com/vihara-ai-advisor Reply STOP to opt out.");
   assert.equal(r.templateKey, TOORAK_TEMPLATE_KEY);
 });
 
-test("Toorak edge cases: unknown property form gets the general wording; no link or no name is skipped", () => {
+test("Toorak edge cases: unknown property form and no first name are skipped; no link is fine", () => {
   const unknown = renderIntro(toorakLead({ key: "unknown", kind: "property", known: false, listingUrl: "https://vihara.ai/auctions" }));
-  assert.match(unknown.text, /Thanks for asking about financing/);
-  assert.equal(renderIntro(toorakLead({ ...baltimore, listingUrl: "" })).skip, "Toorak lead has no listing link");
+  assert.match(unknown.skip, /not in config\/toorakForms\.js/);
+  assert.ok(renderIntro(toorakLead({ ...baltimore, listingUrl: "" }), BEFORE_SALE).text);
   assert.equal(renderIntro(toorakLead(baltimore, { fullName: "", firstName: "there", email: "a@b.com" })).skip, "no usable first name");
 });
 
