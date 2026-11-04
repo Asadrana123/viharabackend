@@ -28,6 +28,8 @@ router.post("/runs", c.startRun);
 router.post("/runs/:id/pick", c.pickForRun);
 router.post("/runs/:id/gate", c.gateForRun);
 router.post("/runs/:id/generate", c.generateForRun);
+router.post("/runs/:id/remake", c.remakeForRun);
+router.post("/runs/:id/frames", c.framesForRun);
 router.post("/runs/:id/clip", c.clipForRun);
 router.post("/runs/:id/build", c.buildForRun);
 router.post("/runs/:id/cut", c.cutForRun);
