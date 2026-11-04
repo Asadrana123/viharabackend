@@ -353,7 +353,7 @@ test("the send-time check: cancels when the iMessage got delivered or they repli
 
   // they replied meanwhile
   f = await makeFallback();
-  const replied = await VtextContact.findByIdAndUpdate(f.contact._id, { $set: { lastInboundAt: new Date(NOW.getTime() + 1000) } }, { new: true });
+  const replied = await VtextContact.findByIdAndUpdate(f.contact._id, { $set: { lastInboundAt: new Date(f.original.sentAt.getTime() + 1000) } }, { new: true });
   assert.equal(await run(await reload(f.sms), replied, NOW), true);
   assert.equal((await reload(f.sms)).status, "cancelled");
 
