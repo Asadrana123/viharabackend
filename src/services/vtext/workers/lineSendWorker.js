@@ -82,10 +82,24 @@ async function processSendJob(lineId, job) {
     return;
   }
 
+  // Twilio has no idempotency key. A message already "sending" with no recorded error was interrupted in the middle of the
+  // call (stalled job, crash, restart): it may already have been queued at Twilio, so it is never sent again. A known
+  // transient error (set by the catch below) means the previous attempt definitely did not go out, so that retry is fine.
+  if (message.status === "sending" && line.channelType === "twilio-sms" && !message.error?.kind) {
+    message.status = "failed";
+    message.error = { kind: "recipient", code: "UNCERTAIN", message: "The send was interrupted, so the text may or may not have reached Twilio. It was not retried, to avoid texting the person twice." };
+    message.failedAt = new Date();
+    await message.save();
+    await capacity.release(line, reservationDay, { wasReply: message.isReplyToInbound });
+    publishEvent({ type: "message.updated", messageId: String(message._id), conversationId: message.conversationId ? String(message.conversationId) : null, status: message.status });
+    return;
+  }
+
   // An SMS fallback gets a last look first: the iMessage may have been delivered meanwhile, or texting hours closed.
   if (message.fallbackOf && (await smsFallback.guardFallbackBeforeSend(message, contact, line, reservationDay))) return;
 
   message.status = "sending";
+  if (line.channelType === "twilio-sms") message.error = undefined; // so a stall during THIS attempt is recognised on re-entry
   await message.save();
 
   try {

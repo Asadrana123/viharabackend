@@ -217,3 +217,32 @@ test("'not a valid mobile number' (21614) marks the contact a landline so the ga
     adapter.send = realSend;
   }
 });
+
+test("a Twilio send interrupted mid-call is never sent again, but a retry after a known transient error is", async (t) => {
+  if (!mongoUp) return t.skip("no local Mongo");
+  const adapter = getAdapter("twilio-sms");
+  const realSend = adapter.send;
+  let calls = 0;
+  try {
+    adapter.send = async () => { calls += 1; return { providerMessageId: "SMretry" }; };
+    const job = (m) => ({ data: { messageId: String(m._id), reservationDay: "2026-10-28" } });
+
+    // "sending" with no recorded error: the job died in the middle of the call, so it may already be at Twilio.
+    const interrupted = await queuedText(await newContact(), "sending");
+    await VtextMessage.updateOne({ _id: interrupted._id }, { $set: { lineId: twilioLine._id } });
+    await processSendJob(twilioLine._id, job(interrupted));
+    const after = await VtextMessage.findById(interrupted._id);
+    assert.equal(calls, 0, "no second send");
+    assert.equal(after.status, "failed");
+    assert.equal(after.error.code, "UNCERTAIN");
+
+    // "sending" after the previous attempt recorded a transient error: it definitely did not go out, so retry.
+    const retry = await queuedText(await newContact(), "sending");
+    await VtextMessage.updateOne({ _id: retry._id }, { $set: { lineId: twilioLine._id, error: { kind: "transient", code: "ETIMEDOUT", message: "timeout before sending" } } });
+    await processSendJob(twilioLine._id, job(retry));
+    assert.equal(calls, 1);
+    assert.equal((await VtextMessage.findById(retry._id)).status, "accepted");
+  } finally {
+    adapter.send = realSend;
+  }
+});
