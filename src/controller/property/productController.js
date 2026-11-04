@@ -272,6 +272,8 @@ const BASIC_ENUMS = {
     propertyType: { values: ['Single Family', 'Condo, Townhouse, other single unit', 'Multi-family', 'Land'], required: true },
     assetType: { values: ['Reo Bank Owned', 'Foreclosure Homes', 'Short Sale'], required: false },
     occupancyStatus: { values: ['Vacant', 'Occupied', 'Reported Vacant'], required: false },
+    // Financing playbook (productModel.financeability). "Required" here only means blank is ignored: use "unknown".
+    financeability: { values: ['cash_bridge_only', 'dscr_ready', 'owner_ready', 'unknown'], required: true },
 };
 
 exports.updateProductBasicDetails = catchAsyncError(async (req, res, next) => {
@@ -334,7 +336,7 @@ exports.updateProductBasicDetails = catchAsyncError(async (req, res, next) => {
             street: product.street, city: product.city, county: product.county,
             state: product.state, zipCode: product.zipCode,
             propertyType: product.propertyType, assetType: product.assetType,
-            occupancyStatus: product.occupancyStatus,
+            occupancyStatus: product.occupancyStatus, financeability: product.financeability,
             beds: product.beds, baths: product.baths, squareFootage: product.squareFootage,
             lotSize: product.lotSize, yearBuilt: product.yearBuilt, monthlyHOADues: product.monthlyHOADues,
         }

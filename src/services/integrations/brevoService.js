@@ -231,12 +231,19 @@ const syncEarlyAccessLead = async (lead) => {
 // propertyName; registeringAs is the exact buyer label the user picked.
 // LISTING_URL (text, pre-created in Brevo) is the property's /listing/:slug page,
 // used by the Brevo SMS automation. SMS fields come from buildSmsAttributes.
+// /deal form financing buyers only (created in Brevo by marketing, 2026-11-04): LOAN_TYPE (text: "home loan",
+// "rental loan (DSCR)", "fix-and-flip loan" or their own words), PRE_APPROVED (boolean), and BUYER_TIER "hot" when
+// pre-approved. Not sent for cash buyers, and BUYER_TIER is never sent otherwise (it would overwrite the Buyer
+// List's A/B/C tier on the same contact).
 const buildPropertyLeadAttributes = (lead) => ({
   FIRSTNAME: lead.fullName || "",
   LEAD_SOURCE: lead.leadSource || "",
   REGISTERING_AS: lead.registeringAs || "",
   PROPERTY_NAME: lead.propertyName || "",
   LISTING_URL: lead.listingUrl || "",
+  ...(lead.needsFinancing === "yes" && lead.loanType ? { LOAN_TYPE: lead.loanType } : {}),
+  ...(lead.needsFinancing === "yes" && typeof lead.preApproved === "boolean" ? { PRE_APPROVED: lead.preApproved } : {}),
+  ...(lead.needsFinancing === "yes" && lead.preApproved === true ? { BUYER_TIER: "hot" } : {}),
   ...buildSmsAttributes(lead),
 });
 
@@ -829,6 +836,7 @@ module.exports = {
   syncPersonaLead,
   syncEarlyAccessLead,
   syncPropertyLead,
+  buildPropertyLeadAttributes, // exported for tests
   syncPartnerLead,
   syncNorCalLead,
   syncBuyerListLead,
