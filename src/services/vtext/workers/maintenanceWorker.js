@@ -174,9 +174,12 @@ async function runStuckMessageSweep() {
   }
 
   const queuedCutoff = new Date(Date.now() - STUCK_QUEUED_MIN * 60_000);
+  // A message held for later (scheduledFor in the future) isn't stuck: its delayed job sends it on time,
+  // and if that job is lost, this sweep picks it up once the time has come.
   const stuckQueued = await VtextMessage.find({
     status: { $in: ["queued", "assigned", "waiting-capacity", "waiting-window"] },
     updatedAt: { $lt: queuedCutoff },
+    $or: [{ scheduledFor: null }, { scheduledFor: { $lte: new Date() } }],
   });
   const routeQueue = getRouteQueue();
   const toRoute = stuckQueued.filter((m) => m.status !== "assigned");
@@ -323,11 +326,10 @@ async function runDailyRollover() {
     line.health.sentLast7d = sent;
     line.health.replyRatio7d = sent > 0 ? inbound / sent : 0;
 
+    // A line with no schedule of its own warms up on the channel's default one (the cap already uses it), so
+    // the check reads the same schedule; before, such a line stayed "warming" for good.
     if (line.status === "warming" && line.warmup?.startedAt) {
-      const daysSinceStart = Math.floor((Date.now() - new Date(line.warmup.startedAt).getTime()) / (24 * 60 * 60 * 1000)) + 1;
-      const schedule = line.warmup.schedule || [];
-      const scheduleComplete = schedule.length > 0 && daysSinceStart > Math.max(...schedule.map((s) => s.fromDay));
-      if (scheduleComplete) {
+      if (capacity.warmupComplete(line)) {
         line.status = "active";
         line.statusReason = "warm-up schedule complete";
         line.statusChangedAt = new Date();

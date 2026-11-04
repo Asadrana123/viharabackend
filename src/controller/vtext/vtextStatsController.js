@@ -47,4 +47,16 @@ const getStatsOverview = catchAsyncError(async (req, res) => {
   });
 });
 
-module.exports = { getStatsOverview };
+const { getCapacityReport, getCapacityHistory } = require("../../services/vtext/vtextCapacityReport");
+
+/** GET /api/v1/vtext/capacity — today's limit, used and left, per line and over the lines that can send. */
+const getCapacity = catchAsyncError(async (req, res) => {
+  return res.status(200).json({ success: true, ...(await getCapacityReport()) });
+});
+
+/** GET /api/v1/vtext/capacity/history?days=30 — the last days, per line and in total. */
+const getCapacityHistoryHandler = catchAsyncError(async (req, res) => {
+  return res.status(200).json({ success: true, ...(await getCapacityHistory({ days: req.query.days })) });
+});
+
+module.exports = { getStatsOverview, getCapacity, getCapacityHistory: getCapacityHistoryHandler };

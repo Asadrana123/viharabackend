@@ -61,7 +61,8 @@ const listSelect = (view) => (view.summary ? [...ROW_FIELDS, ...CALL_STATE_FIELD
  * Calls for a page of leads. Resolves to `callsFor(phone)` →
  * { calls, callCount, pickedUp }. Summary mode reads only the newest call per
  * phone (plus counts); otherwise every call with its transcript.
- * Summary mode also adds `texts` ({ sent, failed, replied }) for the text filter; full leads carry
+ * Summary mode also adds `texts` ({ sent, failed, replied, imessage, sms? }, see vtextLeadMessagesService) for
+ * the text lines and filters; full leads carry
  * `messages` instead, which the filter reads.
  */
 async function callsForList(view, phones) {
