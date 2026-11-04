@@ -18,7 +18,7 @@
 const path = require("path").posix;
 const Anthropic = require("@anthropic-ai/sdk");
 const { getConversionConfig } = require("../../config/conversion/conversionConfig");
-const { getRepairConfig } = require("../../config/repair/repairConfig");
+const { getRepairConfig, missingGithubTokens } = require("../../config/repair/repairConfig");
 const meta = require("../repair/metaGraph");
 const { adFunnel, adDetails, pixelStats } = require("./metaFunnel");
 const { clarityForPage, clarityStatus } = require("./clarity");
@@ -182,7 +182,8 @@ function codeTools() {
     let ready = null;
     const setup = async () => {
         const config = getRepairConfig();
-        if (!config.githubToken) throw new Error("Code reading isn't set up (REPAIR_GITHUB_TOKEN missing). Work without the code.");
+        const missing = missingGithubTokens(config);
+        if (missing.length) throw new Error(`Code reading isn't set up (${missing.join(", ")} missing). Work without the code.`);
         const { repoClients } = require("../repair/repairAgent");
         const gh = repoClients();
         const trees = {};

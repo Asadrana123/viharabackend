@@ -358,6 +358,52 @@ function buildSlackMessage(model, summary) {
     return { text: `Website report, ${date}`, blocks };
 }
 
+/** One line of key numbers, built in code so the short report always has them. */
+function keyNumbersLine(model) {
+    if (!model.headline.length) return "No traffic data for this day.";
+    const h = (label) => model.headline.find((x) => x.label === label);
+    const signUps = model.events.find((e) => e.name === "sign_up");
+    const parts = [
+        `Visitors *${h("Visitors").value}* (${h("Visitors").vsWeek} vs same day last week)`,
+        `sessions *${h("Sessions").value}*`,
+        `engagement *${h("Engagement rate").value}*`,
+    ];
+    if (signUps) parts.push(`sign-ups *${fmt(signUps.count)}*`);
+    return parts.join(", ");
+}
+
+/**
+ * The message posted to Slack: key numbers, the written summary (what worked, what didn't, action items),
+ * tracking problems found by code, and a link to the dashboard for the full numbers.
+ * The full tables (buildSlackMessage) still go to the repair agent and the dry-run command.
+ * @param {object} model
+ * @param {string} summary  Claude's text, or "" when it failed
+ * @param {string} [dashboardUrl]
+ */
+function buildShortSlackMessage(model, summary, dashboardUrl) {
+    const date = DateTime.fromISO(model.day, { zone: PROPERTY_TIMEZONE }).toFormat("ccc d LLL yyyy");
+    const blocks = [{ type: "header", text: { type: "plain_text", text: `Website report, ${date}` } }];
+    const section = (text) => blocks.push({ type: "section", text: { type: "mrkdwn", text: text.slice(0, 2900) } });
+
+    section(keyNumbersLine(model));
+    if (summary) {
+        section(summary);
+    } else {
+        section("The written summary could not be made today. The numbers above and the dashboard are still correct.");
+    }
+    // Code-found tracking problems always show, even if the summary left them out or failed.
+    if (model.checks.length) {
+        section("*Tracking check*\n" + model.checks.map((c) => `• ${esc(c)}`).join("\n"));
+    }
+
+    const link = dashboardUrl ? `<${dashboardUrl}|Full numbers in the admin dashboard>. ` : "";
+    blocks.push({
+        type: "context",
+        elements: [{ type: "mrkdwn", text: `${link}Source: Google Analytics 4, India time.` }],
+    });
+    return { text: `Website report, ${date}`, blocks };
+}
+
 /** Plain text version of a message, for the dry-run command. */
 function messageToText(message) {
     return message.blocks
@@ -411,6 +457,7 @@ function buildSummaryFacts(model) {
 module.exports = {
     buildReportModel,
     buildSlackMessage,
+    buildShortSlackMessage,
     buildSummaryFacts,
     messageToText,
     change,

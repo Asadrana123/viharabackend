@@ -21,7 +21,7 @@ const { keyMatches, cleanBatch, cleanFeedback, undelivered } = require("../../se
 const { storage, cleanCut, uploadUrl, viewUrl, storedBytes } = require("../../services/studio/cutStorage");
 const { cleanProposals, decideProblem, canSee, cleanDecision, undeliveredDecisions } = require("../../services/studio/proposalService");
 const { cleanProblem, cleanReply, problemView } = require("../../services/studio/problemService");
-const { newRunId, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand, generateCommand, clipCommand, buildCommand, cutCommand, cleanSlot } = require("../../services/studio/runService");
+const { newRunId, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot } = require("../../services/studio/runService");
 
 const KEY = /^[a-z][a-z0-9-]{1,30}$/;
 
@@ -272,9 +272,9 @@ const decideStudioProposal = catchAsyncError(async (req, res, next) => {
 });
 
 const runView = async (r) => {
-  const { runId, propertyId, requestedByName, coreId, state, concepts, hooks, plan, error, clips, cut, spent, media } = r;
+  const { runId, propertyId, requestedByName, coreId, state, concepts, hooks, plan, error, frames, framesPrice, clips, cut, spent, remakePrice, media } = r;
   const urls = Object.fromEntries(await Promise.all(Object.entries(media ?? {}).map(async ([slot, m]) => [slot, await viewUrl(m.key)])));
-  return { runId, propertyId, requestedByName, coreId, state, concepts, hooks, plan, error, clips, cut, spent, urls };
+  return { runId, propertyId, requestedByName, coreId, state, concepts, hooks, plan, error, frames: frames ?? [], framesPrice: framesPrice ?? 0, clips, cut, spent, remakePrice: remakePrice ?? null, urls };
 };
 
 /** GET /api/v1/studio/runs - the videos in progress, newest first, and the properties ready for one. */
@@ -313,12 +313,15 @@ const runStep = (build) =>
     run.state = step.state;
     run.error = null;
     if (step.clips) run.clips = step.clips;
+    if (step.frames) run.frames = step.frames;
     await run.save();
     res.status(200).json({ success: true, run: await runView(run.toObject()) });
   });
 const pickForRun = runStep(pickCommand);
 const gateForRun = runStep(gateCommand);
 const generateForRun = runStep(generateCommand);
+const remakeForRun = runStep(remakeCommand);
+const framesForRun = runStep(framesCommand);
 const clipForRun = runStep(clipCommand);
 const buildForRun = runStep(buildCommand);
 const cutForRun = runStep(cutCommand);
@@ -348,15 +351,18 @@ const pollRuns = catchAsyncError(async (req, res, next) => {
     if (!run) continue;
     const waiting = run.commands.filter((c) => !c.doneAt).length;
     const { state, ...rest } = fields;
-    const given = Object.fromEntries(Object.entries(rest).filter(([k, v]) => (Array.isArray(v) ? v.length : v !== null) || k === "error"));
+    const given = Object.fromEntries(Object.entries(rest).filter(([k, v]) => (Array.isArray(v) ? v.length : v !== null) || k === "error" || k === "remakePrice"));
     // With steps still waiting, this update is older than what the person sees.
-    if (waiting > 0) delete given.clips;
+    if (waiting > 0) {
+      delete given.clips;
+      delete given.frames;
+    }
     Object.assign(run, given, waiting > 1 ? {} : { state });
     await run.save();
   }
   if (ready) await StudioReady.updateOne({ key: "videos" }, { $set: { rows: ready, checkedAt: new Date() } }, { upsert: true });
   const open = await StudioRun.find({ commands: { $elemMatch: { doneAt: null } } }).lean();
-  const commands = open.flatMap((r) => r.commands.filter((c) => !c.doneAt).map((c) => ({ id: String(c._id), runId: r.runId, propertyId: r.propertyId, type: c.type, what: c.what, choice: c.choice, decision: c.decision, words: c.words, byName: c.byName })));
+  const commands = open.flatMap((r) => r.commands.filter((c) => !c.doneAt).map((c) => ({ id: String(c._id), runId: r.runId, propertyId: r.propertyId, type: c.type, what: c.what, choice: c.choice, decision: c.decision, words: c.words, ...(c.shots?.length ? { shots: c.shots } : {}), byName: c.byName })));
   res.status(200).json({ success: true, commands });
 });
 
@@ -499,4 +505,4 @@ const syncVideos = catchAsyncError(async (req, res, next) => {
   res.status(200).json({ success: true, stored: rows.length, feedback: undelivered(pending), decisions });
 });
 
-module.exports = { me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, importInterview, updateQuestions, listVideos, addVideoFeedback, syncVideos, requireSyncKey, cutLink, confirmCut, listProposals, decideStudioProposal, listRuns, startRun, pickForRun, gateForRun, generateForRun, clipForRun, buildForRun, cutForRun, pollRuns, fileLink, confirmFile, listProblems, reportProblem, resolveProblem };
+module.exports = { me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, importInterview, updateQuestions, listVideos, addVideoFeedback, syncVideos, requireSyncKey, cutLink, confirmCut, listProposals, decideStudioProposal, listRuns, startRun, pickForRun, gateForRun, generateForRun, framesForRun, remakeForRun, clipForRun, buildForRun, cutForRun, pollRuns, fileLink, confirmFile, listProblems, reportProblem, resolveProblem };

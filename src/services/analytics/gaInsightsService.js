@@ -268,7 +268,26 @@ async function fetchGaRangeData({ current, previous, granularity }) {
             limit: TOP_ROWS,
         }),
     ]);
-    return { totals, series, events, channels, pages, landing };
+    // Campaigns run after the first six. GA4 allows 10 requests at once per property, and the
+    // audience section of the same page loads at the same time.
+    const [campaigns, campaignSignUps] = await Promise.all([
+        runReport({
+            dimensions: ["sessionCampaignName"],
+            metrics: ["sessions", "engagedSessions"],
+            dateRanges: both,
+            orderBys: byMetricDesc("sessions"),
+            limit: CAMPAIGN_ROWS * 2,
+        }),
+        runReport({
+            dimensions: ["sessionCampaignName"],
+            metrics: ["eventCount"],
+            dateRanges: both,
+            dimensionFilter: { filter: { fieldName: "eventName", stringFilter: { matchType: "EXACT", value: "sign_up" } } },
+            orderBys: byMetricDesc("eventCount"),
+            limit: CAMPAIGN_ROWS * 2,
+        }),
+    ]);
+    return { totals, series, events, channels, pages, landing, campaigns, campaignSignUps };
 }
 
 /** One page over a range against the range before it (exact path match). */

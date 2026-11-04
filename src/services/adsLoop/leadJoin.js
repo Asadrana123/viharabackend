@@ -10,6 +10,7 @@
 //
 // Sources: property auction leads (/auction/:slug, last touch), buyer-list and
 // new-deals leads (last touch), and landing-page leads (flat utm fields).
+// leadsCreatedBetween is also used by the Marketing Performance tab (utm_campaign).
 
 const PropertyLead = require("../../model/leads/propertyLeadModel");
 const BuyerListLead = require("../../model/leads/buyerListLeadModel");
@@ -45,7 +46,7 @@ async function leadsCreatedBetween(start, end, { anyContent = false } = {}) {
         PropertyLead.find({ ...touchQuery, isQaTest: { $ne: true } }).select(touchFields).lean(),
         BuyerListLead.find(touchQuery).select(touchFields).lean(),
         NewDealsLead.find(touchQuery).select(touchFields).lean(),
-        LandingPageLead.find(landingQuery).select("utm_source utm_medium utm_content phone").lean(),
+        LandingPageLead.find(landingQuery).select("utm_source utm_medium utm_campaign utm_content phone").lean(),
     ]);
 
     const fromTouch = (l) => ({ ...l.lastTouch, phone: l.phone, consent: l.consent, smsConsent: l.smsConsent });
@@ -76,4 +77,4 @@ async function metaAdSignupsBetween(start, end) {
     return leads.filter((l) => channelOf(l.utm_source, l.utm_medium) === "meta_ad").length;
 }
 
-module.exports = { leadCountsBetween, metaAdSignupsBetween, isQualified, channelOf };
+module.exports = { leadCountsBetween, metaAdSignupsBetween, leadsCreatedBetween, isQualified, channelOf };
