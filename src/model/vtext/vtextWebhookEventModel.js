@@ -12,6 +12,7 @@ const vtextWebhookEventSchema = new mongoose.Schema(
     lineKey: { type: String },
     headers: { type: mongoose.Schema.Types.Mixed }, // whitelisted subset only — never store raw auth headers
     body: { type: mongoose.Schema.Types.Mixed },
+    query: { type: mongoose.Schema.Types.Mixed }, // URL query string; Twilio status callbacks carry ?cb=status&mid=<message id>
     signatureValid: { type: Boolean },
     receivedAt: { type: Date, default: Date.now },
     processed: { type: Boolean, default: false },

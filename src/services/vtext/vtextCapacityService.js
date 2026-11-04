@@ -73,6 +73,7 @@ const THROTTLE_MULTIPLIER = Number(process.env.VTEXT_HEALTH_THROTTLE_MULTIPLIER 
 
 /** True when the §7.4 soft throttle applies to this line now (from its stored 7-day health fields). */
 function isThrottled(line) {
+  if (limitsFor(line).replyRatioThrottle === false) return false; // a channel can opt out (Twilio SMS fallback)
   const sentLast7d = line.health?.sentLast7d ?? Infinity; // unknown (never rolled up) -> don't throttle on a guess
   const replyRatio7d = line.health?.replyRatio7d;
   return sentLast7d >= THROTTLE_MIN_SENDS_7D && typeof replyRatio7d === "number" && replyRatio7d < THROTTLE_REPLY_RATIO;

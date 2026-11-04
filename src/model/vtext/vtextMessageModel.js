@@ -76,6 +76,17 @@ const vtextMessageSchema = new mongoose.Schema(
       },
     },
     isReplyToInbound: { type: Boolean, default: false },
+    // The SMS fallback (vtextSmsFallbackService.js). On the iMessage original: what happened to its fallback.
+    // On the fallback text itself: fallbackOf points back at the original.
+    fallback: {
+      status: { type: String, enum: ["pending", "queued", "skipped", "cancelled"] },
+      messageId: { type: mongoose.Schema.Types.ObjectId, ref: "vtextMessageModel" },
+      trigger: { type: String, enum: ["send-error", "not-delivered", "no-receipt-auto", "manual"] },
+      reason: { type: String },
+      at: { type: Date },
+      duplicate: { type: Boolean }, // the iMessage was confirmed AFTER the SMS had already gone out: the person got both
+    },
+    fallbackOf: { type: mongoose.Schema.Types.ObjectId, ref: "vtextMessageModel", index: { sparse: true } },
     // Why the compliance gate let this message through at enqueue: "opted-in", "reply",
     // "system", or "consent-not-required" (sent while the admin consent switch was off).
     consentBasis: { type: String },

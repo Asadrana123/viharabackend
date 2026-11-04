@@ -13,7 +13,7 @@ const {
   pauseLine, resumeLine, quarantineLine, reinstateLine, retireLine, toggleDrainMode,
   startWarmup, testSend, getLineUsage, getLineEvents, registerWebhooksForLine,
 } = require("../../controller/vtext/vtextLineController");
-const { sendMessage, sendBulkMessages, listMessagesByStatus, retryMessage, cancelMessage, rerouteMessage, approveDraft } = require("../../controller/vtext/vtextMessageController");
+const { sendMessage, sendBulkMessages, listMessagesByStatus, retryMessage, cancelMessage, rerouteMessage, approveDraft, sendSmsFallback } = require("../../controller/vtext/vtextMessageController");
 const { listConversationProperties, listConversations, getConversationMessages, updateConversation } = require("../../controller/vtext/vtextConversationController");
 const { getContact, updateContactConsent, markCallBooked } = require("../../controller/vtext/vtextContactController");
 const { getLeadThread } = require("../../controller/vtext/vtextLeadController");
@@ -65,6 +65,7 @@ router.post("/messages/bulk", sendBulkMessages);
 router.get("/messages", listMessagesByStatus);
 router.post("/messages/:id/retry", retryMessage);
 router.post("/messages/:id/cancel", cancelMessage);
+router.post("/messages/:id/sms-fallback", sendSmsFallback);
 router.post("/messages/:id/reroute", rerouteMessage);
 router.post("/messages/:id/approve-draft", approveDraft);
 

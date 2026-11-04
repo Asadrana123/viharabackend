@@ -20,6 +20,7 @@ const { normalisePhone } = require("../calling/vapiCallsService");
 const CHANNEL_LABEL = {
   "imessage-bluebubbles": "iMessage",
   "android-sms": "SMS",
+  "twilio-sms": "SMS",
   mock: "test",
 };
 
@@ -94,17 +95,17 @@ const NO_RECEIPT_CODE = "no-receipt";
 const isNotOnImessage = ({ status, errorKind, errorCode }) =>
   (status === "failed" && errorKind === "recipient") || (status === "unknown" && errorCode === NO_RECEIPT_CODE);
 
-// Which channel a message counts under. Android texts always carry "android-sms" (set when a line takes them).
+// Which channel a message counts under. Android and Twilio texts carry "android-sms" / "twilio-sms" (set when a line takes them).
 // Everything else is iMessage: every live line is iMessage today, and a text that was blocked or is still
 // queued has no channel yet.
-const channelOf = (channelType) => (channelType === "android-sms" ? "sms" : "imessage");
+const channelOf = (channelType) => (channelType === "android-sms" || channelType === "twilio-sms" ? "sms" : "imessage");
 
 const emptyChannel = () => ({ sent: 0, failed: 0, replied: false });
 
 /**
  * Text state for one contact from its grouped message rows. Pure.
- * @param {object[]} rows - [{ direction, status, channelType, errorKind, errorCode, n }]
- * @param {boolean} smsInUse - true once an Android SMS line exists; only then is `sms` included
+ * @param {object[]} rows - [{ direction, status, channelType, errorKind, errorCode, resent, n }]
+ * @param {boolean} smsInUse - true once an Android or Twilio SMS line exists; only then is `sms` included
  * @returns {{ sent, failed, replied, imessage: { sent, failed, replied, notOnImessage }, sms?: { sent, failed, replied } }}
  *          `sent` / `failed` / `replied` at the top are both channels together (as before)
  */
@@ -122,8 +123,11 @@ function summarizeTexts(rows = [], smsInUse = false) {
       out.sent += n;
       if (ch) ch.sent += n;
     } else if (NOT_SENT_STATUSES.includes(r.status)) {
-      out.failed += n;
-      if (ch) ch.failed += n;
+      // An iMessage that did not go but was re-sent by SMS is not a lead we failed to reach: its SMS counts on its own.
+      if (!r.resent) {
+        out.failed += n;
+        if (ch) ch.failed += n;
+      }
       if (ch === out.imessage && isNotOnImessage(r)) ch.notOnImessage += n;
     }
   }
@@ -143,7 +147,7 @@ async function getVtextTextSummaryForPhones(phones = []) {
   try {
     const [contacts, smsLine] = await Promise.all([
       VtextContact.find({ phoneE164: { $in: unique } }).select("_id phoneE164").lean(),
-      VtextLine.exists({ channelType: "android-sms", status: { $ne: "retired" } }),
+      VtextLine.exists({ channelType: { $in: ["android-sms", "twilio-sms"] }, status: { $ne: "retired" } }),
     ]);
     const smsInUse = !!smsLine;
     const rowsByContact = new Map();
@@ -152,7 +156,7 @@ async function getVtextTextSummaryForPhones(phones = []) {
         { $match: { contactId: { $in: contacts.map((c) => c._id) } } },
         {
           $group: {
-            _id: { contactId: "$contactId", direction: "$direction", status: "$status", channelType: "$channelType", errorKind: "$error.kind", errorCode: "$error.code" },
+            _id: { contactId: "$contactId", direction: "$direction", status: "$status", channelType: "$channelType", errorKind: "$error.kind", errorCode: "$error.code", resent: { $ne: [{ $ifNull: ["$fallback.messageId", null] }, null] } },
             n: { $sum: 1 },
           },
         },
