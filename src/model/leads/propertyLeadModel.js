@@ -57,6 +57,11 @@ const propertyLeadSchema = new mongoose.Schema(
     // Planned down payment, only when needsFinancing is "yes":
     // Under 10% | 10-20% | 20-30% | 30% or more | Not sure ("" otherwise).
     downPayment: { type: String, default: "", trim: true },
+    // /deal form, financing buyers only (services/leads/buyBox.js): the loan they need and whether they're
+    // pre-approved. residential = home loan (our bank partner); dscr | fix_flip | other need an investor lender.
+    loanType: { type: String, default: "", trim: true }, // residential | dscr | fix_flip | other | ""
+    loanTypeOther: { type: String, default: "", trim: true }, // their words when loanType is "other" (max 120)
+    preApproved: { type: Boolean, default: null }, // true | false for financing buyers; null otherwise
 
     // Buyer's quoted price (Quote Your Price funnel), in whole dollars. Set from
     // the client's slider (estimate +/- 30%, or fixed numbers for some properties;

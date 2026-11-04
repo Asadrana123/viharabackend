@@ -26,9 +26,11 @@ const { enqueueBurst, PRIORITY } = require("./callDispatchQueue");
 const { FOLLOW_UP_DAYS, FOLLOW_UP_CALL_OPTS, nextFollowUpAt, noAnswerUpdate, skipUpdate } = require("./followUpCadence");
 // Spoken currency for the AI call ({{prospect_quote}} in the prompt).
 const { dollarsToWords } = require("./vapiPropertyService");
+// The loan they need, spoken ({{prospect_loan_type}} in the prompt).
+const { loanTypeSpoken } = require("../leads/buyBox");
 
 // How they'll pay, spoken for TTS ({{prospect_financing}} in the prompt):
-// "cash" | "financing, with about ten to twenty percent down" | "not sure yet" | "".
+// "cash" | "financing, pre-approved, with about ten to twenty percent down" | "not sure yet" | "".
 const DOWN_PAYMENT_SPOKEN = {
   "Under 10%": "with under ten percent down",
   "10-20%": "with about ten to twenty percent down",
@@ -36,12 +38,14 @@ const DOWN_PAYMENT_SPOKEN = {
   "30% or more": "with thirty percent or more down",
   "Not sure": "down payment not decided yet",
 };
-function financingSpoken({ needsFinancing, downPayment } = {}) {
+function financingSpoken({ needsFinancing, downPayment, preApproved } = {}) {
   if (needsFinancing === "no") return "cash";
   if (needsFinancing === "not_sure") return "not sure yet";
   if (needsFinancing !== "yes") return "";
+  // /deal form only: whether a lender has already pre-approved them (null = not asked).
+  const approval = preApproved === true ? "pre-approved" : preApproved === false ? "not pre-approved yet" : "";
   const down = DOWN_PAYMENT_SPOKEN[downPayment];
-  return down ? `financing, ${down}` : "financing";
+  return ["financing", approval, down].filter(Boolean).join(", ");
 }
 
 const SWEEP_BATCH = 200; // max leads evaluated per minute
@@ -118,6 +122,8 @@ function callPayload(lead, promptConfig) {
     quote: dollarsToWords(lead.quotePrice),
     // How they'll pay + planned down payment, spoken ("" when not given).
     financing: financingSpoken(lead),
+    // The loan they need: "a rental loan, D S C R", their own words for "other", or "" (cash / not asked).
+    loanType: loanTypeSpoken(lead),
     promptConfig, // { systemPrompt, firstMessage, voicemailMessage, endCallMessage }
     source: `auction-${lead.propertySlug}`,
   };
