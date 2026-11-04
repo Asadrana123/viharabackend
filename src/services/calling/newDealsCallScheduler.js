@@ -29,6 +29,7 @@ const newDealsVoicePrompt = require("../../config/newDealsVoicePrompt");
 const { facebookFormPromptFor } = require("../../config/facebookFormVoicePrompt");
 const { dealSpoken } = require("../../config/newDeals");
 const { spokenList, spokenBudget, stateName } = require("../leads/buyBox");
+const { TOORAK_FORM_IDS } = require("../../config/toorakForms");
 
 // MD / MI / LA markets — Eastern is the safest fallback when the browser sent no tz.
 const DEFAULT_TZ = "America/New_York";
@@ -79,8 +80,9 @@ function callPayload(lead, source = "new-deals") {
  * @param {string} p.source                   call source (also picks Maya's script on callbacks)
  * @param {string} p.logTag                   log prefix
  * @param {Function} [p.payloadFor]           lead → call payload (default: callPayload with this source)
+ * @param {object} [p.sweepFilter]            extra condition for the daily sweep (leads another scheduler owns)
  */
-function createBuyBoxCallScheduler({ Model, source, logTag, payloadFor = (lead) => callPayload(lead, source) }) {
+function createBuyBoxCallScheduler({ Model, source, logTag, payloadFor = (lead) => callPayload(lead, source), sweepFilter = {} }) {
   /** connected → stop this lead (and siblings on the same number); else next slot. */
   async function applyOutcome(lead, connected) {
     if (connected) {
@@ -137,6 +139,7 @@ function createBuyBoxCallScheduler({ Model, source, logTag, payloadFor = (lead) 
         nextCallAt: { $ne: null, $lte: now },
         consent: true,
         callingStopped: { $ne: true },
+        ...sweepFilter,
       })
         .sort({ nextCallAt: 1 })
         .limit(SWEEP_BATCH)
@@ -221,6 +224,9 @@ const facebookFormCalls = createBuyBoxCallScheduler({
   source: "facebook-form",
   logTag: "facebook-form-daily",
   payloadFor: facebookFormPayload,
+  // Toorak lead forms have their own 3-attempt schedule (toorakCallScheduler.js).
+  // The form id check also covers Toorak leads saved before they were tagged.
+  sweepFilter: { toorak: null, formId: { $nin: TOORAK_FORM_IDS } },
 });
 
 module.exports = {

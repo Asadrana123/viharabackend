@@ -33,7 +33,8 @@ const listConversations = catchAsyncError(async (req, res) => {
   if (q) {
     // Search by contact phone — resolve matching contact ids first (conversations don't store a searchable name).
     const matchingContacts = await VtextContact.find({
-      $or: [{ phoneE164: new RegExp(q.replace(/\D/g, ""), "i") }, { name: new RegExp(q, "i") }],
+      // Name is escaped: q is plain text, and a crafted pattern could hang the server.
+      $or: [{ phoneE164: new RegExp(String(q).replace(/\D/g, ""), "i") }, { name: new RegExp(String(q).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") }],
     }).select("_id");
     filter.contactId = { $in: matchingContacts.map((c) => c._id) };
   }

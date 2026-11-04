@@ -1,3 +1,7 @@
+// The email comes from the unsubscribe link, so it's escaped before it goes in the page.
+const escapeHtml = (s) =>
+  String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
 function getSuccessPage(email) {
     return `
     <!DOCTYPE html>
@@ -120,7 +124,7 @@ function getSuccessPage(email) {
             
             <h1>You're All Set!</h1>
             
-            <div class="email">${email}</div>
+            <div class="email">${escapeHtml(email)}</div>
             
             <div class="message">
                 You have been successfully unsubscribed from our mailing list. 

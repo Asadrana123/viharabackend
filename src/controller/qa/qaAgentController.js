@@ -512,7 +512,7 @@ const createTestSession = catchAsyncError(async (req, res, next) => {
     }
   }
 
-  const token = jwt.sign({ id: user._id, role: user.role }, process.env.secret, { expiresIn: `${QA_SESSION_HOURS}h` });
+  const token = jwt.sign({ id: user._id, role: user.role, tv: user.tokenVersion || 0 }, process.env.secret, { expiresIn: `${QA_SESSION_HOURS}h` });
   res.status(200).json({
     success: true,
     token,

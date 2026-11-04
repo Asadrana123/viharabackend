@@ -1,22 +1,23 @@
 // controller/brevoWebhookController.js
 const catchAsyncError = require("../../middleware/catchAsyncError");
+const { safeEqual } = require("../../utils/safeEqual");
 const { ingestBrevoEvents } = require("../../services/integrations/emailEventsService");
 const { handleDeliverabilityEvents } = require("../../services/propertyEmail/propertyEmailService");
 
 // Brevo does NOT sign its webhooks, so the endpoint URL is the security boundary.
 // We add a shared-secret check: the token must arrive either as ?token=... or an
 // `x-webhook-token` header and match BREVO_WEBHOOK_SECRET. If the env var is
-// unset, the check is skipped (with a warning) so the endpoint still works before
-// you've configured the secret — same graceful-degrade pattern as brevoService.
+// unset, every request is refused: an open endpoint would let anyone post fake
+// unsubscribes and bounces.
 const WEBHOOK_SECRET = process.env.BREVO_WEBHOOK_SECRET || "";
 
 const isAuthorized = (req) => {
   if (!WEBHOOK_SECRET) {
-    console.warn("⚠️  BREVO_WEBHOOK_SECRET unset — email webhook is unauthenticated.");
-    return true;
+    console.warn("⚠️  BREVO_WEBHOOK_SECRET unset — refusing the email webhook.");
+    return false;
   }
   const token = req.query.token || req.get("x-webhook-token") || "";
-  return token === WEBHOOK_SECRET;
+  return safeEqual(token, WEBHOOK_SECRET);
 };
 
 /**

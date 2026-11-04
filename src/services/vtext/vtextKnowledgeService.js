@@ -27,6 +27,7 @@ const TOP_K = Number(process.env.RAG_VTEXT_TOP_K || 5);
 const MIN_SCORE = Number(process.env.RAG_VTEXT_MIN_SCORE || 0.4);
 const MAX_CHARS = Number(process.env.RAG_VTEXT_MAX_CHARS || 1500);
 const TIMEOUT_MS = Number(process.env.VTEXT_RAG_TIMEOUT_MS || 6000);
+const REWRITE_TIMEOUT_MS = Number(process.env.VTEXT_RAG_REWRITE_TIMEOUT_MS || 8000); // gemini-3.8-flash sometimes thinks despite budget 0: 1.7s without, about 4s with
 const REWRITE_MAX_MESSAGE_CHARS = 60; // longer messages already read as a full question
 const FAQ_TOP_K = Number(process.env.RAG_VTEXT_FAQ_TOP_K || 2);
 const FAQ_MIN_SCORE = Number(process.env.RAG_VTEXT_FAQ_MIN_SCORE || 0.62);
@@ -58,7 +59,7 @@ function withTimeout(promise, ms, label) {
  * property) goes first and is marked `current`; the rest follow, newest first. Capped.
  * @returns {Promise<Array<{ slug: string, quotePrice: number|null, buyerType: string, current: boolean, product: object }>>}
  */
-async function loadProperties(contact, conversationId) {
+async function loadProperties(contact, conversationId, toorak = null) {
   const ids = (contact?.leadRefs || []).filter((r) => r.leadType === "property").map((r) => r.leadId);
   const or = [];
   if (ids.length) or.push({ _id: { $in: ids } });
@@ -79,6 +80,8 @@ async function loadProperties(contact, conversationId) {
 
   const bySlug = new Map();
   if (currentProduct?.slug) bySlug.set(currentProduct.slug, { slug: currentProduct.slug, quotePrice: null, buyerType: "" });
+  // A Toorak lead's home (the Facebook ad it came from) counts as a property of theirs.
+  if (toorak?.propertySlug && !bySlug.has(toorak.propertySlug)) bySlug.set(toorak.propertySlug, { slug: toorak.propertySlug, quotePrice: null, buyerType: "" });
   for (const lead of leads) {
     if (!lead.propertySlug) continue;
     const have = bySlug.get(lead.propertySlug);
@@ -96,7 +99,8 @@ async function loadProperties(contact, conversationId) {
 
   return [...bySlug.values()]
     .filter((e) => productBySlug.has(e.slug))
-    .map((e) => ({ slug: e.slug, quotePrice: e.quotePrice, buyerType: e.buyerType, current: !!currentProduct && e.slug === currentProduct.slug, product: productBySlug.get(e.slug) }));
+    // No conversation property known: the Toorak ad's home is the one the conversation is about.
+    .map((e) => ({ slug: e.slug, quotePrice: e.quotePrice, buyerType: e.buyerType, current: e.slug === (currentProduct?.slug || toorak?.propertySlug), product: productBySlug.get(e.slug) }));
 }
 
 /** What a NorCal lead told us on the form. Empty when the contact is not a NorCal lead. */
@@ -138,10 +142,10 @@ async function rewriteQuery({ messages, replyToBody }) {
     const model = client.getGenerativeModel({ model: MODEL_NAME });
     const result = await withTimeout(
       model.generateContent({ contents: [{ role: "user", parts: [{ text: prompt }] }],
-        // Thinking off: this is a one-line rewrite, and thinking roughly doubled its time (about 1.1s vs 2.3s measured).
+        // Thinking off: this is a one-line rewrite, and thinking roughly doubled its time (about 1.1s vs 2.3s measured on 2.5 Flash). 3.8 Flash only sometimes honours a budget of 0.
         generationConfig: { temperature: 0, thinkingConfig: { thinkingBudget: 0 } },
       }),
-      Math.min(TIMEOUT_MS, 4000),
+      REWRITE_TIMEOUT_MS,
       "query rewrite"
     );
     const rewritten = String(result?.response?.text() || "").trim().replace(/^["']|["']$/g, "");
@@ -240,7 +244,7 @@ async function reportRagFailure(reason, contact) {
  *   propertyContext: object|null,
  * }>} propertyContext is the first property's key facts, the same shape buildPropertyContext returns (the Slack alert uses it).
  */
-async function buildReplyKnowledge({ contact, messages, replyToBody, conversationId }) {
+async function buildReplyKnowledge({ contact, messages, replyToBody, conversationId, toorak = null }) {
   const out = {
     properties: [],
     leadDetails: [],
@@ -252,7 +256,7 @@ async function buildReplyKnowledge({ contact, messages, replyToBody, conversatio
   };
 
   try {
-    const [properties, norCalDetails] = await Promise.all([loadProperties(contact, conversationId), loadNorCalDetails(contact)]);
+    const [properties, norCalDetails] = await Promise.all([loadProperties(contact, conversationId, toorak), loadNorCalDetails(contact)]);
     out.properties = properties.map((p) => ({
       slug: p.slug,
       name: p.product.productName || p.slug,

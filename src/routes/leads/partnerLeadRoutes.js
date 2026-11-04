@@ -11,9 +11,11 @@ const router = express.Router();
 
 const { registerAndCall, getAllPartnerLeads } = require("../../controller/leads/partnerLeadController");
 const { isAuthenticated, authorizeRoles } = require("../../middleware/auth");
+const formRateLimit = require("../../middleware/formRateLimit");
+const { verifyRecaptcha } = require("../../middleware/recaptcha");
 
 // Public — partner application submit
-router.post("/register", registerAndCall);
+router.post("/register", formRateLimit({ name: "partner" }), verifyRecaptcha, registerAndCall);
 
 // Admin — Partner Leads tab
 router.get("/", isAuthenticated, authorizeRoles("admin"), getAllPartnerLeads);

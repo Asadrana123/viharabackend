@@ -18,6 +18,7 @@ const { getSettings } = require("../vtextSettingsService");
 const { buildPropertyContext, generateDraftReply, MODEL_NAME } = require("../vtextAiReplyService");
 const { createDraftReply, approveDraft } = require("../vtextDraftReplyService");
 const { isRagEnabled, buildReplyKnowledge } = require("../vtextKnowledgeService");
+const { loadToorakLead } = require("../vtextToorakReplyRules");
 const { SAFE_HANDOFF, checkReplyAmounts, collectSourceTexts } = require("../vtextReplyGuard");
 const { publishEvent } = require("../vtextEventsBus");
 const { notifyVtextAlert } = require("../../shared/slackService");
@@ -52,9 +53,11 @@ async function processDraftReplyJob(job) {
 
   // With the knowledge lookup on, the AI also gets what this lead told us and the property details that
   // match the question (vtextKnowledgeService.js, which never throws). Off, nothing changes.
-  const knowledge = isRagEnabled() ? await buildReplyKnowledge({ contact, messages: history, replyToBody: inboundMessage.body, conversationId }) : null;
-  const propertyContext = knowledge ? knowledge.propertyContext : await buildPropertyContext(contact);
-  let draft = await generateDraftReply({ contact, messages: history, replyToBody: inboundMessage.body, propertyContext, knowledge });
+  // A Toorak lead (Facebook ad) also gets Prajwal's reply rules and its home's facts (vtextToorakReplyRules.js).
+  const toorak = await loadToorakLead(contact);
+  const knowledge = isRagEnabled() ? await buildReplyKnowledge({ contact, messages: history, replyToBody: inboundMessage.body, conversationId, toorak }) : null;
+  const propertyContext = knowledge ? knowledge.propertyContext : await buildPropertyContext(contact, toorak);
+  let draft = await generateDraftReply({ contact, messages: history, replyToBody: inboundMessage.body, propertyContext, knowledge, toorak });
   if (!draft) {
     // Generation unavailable or failed: the conversation just stays needs-reply, which used to be
     // completely silent. Tell the team once in a while that nobody is answering this customer.

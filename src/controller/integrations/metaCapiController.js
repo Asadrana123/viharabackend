@@ -2,6 +2,7 @@
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const Errorhandler = require("../../utils/errorhandler");
 const { sendEvent } = require("../../services/integrations/metaCapiService");
+const { clientIp } = require("../../utils/clientIp");
 
 // POST /api/capi/track
 // Receives the browser Pixel's shared event_id + user data, forwards the
@@ -20,7 +21,7 @@ exports.trackEvent = catchAsyncError(async (req, res, next) => {
     userData: {
       email,
       phone,
-      clientIpAddress: req.ip,
+      clientIpAddress: clientIp(req),
       clientUserAgent: req.headers["user-agent"],
       fbp,
       fbc,

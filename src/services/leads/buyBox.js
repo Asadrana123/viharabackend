@@ -5,6 +5,8 @@
 // the small request helpers both controllers use. Each page keeps its own
 // allowed values / tier rules and passes them in.
 
+const { clientIp: realClientIp } = require("../../utils/clientIp");
+
 const MAX_PRICE = 3000000;
 const TOUCH_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "gclid", "fbclid"];
 
@@ -113,11 +115,8 @@ const attributionFrom = (raw, extraKeys = []) => {
   return out;
 };
 
-// Real client IP behind the proxy (first X-Forwarded-For hop), for Meta CAPI.
-const clientIp = (req) => {
-  const fwd = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
-  return fwd || req.ip || undefined;
-};
+// Real client IP behind the proxy, for Meta CAPI.
+const clientIp = (req) => realClientIp(req) || undefined;
 
 // Only production page URLs reach Meta (mirrors capi.service.js on the client),
 // so localhost / preview test sign-ups never pollute the pixel.

@@ -1,3 +1,7 @@
+// The email comes from the unsubscribe link, so it's escaped before it goes in the page.
+const escapeHtml = (s) =>
+  String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
 function getAlreadyUnsubscribedPage(email) {
     return `
     <!DOCTYPE html>
@@ -100,7 +104,7 @@ function getAlreadyUnsubscribedPage(email) {
             
             <h1>Already Unsubscribed</h1>
             
-            <div class="email">${email}</div>
+            <div class="email">${escapeHtml(email)}</div>
             
             <div class="message">
                 This email address has already been unsubscribed from our mailing list.

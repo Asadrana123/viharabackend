@@ -1,18 +1,19 @@
 {
  "scripts": {
-  "test": "node --test \"src/services/analytics/*.test.js\" \"src/services/leads/*.test.js\" \"src/services/calling/*.test.js\" \"src/services/vtext/*.test.js\"",
+  "test": "node --test \"src/services/analytics/*.test.js\" \"src/services/leads/*.test.js\" \"src/services/calling/*.test.js\" \"src/services/vtext/*.test.js\" \"src/middleware/*.test.js\" \"src/routes/*.test.js\" \"src/socket/*.test.js\" \"src/controller/users/*.test.js\" \"src/services/studio/*.test.js\" \"src/utils/*.test.js\"",
   "start": "node src/index.js",
   "dev": "nodemon src/index.js",
   "worker:sendify": "node src/workers/sendifyWorker.js"
  },
  "dependencies": {
   "@anthropic-ai/sdk": "^0.131.0",
+  "@aws-sdk/client-s3": "^3.1161.0",
+  "@aws-sdk/s3-request-presigner": "^3.1161.0",
   "@babel/parser": "^7.29.9",
   "@google-analytics/data": "^7.2.1",
   "@google/genai": "^2.8.0",
   "@google/generative-ai": "^0.24.1",
   "@higgsfield/client": "^0.2.1",
-  "@sendgrid/mail": "^8.1.4",
   "@sparticuz/chromium": "^147.0.0",
   "axios": "^1.7.7",
   "bcryptjs": "^2.4.3",
@@ -31,10 +32,8 @@
   "mongoose": "^8.4.1",
   "multer": "^2.2.0",
   "node-cron": "^4.6.0",
-  "nodemailer": "^6.9.14",
+  "nodemailer": "^10.3.1",
   "papaparse": "^5.5.2",
-  "passport": "^0.7.0",
-  "passport-google-oauth20": "^2.0.0",
   "pdf-parse": "^1.1.1",
   "pdfkit": "^0.20.2",
   "puppeteer": "^24.43.1",

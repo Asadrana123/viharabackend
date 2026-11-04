@@ -20,6 +20,10 @@ const vtextLineUsageSchema = new mongoose.Schema(
     inbound: { type: Number, default: 0 },
     newRecipients: { type: Number, default: 0 },
     replyAssigned: { type: Number, default: 0 },
+    // The day's caps, saved when the first send of the day is reserved (vtextCapacityService.reserve), for the
+    // capacity history. Missing on older rows and on days with no sends: the history works those out.
+    cap: { type: Number },
+    coldCap: { type: Number },
   },
   { timestamps: true }
 );

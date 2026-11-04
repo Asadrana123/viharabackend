@@ -16,6 +16,7 @@ const LEAD_NOTE_TYPE = "rensselaerAve";
 // this tab and surface only in the dedicated Test Leads tab.
 const TEST_NAME_REGEX = /\btest\b/i;
 const { syncPropertyLead } = require("../../services/integrations/brevoService");
+const { maskPhone } = require("../../utils/maskPii");
 // NOTE ON BREVO: early access syncs to its dedicated buyer list
 // (BREVO_EARLY_ACCESS_LIST_ID). These are single-property auction registrants, so
 // they should NOT land in that list. If you want them in Brevo, add a dedicated
@@ -90,7 +91,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
     }).catch((e) => console.error("[rensselaer-ave-call] scheduling failed:", e.message));
     call = { attempted: true };
   } else {
-    console.log(`[rensselaer-ave] no-consent registration: ${lead.phoneNormalized}`);
+    console.log(`[rensselaer-ave] no-consent registration: ${maskPhone(lead.phoneNormalized)}`);
   }
 
   // ── 3. Respond ──────────────────────────────────────────────────────────
@@ -170,7 +171,7 @@ const getAllRensselaerAveLeads = catchAsyncError(async (req, res) => {
 
   res.status(200).json({
     success: true,
-    leads: shapeLeads(view, leadsWithCalls),
+    leads: await shapeLeads(view, leadsWithCalls),
     pagination: { page, limit, total, pages: Math.ceil(total / limit) },
   });
 });

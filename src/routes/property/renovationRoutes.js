@@ -11,6 +11,8 @@ const {
 } = require("../../controller/property/renovationController");
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const { isAuthenticated, optionalAuth } = require("../../middleware/auth");
+const formRateLimit = require("../../middleware/formRateLimit");
+const { verifyRecaptcha } = require("../../middleware/recaptcha");
 
 
 /**
@@ -19,6 +21,8 @@ const { isAuthenticated, optionalAuth } = require("../../middleware/auth");
  */
 router.post(
   "/generate-renovation-images",
+  formRateLimit({ name: "renovation-images", max: 10, message: "Too many renovation requests. Please wait a few minutes and try again." }),
+  verifyRecaptcha,
   optionalAuth,
   catchAsyncError(generateRenovationImages)
 );
@@ -69,6 +73,6 @@ router.get('/contractors/:propertyId', optionalAuth, catchAsyncError(getContract
  * Captures a lead from the renovation tool's "Get Contractors & Vendors"
  * button (public — anonymous allowed, same as the tool itself).
  */
-router.post('/contractors/:propertyId/request', optionalAuth, catchAsyncError(submitContractorRequest));
+router.post('/contractors/:propertyId/request', formRateLimit({ name: "contractor-request" }), verifyRecaptcha, optionalAuth, catchAsyncError(submitContractorRequest));
 
 module.exports = router;

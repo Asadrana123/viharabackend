@@ -34,6 +34,7 @@ const { scheduleNewDealsSignupCall } = require("../../services/calling/newDealsC
 const { newDealsPageUrl } = require("../../config/siteUrls");
 const { LIVE_DEALS, findDeal, dealLabel } = require("../../config/newDeals");
 const Product = require("../../model/property/productModel");
+const { maskPhone } = require("../../utils/maskPii");
 const TEST_NAME_FIELDS = ["fullName", "firstName"];
 const {
   str,
@@ -87,7 +88,7 @@ const LEAD_NOTE_TYPE = "newDeals"; // matches leadNoteModel.LEAD_TYPES
 // "Maryland, Michigan, Baltimore" — states then cities, as the buyer picked them.
 const marketsText = (box = {}) => [...(box.states || []).map(stateName), ...(box.cities || [])].join(", ");
 
-// "Baltimore, MD" / "$65,900" for a spotlight deal id.
+// "Baltimore, MD" / "$58,687" (starting bid) for a spotlight deal id.
 const dealParts = (id) => {
   const d = findDeal(id);
   return d ? { market: `${d.city}, ${d.state}`, price: `$${d.price.toLocaleString("en-US")}` } : null;
@@ -321,7 +322,7 @@ const registerNewDealsLead = catchAsyncError(async (req, res, next) => {
   if (consent) {
     scheduleNewDealsSignupCall(plain).catch((e) => console.error("[new-deals-call] scheduling failed:", e.message));
   } else {
-    console.log(`[new-deals] no-consent sign-up — not calling ${lead.phoneNormalized}`);
+    console.log(`[new-deals] no-consent sign-up — not calling ${maskPhone(lead.phoneNormalized)}`);
   }
 
   if (isProductionPageUrl(pageUrl)) {
@@ -395,7 +396,7 @@ const getAllNewDealsLeads = catchAsyncError(async (req, res) => {
 
   res.status(200).json({
     success: true,
-    leads: shapeLeads(view, leads.map((lead) => ({
+    leads: await shapeLeads(view, leads.map((lead) => ({
       ...lead,
       fullName: lead.fullName || lead.firstName,
       dealInterestLabel: dealLabel(lead.dealInterest),

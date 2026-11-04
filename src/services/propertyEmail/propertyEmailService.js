@@ -29,6 +29,7 @@ const { PROPERTY_EMAIL_TEMPLATES } = require("../../config/propertyEmailTemplate
 const { getContactBlockStatus, sendTransactionalEmail } = require("../integrations/brevoService");
 const { notifyNewLead } = require("../shared/slackService");
 const { buildPropertyEmailParams, firstNameOf, propertyKeyOf } = require("./propertyEmailParams");
+const { maskEmail } = require("../../utils/maskPii");
 
 const normEmail = (e) => String(e || "").trim().toLowerCase();
 
@@ -168,7 +169,7 @@ async function closeLeadsForContact(email, reason) {
     { contactEmail: normEmail(email), status: "open" },
     { $set: { status: "closed", closedAt: new Date(), closedReason: reason } }
   );
-  if (modifiedCount) console.log(`[property-email] closed ${modifiedCount} lead record(s) for ${normEmail(email)} (${reason})`);
+  if (modifiedCount) console.log(`[property-email] closed ${modifiedCount} lead record(s) for ${maskEmail(normEmail(email))} (${reason})`);
   return modifiedCount;
 }
 
@@ -201,7 +202,7 @@ async function onPropertyLeadSignup({ property, lead }) {
       lead: record,
     });
   } catch (err) {
-    console.error(`[property-email] E1 trigger failed for ${lead?.email}:`, err.message);
+    console.error(`[property-email] E1 trigger failed for ${maskEmail(lead?.email)}:`, err.message);
   }
 }
 
@@ -252,7 +253,7 @@ async function onAuctionRegistration({ property, registration, realtor = null })
     await sendPropertyEmail({ code: "R1", ...buyer });
     if (registration.status === "approved") await sendPropertyEmail({ code: "R2", ...buyer });
   } catch (err) {
-    console.error(`[property-email] registration trigger failed for ${registration?.email}:`, err.message);
+    console.error(`[property-email] registration trigger failed for ${maskEmail(registration?.email)}:`, err.message);
   }
 }
 
@@ -272,7 +273,7 @@ async function sendPartnerReferralEmail({ property, registration, realtor }) {
       dedupKey: `${normEmail(realtor.email)}|${property._id}|PT1|${normEmail(registration.email)}`,
     });
   } catch (err) {
-    console.error(`[property-email] PT1 failed for ${realtor.email}:`, err.message);
+    console.error(`[property-email] PT1 failed for ${maskEmail(realtor.email)}:`, err.message);
   }
 }
 
@@ -309,7 +310,7 @@ async function onVerificationChange({ property, registration, status }) {
       });
     }
   } catch (err) {
-    console.error(`[property-email] verification trigger failed for ${registration?.email}:`, err.message);
+    console.error(`[property-email] verification trigger failed for ${maskEmail(registration?.email)}:`, err.message);
   }
 }
 
@@ -325,7 +326,7 @@ async function handleDeliverabilityEvents(body) {
     try {
       await closeLeadsForContact(e.email, event);
     } catch (err) {
-      console.error(`[property-email] closing leads after ${event} failed for ${e.email}:`, err.message);
+      console.error(`[property-email] closing leads after ${event} failed for ${maskEmail(e.email)}:`, err.message);
     }
   }
 }

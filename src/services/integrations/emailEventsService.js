@@ -116,4 +116,55 @@ const getEmailEventsForEmails = async (emails = []) => {
   return byEmail;
 };
 
-module.exports = { ingestBrevoEvents, getEmailEventsForEmails };
+const OPEN_EVENTS = new Set(["opened", "unique_opened"]);
+const BOUNCE_EVENTS = new Set(["hard_bounce", "soft_bounce"]);
+const FAILED_EVENTS = new Set([...BOUNCE_EVENTS, "blocked", "invalid", "error"]);
+
+/**
+ * One person's events → how many of their emails arrived, were opened or
+ * clicked, and how many failed. An email fires many events, so events are
+ * grouped by message first (campaign events have no id: their subject stands in).
+ */
+function emailStatsFrom(events = []) {
+  const byEmail = new Map();
+  for (const ev of events) {
+    const id = ev.messageId || ev.subject || ev.tag || "";
+    const seen = byEmail.get(id) || new Set();
+    seen.add(ev.event);
+    byEmail.set(id, seen);
+  }
+  const stats = { delivered: 0, opened: 0, clicked: 0, failed: 0, bounced: false };
+  for (const seen of byEmail.values()) {
+    const has = (set) => [...seen].some((e) => set.has(e));
+    if (seen.has("delivered")) stats.delivered += 1;
+    if (has(OPEN_EVENTS)) stats.opened += 1;
+    if (seen.has("click")) stats.clicked += 1;
+    if (has(FAILED_EVENTS)) stats.failed += 1;
+    if (has(BOUNCE_EVENTS)) stats.bounced = true;
+  }
+  return stats;
+}
+
+/**
+ * The light version of getEmailEventsForEmails, for list rows:
+ * { "lead@x.com": { delivered, opened, clicked, failed, bounced } }.
+ * Best-effort like the rest: on a DB error rows just show no email state.
+ */
+const getEmailSummaryForEmails = async (emails = []) => {
+  const unique = [...new Set((emails || []).map((e) => String(e || "").trim().toLowerCase()).filter(Boolean))];
+  if (!unique.length) return {};
+  try {
+    const rows = await EmailEvent.aggregate([
+      { $match: { email: { $in: unique } } },
+      { $group: { _id: { email: "$email", messageId: "$messageId", subject: "$subject", tag: "$tag", event: "$event" } } },
+    ]);
+    const eventsByEmail = {};
+    for (const { _id } of rows) (eventsByEmail[_id.email] = eventsByEmail[_id.email] || []).push(_id);
+    return Object.fromEntries(Object.entries(eventsByEmail).map(([email, events]) => [email, emailStatsFrom(events)]));
+  } catch (err) {
+    console.error("[email-events] summary lookup failed:", err.message);
+    return {};
+  }
+};
+
+module.exports = { ingestBrevoEvents, getEmailEventsForEmails, getEmailSummaryForEmails, emailStatsFrom };

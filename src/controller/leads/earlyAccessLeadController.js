@@ -13,6 +13,7 @@ const { listView, scopeQuery, unlessSummary, listSelect, callsForList, shapeLead
 const { getVtextMessagesForPhones } = require("../../services/vtext/vtextLeadMessagesService");
 const { notifyNewLead } = require("../../services/shared/slackService");
 const { needsFinancingFrom, needsFinancingLabel } = require("../../services/leads/buyBox");
+const { maskEmail } = require("../../utils/maskPii");
 
 // Discriminator stamped on each note so notes never bleed across lead types.
 const LEAD_NOTE_TYPE = "earlyAccess";
@@ -103,7 +104,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
     }).catch((e) => console.error("[early-access-call] scheduling failed:", e.message));
     call = { attempted: true };
   } else {
-    console.log(`[early-access] email-only (no consent): ${lead.email}`);
+    console.log(`[early-access] email-only (no consent): ${maskEmail(lead.email)}`);
   }
 
   // ── 3. Respond ──────────────────────────────────────────────────────────
@@ -201,7 +202,7 @@ const getAllEarlyAccessLeads = catchAsyncError(async (req, res) => {
 
   res.status(200).json({
     success: true,
-    leads: shapeLeads(view, leadsWithCalls),
+    leads: await shapeLeads(view, leadsWithCalls),
     pagination: { page, limit, total, pages: Math.ceil(total / limit) },
   });
 });

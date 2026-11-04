@@ -3,7 +3,6 @@ const Errorhandler = require("../../utils/errorhandler");
 const contact = require("../../model/integrations/contactUSModel");
 exports.saveContact = catchAsyncError(
     async (req, res) => {
-        console.log(req.body);
         try{ 
             const savedContactDetails = await contact.create(req.body);
             return res.status(200).json({ success: true, savedContactDetails });

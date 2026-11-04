@@ -11,7 +11,7 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['user', 'admin', 'seller'],
+    enum: ['user', 'admin', 'seller', 'editor'],
     default: 'user'
   },
   name: {
@@ -49,6 +49,11 @@ const userSchema = new mongoose.Schema({
     required: [true, "Please Enter Password"],
     minLength: [8, "password should have more than 8 characters"],
     select: false
+  },
+  // Bumped on password change/reset to sign out older sessions (utils/tokenVersion.js).
+  tokenVersion: {
+    type: Number,
+    default: 0
   },
   businessPhone: {
     type: String,
@@ -123,7 +128,7 @@ userSchema.methods.comparePassword = async function (enteredPassword) {
 };
 
 userSchema.methods.getJWTToken = function () {
-  return jwt.sign({ id: this._id, role: this.role }, process.env.secret, { expiresIn: process.env.expireTime });
+  return jwt.sign({ id: this._id, role: this.role, tv: this.tokenVersion || 0 }, process.env.secret, { expiresIn: process.env.expireTime });
 };
 
 userSchema.methods.getResetPasswordToken = function () {

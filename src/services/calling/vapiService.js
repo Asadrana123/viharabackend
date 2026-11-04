@@ -5,6 +5,7 @@ const { pickCallerNumberId } = require("./callerNumberPoolService");
 const { claimDailyDial, ALREADY_CALLED_TODAY } = require("./dailyDialGuard");
 const { pickFacetimeLine } = require("./facetime/facetimeRouter");
 const { queueFacetimeCall, isFacetimeCallId, getFacetimeCall } = require("./facetime/facetimeCallService");
+const { maskPhone } = require("../../utils/maskPii");
 // Shared *script* blocks — single source of truth in config/voicePromptShared.js.
 // These are the blocks common to EVERY funnel; they get appended to every call
 // below (idempotently), so editing one there — or adding a new one to the table
@@ -373,7 +374,7 @@ const dispatchCall = async (
     enforce: oncePerDay,
   });
   if (!dial.allowed) {
-    console.log(`⏭️  Call skipped (${ALREADY_CALLED_TODAY}): ${person.fullName} → ${phoneNumber}`);
+    console.log(`⏭️  Call skipped (${ALREADY_CALLED_TODAY}): ${person.fullName} → ${maskPhone(phoneNumber)}`);
     return { success: false, phone: phoneNumber, error: ALREADY_CALLED_TODAY };
   }
 
@@ -420,7 +421,7 @@ const dispatchCall = async (
     const phoneNumberId = await pickCallerNumberId();
     if (!phoneNumberId) {
       await dial.release(); // not dialed — doesn't count as today's call
-      console.warn(`⏭️  Call skipped (all caller numbers hit daily cap): ${person.fullName} → ${phoneNumber}`);
+      console.warn(`⏭️  Call skipped (all caller numbers hit daily cap): ${person.fullName} → ${maskPhone(phoneNumber)}`);
       return { success: false, phone: phoneNumber, error: "daily call cap reached on all caller numbers" };
     }
 
@@ -436,9 +437,8 @@ const dispatchCall = async (
     const assistantOverrides = buildAssistantOverrides(person, researchSummary, property, promptConfig, priorContext);
 
     console.log("[cb-debug] dispatchCall payload", JSON.stringify({
-      to: phoneNumber,
       phoneNumberId,
-      metadata,
+      metadataKeys: Object.keys(metadata || {}),
       toolsAttached: !!(assistantOverrides.model && assistantOverrides.model.tools),
       toolNames: (assistantOverrides.model?.tools || []).map((t) => t.function?.name),
       toolServerUrl: assistantOverrides.model?.tools?.[0]?.server?.url || null,
@@ -459,7 +459,7 @@ const dispatchCall = async (
       { headers: { Authorization: `Bearer ${VAPI_API_KEY}`, "Content-Type": "application/json" } }
     );
 
-    console.log(`✅ Call dispatched: ${person.fullName} → ${phoneNumber} | from ${phoneNumberId} | Call ID: ${response.data.id}`);
+    console.log(`✅ Call dispatched: ${person.fullName} → ${maskPhone(phoneNumber)} | from ${phoneNumberId} | Call ID: ${response.data.id}`);
     return { success: true, callId: response.data.id, phone: phoneNumber };
   } catch (err) {
     await dial.release(); // VAPI never placed the call
@@ -467,7 +467,7 @@ const dispatchCall = async (
       err.response?.data?.message ||
       (Array.isArray(err.response?.data?.error) ? err.response.data.error.join(", ") : err.response?.data?.error) ||
       err.message;
-    console.error(`❌ Call failed: ${person.fullName} → ${phoneNumber}:`, err.response?.data || err.message);
+    console.error(`❌ Call failed: ${person.fullName} → ${maskPhone(phoneNumber)}:`, err.response?.data || err.message);
     return { success: false, phone: phoneNumber, error: String(reason) };
   }
 };

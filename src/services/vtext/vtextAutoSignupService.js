@@ -18,6 +18,7 @@ const { enqueueOutbound } = require("./vtextMessageService");
 const { renderTemplateForProperty, checkRendered } = require("./vtextTemplateService");
 const { startFollowUp } = require("./vtextFollowUpService");
 const { getSettings, isConsentRequired } = require("./vtextSettingsService");
+const { maskPhone } = require("../../utils/maskPii");
 
 // The text is never sent without the price, street and city it names, or with a {{placeholder}} left in it.
 const QUOTE_REQUIRED = ["quote_price", "property_short", "city"];
@@ -36,7 +37,7 @@ async function maybeSendSignupQuoteText({ lead, property }) {
   // below also logs its own outcome, so "nothing in the logs" should never
   // happen again for this path: either this line plus a skip/error reason,
   // or this line plus a final outcome line.
-  console.log(`[vtext auto-signup] called for lead ${lead?._id} (${lead?.phone || "no phone"})`);
+  console.log(`[vtext auto-signup] called for lead ${lead?._id} (${lead?.phone ? maskPhone(lead.phone) : "no phone"})`);
   try {
     if (!AUTO_ENABLED()) {
       console.error("[vtext auto-signup] SKIPPED — VTEXT_ENABLED/VTEXT_AUTO_SIGNUP_TEXT_ENABLED not both true");

@@ -65,7 +65,7 @@ const getAllRenovationContractorLeads = catchAsyncError(async (req, res) => {
 
   res.status(200).json({
     success: true,
-    leads: shapeLeads(view, leadsWithNotes),
+    leads: await shapeLeads(view, leadsWithNotes),
     pagination: { page, limit, total, pages: Math.ceil(total / limit) },
   });
 });

@@ -6,11 +6,13 @@ const {
   updateApplicationStatus,
 } = require("../../controller/users/careerController");
 const { isAuthenticated, authorizeRoles } = require("../../middleware/auth");
+const formRateLimit = require("../../middleware/formRateLimit");
+const { verifyRecaptcha } = require("../../middleware/recaptcha");
 
 const router = express.Router();
 
 // Public
-router.post("/apply", submitApplication);
+router.post("/apply", formRateLimit({ name: "career-apply" }), verifyRecaptcha, submitApplication);
 
 // Admin only
 router.get(

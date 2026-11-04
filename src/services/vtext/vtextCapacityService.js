@@ -30,19 +30,35 @@ function stripNullish(obj) {
   return out;
 }
 
-/** Perday cap from the warm-up schedule for "days since warmup started", or the full limit if warmup is off/not started/complete. */
-function warmupPerDay(line, limits) {
-  if (!line.warmup?.enabled || !line.warmup?.startedAt) return limits.perDay;
-  const daysSinceStart = Math.floor((Date.now() - new Date(line.warmup.startedAt).getTime()) / (24 * 60 * 60 * 1000)) + 1;
+/**
+ * Where a line is in its warm-up at `at`: { day, lastStepDay, perDay } (day 1 = the day warm-up started), or null
+ * when warm-up is off or not started. perDay is already capped at the full limit.
+ */
+function warmupStep(line, limits, at = new Date()) {
+  if (!line.warmup?.enabled || !line.warmup?.startedAt) return null;
   const schedule = line.warmup.schedule?.length ? line.warmup.schedule : limits.warmupSchedule;
-  if (!schedule?.length) return limits.perDay;
-
+  if (!schedule?.length) return null;
+  const day = Math.floor((at.getTime() - new Date(line.warmup.startedAt).getTime()) / (24 * 60 * 60 * 1000)) + 1;
   // schedule is a sorted list of {fromDay, perDay} — find the last entry whose fromDay <= today.
   let applicable = schedule[0];
   for (const step of schedule) {
-    if (step.fromDay <= daysSinceStart) applicable = step;
+    if (step.fromDay <= day) applicable = step;
   }
-  return Math.min(applicable.perDay, limits.perDay);
+  return { day, lastStepDay: schedule[schedule.length - 1].fromDay, perDay: Math.min(applicable.perDay, limits.perDay) };
+}
+
+/**
+ * True once a line has reached the last step of its warm-up schedule: its own schedule, or the channel's
+ * default when it has none (the same schedule the cap uses). The daily rollover then moves it to "active".
+ */
+function warmupComplete(line, at = new Date()) {
+  const step = warmupStep(line, limitsFor(line), at);
+  return !!step && step.day >= step.lastStepDay;
+}
+
+/** Perday cap from the warm-up schedule for "days since warmup started", or the full limit if warmup is off/not started/complete. */
+function warmupPerDay(line, limits, at = new Date()) {
+  return warmupStep(line, limits, at)?.perDay ?? limits.perDay;
 }
 
 // §7.4 soft throttle: a line replyRatio7d (set by the daily-rollover job,
@@ -55,21 +71,23 @@ const THROTTLE_REPLY_RATIO = Number(process.env.VTEXT_HEALTH_THROTTLE_REPLY_RATI
 const THROTTLE_MIN_SENDS_7D = Number(process.env.VTEXT_HEALTH_THROTTLE_MIN_SENDS || 200);
 const THROTTLE_MULTIPLIER = Number(process.env.VTEXT_HEALTH_THROTTLE_MULTIPLIER || 0.5);
 
+/** True when the §7.4 soft throttle applies to this line now (from its stored 7-day health fields). */
+function isThrottled(line) {
+  if (limitsFor(line).replyRatioThrottle === false) return false; // a channel can opt out (Twilio SMS fallback)
+  const sentLast7d = line.health?.sentLast7d ?? Infinity; // unknown (never rolled up) -> don't throttle on a guess
+  const replyRatio7d = line.health?.replyRatio7d;
+  return sentLast7d >= THROTTLE_MIN_SENDS_7D && typeof replyRatio7d === "number" && replyRatio7d < THROTTLE_REPLY_RATIO;
+}
+
 /** The real, computed cap for today — not stored, per sendify-infra.md §3.1. Automatically applies the §7.4 soft reply-ratio throttle from the line's own stored health fields. */
 function effectiveDailyCap(line) {
   const limits = limitsFor(line);
   const warmupCap = warmupPerDay(line, limits);
-
-  const sentLast7d = line.health?.sentLast7d ?? Infinity; // unknown (never rolled up) -> don't throttle on a guess
-  const replyRatio7d = line.health?.replyRatio7d;
-  const throttled =
-    limits.replyRatioThrottle !== false && // a channel can opt out (Twilio SMS fallback)
-    sentLast7d >= THROTTLE_MIN_SENDS_7D &&
-    typeof replyRatio7d === "number" &&
-    replyRatio7d < THROTTLE_REPLY_RATIO;
-
-  return Math.max(0, Math.floor(warmupCap * (throttled ? THROTTLE_MULTIPLIER : 1)));
+  return Math.max(0, Math.floor(warmupCap * (isThrottled(line) ? THROTTLE_MULTIPLIER : 1)));
 }
+
+/** The cap for new (cold) sends: the daily cap minus the reply reserve. */
+const coldCapOf = (cap, limits) => Math.floor(cap * (1 - (limits.replyReservePct || 0) / 100));
 
 // Atomic check-and-add over a 1-hour sliding window, in one round trip so two
 // concurrent reservations can't both read "under limit" and both write.
@@ -108,7 +126,7 @@ async function checkAndReserveNewRecipientSlot(lineId, limit) {
 async function reserve(line, { isReply = false, isNewRecipient = false } = {}) {
   const limits = limitsFor(line);
   const cap = effectiveDailyCap(line);
-  const coldCap = Math.floor(cap * (1 - (limits.replyReservePct || 0) / 100));
+  const coldCap = coldCapOf(cap, limits);
   const capToUse = isReply ? cap : coldCap;
 
   if (isNewRecipient) {
@@ -121,9 +139,13 @@ async function reserve(line, { isReply = false, isNewRecipient = false } = {}) {
   const day = dayKey();
   // Ensure the day row exists first — can't combine upsert with a $lt filter
   // and get correct behavior for a brand-new row (sendify-infra.md §4.4).
+  // It also saves the day's caps, for the capacity history (vtextCapacityReport.js).
   await VtextLineUsage.updateOne(
     { lineId: line._id, day },
-    { $setOnInsert: { lineId: line._id, day, assigned: 0, sent: 0, failed: 0, inbound: 0, newRecipients: 0, replyAssigned: 0 } },
+    {
+      $setOnInsert: { lineId: line._id, day, assigned: 0, sent: 0, failed: 0, inbound: 0, newRecipients: 0, replyAssigned: 0 },
+      $set: { cap, coldCap },
+    },
     { upsert: true }
   );
 
@@ -172,7 +194,7 @@ async function remainingToday(line) {
 async function remainingForSend(line, { isReply = false } = {}) {
   const limits = limitsFor(line);
   const cap = effectiveDailyCap(line);
-  const capToUse = isReply ? cap : Math.floor(cap * (1 - (limits.replyReservePct || 0) / 100));
+  const capToUse = isReply ? cap : coldCapOf(cap, limits);
   const day = dayKey();
   const usage = await VtextLineUsage.findOne({ lineId: line._id, day });
   return Math.max(0, capToUse - (usage?.assigned || 0));
@@ -188,8 +210,14 @@ async function peekNewRecipientCount(lineId) {
 }
 
 module.exports = {
+  DAY_TZ,
+  THROTTLE_MULTIPLIER,
   dayKey,
   limitsFor,
+  warmupStep,
+  warmupComplete,
+  isThrottled,
+  coldCapOf,
   effectiveDailyCap,
   reserve,
   release,

@@ -14,6 +14,7 @@ const { syncNorCalLead } = require("../../services/integrations/brevoService");
 const { notifyNewLead } = require("../../services/shared/slackService");
 const { needsFinancingFrom, needsFinancingLabel } = require("../../services/leads/buyBox");
 const { norCalPageUrl } = require("../../config/siteUrls");
+const { maskPhone } = require("../../utils/maskPii");
 
 // Note discriminator for NorCal leads (matches leadNoteModel.LEAD_TYPES + the
 // stop-calling controller's model map).
@@ -131,7 +132,7 @@ const registerNorCalLead = catchAsyncError(async (req, res, next) => {
     }).catch((e) => console.error("[nor-cal-call] scheduling failed:", e.message));
     call = { attempted: true };
   } else {
-    console.log(`[nor-cal] no-consent registration: ${lead.phoneNormalized}`);
+    console.log(`[nor-cal] no-consent registration: ${maskPhone(lead.phoneNormalized)}`);
   }
 
   // ── 3. Respond ──
@@ -239,7 +240,7 @@ const getAllNorCalLeads = catchAsyncError(async (req, res) => {
 
   res.status(200).json({
     success: true,
-    leads: shapeLeads(view, leadsWithCalls),
+    leads: await shapeLeads(view, leadsWithCalls),
     pagination: { page, limit, total, pages: Math.ceil(total / limit) },
   });
 });

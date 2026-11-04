@@ -35,6 +35,11 @@ const realtorSchema = new mongoose.Schema({
         minLength: [8, "Password should have at least 8 characters"],
         select: false
     },
+    // Bumped on password reset to sign out older sessions (utils/tokenVersion.js).
+    tokenVersion: {
+        type: Number,
+        default: 0
+    },
 
     // ============================================
     // PUBLIC SHOWCASE PROFILE  (Req 3 — profile + contact info)
@@ -167,7 +172,7 @@ realtorSchema.methods.comparePassword = async function (enteredPassword) {
 
 realtorSchema.methods.getJWTToken = function () {
     return jwt.sign(
-        { id: this._id, kind: "realtor" },
+        { id: this._id, kind: "realtor", tv: this.tokenVersion || 0 },
         process.env.secret,
         { expiresIn: process.env.expireTime }
     );

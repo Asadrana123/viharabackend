@@ -1,5 +1,6 @@
 const axios = require("axios");
 const { toUsSmsNumber } = require("../../utils/usPhone");
+const { maskEmail, maskPhone } = require("../../utils/maskPii");
 
 const BREVO_API_KEY = process.env.BREVO_API_KEY;
 const BREVO_PERSONA_LIST_ID = Number(process.env.BREVO_PERSONA_LIST_ID);
@@ -45,7 +46,7 @@ const buildSmsAttributes = (lead) => {
   if (sms) attributes.SMS = sms;
 
   if (lead.smsOptIn === true) {
-    if (!sms) console.warn(`⚠️  Brevo: ${lead.email} ticked SMS but phone "${lead.phone}" is invalid.`);
+    if (!sms) console.warn(`⚠️  Brevo: ${maskEmail(lead.email)} ticked SMS but phone "${maskPhone(lead.phone)}" is invalid.`);
     attributes.SMS_OPT_IN = true;
     attributes.SMS_OPT_IN_AT = new Date(lead.smsOptInAt || Date.now()).toISOString();
     attributes.SMS_OPT_IN_URL = lead.smsOptInUrl || "";
@@ -88,7 +89,7 @@ const upsertContact = async ({ email, attributes, listIds }, label) => {
   }
 
   const { SMS, ...withoutSms } = attributes;
-  console.warn(`⚠️  Brevo ${label}: SMS ${SMS} is already on another contact — saving ${email} without SMS.`);
+  console.warn(`⚠️  Brevo ${label}: SMS ${maskPhone(SMS)} is already on another contact — saving ${maskEmail(email)} without SMS.`);
   await post(withoutSms);
   return { smsConflict: true };
 };
@@ -149,11 +150,11 @@ const syncPersonaLead = async (lead) => {
       }
     );
 
-    console.log(`✅ Brevo synced: ${lead.email}`);
+    console.log(`✅ Brevo synced: ${maskEmail(lead.email)}`);
     return { success: true };
   } catch (err) {
     const reason = err.response?.data?.message || err.message;
-    console.error(`❌ Brevo sync failed: ${lead.email}:`, reason);
+    console.error(`❌ Brevo sync failed: ${maskEmail(lead.email)}:`, reason);
     return { success: false, error: String(reason) };
   }
 };
@@ -213,11 +214,11 @@ const syncEarlyAccessLead = async (lead) => {
       }
     );
 
-    console.log(`✅ Brevo early-access synced: ${lead.email}`);
+    console.log(`✅ Brevo early-access synced: ${maskEmail(lead.email)}`);
     return { success: true };
   } catch (err) {
     const reason = err.response?.data?.message || err.message;
-    console.error(`❌ Brevo early-access sync failed: ${lead.email}:`, reason);
+    console.error(`❌ Brevo early-access sync failed: ${maskEmail(lead.email)}:`, reason);
     return { success: false, error: String(reason) };
   }
 };
@@ -268,11 +269,11 @@ const syncPropertyLead = async (lead) => {
       "property"
     );
 
-    console.log(`✅ Brevo property synced: ${lead.email} → list ${targetListId}`);
+    console.log(`✅ Brevo property synced: ${maskEmail(lead.email)} → list ${targetListId}`);
     return { success: true, smsConflict };
   } catch (err) {
     const reason = err.response?.data?.message || err.message;
-    console.error(`❌ Brevo property sync failed: ${lead.email}:`, reason);
+    console.error(`❌ Brevo property sync failed: ${maskEmail(lead.email)}:`, reason);
     return { success: false, error: String(reason) };
   }
 };
@@ -335,11 +336,11 @@ const syncPartnerLead = async (lead) => {
       "partner"
     );
 
-    console.log(`✅ Brevo partner synced: ${lead.email}`);
+    console.log(`✅ Brevo partner synced: ${maskEmail(lead.email)}`);
     return { success: true, smsConflict };
   } catch (err) {
     const reason = err.response?.data?.message || err.message;
-    console.error(`❌ Brevo partner sync failed: ${lead.email}:`, reason);
+    console.error(`❌ Brevo partner sync failed: ${maskEmail(lead.email)}:`, reason);
     return { success: false, error: String(reason) };
   }
 };
@@ -386,11 +387,11 @@ const syncNorCalLead = async (lead) => {
       "NorCal"
     );
 
-    console.log(`✅ Brevo NorCal synced: ${lead.email}`);
+    console.log(`✅ Brevo NorCal synced: ${maskEmail(lead.email)}`);
     return { success: true, smsConflict };
   } catch (err) {
     const reason = err.response?.data?.message || err.message;
-    console.error(`❌ Brevo NorCal sync failed: ${lead.email}:`, reason);
+    console.error(`❌ Brevo NorCal sync failed: ${maskEmail(lead.email)}:`, reason);
     return { success: false, error: String(reason) };
   }
 };
@@ -502,24 +503,24 @@ const upsertBuyBoxContact = async (lead, { listId, label, attributes, fallback }
 
   try {
     const { smsConflict } = await upsertContact({ email: lead.email, attributes, listIds }, label);
-    console.log(`✅ Brevo ${label} synced: ${lead.email}`);
+    console.log(`✅ Brevo ${label} synced: ${maskEmail(lead.email)}`);
     return { success: true, smsConflict };
   } catch (err) {
     const reason = err.response?.data?.message || err.message;
     if (err.response?.status !== 400) {
-      console.error(`❌ Brevo ${label} sync failed: ${lead.email}:`, reason);
+      console.error(`❌ Brevo ${label} sync failed: ${maskEmail(lead.email)}:`, reason);
       return { success: false, error: String(reason) };
     }
-    console.warn(`⚠️  Brevo ${label} rejected attributes for ${lead.email} (${reason}) — retrying with name + SMS only.`);
+    console.warn(`⚠️  Brevo ${label} rejected attributes for ${maskEmail(lead.email)} (${reason}) — retrying with name + SMS only.`);
   }
 
   try {
     const { smsConflict } = await upsertContact({ email: lead.email, attributes: fallback, listIds }, `${label} (minimal)`);
-    console.log(`✅ Brevo ${label} synced (name + SMS only): ${lead.email}`);
+    console.log(`✅ Brevo ${label} synced (name + SMS only): ${maskEmail(lead.email)}`);
     return { success: true, partial: true, smsConflict };
   } catch (err) {
     const reason = err.response?.data?.message || err.message;
-    console.error(`❌ Brevo ${label} sync failed: ${lead.email}:`, reason);
+    console.error(`❌ Brevo ${label} sync failed: ${maskEmail(lead.email)}:`, reason);
     return { success: false, error: String(reason) };
   }
 };
@@ -608,18 +609,18 @@ const sendTemplateEmail = async ({ templateId, label, email, name, params = {} }
         headers: { "api-key": BREVO_API_KEY, "Content-Type": "application/json" },
         timeout: 10000,
       });
-      console.log(`✅ Brevo ${label} email sent to ${email} — messageId ${data?.messageId || "?"} (attempt ${attempt})`);
+      console.log(`✅ Brevo ${label} email sent to ${maskEmail(email)} — messageId ${data?.messageId || "?"} (attempt ${attempt})`);
       return { success: true, messageId: data?.messageId || "", attempts: attempt };
     } catch (err) {
       lastError = String(err.response?.data?.message || err.message);
-      console.warn(`⚠️  Brevo ${label} email attempt ${attempt}/${WELCOME_EMAIL_ATTEMPTS} failed for ${email}: ${lastError}`);
+      console.warn(`⚠️  Brevo ${label} email attempt ${attempt}/${WELCOME_EMAIL_ATTEMPTS} failed for ${maskEmail(email)}: ${lastError}`);
       // A 4xx other than rate-limit won't fix itself on retry.
       const status = err.response?.status;
       if (status && status >= 400 && status < 500 && status !== 429) break;
       if (attempt < WELCOME_EMAIL_ATTEMPTS) await new Promise((r) => setTimeout(r, attempt * 1000));
     }
   }
-  console.error(`❌ Brevo ${label} email failed for ${email}: ${lastError}`);
+  console.error(`❌ Brevo ${label} email failed for ${maskEmail(email)}: ${lastError}`);
   return { success: false, attempts: WELCOME_EMAIL_ATTEMPTS, error: lastError };
 };
 
@@ -704,11 +705,11 @@ const syncOutboundSmsContact = async (contact) => {
       "outbound-sms"
     );
 
-    console.log(`✅ Brevo outbound SMS synced: ${contact.email} → list ${listId}`);
+    console.log(`✅ Brevo outbound SMS synced: ${maskEmail(contact.email)} → list ${listId}`);
     return { success: true, smsConflict };
   } catch (err) {
     const reason = err.response?.data?.message || err.message;
-    console.error(`❌ Brevo outbound SMS sync failed: ${contact.email}:`, reason);
+    console.error(`❌ Brevo outbound SMS sync failed: ${maskEmail(contact.email)}:`, reason);
     return { success: false, error: String(reason) };
   }
 };
@@ -747,11 +748,11 @@ const trackEvent = async ({ eventName, email, eventProperties = {}, contactPrope
       },
     });
 
-    console.log(`✅ Brevo event tracked: ${eventName} (${email})`);
+    console.log(`✅ Brevo event tracked: ${eventName} (${maskEmail(email)})`);
     return { success: true };
   } catch (err) {
     const reason = err.response?.data?.message || err.message;
-    console.error(`❌ Brevo event failed: ${eventName} (${email}):`, reason);
+    console.error(`❌ Brevo event failed: ${eventName} (${maskEmail(email)}):`, reason);
     return { success: false, error: String(reason) };
   }
 };
@@ -834,6 +835,7 @@ module.exports = {
   syncNewDealsLead,
   sendNewDealsWelcomeEmail,
   sendPropertyRequestEmail,
+  sendTemplateEmail,
   syncOutboundSmsContact,
   trackEvent,
 };
