@@ -161,7 +161,7 @@ const addReferenceExample = catchAsyncError(async (req, res, next) => {
 });
 
 const runPull = catchAsyncError(async (req, res) => {
-    background("manual pull", runDailyPull);
+    background("manual pull", () => runDailyPull({ force: true }));
     res.status(202).json({ success: true, message: "Daily pull started" });
 });
 

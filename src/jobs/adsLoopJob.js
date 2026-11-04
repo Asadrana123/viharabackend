@@ -16,14 +16,16 @@ const { replayMissed } = require("../services/adsLoop/slackHandlers");
 const { recoverBuilds } = require("../services/adsLoop/creativePipeline");
 const { getState, updateState } = require("../services/adsLoop/loopState");
 const slack = require("../services/adsLoop/slackBot");
+const { heartbeatText } = require("../services/adsLoop/dailyMessages");
 
+/**
+ * Saves the heartbeat time every day (the hourly stale check and the health endpoint read it),
+ * but posts only when something needs a person (see dailyMessages.js).
+ */
 async function postHeartbeat() {
     const state = await getState();
-    const missing = missingSettings();
-    await slack.postMessage({
-        channel: getAdsLoopConfig().slack.adsWeeklyChannel,
-        text: `💓 Ads loop is running. Last pull: ${state.lastPullSummary || "never"}${state.killSwitch?.on ? "\n🛑 Kill switch is ON." : ""}${missing.length ? `\n⚠️ Missing settings: ${missing.join(", ")}` : ""}`,
-    });
+    const text = heartbeatText({ state, missing: missingSettings() });
+    if (text) await slack.postMessage({ channel: getAdsLoopConfig().slack.adsWeeklyChannel, text });
     await updateState({ $set: { lastHeartbeatAt: new Date() } });
 }
 
@@ -65,7 +67,7 @@ function startAdsLoopJob() {
     cron.schedule(config.schedules.heartbeat, safe("heartbeat", postHeartbeat), opts);
     cron.schedule(config.schedules.weeklyList, safe("weekly list", runWeeklyAnalysis), opts);
     cron.schedule("15 * * * *", safe("heartbeat check", checkHeartbeat), opts);
-    console.log("[adsLoop] scheduled: pull 06:00 IST, heartbeat 06:30 IST, weekly list Mon 09:00 IST.");
+    console.log("[adsLoop] scheduled: pull 06:00 IST, heartbeat 06:30 IST (posts only on a problem), weekly list Mon 09:00 IST.");
 }
 
 /** Run once MongoDB is connected. */

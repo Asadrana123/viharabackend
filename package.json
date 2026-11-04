@@ -1,6 +1,6 @@
 {
  "scripts": {
-  "test": "node --test \"src/services/analytics/*.test.js\" \"src/services/leads/*.test.js\" \"src/services/calling/*.test.js\" \"src/services/vtext/*.test.js\" \"src/services/marketing/*.test.js\" \"src/middleware/*.test.js\" \"src/routes/*.test.js\" \"src/socket/*.test.js\" \"src/controller/users/*.test.js\" \"src/services/studio/*.test.js\" \"src/utils/*.test.js\"",
+  "test": "node --test \"src/services/analytics/*.test.js\" \"src/services/leads/*.test.js\" \"src/services/calling/*.test.js\" \"src/services/vtext/*.test.js\" \"src/services/marketing/*.test.js\" \"src/services/adsLoop/*.test.js\" \"src/middleware/*.test.js\" \"src/routes/*.test.js\" \"src/socket/*.test.js\" \"src/controller/users/*.test.js\" \"src/services/studio/*.test.js\" \"src/utils/*.test.js\"",
   "start": "node src/index.js",
   "dev": "nodemon src/index.js",
   "worker:sendify": "node src/workers/sendifyWorker.js"

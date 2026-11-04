@@ -20,7 +20,8 @@ const zernio = require("./zernioClient");
 const slack = require("./slackBot");
 const { parseName, STAGES } = require("./creativeId");
 const { leadCountsBetween } = require("./leadJoin");
-const { updateState } = require("./loopState");
+const { getState, updateState } = require("./loopState");
+const { pullAlertText, unmatchedIds } = require("./dailyMessages");
 
 const n = (v) => (v === undefined || v === null || v === "" || !Number.isFinite(Number(v)) ? null : Number(v));
 const round = (v, d = 4) => (v === null ? null : Math.round(v * 10 ** d) / 10 ** d);
@@ -180,8 +181,12 @@ async function joinLeads({ date, start, end }) {
 // ---------------------------------------------------------------------------
 let isRunning = false;
 
-/** Runs the pull for yesterday (or `date`). Returns a short summary line. */
-async function runDailyPull() {
+/**
+ * Runs the pull for yesterday. Returns a short summary line.
+ * @param {object} [options]
+ * @param {boolean} [options.force] - a manual pull: post the full unmatched list even if nothing changed
+ */
+async function runDailyPull({ force = false } = {}) {
     if (isRunning) return "A pull is already running";
     isRunning = true;
     const { adsWeeklyChannel } = getAdsLoopConfig().slack;
@@ -191,31 +196,17 @@ async function runDailyPull() {
         const organicRows = await pullOrganic(window.date);
         const leadRows = await joinLeads(window);
 
-        if (ads.unmatched.length) {
-            const list = ads.unmatched
-                .slice(0, 20)
-                .map((ad) => `• ${ad.name} (${ad.status}, ad ${ad.platformAdId})`)
-                .join("\n");
+        // One message, only when something is new (see dailyMessages.js). The ids are saved
+        // only after the post goes through, so a failed post is retried with the next pull.
+        const state = await getState();
+        const text = pullAlertText({ ...ads, previousUnmatchedIds: state.lastUnmatchedAdIds ?? null, force });
+        if (text) {
             await slack
-                .postMessage({
-                    channel: adsWeeklyChannel,
-                    text: `🔎 *unmatched*: ${ads.unmatched.length} Meta ad${ads.unmatched.length === 1 ? " has" : "s have"} no creative name, so their results can't be joined to a creative:\n${list}${ads.unmatched.length > 20 ? "\n…" : ""}\nName approved ads "AP-<core id>_..." (e.g. AP-BB449-S01_price_hero-photo_static-4x5) to include them.`,
-                })
-                .catch((e) => console.error("[adsLoop] unmatched alert failed:", e.message));
-        }
-        if (ads.unapproved.length) {
-            const list = ads.unapproved.map((ad) => `• ${ad.name} (${ad.status}, ad ${ad.platformAdId})`).join("\n");
-            await slack
-                .postMessage({
-                    channel: adsWeeklyChannel,
-                    text: `🚩 ${ads.unapproved.length} running ad${ads.unapproved.length === 1 ? " is" : "s are"} not named AP-, so an unapproved creative may have been launched by hand:\n${list}`,
-                })
-                .catch((e) => console.error("[adsLoop] unapproved alert failed:", e.message));
-        }
-        if (ads.unknown.length) {
-            await slack
-                .postMessage({ channel: adsWeeklyChannel, text: `🔎 Ads use core ids that aren't in the creatives list yet: ${ads.unknown.join(", ")}.` })
-                .catch(() => {});
+                .postMessage({ channel: adsWeeklyChannel, text })
+                .then(() => updateState({ $set: { lastUnmatchedAdIds: unmatchedIds(ads.unmatched) } }))
+                .catch((e) => console.error("[adsLoop] pull alert failed:", e.message));
+        } else {
+            await updateState({ $set: { lastUnmatchedAdIds: unmatchedIds(ads.unmatched) } });
         }
 
         const summary = `${window.date}: ${ads.matched} creatives with ads, ${ads.unmatched.length} unmatched ads, ${organicRows} organic rows, ${leadRows} creative lead groups`;
