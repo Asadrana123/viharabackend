@@ -21,7 +21,7 @@ const SYSTEM_PROMPT = `You are the performance marketing analyst for Vihara, a U
 You receive ad-level data for the last 7 full days, one row per ad per day. The latest date is "yesterday". Write the daily report for the marketing team's Slack channel.
 
 What to cover:
-1. Yesterday at a glance: total spend, leads, cost per lead, CTR, and how each compares with the 7-day daily average.
+1. Yesterday at a glance: total spend, leads, cost per lead, CTR, and how each compares with the 7-day daily average. The 7-day daily average always means the average over all 7 days in the data, yesterday included; for cost per lead and CTR, use the 7-day totals (total spend divided by total leads, total clicks divided by total impressions).
 2. Winners: the ads/ad sets with the best cost per lead or conversion rate that deserve more budget.
 3. Problems: rising cost per lead, creative fatigue (frequency climbing while CTR drops), spend with zero leads, and very high CPM or CPC.
 4. Actions for today: 3 to 6 specific actions, each naming the exact campaign/ad set/ad, such as pause, scale budget by X%, refresh the creative, test a new hook or audience, or fix the landing page if clicks are high but leads are low.
@@ -38,25 +38,34 @@ Rules:
  */
 async function analyzeMetaAds(rows) {
     client = client || new Anthropic();
-    const response = await client.beta.messages.create({
-        model: MODEL,
-        max_tokens: 16000,
-        thinking: { type: "adaptive" },
-        output_config: { effort: EFFORT },
-        // If a safety classifier declines, the API retries on a fallback model in the same call.
-        betas: ["server-side-fallback-2026-07-01"],
-        fallbacks: "default",
-        system: SYSTEM_PROMPT,
-        messages: [
-            {
-                role: "user",
-                content: `Ad performance, last 7 days (JSON):\n${JSON.stringify(rows)}`,
-            },
-        ],
-    });
+    // Streamed, so the large max_tokens does not hit the SDK's HTTP timeout. At 16,000 the thinking
+    // could use most of the room and the report came back cut off mid-sentence.
+    const response = await client.beta.messages
+        .stream({
+            model: MODEL,
+            max_tokens: 64000,
+            thinking: { type: "adaptive" },
+            output_config: { effort: EFFORT },
+            // If a safety classifier declines, the API retries on a fallback model in the same call.
+            betas: ["server-side-fallback-2026-07-01"],
+            fallbacks: "default",
+            system: SYSTEM_PROMPT,
+            messages: [
+                {
+                    role: "user",
+                    content: `Ad performance, last 7 days (JSON):\n${JSON.stringify(rows)}`,
+                },
+            ],
+        })
+        .finalMessage();
 
     if (response.stop_reason === "refusal") {
         throw new Error("Claude declined to write the report");
+    }
+    // A cut-off report would be posted half-written and starve the repair agent. Fail instead,
+    // so the job posts its "report failed" message.
+    if (response.stop_reason === "max_tokens") {
+        throw new Error("Claude's report was cut off (token limit reached)");
     }
 
     const text = response.content

@@ -20,6 +20,9 @@ const adsLoopStateSchema = new mongoose.Schema(
         lastPullSummary: { type: String, default: "" },
         lastWeeklyAt: { type: Date, default: null },
         lastStaleAlertAt: { type: Date, default: null },
+        // platformAdIds in the last posted "unmatched ads" list; null until the first post.
+        // The daily pull only posts ads that are not in it.
+        lastUnmatchedAdIds: { type: [String], default: undefined },
     },
     { timestamps: true }
 );

@@ -11,8 +11,10 @@
 // nobody was told yet — one Slack message goes out with the listing link and:
 //   Hide from site   showOnAuctions off + market sync paused (approvers only)
 //   Keep live        clears the alert; the property stays as it is
-// Nothing is hidden automatically. After every daily check a summary goes to
-// the same channel (status counts, live properties not for sale, failures).
+// Nothing is hidden automatically. After the daily check a summary goes to the
+// same channel (status counts, live properties not for sale, failures), but only
+// when something changed, a check failed twice in a row, or on Mondays
+// (statusReportRules.js). The alerts above are never held back.
 
 const productModel = require("../../model/property/productModel");
 const firecrawlService = require("../integrations/firecrawlService");
@@ -20,6 +22,8 @@ const { parseMarketDataPropertyJson } = require("./parsers/marketDataPropertyJso
 const { auctionPageUrl } = require("../../config/siteUrls");
 const guard = require("../adsLoop/guardrails");
 const slack = require("../adsLoop/slackBot");
+const ReportState = require("../../model/property/marketStatusReportStateModel");
+const { decideDailyReport } = require("./statusReportRules");
 
 const { section, context, button, actions } = slack.blocks;
 
@@ -203,21 +207,45 @@ function reportBlocks(summary, rows) {
     return blocks;
 }
 
+/** Posts the summary. Returns true when it went through. */
 async function postDailyReport(summary, rows) {
     const channel = slackChannel();
-    if (!channel) return;
+    if (!channel) return false;
     const text = `Daily property status check: ${summary.checked}/${summary.total} checked, ${summary.alerts} new alert(s)`;
-    await slack
-        .postMessage({ channel, text, blocks: reportBlocks(summary, rows) })
-        .catch((e) => console.error("[marketStatus] Daily report to Slack failed:", e.message));
+    try {
+        await slack.postMessage({ channel, text, blocks: reportBlocks(summary, rows) });
+        return true;
+    } catch (e) {
+        console.error("[marketStatus] Daily report to Slack failed:", e.message);
+        return false;
+    }
+}
+
+/**
+ * Posts the summary when statusReportRules says so, and saves what was seen. What was
+ * posted is saved only when the post went through, so a failed post is tried again.
+ */
+async function reportIfChanged(summary, rows, { force = false } = {}) {
+    const state = await ReportState.findOne({ key: "default" }).lean();
+    const decision = decideDailyReport({ rows, state, force });
+    // A property that is checked fine again drops out, so a later repeat failure is posted again.
+    const stillFailing = (state?.postedFailedIds || []).filter((id) => decision.failed.includes(id));
+    const update = { lastFailedIds: decision.failed, postedFailedIds: stillFailing, lastCheckAt: new Date() };
+    if (decision.post && (await postDailyReport(summary, rows))) {
+        Object.assign(update, { notForSaleKey: decision.key, postedFailedIds: decision.repeatedFailures, lastPostedAt: new Date() });
+    }
+    console.log(`[marketStatus] Daily summary ${decision.post ? "posted" : "not posted"} (${decision.reason}).`);
+    await ReportState.updateOne({ key: "default" }, { $set: update }, { upsert: true });
 }
 
 /**
  * Check every property live on /auctions with a linked, not-paused listing,
- * then post the daily summary to Slack.
+ * then post the daily summary to Slack when something changed (see statusReportRules.js).
+ * @param {object} [options]
+ * @param {boolean} [options.force] - run by hand: always post the summary
  * @returns {Promise<{ total:number, checked:number, failed:number, alerts:number, skipped?:string }>}
  */
-async function checkAllStatuses() {
+async function checkAllStatuses({ force = false } = {}) {
     const summary = { total: 0, checked: 0, failed: 0, alerts: 0 };
     if (!firecrawlService.isConfigured()) return { ...summary, skipped: "FIRECRAWL_API_KEY missing" };
 
@@ -242,7 +270,7 @@ async function checkAllStatuses() {
         if (i < products.length - 1) await sleep(DELAY_BETWEEN_PROPERTIES_MS);
     }
 
-    await postDailyReport(summary, rows);
+    await reportIfChanged(summary, rows, { force }).catch((e) => console.error("[marketStatus] Daily summary failed:", e.message));
     return summary;
 }
 
