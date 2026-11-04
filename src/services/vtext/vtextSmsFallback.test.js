@@ -368,6 +368,13 @@ test("the send-time check: cancels when the iMessage got delivered or they repli
   assert.equal(routeJobs.length, 1);
   assert.ok(routeJobs[0].opts.delay > 0);
 
+  // waited too long (daily cap, texting hours): never sent after the max age
+  f = await makeFallback();
+  const LATER = new Date(f.original.sentAt.getTime() + 25 * 3_600_000);
+  assert.equal(await run(await reload(f.sms), f.contact, LATER), true);
+  assert.equal((await reload(f.sms)).status, "cancelled");
+  assert.match((await reload(f.original)).fallback.reason, /older than 24 hours/);
+
   // switched off meanwhile
   f = await makeFallback();
   process.env.VTEXT_SMS_FALLBACK_ENABLED = "false";

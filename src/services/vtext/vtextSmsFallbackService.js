@@ -259,6 +259,7 @@ async function guardFallbackBeforeSend(message, contact, line, reservationDay, d
   if (!isEnabled()) cancelReason = "SMS fallback was switched off";
   else if (original && ["delivered", "read"].includes(original.status)) cancelReason = "the iMessage was delivered";
   else if (original && contact?.lastInboundAt && new Date(contact.lastInboundAt) > new Date(original.sentAt || original.createdAt)) cancelReason = "they replied after the iMessage was sent";
+  else if (original && now.getTime() - new Date(original.sentAt || original.createdAt).getTime() > maxAgeHours() * 3_600_000) cancelReason = `the text is older than ${maxAgeHours()} hours`;
 
   if (cancelReason) {
     await capacity.release(line, reservationDay, { wasReply: message.isReplyToInbound });
