@@ -242,5 +242,5 @@ test("registerWebhooks only touches the Messaging Service when the line owns it"
 
   const managed = await adapter.registerWebhooks({ line: makeLine({ config: { ...goodConfig, manageServiceWebhooks: true } }), publicUrl });
   assert.equal(managed.manual, false);
-  assert.deepEqual(updates, [[SERVICE_SID, { inboundRequestUrl: publicUrl, inboundMethod: "POST" }]]);
+  assert.deepEqual(updates, [[SERVICE_SID, { inboundRequestUrl: publicUrl, inboundMethod: "POST", useInboundWebhookOnNumber: false }]]);
 });

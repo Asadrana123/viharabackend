@@ -249,6 +249,8 @@ module.exports = {
     const service = await client.updateMessagingService(line.config.messagingServiceSid, {
       inboundRequestUrl: publicUrl,
       inboundMethod: "POST",
+      // The service's own URL is ignored while it defers to the sender's (number's) webhook, so turn that off.
+      useInboundWebhookOnNumber: false,
     });
     return { manual: false, inboundRequestUrl: service?.inboundRequestUrl };
   },
