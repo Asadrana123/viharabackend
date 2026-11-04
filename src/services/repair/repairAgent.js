@@ -17,7 +17,7 @@ const path = require("path").posix;
 const Anthropic = require("@anthropic-ai/sdk");
 const babel = require("@babel/parser");
 const { createGithubClient, GithubError } = require("../design/githubService");
-const { getRepairConfig } = require("../../config/repair/repairConfig");
+const { getRepairConfig, githubTokenName } = require("../../config/repair/repairConfig");
 const { fetchPage } = require("./checks");
 const meta = require("./metaGraph");
 const { gaReport } = require("./gaTool");
@@ -72,16 +72,16 @@ function getClient() {
     return client;
 }
 
-/** GitHub clients for both repos, with the repair token. */
+/** GitHub clients for both repos, each with its own token (see repairConfig.js). */
 function repoClients() {
     const config = getRepairConfig();
     const make = (name) =>
         createGithubClient({
             repo: () => config.repos[name],
-            token: () => config.githubToken,
+            token: () => config.githubTokens[name],
             baseBranch: () => config.baseBranch,
             label: "the repair agent",
-            tokenName: "REPAIR_GITHUB_TOKEN",
+            tokenName: githubTokenName(name),
         });
     return { website: make("website"), backend: make("backend") };
 }
