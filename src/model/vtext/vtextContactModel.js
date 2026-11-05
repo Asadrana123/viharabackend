@@ -49,6 +49,15 @@ const vtextContactSchema = new mongoose.Schema(
       },
     ],
 
+    // Starred by an admin in the Inbox. Shared across the whole team, and set on the person (not one thread)
+    // so their iMessage and SMS conversations both show it.
+    starred: {
+      isStarred: { type: Boolean, default: false, index: true },
+      at: { type: Date },
+      byAdminId: { type: mongoose.Schema.Types.ObjectId },
+      byAdminName: { type: String },
+    },
+
     stickyLines: { type: Map, of: mongoose.Schema.Types.ObjectId, default: {} }, // channelType -> lineId
     // Is this number on iPhone (FaceTime test)? Learned from our own iMessages:
     // "Delivered" = yes, error 22 = no. Kept apart from channelReachability on
