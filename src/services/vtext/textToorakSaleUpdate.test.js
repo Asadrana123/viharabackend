@@ -98,14 +98,24 @@ test("--send: each version, keyed by phone, held to the batch; registered get te
   assert.equal(calls.length, 3);
 });
 
-test("only people who opted in, whatever the switch; texted before or not", async () => {
-  const { deps, calls } = fakeDeps([property(), financing()], [reg()], { lookups: async () => lookups({ optedInPhones: new Set([P2]) }) });
+test("switch ON: only people who opted in", async () => {
+  const { deps, calls } = fakeDeps([property(), financing()], [reg()], { lookups: async () => lookups({ optedInPhones: new Set([P2]), requireOptIn: true }) });
   const out = await go(deps, ["--send"]);
   assert.deepEqual(out.queued.map((q) => q.id), ["lead:lead2"]);
   const why = Object.fromEntries(out.skipped.map((s) => [s.id, s.reason]));
-  assert.equal(why["lead:lead1"], "did not opt in to texts");
-  assert.equal(why["registration:reg1"], "did not opt in to texts");
+  assert.match(why["lead:lead1"], /did not opt in/);
+  assert.match(why["registration:reg1"], /did not opt in/);
   assert.equal(calls.length, 1);
+});
+
+test("switch OFF: everyone, consent or not, but never an opt-out", async () => {
+  const { deps, calls } = fakeDeps([property(), financing()], [reg()], {
+    lookups: async () => lookups({ optedInPhones: new Set(), requireOptIn: false, contactsByPhone: new Map([[P2, { consent: { status: "opted-out" } }]]) }),
+  });
+  const out = await go(deps, ["--send"]);
+  assert.deepEqual(out.queued.map((q) => q.id), ["lead:lead1", "registration:reg1"]);
+  assert.match(out.skipped.find((s) => s.id === "lead:lead2").reason, /opted out/);
+  assert.equal(calls.length, 2);
 });
 
 test("repeats, the same number twice, and opt-outs are skipped", async () => {
