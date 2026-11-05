@@ -122,6 +122,13 @@ async function processSendJob(lineId, job) {
     message.provider = { messageId: result.providerMessageId };
     if (result.segments !== undefined) message.segments = result.segments; // carrier channels (Twilio) bill per segment
     message.sentAt = new Date();
+    // The channel answered with an error but found the text sent anyway (BlueBubbles on a new chat):
+    // drop the error a retry left behind, and keep a delivery it already saw.
+    if (result.recoveredFrom) message.error = undefined;
+    if (result.deliveredAt) {
+      message.status = "delivered";
+      message.deliveredAt = result.deliveredAt;
+    }
     await message.save();
 
     line.health = line.health || {};
