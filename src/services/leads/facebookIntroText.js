@@ -28,8 +28,11 @@ const TOORAK_TEMPLATES = {
   propertyAfterSale: "Hey {First_name}, it's Maya, Vihara's AI assistant. You asked about {address} on Facebook. Still interested? Reply STOP to opt out.",
   financing: `Hey {First_name}, it's Maya, Vihara's AI assistant. You asked about financing a home on Facebook. What area are you looking in? Or if you'd rather talk it through, a 15 min advisor call is no cost: ${ADVISOR_LINK} Reply STOP to opt out.`,
 };
+// The one-off "sale moved to Nov 15" update (services/leads/toorakSaleUpdateText.js). Prajwal (5 Nov 2026):
+// it counts as a first text, so a number that got it never gets the normal intro as well.
+const TOORAK_SALE_UPDATE_TEMPLATE_KEY = "toorak-nov15-update";
 // Every intro template key: a number that got any of them doesn't get another.
-const INTRO_TEMPLATE_KEYS = [TEMPLATE_KEY, TOORAK_TEMPLATE_KEY];
+const INTRO_TEMPLATE_KEYS = [TEMPLATE_KEY, TOORAK_TEMPLATE_KEY, TOORAK_SALE_UPDATE_TEMPLATE_KEY];
 
 
 /** "jOHN" / "JOHN" / "john" -> "John"; "McDonald", "Mary-Ann", "O'Neil" keep/get sensible case. */
@@ -135,4 +138,4 @@ function planLeads(leads, { contactsByPhone, sentByKey, phonesAlreadyTexted }, {
   return { sendable, skipped };
 }
 
-module.exports = { TEMPLATE_KEY, TEMPLATE, TOORAK_TEMPLATE_KEY, TOORAK_TEMPLATES, INTRO_TEMPLATE_KEYS, keyFor, capitalise, firstNameOf, upToReadsWrong, renderIntro, planLeads };
+module.exports = { TEMPLATE_KEY, TEMPLATE, TOORAK_TEMPLATE_KEY, TOORAK_TEMPLATES, TOORAK_SALE_UPDATE_TEMPLATE_KEY, INTRO_TEMPLATE_KEYS, keyFor, capitalise, firstNameOf, upToReadsWrong, renderIntro, planLeads };

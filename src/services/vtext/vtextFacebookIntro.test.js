@@ -203,7 +203,7 @@ test("the sms_consent box counts as text consent on any form; other leads keep t
   await maybeSendFacebookIntroText({ doc: lead({ consent: false, consentSource: "", smsConsent: true }), isNew: true }, deps());
   assert.equal(calls.length, 1);
   assert.equal(calls[0].origin.templateKey, TEMPLATE_KEY);
-  assert.deepEqual(INTRO_TEMPLATE_KEYS, [TEMPLATE_KEY, TOORAK_TEMPLATE_KEY]);
+  assert.deepEqual(INTRO_TEMPLATE_KEYS, [TEMPLATE_KEY, TOORAK_TEMPLATE_KEY, "toorak-nov15-update"]);
 });
 
 test("Toorak skip rules still apply: repeat, stopped, opted out", async () => {
