@@ -58,6 +58,13 @@ async function viewUrl(key, env = process.env) {
   return getSignedUrl(s.client, new GetObjectCommand({ Bucket: s.bucket, Key: key }), { expiresIn: VIEW_SECONDS });
 }
 
+/** Stores bytes the backend received (an editor's uploaded image, D-047). */
+async function putObject(key, body, contentType, env = process.env) {
+  const s = storage(env);
+  if (!s) throw new Error("Storage is not set up.");
+  await s.client.send(new PutObjectCommand({ Bucket: s.bucket, Key: key, Body: body, ContentType: contentType }));
+}
+
 /** The uploaded file's size, or null when it is not there. */
 async function storedBytes(key, env = process.env) {
   const s = storage(env);
@@ -71,4 +78,4 @@ async function storedBytes(key, env = process.env) {
   }
 }
 
-module.exports = { storage, cleanCut, uploadUrl, viewUrl, storedBytes };
+module.exports = { storage, cleanCut, uploadUrl, viewUrl, storedBytes, putObject };

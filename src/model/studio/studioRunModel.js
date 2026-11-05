@@ -10,13 +10,15 @@ const mongoose = require("mongoose");
 
 const commandSchema = new mongoose.Schema(
   {
-    type: { type: String, enum: ["open", "pick", "gate", "frames", "generate", "remake", "clip", "build", "cut"], required: true },
+    type: { type: String, enum: ["open", "pick", "gate", "frames", "generate", "remake", "clip", "build", "cut", "idea", "craft", "hook", "vo", "shot", "image"], required: true },
     what: { type: String, default: null },
     choice: { type: String, default: null },
     decision: { type: String, default: null },
     words: { type: String, default: "" },
     // A cut revision's shots to make again (D-046).
     shots: { type: [String], default: undefined },
+    // D-047: the editor's own hook, voiceover lines, camera move, craft or uploaded image, as checked.
+    data: { type: mongoose.Schema.Types.Mixed, default: undefined },
     byName: { type: String, required: true },
     at: { type: Date, default: Date.now },
     doneAt: { type: Date, default: null },
