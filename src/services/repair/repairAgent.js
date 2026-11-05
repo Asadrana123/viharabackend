@@ -82,6 +82,7 @@ function repoClients() {
             baseBranch: () => config.baseBranch,
             label: "the repair agent",
             tokenName: githubTokenName(name),
+            vercelPreviews: name === "website",
         });
     return { website: make("website"), backend: make("backend") };
 }
