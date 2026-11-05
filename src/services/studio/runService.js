@@ -28,6 +28,17 @@ const plan = (p) => {
   return { beats: Number(p.beats) || 0, seconds: Number(p.seconds) || 0, errors: list(p.errors), warnings: list(p.warnings), price: { total: Number(p.price?.total) || 0, items } };
 };
 
+/** A video's costs as the server reports them: what, which tool, how much, who made it and when. */
+function cleanCosts(c) {
+  if (!c || typeof c !== "object") return null;
+  const money = (n) => Math.round((Number(n) || 0) * 10000) / 10000;
+  return {
+    total: money(c.total),
+    items: (Array.isArray(c.items) ? c.items.slice(0, 200) : []).map((i) => ({ what: clip(i?.what, 60), tool: clip(i?.tool, 40), usd: money(i?.usd), by: i?.by ? clip(i.by, 80) : null, at: i?.at ? clip(i.at, 40) : null, replaced: Boolean(i?.replaced) })),
+    byTool: (Array.isArray(c.byTool) ? c.byTool.slice(0, 20) : []).map((t) => ({ tool: clip(t?.tool, 40), usd: money(t?.usd) })),
+  };
+}
+
 /** Checks what the server says about one run, and returns the fields stored. */
 function cleanUpdate(u) {
   const runId = String(u?.runId ?? "");
@@ -51,6 +62,8 @@ function cleanUpdate(u) {
       framesPrice: Number(u?.framesPrice) || 0,
       clips: Array.isArray(u?.clips) ? u.clips.slice(0, 100).map((c) => ({ ref: clip(c?.ref, 120), state: clip(c?.state, 30), note: c?.note ? clip(c.note, 500) : null, slot: clip(c?.slot, 90) })) : [],
       cut: u?.cut ? { name: clip(u.cut.name, 120), state: clip(u.cut.state, 30), seconds: Number(u.cut.seconds) || 0 } : null,
+      // What the video has cost so far, item by item, and by tool.
+      costs: cleanCosts(u?.costs),
       // What making the rejected clips again costs (D-046); null when none is rejected.
       remakePrice: u?.remakePrice === null || u?.remakePrice === undefined ? null : Number(u.remakePrice) || 0,
       spent: Number(u?.spent) || 0,

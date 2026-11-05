@@ -272,9 +272,9 @@ const decideStudioProposal = catchAsyncError(async (req, res, next) => {
 });
 
 const runView = async (r) => {
-  const { runId, propertyId, requestedByName, coreId, state, concepts, hooks, plan, error, frames, framesPrice, clips, cut, spent, remakePrice, media } = r;
+  const { runId, propertyId, requestedByName, coreId, state, concepts, hooks, plan, error, frames, framesPrice, clips, cut, spent, costs, remakePrice, media } = r;
   const urls = Object.fromEntries(await Promise.all(Object.entries(media ?? {}).map(async ([slot, m]) => [slot, await viewUrl(m.key)])));
-  return { runId, propertyId, requestedByName, coreId, state, concepts, hooks, plan, error, frames: frames ?? [], framesPrice: framesPrice ?? 0, clips, cut, spent, remakePrice: remakePrice ?? null, urls };
+  return { runId, propertyId, requestedByName, coreId, state, concepts, hooks, plan, error, frames: frames ?? [], framesPrice: framesPrice ?? 0, clips, cut, spent, costs: costs ?? null, remakePrice: remakePrice ?? null, urls };
 };
 
 /** GET /api/v1/studio/runs - the videos in progress, newest first, and the properties ready for one. */

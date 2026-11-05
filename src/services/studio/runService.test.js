@@ -113,6 +113,12 @@ test("the image storyboard is drawn on a click within the limit, and each frame 
   assert.equal(cleanSlot("frame-hook-still"), "frame-hook-still");
 });
 
+test("a video's costs are kept item by item and by tool", () => {
+  const u = cleanUpdate({ runId: "1793500000.000001", state: "clips", costs: { total: 1.69, items: [{ what: "Property clip", tool: "Kling", usd: 0.672, by: "Preetham", at: "2026-11-05T10:00:00.000Z", replaced: true }], byTool: [{ tool: "Kling", usd: 1.34 }] } });
+  assert.deepEqual(u.fields.costs, { total: 1.69, items: [{ what: "Property clip", tool: "Kling", usd: 0.672, by: "Preetham", at: "2026-11-05T10:00:00.000Z", replaced: true }], byTool: [{ tool: "Kling", usd: 1.34 }] });
+  assert.equal(cleanUpdate({ runId: "1793500000.000001", state: "clips" }).fields.costs, null);
+});
+
 test("a file goes only in a known slot", () => {
   assert.equal(cleanSlot("clip-rent-day-rent-counter"), "clip-rent-day-rent-counter");
   assert.equal(cleanSlot("cut"), "cut");

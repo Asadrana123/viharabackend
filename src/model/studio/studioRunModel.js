@@ -42,6 +42,8 @@ const runSchema = new mongoose.Schema(
     clips: { type: [mongoose.Schema.Types.Mixed], default: [] },
     cut: { type: mongoose.Schema.Types.Mixed, default: null },
     spent: { type: Number, default: 0 },
+    // Where the money went, item by item and by tool, as the server last reported it.
+    costs: { type: mongoose.Schema.Types.Mixed, default: null },
     // The price of making the rejected clips again (D-046); null when none is rejected.
     remakePrice: { type: Number, default: null },
     // Files in the private bucket, by slot: animatic, clip-<ref>, cut. Keys never reach a browser.
