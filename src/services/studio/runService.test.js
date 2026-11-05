@@ -124,3 +124,11 @@ test("a file goes only in a known slot", () => {
   assert.equal(cleanSlot("cut"), "cut");
   assert.throws(() => cleanSlot("../x"), /not a file slot/);
 });
+
+test("the editor chooses the Claude model that writes the video, from the three on offer", () => {
+  const { cleanModel, CLAUDE_MODELS } = require("./runService");
+  assert.deepEqual(CLAUDE_MODELS, ["haiku", "sonnet", "opus"]);
+  for (const m of CLAUDE_MODELS) assert.equal(cleanModel(m), m);
+  assert.throws(() => cleanModel(undefined), /Choose the Claude model/);
+  assert.throws(() => cleanModel("claude-opus-5-5"), /Choose the Claude model/);
+});

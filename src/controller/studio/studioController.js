@@ -21,7 +21,7 @@ const { keyMatches, cleanBatch, cleanFeedback, undelivered } = require("../../se
 const { storage, cleanCut, uploadUrl, viewUrl, storedBytes } = require("../../services/studio/cutStorage");
 const { cleanProposals, decideProblem, canSee, cleanDecision, undeliveredDecisions } = require("../../services/studio/proposalService");
 const { cleanProblem, cleanReply, problemView } = require("../../services/studio/problemService");
-const { newRunId, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot } = require("../../services/studio/runService");
+const { newRunId, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, cleanModel } = require("../../services/studio/runService");
 
 const KEY = /^[a-z][a-z0-9-]{1,30}$/;
 
@@ -272,9 +272,9 @@ const decideStudioProposal = catchAsyncError(async (req, res, next) => {
 });
 
 const runView = async (r) => {
-  const { runId, propertyId, requestedByName, coreId, state, concepts, hooks, plan, error, frames, framesPrice, clips, cut, spent, costs, remakePrice, media } = r;
+  const { runId, propertyId, requestedByName, coreId, model, state, concepts, hooks, plan, error, frames, framesPrice, clips, cut, spent, costs, remakePrice, media } = r;
   const urls = Object.fromEntries(await Promise.all(Object.entries(media ?? {}).map(async ([slot, m]) => [slot, await viewUrl(m.key)])));
-  return { runId, propertyId, requestedByName, coreId, state, concepts, hooks, plan, error, frames: frames ?? [], framesPrice: framesPrice ?? 0, clips, cut, spent, costs: costs ?? null, remakePrice: remakePrice ?? null, urls };
+  return { runId, propertyId, requestedByName, coreId, model: model ?? null, state, concepts, hooks, plan, error, frames: frames ?? [], framesPrice: framesPrice ?? 0, clips, cut, spent, costs: costs ?? null, remakePrice: remakePrice ?? null, urls };
 };
 
 /** GET /api/v1/studio/runs - the videos in progress, newest first, and the properties ready for one. */
@@ -285,13 +285,19 @@ const listRuns = catchAsyncError(async (req, res) => {
   res.status(200).json({ success: true, isAdmin, runs: await Promise.all(runs.map(runView)), ready: ready?.rows ?? [], checkedAt: ready?.checkedAt ?? null });
 });
 
-/** POST /api/v1/studio/runs  { propertyId } - starts a video for a property the server says is ready. */
+/** POST /api/v1/studio/runs  { propertyId, model } - starts a video for a property the server says is ready, written by the Claude model the editor chose. */
 const startRun = catchAsyncError(async (req, res, next) => {
   const propertyId = String(req.body?.propertyId ?? "");
+  let model;
+  try {
+    model = cleanModel(req.body?.model);
+  } catch (e) {
+    return next(new ErrorHandler(e.message, 400));
+  }
   const ready = await StudioReady.findOne({ key: "videos" }).lean();
   if (!ready?.rows.some((r) => r.propertyId === propertyId && r.ready)) return next(new ErrorHandler("That property is not ready for a video.", 400));
   const { name } = await decider(req.user);
-  const run = await StudioRun.create({ runId: newRunId(), propertyId, requestedBy: req.user._id, requestedByName: name, state: "queued", commands: [{ type: "open", byName: name }] });
+  const run = await StudioRun.create({ runId: newRunId(), propertyId, requestedBy: req.user._id, requestedByName: name, model, state: "queued", commands: [{ type: "open", byName: name }] });
   res.status(201).json({ success: true, run: await runView(run.toObject()) });
 });
 
@@ -317,6 +323,21 @@ const runStep = (build) =>
     await run.save();
     res.status(200).json({ success: true, run: await runView(run.toObject()) });
   });
+/** POST /api/v1/studio/runs/:id/model  { model } - the editor changes the Claude model for the video's next writing step. */
+const setRunModel = catchAsyncError(async (req, res, next) => {
+  const run = await StudioRun.findOne({ runId: String(req.params.id) });
+  if (!run) return next(new ErrorHandler("No such video.", 404));
+  const problem = actProblem(run, req.user);
+  if (problem) return next(new ErrorHandler(problem, 403));
+  try {
+    run.model = cleanModel(req.body?.model);
+  } catch (e) {
+    return next(new ErrorHandler(e.message, 400));
+  }
+  await run.save();
+  res.status(200).json({ success: true, run: await runView(run.toObject()) });
+});
+
 const pickForRun = runStep(pickCommand);
 const gateForRun = runStep(gateCommand);
 const generateForRun = runStep(generateCommand);
@@ -362,7 +383,7 @@ const pollRuns = catchAsyncError(async (req, res, next) => {
   }
   if (ready) await StudioReady.updateOne({ key: "videos" }, { $set: { rows: ready, checkedAt: new Date() } }, { upsert: true });
   const open = await StudioRun.find({ commands: { $elemMatch: { doneAt: null } } }).lean();
-  const commands = open.flatMap((r) => r.commands.filter((c) => !c.doneAt).map((c) => ({ id: String(c._id), runId: r.runId, propertyId: r.propertyId, type: c.type, what: c.what, choice: c.choice, decision: c.decision, words: c.words, ...(c.shots?.length ? { shots: c.shots } : {}), byName: c.byName })));
+  const commands = open.flatMap((r) => r.commands.filter((c) => !c.doneAt).map((c) => ({ id: String(c._id), runId: r.runId, propertyId: r.propertyId, type: c.type, what: c.what, choice: c.choice, decision: c.decision, words: c.words, ...(c.shots?.length ? { shots: c.shots } : {}), ...(r.model ? { model: r.model } : {}), byName: c.byName })));
   res.status(200).json({ success: true, commands });
 });
 
@@ -505,4 +526,4 @@ const syncVideos = catchAsyncError(async (req, res, next) => {
   res.status(200).json({ success: true, stored: rows.length, feedback: undelivered(pending), decisions });
 });
 
-module.exports = { me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, importInterview, updateQuestions, listVideos, addVideoFeedback, syncVideos, requireSyncKey, cutLink, confirmCut, listProposals, decideStudioProposal, listRuns, startRun, pickForRun, gateForRun, generateForRun, framesForRun, remakeForRun, clipForRun, buildForRun, cutForRun, pollRuns, fileLink, confirmFile, listProblems, reportProblem, resolveProblem };
+module.exports = { me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, importInterview, updateQuestions, listVideos, addVideoFeedback, syncVideos, requireSyncKey, cutLink, confirmCut, listProposals, decideStudioProposal, listRuns, startRun, setRunModel, pickForRun, gateForRun, generateForRun, framesForRun, remakeForRun, clipForRun, buildForRun, cutForRun, pollRuns, fileLink, confirmFile, listProblems, reportProblem, resolveProblem };

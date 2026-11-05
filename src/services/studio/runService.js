@@ -12,6 +12,8 @@ const VIDEO_LIMIT_USD = 15;
 const SLOT = /^(animatic|cut|clip-[a-z0-9-]{1,80}|frame-[a-z0-9-]{1,80})$/;
 const FRAME_KINDS = new Set(["photo", "presenter", "generated", "later", "screen"]);
 const MAX_WORDS = 2000;
+// The Claude models an editor may choose to write a video's concepts, hooks and plan. The choice is theirs.
+const CLAUDE_MODELS = ["haiku", "sonnet", "opus"];
 
 const clip = (value, max) => String(value ?? "").slice(0, max);
 
@@ -85,6 +87,13 @@ function cleanReady(list) {
     if (!/^[a-z0-9][a-z0-9-]*$/.test(propertyId)) throw new Error(`"${propertyId}" is not a property id.`);
     return { propertyId, ready: Boolean(r?.ready), photos: Number(r?.photos) || 0, angle: r?.angle ? clip(r.angle, 60) : null, blockedBy: r?.blockedBy ? clip(r.blockedBy, 300) : null };
   });
+}
+
+/** The editor's choice of Claude model, checked. */
+function cleanModel(value) {
+  const model = String(value ?? "");
+  if (!CLAUDE_MODELS.includes(model)) throw new Error("Choose the Claude model that writes this video: Haiku, Sonnet or Opus.");
+  return model;
 }
 
 /** Why this person may not act on this run, or null. */
@@ -187,4 +196,4 @@ function cleanSlot(slot) {
   return s;
 }
 
-module.exports = { VIDEO_LIMIT_USD, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };
+module.exports = { VIDEO_LIMIT_USD, CLAUDE_MODELS, cleanModel, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };

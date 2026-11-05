@@ -25,6 +25,7 @@ router.get("/videos", c.listVideos);
 router.post("/videos/:coreId/feedback", c.addVideoFeedback);
 router.get("/runs", c.listRuns);
 router.post("/runs", c.startRun);
+router.post("/runs/:id/model", c.setRunModel);
 router.post("/runs/:id/pick", c.pickForRun);
 router.post("/runs/:id/gate", c.gateForRun);
 router.post("/runs/:id/generate", c.generateForRun);

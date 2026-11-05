@@ -32,6 +32,9 @@ const runSchema = new mongoose.Schema(
     requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: "userModel", required: true },
     requestedByName: { type: String, required: true },
     coreId: { type: String, default: null },
+    // The Claude model the editor chose to write the concepts, hooks and plan; they may change it for the next step.
+    // null on videos started before the choice existed: the server's default then applies.
+    model: { type: String, enum: ["haiku", "sonnet", "opus", null], default: null },
     state: { type: String, required: true },
     concepts: { type: [mongoose.Schema.Types.Mixed], default: [] },
     hooks: { type: [mongoose.Schema.Types.Mixed], default: [] },
