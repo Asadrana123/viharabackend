@@ -20,10 +20,11 @@ const TEMPLATE = "Hi {First_name}, this is Maya from Vihara. Got it: homes up to
 const keyFor = (leadId) => `fb-intro-text-${leadId}`;
 
 const TOORAK_TEMPLATE_KEY = "toorak-intro";
-// Prajwal's wording (toorak-texts-now.md, 3 Nov 2026). No clock time: listing pages and older copy disagree.
+// Prajwal's wording (toorak-texts-now.md, 3 Nov 2026), sale day moved from "this Saturday, Nov 7" to Sunday,
+// Nov 15 (5 Nov 2026). No clock time in the text, on purpose.
 const ADVISOR_LINK = "cal.com/vihara-ai-advisor";
 const TOORAK_TEMPLATES = {
-  property: "Hey {First_name}, it's Maya, Vihara's AI assistant. You asked about {address} on Facebook. Still interested? It sells online this Saturday, Nov 7. Reply STOP to opt out.",
+  property: "Hey {First_name}, it's Maya, Vihara's AI assistant. You asked about {address} on Facebook. Still interested? It sells online on Sunday, Nov 15. Reply STOP to opt out.",
   propertyAfterSale: "Hey {First_name}, it's Maya, Vihara's AI assistant. You asked about {address} on Facebook. Still interested? Reply STOP to opt out.",
   financing: `Hey {First_name}, it's Maya, Vihara's AI assistant. You asked about financing a home on Facebook. What area are you looking in? Or if you'd rather talk it through, a 15 min advisor call is no cost: ${ADVISOR_LINK} Reply STOP to opt out.`,
 };

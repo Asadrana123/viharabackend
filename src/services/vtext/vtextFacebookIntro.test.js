@@ -140,17 +140,17 @@ const BEFORE_SALE = new Date("2026-11-03T15:00:00Z");
 
 test("Toorak property lead: names the home and the sale day, no link, no price answer needed", () => {
   const r = renderIntro(toorakLead(baltimore), BEFORE_SALE);
-  assert.equal(r.text, "Hey John, it's Maya, Vihara's AI assistant. You asked about 2529-2531 E Monument St, Baltimore on Facebook. Still interested? It sells online this Saturday, Nov 7. Reply STOP to opt out.");
+  assert.equal(r.text, "Hey John, it's Maya, Vihara's AI assistant. You asked about 2529-2531 E Monument St, Baltimore on Facebook. Still interested? It sells online on Sunday, Nov 15. Reply STOP to opt out.");
   assert.equal(r.templateKey, TOORAK_TEMPLATE_KEY);
 });
 
 test("Toorak property lead: the sale sentence goes once that home's sale starts (11 AM local)", () => {
   const nola = { ...baltimore, key: "ml-1983-law-st" };
   // 11:30 AM Eastern = 10:30 AM Central: Baltimore's sale has started, New Orleans' hasn't.
-  const at = new Date("2026-11-07T16:30:00Z");
+  const at = new Date("2026-11-15T16:30:00Z");
   assert.equal(renderIntro(toorakLead(baltimore), at).text, "Hey John, it's Maya, Vihara's AI assistant. You asked about 2529-2531 E Monument St, Baltimore on Facebook. Still interested? Reply STOP to opt out.");
-  assert.match(renderIntro(toorakLead(nola), at).text, /1983 Law St, New Orleans on Facebook\. Still interested\? It sells online this Saturday, Nov 7\./);
-  assert.doesNotMatch(renderIntro(toorakLead(nola), new Date("2026-11-07T17:00:00Z")).text, /Saturday/);
+  assert.match(renderIntro(toorakLead(nola), at).text, /1983 Law St, New Orleans on Facebook\. Still interested\? It sells online on Sunday, Nov 15\./);
+  assert.doesNotMatch(renderIntro(toorakLead(nola), new Date("2026-11-15T17:00:00Z")).text, /Nov 15/);
 });
 
 test("Toorak financing lead: asks the area and offers the advisor call", () => {
@@ -192,11 +192,11 @@ test("other Facebook leads still follow the switch", async () => {
 });
 
 test("a Toorak lead at night is held until 9 AM in its time zone, worded for then", async () => {
-  // 11 PM Pacific on Nov 6 -> 9 AM Pacific on Nov 7 (17:00Z), which is after Baltimore's sale started (16:00Z).
-  await maybeSendFacebookIntroText({ doc: toorakLead(baltimore), isNew: true }, deps({ now: () => new Date("2026-11-07T07:00:00Z") }));
+  // 11 PM Pacific on Nov 14 -> 9 AM Pacific on Nov 15 (17:00Z), which is after Baltimore's sale started (16:00Z).
+  await maybeSendFacebookIntroText({ doc: toorakLead(baltimore), isNew: true }, deps({ now: () => new Date("2026-11-15T07:00:00Z") }));
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].scheduledFor.toISOString(), "2026-11-07T17:00:00.000Z");
-  assert.doesNotMatch(calls[0].body, /Saturday/);
+  assert.equal(calls[0].scheduledFor.toISOString(), "2026-11-15T17:00:00.000Z");
+  assert.doesNotMatch(calls[0].body, /Nov 15/);
 });
 
 test("the sms_consent box counts as text consent on any form; other leads keep the old template key", async () => {
