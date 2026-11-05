@@ -36,8 +36,10 @@ function cleanCosts(c) {
   const money = (n) => Math.round((Number(n) || 0) * 10000) / 10000;
   return {
     total: money(c.total),
-    items: (Array.isArray(c.items) ? c.items.slice(0, 200) : []).map((i) => ({ what: clip(i?.what, 60), tool: clip(i?.tool, 40), usd: money(i?.usd), by: i?.by ? clip(i.by, 80) : null, at: i?.at ? clip(i.at, 40) : null, replaced: Boolean(i?.replaced) })),
+    items: (Array.isArray(c.items) ? c.items.slice(0, 200) : []).map((i) => ({ what: clip(i?.what, 60), tool: clip(i?.tool, 40), usd: money(i?.usd), by: i?.by ? clip(i.by, 80) : null, at: i?.at ? clip(i.at, 40) : null, replaced: Boolean(i?.replaced), ...(i?.unreported ? { unreported: true } : {}) })),
     byTool: (Array.isArray(c.byTool) ? c.byTool.slice(0, 20) : []).map((t) => ({ tool: clip(t?.tool, 40), usd: money(t?.usd) })),
+    // Items spent on with no amount reported (a Claude run stopped at its time limit): the total is less than was spent.
+    unreported: Math.max(0, Math.min(200, Math.round(Number(c.unreported) || 0))),
   };
 }
 
