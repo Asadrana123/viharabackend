@@ -45,7 +45,7 @@ function toorakReplyRules(toorak, now = new Date()) {
   const link = toorak.listingUrl;
   const beforeSale = toorak.saleStartsAt && now < new Date(toorak.saleStartsAt);
   const where = home
-    ? `This contact came from a Facebook ad for ${home} and got our first text about it.${beforeSale ? " It sells online this Saturday, Nov 7." : ""}`
+    ? `This contact came from a Facebook ad for ${home} and got our first text about it.${beforeSale ? " It sells online on Sunday, Nov 15. The sale was moved from Nov 7: if they mention Nov 7, say it moved to Sunday, Nov 15, which gives them an extra week." : ""}`
     : "This contact came from our Facebook financing form and got our first text asking what area they are looking in.";
   return `
 This is a Facebook (Toorak) lead. ${where}

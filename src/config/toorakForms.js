@@ -9,8 +9,8 @@
 //   kind "property"   ML-Toorak-<city>-v2: one property each, sends to its listing
 //
 // address is the property's name in the welcome email (DEAL_MARKET) and the intro text.
-// saleStartsAt: when the online sale opens (Nov 7, 11 AM local per the listing pages); the intro
-// text names the sale day only before it.
+// saleStartsAt: when the online sale opens (Sunday, Nov 15, 11 AM local; moved from Nov 7, Prajwal 5 Nov
+// 2026); the intro text names the sale day only before it.
 // dealId ties a property form to its spotlight deal in config/newDeals.js
 // (Maya's deal line on a call).
 //
@@ -31,27 +31,27 @@ const TOORAK_FORMS = {
   "1103113942694711": { key: "financing-v2", kind: "financing", name: "Toorak Buyers – Financing – Oct 2026 v2", path: "/auctions" },
   "1571119771728277": {
     key: "ml-baltimore", kind: "property", name: "ML-Toorak-Baltimore-27Oct2026-v2",
-    propertySlug: "2529-2531-e-monument-st-baltimore", dealId: "bal-01", address: "2529-2531 E Monument St, Baltimore", state: "MD", city: "Baltimore", saleStartsAt: "2026-11-07T11:00:00-05:00",
+    propertySlug: "2529-2531-e-monument-st-baltimore", dealId: "bal-01", address: "2529-2531 E Monument St, Baltimore", state: "MD", city: "Baltimore", saleStartsAt: "2026-11-15T11:00:00-05:00",
   },
   "3679551498868299": {
     key: "ml-capitol-heights", kind: "property", name: "ML-Toorak-Capitol Heights-27Oct2026-v2",
-    propertySlug: "703-59th-ave-capitol-heights", dealId: "pg-01", address: "703 59th Ave, Capitol Heights", state: "MD", city: "Capitol Heights", saleStartsAt: "2026-11-07T11:00:00-05:00",
+    propertySlug: "703-59th-ave-capitol-heights", dealId: "pg-01", address: "703 59th Ave, Capitol Heights", state: "MD", city: "Capitol Heights", saleStartsAt: "2026-11-15T11:00:00-05:00",
   },
   "1200670338953487": {
     key: "ml-lathrup-village", kind: "property", name: "ML-Toorak-Lathrup Village-27Oct2026-v2",
-    propertySlug: "18753-san-diego-blvd-lathrup-village", dealId: "det-01", address: "18753 San Diego Blvd, Lathrup Village", state: "MI", city: "Lathrup Village", saleStartsAt: "2026-11-07T11:00:00-05:00",
+    propertySlug: "18753-san-diego-blvd-lathrup-village", dealId: "det-01", address: "18753 San Diego Blvd, Lathrup Village", state: "MI", city: "Lathrup Village", saleStartsAt: "2026-11-15T11:00:00-05:00",
   },
   "1112577325022588": {
     key: "ml-1977-law-st", kind: "property", name: "ML-Toorak-New Orleans 1977 Law St-27Oct2026-v2",
-    propertySlug: "1977-law-st-new-orleans", dealId: "nola-02", address: "1977 Law St, New Orleans", state: "LA", city: "New Orleans", saleStartsAt: "2026-11-07T11:00:00-06:00",
+    propertySlug: "1977-law-st-new-orleans", dealId: "nola-02", address: "1977 Law St, New Orleans", state: "LA", city: "New Orleans", saleStartsAt: "2026-11-15T11:00:00-06:00",
   },
   "1157473749943510": {
     key: "ml-1983-law-st", kind: "property", name: "ML-Toorak-New Orleans 1983 Law St-27Oct2026-v2",
-    propertySlug: "1983-law-st-new-orleans", dealId: "nola-01", address: "1983 Law St, New Orleans", state: "LA", city: "New Orleans", saleStartsAt: "2026-11-07T11:00:00-06:00",
+    propertySlug: "1983-law-st-new-orleans", dealId: "nola-01", address: "1983 Law St, New Orleans", state: "LA", city: "New Orleans", saleStartsAt: "2026-11-15T11:00:00-06:00",
   },
   "1683656083105610": {
     key: "ml-2508-s-prieur-st", kind: "property", name: "ML-Toorak-New Orleans 2508-12 S Prieur St-27Oct2026-v2",
-    propertySlug: "2508-12-s-prieur-st-new-orleans", dealId: "nola-03", address: "2508-12 S Prieur St, New Orleans", state: "LA", city: "New Orleans", saleStartsAt: "2026-11-07T11:00:00-06:00",
+    propertySlug: "2508-12-s-prieur-st-new-orleans", dealId: "nola-03", address: "2508-12 S Prieur St, New Orleans", state: "LA", city: "New Orleans", saleStartsAt: "2026-11-15T11:00:00-06:00",
   },
 };
 

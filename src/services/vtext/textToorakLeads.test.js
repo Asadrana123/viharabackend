@@ -36,7 +36,7 @@ test("uses the same text as the automatic Toorak intro (no catch-up wording)", a
   assert.equal(calls[0].body, renderIntro(toorak(), DAYTIME).text);
   assert.equal(
     calls[0].body,
-    "Hey Jane, it's Maya, Vihara's AI assistant. You asked about 2529-2531 E Monument St, Baltimore on Facebook. Still interested? It sells online this Saturday, Nov 7. Reply STOP to opt out."
+    "Hey Jane, it's Maya, Vihara's AI assistant. You asked about 2529-2531 E Monument St, Baltimore on Facebook. Still interested? It sells online on Sunday, Nov 15. Reply STOP to opt out."
   );
   assert.equal(calls[1].body, renderIntro(financing(), DAYTIME).text);
   assert.equal(calls[0].origin.templateKey, "toorak-intro");
