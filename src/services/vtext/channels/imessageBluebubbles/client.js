@@ -61,6 +61,23 @@ function buildClient({ serverUrl, password }) {
       return res.data;
     },
 
+    /**
+     * GET /chat/:guid/message — the newest messages in one chat, newest first. Used to check whether a send
+     * that errored or timed out actually went out. A chat that doesn't exist yet answers 404, which is a
+     * plain "no", so it returns [] instead of throwing.
+     */
+    async getChatMessages({ chatGuid, after, limit = 10 }) {
+      try {
+        const res = await http.get(`/chat/${encodeURIComponent(chatGuid)}/message`, {
+          params: withAuth({ sort: "DESC", limit, ...(after ? { after } : {}) }),
+        });
+        return Array.isArray(res.data?.data) ? res.data.data : [];
+      } catch (err) {
+        if (err.response && (err.response.status === 404 || err.response.status === 400)) return [];
+        throw err;
+      }
+    },
+
     /** POST /webhook — register this backend's webhook URL for new-message/updated-message events. */
     async registerWebhook({ url, events }) {
       const res = await http.post("/webhook", { url, events }, { params: withAuth() });
