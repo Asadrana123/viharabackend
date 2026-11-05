@@ -3,6 +3,8 @@ const catchAsyncError = require("../../middleware/catchAsyncError");
 const VtextContact = require("../../model/vtext/vtextContactModel");
 const VtextMessage = require("../../model/vtext/vtextMessageModel");
 const { endFollowUp } = require("../../services/vtext/vtextFollowUpEnd");
+const { publishEvent } = require("../../services/vtext/vtextEventsBus");
+const mongoose = require("mongoose");
 
 /** GET /api/v1/vtext/contacts/:id — contact plus its merged (all-lines) message timeline. */
 const getContact = catchAsyncError(async (req, res) => {
@@ -55,4 +57,26 @@ const markCallBooked = catchAsyncError(async (req, res) => {
   return res.status(200).json({ success: true, followUp: updated.followUp });
 });
 
-module.exports = { getContact, updateContactConsent, markCallBooked };
+/** PATCH /api/v1/vtext/contacts/:id/star — body: { starred: boolean }. One shared star per person for the whole team. */
+const setContactStar = catchAsyncError(async (req, res) => {
+  const { starred } = req.body;
+  if (typeof starred !== "boolean") {
+    return res.status(400).json({ success: false, message: "starred (boolean) is required" });
+  }
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return res.status(400).json({ success: false, message: "Invalid contact id" });
+  }
+
+  const update = starred
+    ? { starred: { isStarred: true, at: new Date(), byAdminId: req.user?._id, byAdminName: req.user?.name } }
+    : { starred: { isStarred: false } };
+  const contact = await VtextContact.findByIdAndUpdate(req.params.id, { $set: update }, { new: true }).select("_id starred");
+  if (!contact) return res.status(404).json({ success: false, message: "Contact not found" });
+
+  // Lets other open admin inboxes show the star and update the Starred count.
+  publishEvent({ type: "conversation.updated", contactId: String(contact._id), starred: contact.starred.isStarred });
+
+  return res.status(200).json({ success: true, starred: contact.starred });
+});
+
+module.exports = { getContact, updateContactConsent, markCallBooked, setContactStar };

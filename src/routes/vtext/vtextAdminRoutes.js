@@ -15,7 +15,7 @@ const {
 } = require("../../controller/vtext/vtextLineController");
 const { sendMessage, sendBulkMessages, listMessagesByStatus, retryMessage, cancelMessage, rerouteMessage, approveDraft, sendSmsFallback } = require("../../controller/vtext/vtextMessageController");
 const { listConversationProperties, listConversations, getConversationMessages, updateConversation } = require("../../controller/vtext/vtextConversationController");
-const { getContact, updateContactConsent, markCallBooked } = require("../../controller/vtext/vtextContactController");
+const { getContact, updateContactConsent, markCallBooked, setContactStar } = require("../../controller/vtext/vtextContactController");
 const { getLeadThread } = require("../../controller/vtext/vtextLeadController");
 const { getStatsOverview, getCapacity, getCapacityHistory } = require("../../controller/vtext/vtextStatsController");
 const { getVtextSettings, updateVtextSettings } = require("../../controller/vtext/vtextSettingsController");
@@ -50,6 +50,7 @@ router.get("/lead-thread", getLeadThread);
 router.get("/contacts/:id", getContact);
 router.patch("/contacts/:id/consent", updateContactConsent);
 router.post("/contacts/:id/call-booked", markCallBooked);
+router.patch("/contacts/:id/star", setContactStar);
 
 // Literal path before :id, same ordering convention as the rest of this file.
 router.get("/templates/variables", getTemplateVariables);
