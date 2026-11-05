@@ -8,9 +8,11 @@
 //              still counts". A Toorak lead who also registered gets this one only.
 // When a property lead has no page link, the link and the words "and register" go (Prajwal's rule).
 //
-// Who (Prajwal's answers, 5 Nov 2026): only people who opted in to texts, whatever the Vtext consent switch
-// says, texted before or not. It counts as their first text: the normal intro never follows it
-// (TOORAK_SALE_UPDATE_TEMPLATE_KEY is one of INTRO_TEMPLATE_KEYS). Once per phone number.
+// Who (Prajwal, 5 Nov 2026): it follows the Vtext consent switch, like the first text. Switch ON: only
+// people who opted in to texts. Switch OFF: everyone, consent or not (he asked for this once the opted-in-only
+// dry run reached nobody). Opt-outs and bad numbers are always skipped. Texted before or not. It counts as
+// their first text: the normal intro never follows it (TOORAK_SALE_UPDATE_TEMPLATE_KEY is one of
+// INTRO_TEMPLATE_KEYS). Once per phone number.
 // The wording lives in SALE_UPDATE_TEMPLATES only. Change it there.
 const { toUsSmsNumber } = require("../../utils/usPhone");
 const { toorakFormByKey } = require("../../config/toorakForms");
@@ -97,9 +99,9 @@ function buildRecipients(leads, registrations, formsByProductId) {
  * Decide, per recipient, whether they get the update. Pure apart from the lookups it is handed.
  * @param {object[]} recipients - from buildRecipients
  * @param {object} lookups - { contactsByPhone: Map, sentByKey: Map(key -> message), phonesAlreadyUpdated: Set,
- *   optedInPhones: Set (numbers with text consent on file) }
+ *   optedInPhones: Set (numbers with text consent on file), requireOptIn: the consent switch (true = ON) }
  */
-function planSaleUpdate(recipients, { contactsByPhone, sentByKey, phonesAlreadyUpdated, optedInPhones }) {
+function planSaleUpdate(recipients, { contactsByPhone, sentByKey, phonesAlreadyUpdated, optedInPhones, requireOptIn = true }) {
   const sendable = [];
   const skipped = [];
   const seenPhone = new Map();
@@ -119,7 +121,7 @@ function planSaleUpdate(recipients, { contactsByPhone, sentByKey, phonesAlreadyU
     const contact = contactsByPhone.get(phone);
     if (contact?.optOut?.isOptedOut || contact?.consent?.status === "opted-out") { skip("contact opted out of texts"); continue; }
     if (contact?.phoneStatus === "invalid" || contact?.phoneStatus === "landline") { skip(`bad number (phone status "${contact.phoneStatus}")`); continue; }
-    if (!optedInPhones.has(phone)) { skip("did not opt in to texts"); continue; }
+    if (requireOptIn && !optedInPhones.has(phone)) { skip("did not opt in to texts (consent switch is ON)"); continue; }
 
     const r = renderSaleUpdate(person, { registeredForm: rcp.registeredForm });
     if (r.skip) { skip(r.skip); continue; }

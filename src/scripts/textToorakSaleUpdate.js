@@ -8,10 +8,10 @@
 //                                    by email or phone, own form's home first) and anyone else registered on
 //                                    one of the 6 homes. Rejected registrations don't count.
 //
-// Only people who OPTED IN to texts get it, whatever the Vtext consent switch says: their Vtext contact is
-// opted in, or a lead record with their number has text consent (a Toorak lead: the sms_consent box).
-// Texted before or not. It counts as their first text, so the normal intro text never follows it.
-// Skipped (reason printed): no opt-in, test or disqualified Toorak leads, no first name, no valid US number,
+// It follows the Vtext consent switch, like the first text (Prajwal, 5 Nov 2026). Switch OFF: everyone, consent
+// or not. Switch ON: only people who opted in to texts (their Vtext contact is opted in, or a lead record with
+// their number has text consent; a Toorak lead: the sms_consent box). Texted before or not. It counts as their first text, so the normal intro text never follows it.
+// Skipped (reason printed): no opt-in while the switch is ON, test or disqualified Toorak leads, no first name, no valid US number,
 // a property form not in config/toorakForms.js, admin stopped contact, opted out, bad number, the same number
 // twice, anyone who already got this update, and anyone whose sale will have started by the time it goes out.
 //
@@ -58,6 +58,7 @@ function liveDeps() {
   const Product = require("../model/property/productModel");
   const AuctionRegistration = require("../model/bidding/auctionRegistration");
   const { findLeadRefs } = require("../services/vtext/vtextLeadLookupService");
+  const { getSettings, isConsentRequired } = require("../services/vtext/vtextSettingsService");
   const { enqueueOutbound } = require("../services/vtext/vtextMessageService");
   const { pingRedis } = require("../services/vtext/queue/connection");
   return {
@@ -95,7 +96,7 @@ function liveDeps() {
         const refs = await findLeadRefs(phone);
         if (refs.some((r) => r.consent.consented)) optedInPhones.add(phone);
       }
-      return { contactsByPhone, sentByKey, phonesAlreadyUpdated, optedInPhones };
+      return { contactsByPhone, sentByKey, phonesAlreadyUpdated, optedInPhones, requireOptIn: isConsentRequired(await getSettings()) };
     },
     pingRedis,
     enqueueOutbound,
@@ -141,7 +142,9 @@ async function run({ argv = process.argv.slice(2), clock = () => new Date(), gap
   out.sendable = sendable;
 
   if (stats) log(`Toorak leads: ${stats.leads}. Registrations: ${stats.registrations} on ${stats.homesFound} of the 6 Toorak homes.`);
-  log(`${recipients.length} people to consider. Only those who opted in to texts get it (the Vtext consent switch does not matter here).`);
+  log(`${recipients.length} people to consider. ${lookups.requireOptIn
+    ? "Vtext consent switch is ON: only those who opted in to texts get it."
+    : "Vtext consent switch is OFF: everyone gets it, consent or not (opt-outs and bad numbers are still skipped)."}`);
 
   const versions = {};
   for (const s of sendable) versions[s.version] = (versions[s.version] || 0) + 1;
