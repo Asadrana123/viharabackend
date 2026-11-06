@@ -32,7 +32,7 @@ const vtextContactSchema = new mongoose.Schema(
       isOptedOut: { type: Boolean, default: false, index: true },
       at: { type: Date },
       keyword: { type: String },
-      method: { type: String, enum: ["keyword", "phrase", "admin", "import"] },
+      method: { type: String, enum: ["keyword", "phrase", "admin", "import", "provider"] }, // "provider": Twilio told us this number opted out (error 21610)
       viaLineId: { type: mongoose.Schema.Types.ObjectId, ref: "vtextLineModel" },
       viaMessageId: { type: mongoose.Schema.Types.ObjectId, ref: "vtextMessageModel" },
     },
@@ -48,6 +48,15 @@ const vtextContactSchema = new mongoose.Schema(
         adminName: { type: String },
       },
     ],
+
+    // Starred by an admin in the Inbox. Shared across the whole team, and set on the person (not one thread)
+    // so their iMessage and SMS conversations both show it.
+    starred: {
+      isStarred: { type: Boolean, default: false, index: true },
+      at: { type: Date },
+      byAdminId: { type: mongoose.Schema.Types.ObjectId },
+      byAdminName: { type: String },
+    },
 
     stickyLines: { type: Map, of: mongoose.Schema.Types.ObjectId, default: {} }, // channelType -> lineId
     // Is this number on iPhone (FaceTime test)? Learned from our own iMessages:

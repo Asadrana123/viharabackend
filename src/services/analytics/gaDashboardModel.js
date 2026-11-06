@@ -10,7 +10,7 @@
 
 const { DateTime } = require("luxon");
 const { PROPERTY_TIMEZONE } = require("./gaInsightsService");
-const { change, rateChange, fmtDuration, NEW_EVENTS_START, MIN_FOR_PERCENT } = require("./gaReportFormatter");
+const { change, rateChange, fmtDuration, campaignLabel, NEW_EVENTS_START, MIN_FOR_PERCENT } = require("./gaReportFormatter");
 
 const RANGE_DAYS = { "1d": 1, "7d": 7, "30d": 30 };
 const RANGES = Object.keys(RANGE_DAYS);
@@ -179,6 +179,54 @@ function channelsList(rows) {
         .sort((a, b) => b.sessions - a.sessions);
 }
 
+const MAX_CAMPAIGNS = 15;
+
+/**
+ * Campaigns over the range against the range before, with sign-ups. Spellings of the same campaign
+ * are merged and campaign IDs labelled, the same way as the daily Slack report (campaignLabel).
+ * Channels such as (direct) and (organic) are not campaigns and are left out.
+ */
+function campaignsList(sessionRows = [], signUpRows = [], comparable = true) {
+    const byName = new Map();
+    const entry = (name) => {
+        if (!byName.has(name)) byName.set(name, { sessions: 0, engaged: 0, previous: 0, signUps: 0, prevSignUps: 0 });
+        return byName.get(name);
+    };
+    for (const r of sessionRows) {
+        const name = campaignLabel(r.sessionCampaignName);
+        if (!name) continue;
+        const e = entry(name);
+        if (r.dateRange === CURRENT) {
+            e.sessions += num(r, "sessions");
+            e.engaged += num(r, "engagedSessions");
+        } else if (r.dateRange === PREVIOUS) {
+            e.previous += num(r, "sessions");
+        }
+    }
+    for (const r of signUpRows) {
+        const name = campaignLabel(r.sessionCampaignName);
+        if (!name) continue;
+        const e = entry(name);
+        if (r.dateRange === CURRENT) e.signUps += num(r, "eventCount");
+        else if (r.dateRange === PREVIOUS) e.prevSignUps += num(r, "eventCount");
+    }
+    return [...byName.entries()]
+        .filter(([, c]) => c.sessions > 0 || c.signUps > 0)
+        .sort((a, b) => b[1].sessions - a[1].sessions || b[1].signUps - a[1].signUps)
+        .slice(0, MAX_CAMPAIGNS)
+        .map(([name, c]) => ({
+            name,
+            isId: name.startsWith("Campaign ID "),
+            sessions: c.sessions,
+            previous: c.previous,
+            changeLabel: change(c.sessions, c.previous),
+            engagementRate: ratio(c.engaged, c.sessions),
+            signUps: c.signUps,
+            // Sign-ups before 7 Oct 2026 were not tracked, so an earlier period has nothing to compare.
+            prevSignUps: comparable ? c.prevSignUps : null,
+        }));
+}
+
 const pathOrNotSet = (p) => (p && p !== "" ? p : "(not set)");
 
 /**
@@ -212,6 +260,7 @@ function buildDashboardModel(raw, windows) {
             sessions: r.sessions,
             engagementRate: ratio(r.engagedSessions, r.sessions),
         })),
+        campaigns: campaignsList(raw.campaigns, raw.campaignSignUps, windows.previous.since >= NEW_EVENTS_START),
         notes,
     };
 }
@@ -301,4 +350,4 @@ function buildAudienceModel(raw, windows) {
     };
 }
 
-module.exports = { rangeWindows, buildDashboardModel, buildPageModel, buildAudienceModel, RANGES };
+module.exports = { rangeWindows, buildDashboardModel, buildPageModel, buildAudienceModel, campaignsList, RANGES };

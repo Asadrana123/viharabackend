@@ -8,14 +8,14 @@ const mongoose = require("mongoose");
 const { publishEvent } = require("../../services/vtext/vtextEventsBus");
 
 // Contact fields the admin UI needs on every conversation payload (list, thread, mark-read).
-const CONTACT_FIELDS = "name phoneE164 optOut.isOptedOut followUp.status followUp.step";
+const CONTACT_FIELDS = "name phoneE164 optOut.isOptedOut followUp.status followUp.step starred.isStarred starred.byAdminName";
 
 // Property fields the inbox pill and picker show.
 const PROPERTY_FIELDS = "street city state slug productName";
 
-/** GET /api/v1/vtext/conversations?status=&lineId=&q=&unread=true&propertyId=<id>|none&cursor=&limit= */
+/** GET /api/v1/vtext/conversations?status=&lineId=&q=&unread=true&starred=true&propertyId=<id>|none&cursor=&limit= */
 const listConversations = catchAsyncError(async (req, res) => {
-  const { status, lineId, q, unread, propertyId, cursor, limit } = req.query;
+  const { status, lineId, q, unread, starred, propertyId, cursor, limit } = req.query;
   const pageSize = Math.min(100, Math.max(1, Number(limit) || 30));
 
   const filter = {};
@@ -30,12 +30,16 @@ const listConversations = catchAsyncError(async (req, res) => {
   }
   if (cursor) filter.lastMessageAt = { $lt: new Date(cursor) };
 
+  // Search and the Starred filter are both contact fields, so resolve matching contact ids first
+  // (conversations don't store the name or the star).
+  const contactFilter = {};
   if (q) {
-    // Search by contact phone — resolve matching contact ids first (conversations don't store a searchable name).
-    const matchingContacts = await VtextContact.find({
-      // Name is escaped: q is plain text, and a crafted pattern could hang the server.
-      $or: [{ phoneE164: new RegExp(String(q).replace(/\D/g, ""), "i") }, { name: new RegExp(String(q).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") }],
-    }).select("_id");
+    // Name is escaped: q is plain text, and a crafted pattern could hang the server.
+    contactFilter.$or = [{ phoneE164: new RegExp(String(q).replace(/\D/g, ""), "i") }, { name: new RegExp(String(q).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") }];
+  }
+  if (starred === "true") contactFilter["starred.isStarred"] = true;
+  if (Object.keys(contactFilter).length) {
+    const matchingContacts = await VtextContact.find(contactFilter).select("_id");
     filter.contactId = { $in: matchingContacts.map((c) => c._id) };
   }
 
@@ -52,8 +56,13 @@ const listConversations = catchAsyncError(async (req, res) => {
 
   // Total across the whole inbox (ignores the other filters) for the "Unread (n)" chip.
   const unreadTotal = await VtextConversation.countDocuments({ unreadCount: { $gt: 0 } });
+  // Same for the "Starred (n)" chip: conversations whose person is starred.
+  const starredContacts = await VtextContact.find({ "starred.isStarred": true }).select("_id").lean();
+  const starredTotal = starredContacts.length
+    ? await VtextConversation.countDocuments({ contactId: { $in: starredContacts.map((c) => c._id) } })
+    : 0;
 
-  return res.status(200).json({ success: true, conversations: page, nextCursor, unreadTotal });
+  return res.status(200).json({ success: true, conversations: page, nextCursor, unreadTotal, starredTotal });
 });
 
 /** GET /api/v1/vtext/conversations/:id/messages?limit= */
@@ -62,7 +71,10 @@ const getConversationMessages = catchAsyncError(async (req, res) => {
   if (!conversation) return res.status(404).json({ success: false, message: "Conversation not found" });
 
   const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
-  const messages = await VtextMessage.find({ conversationId: conversation._id }).sort({ createdAt: 1 }).limit(limit);
+  // ?scope=contact: every text with this person, across all lines. One person can have an iMessage thread and an SMS
+  // thread (the SMS fallback runs on a different line), and the admin should read them as one conversation.
+  const filter = req.query.scope === "contact" ? { contactId: conversation.contactId._id } : { conversationId: conversation._id };
+  const messages = await VtextMessage.find(filter).sort({ createdAt: 1 }).limit(limit);
 
   return res.status(200).json({ success: true, conversation, messages });
 });

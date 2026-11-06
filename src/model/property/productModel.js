@@ -75,6 +75,14 @@ const productSchema = new mongoose.Schema({
         enum: ['Single Family', 'Condo, Townhouse, other single unit', 'Multi-family', 'Land'],
         required: true,
     },
+    // How this home can be financed, from the financing playbook (set in Manage Listings → Details):
+    // cash_bridge_only = needs major work, a regular home loan won't fund it; dscr_ready = rental (DSCR) loan;
+    // owner_ready = home loan for an owner-occupant. Drives the advisor flag loan_buyer_on_cash_only_home.
+    financeability: {
+        type: String,
+        enum: ['cash_bridge_only', 'dscr_ready', 'owner_ready', 'unknown'],
+        default: 'unknown',
+    },
     occupancyStatus: {
         type: String,
         enum: ['Vacant', 'Occupied', 'Reported Vacant'],

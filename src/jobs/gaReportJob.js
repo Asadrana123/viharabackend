@@ -1,7 +1,10 @@
 // jobs/gaReportJob.js
 //
-// Daily website report: pull yesterday's numbers from Google Analytics 4, add a short
-// Claude-written summary, and post it to Slack.
+// Daily website report: pull yesterday's numbers from Google Analytics 4, have Claude write
+// what worked, what didn't work and the action items, and post that short report to Slack.
+// The full tables are not posted (they are in the admin dashboard), but the repair agent still
+// reads them: it looks for technical problems in the full report, and it closes a report incident
+// once the report stops mentioning it, so it must never be given the short version.
 // Schedule: every day at 4:00 PM IST. Google says a day's data is usually ready by
 // 3:30 PM in the property's time zone (India time), so an earlier run could report
 // a day that is still being processed.
@@ -13,19 +16,23 @@
 
 const cron = require("node-cron");
 const { fetchGaReportData } = require("../services/analytics/gaInsightsService");
-const { buildReportModel, buildSlackMessage, messageToText } = require("../services/analytics/gaReportFormatter");
+const { buildReportModel, buildSlackMessage, buildShortSlackMessage, messageToText } = require("../services/analytics/gaReportFormatter");
 const { summarizeGaReport } = require("../services/analytics/gaSummaryService");
 const { postToSlack } = require("../services/shared/slackService");
 const { getRepairConfig } = require("../config/repair/repairConfig");
 const { runGaReportIssues } = require("../services/repair/incidentService");
+const { getSiteUrl } = require("../config/siteUrls");
 
 const SCHEDULE = "0 16 * * *";
 const TIMEZONE = "Asia/Kolkata";
 
 let isRunning = false;
 
+const dashboardUrl = () => `${getSiteUrl()}/admin/webAnalytics?range=1d`;
+
 /**
- * Builds the report message. A failed summary does not stop the report.
+ * Builds the short message for Slack and the full one for the repair agent.
+ * A failed summary does not stop the report.
  * @param {string} [day] - "YYYY-MM-DD" in India time; defaults to yesterday
  */
 async function buildGaReport(day) {
@@ -38,7 +45,11 @@ async function buildGaReport(day) {
     } catch (error) {
         console.warn("[gaReport] Summary failed, posting numbers only:", error.message);
     }
-    return { model, message: buildSlackMessage(model, summary) };
+    return {
+        model,
+        message: buildShortSlackMessage(model, summary, dashboardUrl()),
+        fullMessage: buildSlackMessage(model, summary),
+    };
 }
 
 async function runGaReport() {
@@ -54,13 +65,14 @@ async function runGaReport() {
 
     isRunning = true;
     try {
-        const { model, message } = await buildGaReport();
+        const { model, message, fullMessage } = await buildGaReport();
         await postToSlack(webhookUrl, message);
         console.log(`[gaReport] Posted report for ${model.day}.`);
 
         // The report's technical problems go to the repair agent, as the Meta report's do.
+        // It gets the FULL report, with every table (see the note at the top).
         if (getRepairConfig().enabled) {
-            runGaReportIssues(messageToText(message)).catch((e) => console.error("[gaReport] repair hand-off failed:", e.message));
+            runGaReportIssues(messageToText(fullMessage)).catch((e) => console.error("[gaReport] repair hand-off failed:", e.message));
         }
     } catch (error) {
         const detail = error.details || error.message;

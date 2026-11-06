@@ -7,6 +7,7 @@ const careerApplicantEmail = require("../../htmlPages/users/careerApplicantEmail
 const careerAdminNotificationEmail = require("../../htmlPages/users/careerAdminNotificationEmail");
 const careerMarketingAssignmentEmail = require("../../htmlPages/users/careerMarketingAssignmentEmail");
 const careerVideoEditorAssignmentEmail = require("../../htmlPages/users/careerVideoEditorAssignmentEmail");
+const careerGrowthAssignmentEmail = require("../../htmlPages/users/careerGrowthAssignmentEmail");
 const path = require("path");
 const { ROLE_LABELS } = require("../../config/careerRoles");
 
@@ -16,6 +17,12 @@ const { ROLE_LABELS } = require("../../config/careerRoles");
 const MARKETING_ASSIGNMENT_PDF = path.join(
   __dirname,
   "../../assets/careers/Vihara_Performance_Marketing_Assignment.pdf"
+);
+
+// Growth Manager applicants get the "buyer growth engine" take-home.
+const GROWTH_ASSIGNMENT_PDF = path.join(
+  __dirname,
+  "../../assets/careers/Vihara_Growth_Lead_Assignment.pdf"
 );
 
 // ─── Submit application (public) ────────────────────────────────────────────
@@ -93,6 +100,20 @@ exports.submitApplication = catchAsyncError(async (req, res, next) => {
         {
           filename: "Vihara - Performance/Growth Marketing Manager Assignment.pdf",
           path: MARKETING_ASSIGNMENT_PDF,
+          contentType: "application/pdf",
+        },
+      ]
+    );
+  } else if (role === "growth-manager") {
+    sendEmail(
+      email,
+      firstName,
+      "Vihara Growth Manager - Your Assignment",
+      careerGrowthAssignmentEmail(firstName),
+      [
+        {
+          filename: "Vihara - Growth Manager Assignment.pdf",
+          path: GROWTH_ASSIGNMENT_PDF,
           contentType: "application/pdf",
         },
       ]

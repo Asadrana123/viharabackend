@@ -22,7 +22,10 @@ const { syncPropertyLead } = require("../../services/integrations/brevoService")
 const { notifyNewLead } = require("../../services/shared/slackService");
 const { onPropertyLeadSignup } = require("../../services/propertyEmail/propertyEmailService");
 const { auctionPageUrl, listingPageUrl } = require("../../config/siteUrls");
-const { touchesFrom, needsFinancingFrom, needsFinancingLabel, downPaymentFrom } = require("../../services/leads/buyBox");
+const {
+  touchesFrom, needsFinancingFrom, needsFinancingLabel, downPaymentFrom,
+  loanTypeFrom, loanTypeOtherFrom, preApprovedFrom, loanLine, loanTypeBrevo, advisorFlags,
+} = require("../../services/leads/buyBox");
 const { maskPhone } = require("../../utils/maskPii");
 
 // Single note discriminator for all property-auction leads. Lead ids are unique,
@@ -40,7 +43,7 @@ async function resolveLandingProperty(slug, next) {
   }
   const product = await productModel
     .findOne({ slug: slug.trim().toLowerCase() })
-    .select("_id slug productName street city state zipCode isLandingPage brevoListId emailSequenceEnabled startBid image features auctionStartDate auctionEndDate")
+    .select("_id slug productName street city state zipCode isLandingPage brevoListId emailSequenceEnabled startBid image features auctionStartDate auctionEndDate financeability")
     .lean();
   if (!product) {
     next(new ErrorHandler("Property not found", 404));
@@ -71,7 +74,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
   const {
     fullName, phone, email, buyerType, needsFinancing, downPayment, timezone,
     consent, consentText, consentTimestamp, eventId, quotePrice,
-    smsConsent, smsConsentText,
+    smsConsent, smsConsentText, loanType, loanTypeOther, preApproved,
   } = req.body;
   // Extra questions added to the form in Admin → Landing Pages (services/leads/formAnswers.js).
   const extraAnswers = sanitizeFormAnswers(req.body.extraAnswers);
@@ -114,6 +117,10 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       buyerType: buyerType || "",
       needsFinancing: needsFinancingFrom(needsFinancing),
       downPayment: downPaymentFrom(downPayment, needsFinancing),
+      // /deal form, financing buyers only (buyBox.js drops them for cash and unknown values).
+      loanType: loanTypeFrom(loanType, needsFinancing),
+      loanTypeOther: loanTypeOtherFrom(loanTypeOther, loanType, needsFinancing),
+      preApproved: preApprovedFrom(preApproved, needsFinancing),
       quotePrice: hasQuote ? quoteNum : null,
       timezone: timezone || "",
       consent: consent === true,
@@ -154,6 +161,9 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       quotePrice: lead.quotePrice,
       needsFinancing: lead.needsFinancing,
       downPayment: lead.downPayment,
+      loanType: lead.loanType,
+      loanTypeOther: lead.loanTypeOther,
+      preApproved: lead.preApproved,
     }).catch((e) => console.error(`[property-call:${slug}] scheduling failed:`, e.message));
     call = { attempted: true };
   } else {
@@ -188,6 +198,9 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       { label: "Buyer Type", value: lead.buyerType },
       { label: "Needs Financing", value: needsFinancingLabel(lead.needsFinancing) },
       ...(lead.downPayment ? [{ label: "Down Payment", value: lead.downPayment }] : []),
+      // Lender matching: our bank partner only does home loans; anything else needs an investor lender.
+      ...(loanLine(lead) ? [{ label: "Loan", value: loanLine(lead) }] : []),
+      ...(advisorFlags(lead, property).length ? [{ label: "Flags", value: advisorFlags(lead, property).join(", ") }] : []),
       { label: "Quote", value: hasQuote ? `$${quoteNum.toLocaleString("en-US")}` : "—" },
       ...answersAsFields(lead.extraAnswers),
     ],
@@ -220,6 +233,10 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       phone: lead.phoneNormalized,
       leadSource: `${slug}-lp`,
       registeringAs: lead.buyerType,
+      // /deal form financing buyers: LOAN_TYPE, PRE_APPROVED, and BUYER_TIER "hot" when pre-approved.
+      needsFinancing: lead.needsFinancing,
+      loanType: loanTypeBrevo(lead),
+      preApproved: lead.preApproved,
       propertyName: property.city || property.productName || slug,
       listId: property.brevoListId, // per-page Brevo list (null → shared default)
       listingUrl: listingPageUrl(slug), // LISTING_URL for the Brevo SMS text

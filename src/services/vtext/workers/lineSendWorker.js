@@ -16,6 +16,8 @@ const { canSend, logGateDecision } = require("../vtextComplianceService");
 const { getSettings, isConsentRequired } = require("../vtextSettingsService");
 const { evaluateAndMaybeQuarantine } = require("../vtextLineHealthService");
 const { publishEvent } = require("../vtextEventsBus");
+const smsFallback = require("../vtextSmsFallbackService");
+const { recordProviderOptOut } = require("../vtextOptOutService");
 
 async function rerouteExcluding(message, lineId) {
   message.excludeLineIds = [...(message.excludeLineIds || []), lineId];
@@ -80,7 +82,24 @@ async function processSendJob(lineId, job) {
     return;
   }
 
+  // Twilio has no idempotency key. A message already "sending" with no recorded error was interrupted in the middle of the
+  // call (stalled job, crash, restart): it may already have been queued at Twilio, so it is never sent again. A known
+  // transient error (set by the catch below) means the previous attempt definitely did not go out, so that retry is fine.
+  if (message.status === "sending" && line.channelType === "twilio-sms" && !message.error?.kind) {
+    message.status = "failed";
+    message.error = { kind: "recipient", code: "UNCERTAIN", message: "The send was interrupted, so the text may or may not have reached Twilio. It was not retried, to avoid texting the person twice." };
+    message.failedAt = new Date();
+    await message.save();
+    await capacity.release(line, reservationDay, { wasReply: message.isReplyToInbound });
+    publishEvent({ type: "message.updated", messageId: String(message._id), conversationId: message.conversationId ? String(message.conversationId) : null, status: message.status });
+    return;
+  }
+
+  // An SMS fallback gets a last look first: the iMessage may have been delivered meanwhile, or texting hours closed.
+  if (message.fallbackOf && (await smsFallback.guardFallbackBeforeSend(message, contact, line, reservationDay))) return;
+
   message.status = "sending";
+  if (line.channelType === "twilio-sms") message.error = undefined; // so a stall during THIS attempt is recognised on re-entry
   await message.save();
 
   try {
@@ -101,7 +120,15 @@ async function processSendJob(lineId, job) {
 
     message.status = "accepted";
     message.provider = { messageId: result.providerMessageId };
+    if (result.segments !== undefined) message.segments = result.segments; // carrier channels (Twilio) bill per segment
     message.sentAt = new Date();
+    // The channel answered with an error but found the text sent anyway (BlueBubbles on a new chat):
+    // drop the error a retry left behind, and keep a delivery it already saw.
+    if (result.recoveredFrom) message.error = undefined;
+    if (result.deliveredAt) {
+      message.status = "delivered";
+      message.deliveredAt = result.deliveredAt;
+    }
     await message.save();
 
     line.health = line.health || {};
@@ -133,6 +160,21 @@ async function processSendJob(lineId, job) {
       await message.save();
       await capacity.release(line, reservationDay, { wasReply: message.isReplyToInbound });
       publishEvent({ type: "message.updated", messageId: String(message._id), conversationId: message.conversationId ? String(message.conversationId) : null, status: message.status });
+      // Twilio refused the send because this number opted out of it (21610): record that here too, so no line texts them.
+      // And "not a valid mobile number" (21614) is a definite no: mark it a landline so the compliance gate stops further tries.
+      try {
+        if (err.code === "OPTED_OUT") await recordProviderOptOut(contact, { lineId: line._id, messageId: message._id, code: "21610" });
+        else if (err.code === "TWILIO_21614" && contact.phoneStatus !== "landline") {
+          contact.phoneStatus = "landline";
+          await contact.save();
+        }
+      } catch (e) {
+        console.error(`[vtext line-send] couldn't record the provider outcome for ${message._id}:`, e.message);
+      }
+      // BlueBubbles said the iMessage could not be delivered: the same text goes out once by SMS (when switched on).
+      if (line.channelType === smsFallback.IMESSAGE && smsFallback.isExplicitIMessageFailure(err.code)) {
+        await smsFallback.maybeQueueSmsFallback(message, { trigger: "send-error", reason: err.code }).catch((e) => console.error(`[vtext sms-fallback] could not queue the fallback for ${message._id}:`, e.message));
+      }
       // Permanent — tells BullMQ not to retry this job at all.
       throw new UnrecoverableError(err.message);
     }

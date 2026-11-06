@@ -23,6 +23,8 @@ async function createDraftReply({ contactId, conversationId, lineId, channelType
     channelType,
     body,
     status: "pending-approval",
+    // A reply to a text that came in over SMS goes back out over SMS: the default "any" would try iMessage first.
+    ...(channelType === "twilio-sms" ? { channelPolicy: { mode: "only", channels: ["twilio-sms"] } } : {}),
     origin: { kind: "automation", templateKey: "ai-reply-draft", replyToMessageId: inboundMessageId },
     isReplyToInbound: true,
     aiDraft: { approvalStatus: "pending", model, generatedAt: new Date(), needsHuman: !!needsHuman, topic: topic || undefined, sources: sources?.length ? sources : undefined, retrieval: retrieval || undefined, guard: guard || undefined },

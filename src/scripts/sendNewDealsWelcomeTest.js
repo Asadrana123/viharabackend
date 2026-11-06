@@ -31,7 +31,7 @@ if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
       FINANCING: "Cash",
       CONTACT_PREF: "text",
       DEAL_MARKET: "Baltimore, MD",
-      DEAL_PRICE: "$65,900",
+      DEAL_PRICE: "$58,687",
     },
   });
   console.log("full    →", full.success ? `sent, messageId ${full.messageId}` : `FAILED: ${full.error}`);

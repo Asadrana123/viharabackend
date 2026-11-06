@@ -10,6 +10,7 @@ const VtextLine = require("../../model/vtext/vtextLineModel");
 const VtextWebhookEvent = require("../../model/vtext/vtextWebhookEventModel");
 const { getAdapter } = require("../../services/vtext/channels/registry");
 const { getInboundQueue } = require("../../services/vtext/queue/queues");
+const { publicBaseUrl } = require("../../services/vtext/vtextWebhookUrl");
 
 const ALLOW_UNSIGNED = process.env.VTEXT_ALLOW_UNSIGNED_WEBHOOKS === "true";
 
@@ -28,7 +29,10 @@ const receive = catchAsyncError(async (req, res) => {
   const adapter = getAdapter(channelType);
   let signatureValid = null;
   try {
-    signatureValid = adapter.verifyWebhook({ rawBody: req.rawBody, headers: req.headers, query: req.query, line });
+    // `url` is the exact public URL the provider called (Twilio signs it). Null when VTEXT_PUBLIC_BASE_URL is unset, which makes a signing provider fail closed.
+    const base = publicBaseUrl();
+    const url = base ? `${base}${req.originalUrl}` : null;
+    signatureValid = adapter.verifyWebhook({ rawBody: req.rawBody, headers: req.headers, query: req.query, body: req.body, url, line });
   } catch (err) {
     signatureValid = false;
   }
@@ -46,6 +50,7 @@ const receive = catchAsyncError(async (req, res) => {
   const safeHeaders = {
     "content-type": req.headers["content-type"],
     "user-agent": req.headers["user-agent"],
+    "i-twilio-idempotency-token": req.headers["i-twilio-idempotency-token"], // lets a retried Twilio delivery be recognised
   };
 
   const webhookEvent = await VtextWebhookEvent.create({
@@ -54,6 +59,7 @@ const receive = catchAsyncError(async (req, res) => {
     lineKey,
     headers: safeHeaders,
     body: req.body,
+    query: req.query,
     signatureValid: !!signatureValid,
     processed: false,
   });
@@ -66,6 +72,9 @@ const receive = catchAsyncError(async (req, res) => {
   webhookEvent.jobId = job.id;
   await webhookEvent.save();
 
+  // Most providers want any 200. Twilio wants TwiML (an empty <Response/> = no automatic reply).
+  const custom = adapter.webhookResponse?.();
+  if (custom) return res.status(custom.status).type(custom.contentType).send(custom.body);
   return res.status(200).json({ success: true });
 });
 

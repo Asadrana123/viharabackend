@@ -10,11 +10,15 @@ const mongoose = require("mongoose");
 
 const commandSchema = new mongoose.Schema(
   {
-    type: { type: String, enum: ["open", "pick", "gate", "generate", "clip", "build", "cut"], required: true },
+    type: { type: String, enum: ["open", "pick", "gate", "frames", "generate", "remake", "clip", "build", "cut", "idea", "craft", "hook", "vo", "shot", "image"], required: true },
     what: { type: String, default: null },
     choice: { type: String, default: null },
     decision: { type: String, default: null },
     words: { type: String, default: "" },
+    // A cut revision's shots to make again (D-046).
+    shots: { type: [String], default: undefined },
+    // D-047: the editor's own hook, voiceover lines, camera move, craft or uploaded image, as checked.
+    data: { type: mongoose.Schema.Types.Mixed, default: undefined },
     byName: { type: String, required: true },
     at: { type: Date, default: Date.now },
     doneAt: { type: Date, default: null },
@@ -30,13 +34,23 @@ const runSchema = new mongoose.Schema(
     requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: "userModel", required: true },
     requestedByName: { type: String, required: true },
     coreId: { type: String, default: null },
+    // The Claude model the editor chose to write the concepts, hooks and plan; they may change it for the next step.
+    // null on videos started before the choice existed: the server's default then applies.
+    model: { type: String, enum: ["haiku", "sonnet", "opus", null], default: null },
     state: { type: String, required: true },
     concepts: { type: [mongoose.Schema.Types.Mixed], default: [] },
     hooks: { type: [mongoose.Schema.Types.Mixed], default: [] },
     plan: { type: mongoose.Schema.Types.Mixed, default: null },
+    // The image storyboard of a storyboard plan (D-046): one frame per shot, in order, and what drawing the rest costs.
+    frames: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    framesPrice: { type: Number, default: 0 },
     clips: { type: [mongoose.Schema.Types.Mixed], default: [] },
     cut: { type: mongoose.Schema.Types.Mixed, default: null },
     spent: { type: Number, default: 0 },
+    // Where the money went, item by item and by tool, as the server last reported it.
+    costs: { type: mongoose.Schema.Types.Mixed, default: null },
+    // The price of making the rejected clips again (D-046); null when none is rejected.
+    remakePrice: { type: Number, default: null },
     // Files in the private bucket, by slot: animatic, clip-<ref>, cut. Keys never reach a browser.
     media: { type: mongoose.Schema.Types.Mixed, default: {} },
     error: { type: String, default: null },

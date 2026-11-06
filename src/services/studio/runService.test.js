@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand, generateCommand, clipCommand, buildCommand, cutCommand, cleanSlot } = require("./runService");
+const { newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot } = require("./runService");
 
 const run = (over = {}) => ({ state: "concept-choice", requestedBy: "u1", requestedByName: "Dinesh", concepts: [{ id: "C1" }], hooks: [{ id: "H1" }], plan: { errors: [] }, ...over });
 
@@ -80,8 +80,59 @@ test("the build waits for the clips, and a cut needs words for a change", () => 
   assert.throws(() => cutCommand(cut, { decision: "reject" }), /Say what/);
 });
 
+test("a rejected clip is made again within the limit, and a cut's change can name its shots (D-046)", () => {
+  const clips = [{ ref: "a/b", state: "rejected", note: "Too dark" }, { ref: "c/d", state: "approved" }];
+  assert.deepEqual(remakeCommand(run({ state: "clips", clips, spent: 10, remakePrice: 0.5 })), { command: { type: "remake" }, state: "generating" });
+  assert.throws(() => remakeCommand(run({ state: "clips", clips, spent: 14.8, remakePrice: 0.5 })), /over the \$15 limit/);
+  assert.throws(() => remakeCommand(run({ state: "clips", clips: [{ ref: "c/d", state: "approved" }] })), /no rejected clip/);
+  const cut = run({ state: "cut", clips: [{ ref: "a/b", state: "approved" }, { ref: "c/d", state: "approved" }] });
+  const step = cutCommand(cut, { decision: "revise", words: "Shot 2 too fast", shots: ["c/d"] });
+  assert.deepEqual(step.command, { type: "cut", decision: "revise", words: "Shot 2 too fast", shots: ["c/d"] });
+  assert.equal(step.state, "clips");
+  assert.deepEqual(step.clips.map((c) => c.state), ["approved", "rejected"]);
+  assert.throws(() => cutCommand(cut, { decision: "revise", words: "x", shots: ["z/z"] }), /no clip z\/z/);
+  assert.throws(() => cutCommand(cut, { decision: "approve", shots: ["c/d"] }), /go with a change/);
+  assert.equal(cleanUpdate({ runId: "1793500000.000001", state: "clips", remakePrice: 0.42 }).fields.remakePrice, 0.42);
+  assert.equal(cleanUpdate({ runId: "1793500000.000001", state: "clips" }).fields.remakePrice, null);
+});
+
+test("the image storyboard is drawn on a click within the limit, and each frame is decided (D-046)", () => {
+  assert.deepEqual(framesCommand(run({ state: "frames", spent: 0, framesPrice: 1.05 })), { command: { type: "frames" }, state: "generating" });
+  assert.throws(() => framesCommand(run({ state: "frames", spent: 14.5, framesPrice: 1.05 })), /over the \$15 limit/);
+  assert.throws(() => framesCommand(run({ state: "approved" })), /not waiting for its storyboard/);
+  const board = run({ state: "storyboard", frames: [{ ref: "hook/still", state: "pending" }, { ref: "b1/s1", state: "photo" }], clips: [] });
+  const step = clipCommand(board, { ref: "hook/still", decision: "reject", words: "Her shadow falls the wrong way" });
+  assert.equal(step.state, "storyboard");
+  assert.deepEqual(step.frames[0], { ref: "hook/still", state: "rejected", note: "Her shadow falls the wrong way" });
+  assert.equal(step.clips, undefined);
+  assert.throws(() => clipCommand(board, { ref: "b1/s1", decision: "approve" }), /already photo/);
+  assert.equal(remakeCommand(run({ state: "storyboard", frames: step.frames, remakePrice: 0.075 })).state, "generating");
+  const u = cleanUpdate({ runId: "1793500000.000001", state: "storyboard", framesPrice: 0.15, frames: [{ ref: "hook/still", beat: "hook", kind: "presenter", camera: "Maya speaks to camera", seconds: 4, state: "pending", slot: "frame-hook-still" }] });
+  assert.equal(u.fields.framesPrice, 0.15);
+  assert.equal(u.fields.frames[0].kind, "presenter");
+  assert.equal(cleanSlot("frame-hook-still"), "frame-hook-still");
+});
+
+test("a video's costs are kept item by item and by tool", () => {
+  const u = cleanUpdate({ runId: "1793500000.000001", state: "clips", costs: { total: 1.69, items: [{ what: "Property clip", tool: "Kling", usd: 0.672, by: "Preetham", at: "2026-11-05T10:00:00.000Z", replaced: true }], byTool: [{ tool: "Kling", usd: 1.34 }] } });
+  assert.deepEqual(u.fields.costs, { total: 1.69, items: [{ what: "Property clip", tool: "Kling", usd: 0.672, by: "Preetham", at: "2026-11-05T10:00:00.000Z", replaced: true }], byTool: [{ tool: "Kling", usd: 1.34 }], unreported: 0 });
+  assert.equal(cleanUpdate({ runId: "1793500000.000001", state: "clips" }).fields.costs, null);
+  // A Claude run stopped at its time limit: spent, amount never reported.
+  const cut = cleanUpdate({ runId: "1793500000.000001", state: "gate-a", costs: { total: 0.4, unreported: 1, items: [{ what: "Writing the plan and animatic", tool: "Claude Opus", usd: 0, unreported: true }], byTool: [] } });
+  assert.equal(cut.fields.costs.unreported, 1);
+  assert.equal(cut.fields.costs.items[0].unreported, true);
+});
+
 test("a file goes only in a known slot", () => {
   assert.equal(cleanSlot("clip-rent-day-rent-counter"), "clip-rent-day-rent-counter");
   assert.equal(cleanSlot("cut"), "cut");
   assert.throws(() => cleanSlot("../x"), /not a file slot/);
+});
+
+test("the editor chooses the Claude model that writes the video, from the three on offer", () => {
+  const { cleanModel, CLAUDE_MODELS } = require("./runService");
+  assert.deepEqual(CLAUDE_MODELS, ["haiku", "sonnet", "opus"]);
+  for (const m of CLAUDE_MODELS) assert.equal(cleanModel(m), m);
+  assert.throws(() => cleanModel(undefined), /Choose the Claude model/);
+  assert.throws(() => cleanModel("claude-opus-5-5"), /Choose the Claude model/);
 });

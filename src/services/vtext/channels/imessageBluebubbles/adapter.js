@@ -6,28 +6,113 @@
 // specifically. Capability/limit numbers are deliberately conservative —
 // Apple publishes no official rate limits, so these are starting points to
 // tune once the pilot line has real send history (sendify-infra.md §1, §7.6).
-const { buildClient } = require("./client");
+const { buildClient: defaultBuildClient } = require("./client");
 const { mapSendError } = require("./mapErrors");
 const { decryptCredentials } = require("../../../../utils/secretBox");
 const { loadMedia } = require("../../vtextMediaService");
 const crypto = require("crypto");
 
+let buildClient = defaultBuildClient;
+/** Tests swap in a fake BlueBubbles client; null puts the real one back. */
+function setClientFactoryForTests(factory) {
+  buildClient = factory || defaultBuildClient;
+  serviceCache.clear();
+}
+
 /**
- * chatGuid for a brand-new/unknown contact — "iMessage;-;+<phone>" or
- * "iMessage;-;<email>". `to` is expected pre-formatted by the caller: E.164
- * (leading +) for a phone number, or a plain email for an Apple ID.
+ * chatGuid for a 1:1 chat — "<service>;-;+<phone>" or "<service>;-;<email>". `to` is expected
+ * pre-formatted by the caller: E.164 (leading +) for a phone number, or a plain email for an Apple ID.
  *
- * This was originally "any;-;..." (an assumed wildcard, flagged as unverified
- * against a real server) — confirmed WRONG during the first real-device test:
- * BlueBubbles' AppleScript generator passes the GUID's service segment
- * straight through literally into `service type = <value>`, with no wildcard
- * handling, so "any" produced invalid AppleScript ("Can't make any into type
- * constant", -1700) and every send failed. "iMessage" is the actual service
- * constant Messages.app expects there — this line has no SMS capability at
- * all (no SIM), so iMessage is the only correct value here regardless.
+ * The service part depends on the Mac's macOS version:
+ * - macOS 15 and older name a chat "iMessage;-;...". Sending to "any;-;..." there made BlueBubbles
+ *   write invalid AppleScript ("Can't make any into type constant", -1700), so every send failed.
+ * - macOS 26 and newer name every chat "any;-;...". BlueBubbles 1.9.10+ sends to that name fine. Sending
+ *   to "iMessage;-;..." still works for a number the Mac has texted before (BlueBubbles maps it to the
+ *   existing chat), but for a brand-new number Messages creates "any;-;...", BlueBubbles waits for the
+ *   message in a chat that never appears, and after about 60s answers 400 although the text was delivered.
+ *   Seen live on 2026-11-05 on the macOS 27 Mac Mini; a test send to a new number with "any;-;" came back
+ *   200 in under a second.
  */
-function chatGuidFor(to) {
-  return `iMessage;-;${to}`;
+function chatGuidFor(to, service = "iMessage") {
+  return `${service};-;${to}`;
+}
+
+const ANY_SERVICE_FROM_MACOS = 26;
+const SERVICE_CACHE_TTL_MS = 60 * 60 * 1000; // the Mac's OS rarely changes; re-checked hourly, and after a line moves Macs
+const serviceCache = new Map(); // serverUrl -> { service, at }
+
+/** The major macOS version from BlueBubbles' /server/info answer ("27.0.1" -> 27), or null when it isn't there. */
+function macosMajor(info) {
+  const raw = info?.data?.os_version ?? info?.data?.osVersion ?? info?.os_version;
+  const m = /^(\d+)/.exec(String(raw ?? "").trim());
+  return m ? Number(m[1]) : null;
+}
+
+function rememberServerInfo(serverUrl, info) {
+  const major = macosMajor(info);
+  if (major === null) return null;
+  const service = major >= ANY_SERVICE_FROM_MACOS ? "any" : "iMessage";
+  serviceCache.set(serverUrl, { service, at: Date.now() });
+  return service;
+}
+
+/**
+ * Which chat name this line's Mac uses. When the Mac can't be asked, it falls back to "iMessage" (what
+ * every macOS before 26 needs); on a newer Mac a first text may then show the 400 above, which
+ * findSentCopy() below catches.
+ */
+async function chatServiceFor(client, serverUrl) {
+  const hit = serviceCache.get(serverUrl);
+  if (hit && Date.now() - hit.at < SERVICE_CACHE_TTL_MS) return hit.service;
+  try {
+    return rememberServerInfo(serverUrl, await client.getServerInfo()) || "iMessage";
+  } catch (err) {
+    console.warn(`[vtext bluebubbles] couldn't read the Mac's macOS version (${err.message}); using "iMessage;-;" chat names`);
+    return "iMessage";
+  }
+}
+
+// Errors where BlueBubbles may well have sent the text anyway: worth checking the chat before calling it failed.
+// Left out: auth/DNS/refused (BlueBubbles never got the request) and MESSAGE_SEND_ERROR (Messages itself
+// errored the message, so there is no clean sent copy to find).
+const CHECK_CHAT_AFTER = new Set(["INVALID_RECIPIENT", "TIMEOUT", "NETWORK_ERROR", "SERVER_ERROR", "UNKNOWN_ERROR"]);
+const RECOVERY_WAITS_MS = [0, 5000, 15000]; // a timed-out send may still be landing in Messages
+const CLOCK_SLACK_MS = 2 * 60 * 1000; // the Mac's clock and ours can differ a little
+
+const sameText = (a, b) => String(a ?? "").replace(/\s+/g, " ").trim() === String(b ?? "").replace(/\s+/g, " ").trim();
+
+/**
+ * After a send errored, look in the chat for our own message, sent since the send started, with no error.
+ * Found means the text really went out, so the caller records it as sent (and delivered, when it already
+ * is) instead of failed, and nothing retries it (a retry would text the person twice).
+ */
+async function findSentCopy({ client, chatGuids, body, media, startedAt, sleep }) {
+  for (const wait of RECOVERY_WAITS_MS) {
+    if (wait) await sleep(wait);
+    for (const chatGuid of chatGuids) {
+      let messages;
+      try {
+        messages = await client.getChatMessages({ chatGuid, after: startedAt - CLOCK_SLACK_MS, limit: 10 });
+      } catch (err) {
+        return null; // BlueBubbles can't be reached at all, so the original error stands
+      }
+      const match = messages.find(
+        (m) =>
+          m.isFromMe &&
+          !m.error &&
+          (m.dateCreated || 0) >= startedAt - CLOCK_SLACK_MS &&
+          (media ? (m.attachments || []).length > 0 : sameText(m.text, body))
+      );
+      if (match) return match;
+    }
+  }
+  return null;
+}
+
+let sleepImpl = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+/** Tests skip the waits. */
+function setSleepForTests(fn) {
+  sleepImpl = fn || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
 }
 
 function credentialsFor(line) {
@@ -102,11 +187,15 @@ module.exports = {
    * @param {{file: string}} [params.media] - when set, only this image is sent (an iMessage attachment carries no caption), and `body` is not
    */
   async send({ line, credentials, to, body, clientMessageId, media }) {
+    let client;
+    let chatGuid;
+    const startedAt = Date.now();
     try {
       const creds = credentials || credentialsFor(line);
-      const client = buildClient({ serverUrl: line.config?.serverUrl, password: creds.password });
+      const serverUrl = line.config?.serverUrl;
+      client = buildClient({ serverUrl, password: creds.password });
 
-      const chatGuid = line.config?.guid || chatGuidFor(to);
+      chatGuid = line.config?.guid || chatGuidFor(to, await chatServiceFor(client, serverUrl));
       const tempGuid = clientMessageId || crypto.randomUUID();
 
       const result = media?.file
@@ -119,7 +208,23 @@ module.exports = {
       const providerMessageId = result?.data?.guid || tempGuid;
       return { providerMessageId, providerStatus: "sent" };
     } catch (err) {
-      throw mapSendError(err);
+      const mapped = mapSendError(err);
+      if (!client || !CHECK_CHAT_AFTER.has(mapped.code)) throw mapped;
+
+      // Both chat names, so a text is found whichever one Messages used.
+      const chatGuids = [...new Set([chatGuid, chatGuidFor(to, "any"), chatGuidFor(to, "iMessage")].filter(Boolean))];
+      const sent = await findSentCopy({ client, chatGuids, body, media, startedAt, sleep: sleepImpl });
+      if (!sent) throw mapped;
+
+      console.warn(`[vtext bluebubbles] send to ${chatGuid} answered ${mapped.code}, but the text is in Messages as sent (${sent.guid}); recording it as sent`);
+      return {
+        providerMessageId: sent.guid,
+        providerStatus: "sent",
+        // The delivery webhook usually came while BlueBubbles was still answering, before this message had
+        // its id, so it couldn't be matched then. Carry the delivery over from the chat instead.
+        deliveredAt: sent.dateDelivered ? new Date(sent.dateDelivered) : null,
+        recoveredFrom: mapped.code,
+      };
     }
   },
 
@@ -190,6 +295,7 @@ module.exports = {
       const creds = credentials || credentialsFor(line);
       const client = buildClient({ serverUrl: line.config?.serverUrl, password: creds.password });
       const info = await client.getServerInfo();
+      rememberServerInfo(line.config?.serverUrl, info); // keeps the chat-name choice current for free
       return { ok: true, details: info };
     } catch (err) {
       return { ok: false, details: err.message };
@@ -213,4 +319,7 @@ module.exports = {
     const client = buildClient({ serverUrl: line.config?.serverUrl, password: creds.password });
     return client.registerWebhook({ url: publicUrl, events: ["new-message", "updated-message"] });
   },
+
+  // Exposed for tests only.
+  _test: { chatGuidFor, macosMajor, setClientFactoryForTests, setSleepForTests },
 };

@@ -7,7 +7,11 @@
 // Env:
 //   REPAIR_AGENT_ENABLED      "true" to run the daily checks
 //   REPAIR_GITHUB_TOKEN       fine-grained token with Contents + Pull requests (read/write)
-//                             and Deployments (read) on BOTH repos below
+//                             and Deployments (read) on the backend repo (and on the website
+//                             repo too when REPAIR_WEBSITE_GITHUB_TOKEN is not set)
+//   REPAIR_WEBSITE_GITHUB_TOKEN  the same permissions on the website repo. Needed because the
+//                             two repos have different owners, and a fine-grained token only
+//                             reaches repos of its own owner (GitHub answers "Not Found").
 //   REPAIR_WEBSITE_REPO       "owner/name" (default Adarsh-Raut/vihara-next)
 //   REPAIR_BACKEND_REPO       "owner/name" (default Asadrana123/viharabackend)
 //   SLACK_REPAIR_CHANNEL_ID   Slack channel for incidents (default: #ads-weekly's id)
@@ -26,6 +30,11 @@ function getRepairConfig() {
     return {
         enabled: env.REPAIR_AGENT_ENABLED === "true",
         githubToken: env.REPAIR_GITHUB_TOKEN || "",
+        // Token per repo; the website falls back to REPAIR_GITHUB_TOKEN.
+        githubTokens: {
+            website: env.REPAIR_WEBSITE_GITHUB_TOKEN || env.REPAIR_GITHUB_TOKEN || "",
+            backend: env.REPAIR_GITHUB_TOKEN || "",
+        },
         repos: {
             website: env.REPAIR_WEBSITE_REPO || "Adarsh-Raut/vihara-next",
             backend: env.REPAIR_BACKEND_REPO || "Asadrana123/viharabackend",
@@ -62,6 +71,18 @@ function getRepairConfig() {
     };
 }
 
+/** The env name that holds each repo's token. */
+const githubTokenName = (repo) =>
+    repo === "website" && process.env.REPAIR_WEBSITE_GITHUB_TOKEN ? "REPAIR_WEBSITE_GITHUB_TOKEN" : "REPAIR_GITHUB_TOKEN";
+
+/** Token settings that are missing, e.g. ["REPAIR_GITHUB_TOKEN"]. Empty when both repos have one. */
+function missingGithubTokens(config = getRepairConfig()) {
+    const missing = [];
+    if (!config.githubTokens.backend) missing.push("REPAIR_GITHUB_TOKEN");
+    if (!config.githubTokens.website) missing.push("REPAIR_WEBSITE_GITHUB_TOKEN");
+    return missing;
+}
+
 /** Settings the checks / agent can't run without. */
 function missingRepairSettings(config = getRepairConfig()) {
     const missing = [];
@@ -69,9 +90,9 @@ function missingRepairSettings(config = getRepairConfig()) {
     if (!config.meta.adAccountId) missing.push("META_AD_ACCOUNT_ID");
     if (!config.slackChannel) missing.push("SLACK_REPAIR_CHANNEL_ID");
     if (!process.env.SLACK_BOT_TOKEN) missing.push("SLACK_BOT_TOKEN");
-    if (!config.githubToken) missing.push("REPAIR_GITHUB_TOKEN");
+    missing.push(...missingGithubTokens(config));
     if (!process.env.ANTHROPIC_API_KEY) missing.push("ANTHROPIC_API_KEY");
     return missing;
 }
 
-module.exports = { getRepairConfig, missingRepairSettings };
+module.exports = { getRepairConfig, missingRepairSettings, missingGithubTokens, githubTokenName };

@@ -30,10 +30,11 @@ function normalizeAddress(raw) {
  * @param {boolean} [params.isReplyToInbound]
  * @param {string} [params.idempotencyKey]
  * @param {Date} [params.scheduledFor]
+ * @param {string|object} [params.fallbackOf] - the iMessage text this one is the SMS fallback for (vtextSmsFallbackService)
  * @param {string} [params.contactName] - admin-provided name (e.g. typed into a bulk-send row), takes priority over a lead-lookup match when a NEW contact is created
  * @returns {Promise<{ message: object, blocked: boolean, reason?: string }>}
  */
-async function enqueueOutbound({ to: rawTo, body, media, origin, channelPolicy, isReplyToInbound, idempotencyKey, scheduledFor, contactName }) {
+async function enqueueOutbound({ to: rawTo, body, media, origin, channelPolicy, isReplyToInbound, idempotencyKey, scheduledFor, contactName, fallbackOf }) {
   const to = normalizeAddress(rawTo);
   if (!to) {
     throw new Errorhandler("to is not a valid US phone number or email address", 400);
@@ -93,6 +94,7 @@ async function enqueueOutbound({ to: rawTo, body, media, origin, channelPolicy, 
     isReplyToInbound: !!isReplyToInbound,
     consentBasis: complianceResult.allowed ? complianceResult.basis : undefined,
     idempotencyKey: idempotencyKey || undefined,
+    fallbackOf: fallbackOf || undefined,
     scheduledFor: scheduledFor || undefined,
     queuedAt: complianceResult.allowed ? new Date() : undefined,
     error: complianceResult.allowed ? undefined : { kind: complianceResult.errorKind, message: complianceResult.reason },

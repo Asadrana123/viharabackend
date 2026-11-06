@@ -142,7 +142,7 @@ mongoose.connect(process.env.DB_URI, {
     // Sign-up doctor: reports cut off by a restart say so in their Slack thread.
     require("./services/conversion/conversionService").recoverSignupDoctor().catch((err) => console.error("[signup-doctor] recovery:", err.message));
     // Read the website's page list now so Design Studio opens quickly.
-    if (process.env.DESIGN_GITHUB_TOKEN) {
+    if (require("./services/design/githubService").hasWebsiteToken()) {
       require("./services/design/pageDiscovery").discoverPages().catch((err) => console.error("[design] page discovery:", err.message));
     }
   })

@@ -8,7 +8,7 @@
 // see /Users/adi/projects/work/vihara/sendify-infra.md §3.1/§5 for the full design.
 const mongoose = require("mongoose");
 
-const CHANNEL_TYPES = ["imessage-bluebubbles", "android-sms", "mock"];
+const CHANNEL_TYPES = ["imessage-bluebubbles", "android-sms", "twilio-sms", "mock"];
 const LINE_STATUSES = ["provisioning", "warming", "active", "paused", "offline", "quarantined", "retired"];
 const ROUTABLE_STATUSES = ["warming", "active"];
 

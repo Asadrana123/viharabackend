@@ -236,8 +236,8 @@ async function handleCommand({ text, userId, runInBackground }) {
         }
         case "pull":
             guard.assertApprover(userId);
-            runInBackground(() => require("./dailyPull").runDailyPull());
-            return "Running the daily pull now; the result goes to #ads-weekly if anything needs attention.";
+            runInBackground(() => require("./dailyPull").runDailyPull({ force: true }));
+            return "Running the daily pull now; the full unmatched-ads list and any other problems go to #ads-weekly.";
         case "weekly":
             guard.assertApprover(userId);
             runInBackground(() => require("./weeklyAnalysis").runWeeklyAnalysis());

@@ -31,4 +31,17 @@ function leadTextingHours(phoneE164, now = new Date()) {
   return { open: hour >= 8 && hour < 21, localTime };
 }
 
-module.exports = { textingWindow, leadTextingHours };
+/**
+ * The next moment (to the nearest 15 minutes) when it is 8 AM-9 PM where this number is. Returns `now` when it is already open.
+ * Used to hold an SMS fallback until morning instead of texting someone at night.
+ */
+function nextTextingWindowOpen(phoneE164, now = new Date()) {
+  const STEP_MS = 15 * 60 * 1000;
+  for (let t = now.getTime(); t <= now.getTime() + 36 * 3_600_000; t += STEP_MS) {
+    const at = new Date(t);
+    if (leadTextingHours(phoneE164, at).open) return at;
+  }
+  return new Date(now.getTime() + 12 * 3_600_000); // unreachable in practice: the window is open 13 hours a day
+}
+
+module.exports = { textingWindow, leadTextingHours, nextTextingWindowOpen };

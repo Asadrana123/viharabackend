@@ -13,6 +13,7 @@
 // "no draft, a human replies manually" is the only safe failure mode.
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const { resolvePropertyVariables, TEMPLATE_VARIABLES } = require("./vtextTemplateService");
+const { toorakReplyRules } = require("./vtextToorakReplyRules");
 
 // e.g. "property_price" -> "Starting bid" — reusing the Send tab's own
 // variable labels (not raw snake_case keys) so the model actually
@@ -44,18 +45,20 @@ function isAiReplyAvailable() {
  * @param {object} contact - a vtextContactModel document (leadRefs populated)
  * @returns {Promise<object|null>}
  */
-async function buildPropertyContext(contact) {
+async function buildPropertyContext(contact, toorak = null) {
   const propertyRef = (contact?.leadRefs || []).find((r) => r.leadType === "property");
-  if (!propertyRef) return null;
+  // A Toorak lead's home (vtextToorakReplyRules.loadToorakLead) when there is no property lead.
+  if (!propertyRef && !toorak?.propertySlug) return null;
 
   try {
     const PropertyLead = require("../../model/leads/propertyLeadModel");
     const Product = require("../../model/property/productModel");
 
-    const lead = await PropertyLead.findById(propertyRef.leadId).select("propertySlug").lean();
-    if (!lead?.propertySlug) return null;
+    const lead = propertyRef ? await PropertyLead.findById(propertyRef.leadId).select("propertySlug").lean() : null;
+    const slug = lead?.propertySlug || toorak?.propertySlug;
+    if (!slug) return null;
 
-    const product = await Product.findOne({ slug: lead.propertySlug })
+    const product = await Product.findOne({ slug })
       .select("productName street city state zipCode beds baths assetType propertyType startBid slug investmentData.valuation investmentData.rental")
       .lean();
     if (!product) return null;
@@ -101,7 +104,7 @@ function buildFactsBlock({ propertyContext, knowledge }) {
   return block;
 }
 
-function buildPrompt({ contact, messages, replyToBody, propertyContext, knowledge }) {
+function buildPrompt({ contact, messages, replyToBody, propertyContext, knowledge, toorak, now = new Date() }) {
   const facts = buildFactsBlock({ propertyContext, knowledge });
   // Extra rules only when the knowledge lookup is on, so the prompt is unchanged while it is off.
   const severalProperties = (knowledge?.properties?.length || 0) > 1;
@@ -139,7 +142,7 @@ Rules:
 - Only if the answer genuinely isn't in the facts below, say a team member will follow up — never guess, but never withhold a fact you do have either.
 - Plain text only — no markdown, no emojis, no signature.
 - Reply ONLY to the contact's message below — do not re-answer earlier messages, those already have their own reply.
-${knowledgeRules}
+${knowledgeRules}${toorakReplyRules(toorak, now)}
 ${facts}
 
 ${earlierHistory.length ? `Earlier conversation, for context only (oldest first):\n${formatHistory(earlierHistory)}\n\n` : ""}The contact's message you are replying to right now${knowledge ? " (between the markers)" : ""}:
@@ -185,9 +188,10 @@ function parseModelOutput(raw) {
  * @param {string} params.replyToBody - the specific inbound message's text to draft a reply to
  * @param {object|null} params.propertyContext - from buildPropertyContext()
  * @param {object} [params.knowledge] - from vtextKnowledgeService.buildReplyKnowledge(); when given it replaces propertyContext in the prompt
+ * @param {object|null} [params.toorak] - from vtextToorakReplyRules.loadToorakLead(): adds Prajwal's Toorak reply rules
  * @returns {Promise<{ reply: string, needsHuman: boolean, topic: string }|null>} the draft, or null if generation isn't possible/failed. needsHuman is true when the AI said a team member will follow up.
  */
-async function generateDraftReply({ contact, messages, replyToBody, propertyContext, knowledge }) {
+async function generateDraftReply({ contact, messages, replyToBody, propertyContext, knowledge, toorak }) {
   const client = getClient();
   if (!client) return null;
   if (!replyToBody) return null;
@@ -195,7 +199,7 @@ async function generateDraftReply({ contact, messages, replyToBody, propertyCont
   try {
     const model = client.getGenerativeModel({ model: MODEL_NAME });
     const result = await model.generateContent({
-      contents: [{ role: "user", parts: [{ text: buildPrompt({ contact, messages: messages || [], replyToBody, propertyContext, knowledge }) }] }],
+      contents: [{ role: "user", parts: [{ text: buildPrompt({ contact, messages: messages || [], replyToBody, propertyContext, knowledge, toorak }) }] }],
       generationConfig: {
         temperature: 0.4,
         responseMimeType: "application/json",
@@ -213,4 +217,4 @@ async function generateDraftReply({ contact, messages, replyToBody, propertyCont
   }
 }
 
-module.exports = { MODEL_NAME, getClient, isAiReplyAvailable, buildPropertyContext, generateDraftReply, parseModelOutput, looksLikeDeferral };
+module.exports = { MODEL_NAME, getClient, isAiReplyAvailable, buildPropertyContext, buildPrompt, generateDraftReply, parseModelOutput, looksLikeDeferral };

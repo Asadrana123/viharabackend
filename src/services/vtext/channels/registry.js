@@ -9,6 +9,7 @@ const { CHANNEL_TYPES } = require("../../../model/vtext/vtextLineModel");
 
 const imessageBluebubblesAdapter = require("./imessageBluebubbles/adapter");
 const androidSmsAdapter = require("./androidSmsGateway/adapter");
+const twilioSmsAdapter = require("./twilioSms/adapter");
 
 // "mock" is deliberately not a normal channel: it only loads when explicitly
 // opted into, and assertRegistryMatchesEnum() below treats its absence as
@@ -20,6 +21,7 @@ const mockAdapter = MOCK_ENABLED ? require("./mock/adapter") : null;
 const adapters = {
   "imessage-bluebubbles": imessageBluebubblesAdapter,
   "android-sms": androidSmsAdapter,
+  "twilio-sms": twilioSmsAdapter,
 };
 if (mockAdapter) {
   adapters.mock = mockAdapter;

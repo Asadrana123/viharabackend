@@ -85,7 +85,7 @@ exports.listPages = catchAsyncError(async (req, res) => {
     pagesError,
     canApprove: canApprove(req.user),
     configured: {
-      github: Boolean(process.env.DESIGN_GITHUB_TOKEN),
+      github: github.hasWebsiteToken(),
       ai: Boolean(process.env.ANTHROPIC_API_KEY),
     },
   });
@@ -101,7 +101,7 @@ exports.listLandingPages = catchAsyncError(async (req, res) => {
     pagesError,
     canApprove: canApprove(req.user),
     configured: {
-      github: Boolean(process.env.DESIGN_GITHUB_TOKEN),
+      github: github.hasWebsiteToken(),
       ai: Boolean(process.env.ANTHROPIC_API_KEY),
     },
   });

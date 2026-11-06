@@ -12,6 +12,7 @@ const { encryptCredentials, decryptCredentials } = require("../../utils/secretBo
 const { drainLine } = require("../../services/vtext/vtextLineDrainService");
 const { statusBeforeOffline } = require("../../services/vtext/vtextLineHealthService");
 const { normalizeInternationalPhone } = require("../../utils/internationalPhone");
+const { buildWebhookUrl } = require("../../services/vtext/vtextWebhookUrl");
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -34,19 +35,6 @@ function normalizeTestRecipient(raw) {
   }
   const normalized = normalizeInternationalPhone(trimmed);
   return normalized ? { ok: true, value: normalized } : { ok: false };
-}
-
-/**
- * The URL a provider (BlueBubbles, android-sms-gateway) POSTs inbound events to
- * for this line — the per-line webhookKey in the path is the actual security
- * boundary (vtextWebhookController.js), not a secret on the provider's side.
- * Returns null when VTEXT_PUBLIC_BASE_URL isn't configured (e.g. plain local
- * dev with no tunnel) — there's nothing reachable to build a URL to yet.
- */
-function buildWebhookUrl(line) {
-  const base = process.env.VTEXT_PUBLIC_BASE_URL;
-  if (!base) return null;
-  return `${base.replace(/\/$/, "")}/api/webhooks/vtext/${line.channelType}/${line.webhookKey}`;
 }
 
 /** Attaches the computed webhookUrl to a line object headed into a JSON response (never stored on the document itself — always derived from current env + the line's own fields). */
@@ -300,6 +288,19 @@ const toggleDrainMode = catchAsyncError(async (req, res) => {
 const startWarmup = catchAsyncError(async (req, res) => {
   const line = await VtextLine.findById(req.params.id);
   if (!line) return res.status(404).json({ success: false, message: "Line not found" });
+
+  // A carrier SMS line has hard limits set by its approved campaign. The adapter's defaults are placeholders, so a
+  // person must enter the real ones (from the Twilio console) before the line can carry a single text.
+  if (getAdapter(line.channelType).capabilities.requiresExplicitLimits) {
+    const missing = ["perMinute", "perDay", "newRecipientsPerHour"].filter((key) => !(line.limits?.[key] > 0));
+    if (missing.length) {
+      return res.status(400).json({
+        success: false,
+        message: `Set this line's limits from the approved campaign before activating it. Missing: ${missing.join(", ")}.`,
+        missing,
+      });
+    }
+  }
   line.warmup.enabled = true;
   line.warmup.startedAt = new Date();
   await setLineStatus(line, "warming", "warm-up started by admin", req);

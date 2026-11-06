@@ -12,6 +12,7 @@ const VtextMessage = require("../../model/vtext/vtextMessageModel");
 const VtextLine = require("../../model/vtext/vtextLineModel");
 const capacity = require("../../services/vtext/vtextCapacityService");
 const { getRouteQueue, getLineQueue } = require("../../services/vtext/queue/queues");
+const { maybeQueueSmsFallback, IMESSAGE } = require("../../services/vtext/vtextSmsFallbackService");
 
 const CANCELLABLE_STATUSES = ["queued", "waiting-window", "waiting-capacity", "assigned", "pending-approval"];
 
@@ -169,6 +170,23 @@ const retryMessage = catchAsyncError(async (req, res) => {
   return res.status(200).json({ success: true, message });
 });
 
+/**
+ * POST /api/v1/vtext/messages/:id/sms-fallback — the "Send by SMS" button on an iMessage that was not delivered (or has no
+ * receipt). Sends the same words once through the Twilio line. Every safety check still applies: consent, opt-out,
+ * texting hours, an existing fallback, and a reply since. Needs VTEXT_SMS_FALLBACK_ENABLED=true.
+ */
+const sendSmsFallback = catchAsyncError(async (req, res) => {
+  const message = await VtextMessage.findById(req.params.id);
+  if (!message) return res.status(404).json({ success: false, message: "Message not found" });
+  if (message.channelType !== IMESSAGE || !["failed", "unknown"].includes(message.status)) {
+    return res.status(400).json({ success: false, message: "Only an iMessage that failed or has no delivery confirmation can be sent by SMS" });
+  }
+
+  const result = await maybeQueueSmsFallback(message, { trigger: "manual", reason: `sent by ${req.user?.name || "an admin"}` });
+  if (!result.queued) return res.status(409).json({ success: false, message: result.reason, messageId: result.messageId });
+  return res.status(200).json({ success: true, messageId: result.messageId });
+});
+
 /** POST /api/v1/vtext/messages/:id/cancel */
 const cancelMessage = catchAsyncError(async (req, res) => {
   const message = await VtextMessage.findById(req.params.id);
@@ -235,4 +253,4 @@ const rerouteMessage = catchAsyncError(async (req, res) => {
   return res.status(200).json({ success: true, message });
 });
 
-module.exports = { sendMessage, sendBulkMessages, listMessagesByStatus, retryMessage, cancelMessage, rerouteMessage, approveDraft };
+module.exports = { sendMessage, sendBulkMessages, listMessagesByStatus, retryMessage, cancelMessage, rerouteMessage, approveDraft, sendSmsFallback };

@@ -17,12 +17,14 @@ const { bullmqConnection } = require("../queue/connection");
 const { QUEUE_NAMES, QUEUE_PREFIX, getRouteQueue } = require("../queue/queues");
 const capacity = require("../vtextCapacityService");
 const { detectKeyword } = require("../vtextComplianceService");
+const { cancelPendingOutbound, recordProviderOptOut } = require("../vtextOptOutService");
 const { publishEvent } = require("../vtextEventsBus");
 const { findLeadRefs, consentFromRef } = require("../vtextLeadLookupService");
 const { endFollowUp } = require("../vtextFollowUpService");
 const { notifyVtextAlert } = require("../../shared/slackService");
 const { notifyInboundNoDraft } = require("../vtextAlertService");
 const { learnFromMessageStatus } = require("../../calling/facetime/iphoneLearning");
+const smsFallback = require("../vtextSmsFallbackService");
 
 const HELP_TEXT = process.env.VTEXT_HELP_TEXT || "This is Vihara. Reply STOP to opt out, or visit vihara.ai for more info.";
 const STOP_CONFIRM_TEXT = process.env.VTEXT_STOP_CONFIRM_TEXT || "You're unsubscribed and won't receive more messages from Vihara. Reply START to resubscribe.";
@@ -67,49 +69,6 @@ async function lastAutoReplyAt(contactId, templateKey) {
     .sort({ createdAt: -1 })
     .select("createdAt");
   return last?.createdAt || null;
-}
-
-async function cancelPendingOutbound(contactId, { onlyFollowUps = false } = {}) {
-  const pending = await VtextMessage.find({
-    contactId,
-    direction: "out",
-    status: { $in: ["queued", "waiting-window", "waiting-capacity", "assigned", "pending-approval"] },
-    ...(onlyFollowUps ? { "origin.templateKey": /^followup-/ } : {}),
-  });
-
-  for (const message of pending) {
-    // A pending AI draft never reached the route queue, so there's no line
-    // job or capacity reservation to undo for it — just reject it below.
-    if (message.status === "pending-approval") {
-      message.status = "cancelled";
-      if (message.aiDraft) message.aiDraft.approvalStatus = "rejected";
-      await message.save();
-      continue;
-    }
-
-    // Best-effort job removal — the message's own status flip is what
-    // actually stops it from sending even if a stale job slips through
-    // (routeWorker/lineSendWorker both check status before doing anything).
-    try {
-      if (message.lineId) {
-        const { getLineQueue } = require("../queue/queues");
-        const job = await getLineQueue(message.lineId).getJob(`send-${message._id}`);
-        if (job) await job.remove();
-      }
-    } catch (err) {
-      console.warn(`[vtext inbound] couldn't remove line-queue job for message ${message._id}:`, err.message);
-    }
-
-    if (message.status === "assigned" && message.lineId) {
-      const line = await VtextLine.findById(message.lineId);
-      if (line) await capacity.release(line, capacity.dayKey(message.updatedAt), { wasReply: message.isReplyToInbound });
-    }
-
-    message.status = "cancelled";
-    await message.save();
-  }
-
-  return pending.length;
 }
 
 async function handleMessageReceived(event, line) {
@@ -173,6 +132,14 @@ async function handleMessageReceived(event, line) {
   await contact.save();
 
   let keyword = detectKeyword(event.body);
+  // Twilio's Advanced Opt-Out tells us when IT acted on a keyword (OptOutType STOP / START / HELP), and it has already
+  // answered the person. Its word wins over our text matching, and we must not send a second confirmation of our own
+  // (a STOP confirmation to a number Twilio just blocked would only come back as error 21610).
+  const providerKeywordType = { STOP: "stop", START: "start", HELP: "help" }[event.optOutType];
+  if (providerKeywordType && keyword.type !== providerKeywordType) {
+    keyword = { type: providerKeywordType, matched: event.optOutType, method: "exact" };
+  }
+  const providerAnswered = Boolean(providerKeywordType) && getAdapter(line.channelType).capabilities?.providerHandlesKeywords === true;
   // "Yes" is the most common answer to our own questions ("Are you free for a quick call?"). It only
   // counts as a resubscribe keyword for someone who is actually opted out; for anyone else it is a
   // normal reply and goes to the AI. START and UNSTOP stay keywords for everyone.
@@ -242,7 +209,7 @@ async function handleMessageReceived(event, line) {
     const cancelledCount = await cancelPendingOutbound(contact._id);
 
     const lastConfirm = await lastAutoReplyAt(contact._id, "stop-confirm");
-    if (!lastConfirm || Date.now() - lastConfirm.getTime() > AUTO_REPLY_COOLDOWN_MS) {
+    if (!providerAnswered && (!lastConfirm || Date.now() - lastConfirm.getTime() > AUTO_REPLY_COOLDOWN_MS)) {
       await sendSystemReply(contact, line, STOP_CONFIRM_TEXT, "stop-confirm");
     }
 
@@ -257,10 +224,10 @@ async function handleMessageReceived(event, line) {
     }).catch(() => {});
   } else if (keyword.type === "help") {
     const lastHelp = await lastAutoReplyAt(contact._id, "help");
-    if (!lastHelp || Date.now() - lastHelp.getTime() > AUTO_REPLY_COOLDOWN_MS) {
+    if (!providerAnswered && (!lastHelp || Date.now() - lastHelp.getTime() > AUTO_REPLY_COOLDOWN_MS)) {
       await sendSystemReply(contact, line, HELP_TEXT, "help");
     }
-    alertNoDraft("They sent HELP, so the help text was sent automatically");
+    alertNoDraft(providerAnswered ? "They sent HELP, and Twilio answered it automatically" : "They sent HELP, so the help text was sent automatically");
   } else if (keyword.type === "start") {
     // An admin-set opt-out is a deliberate human decision — a keyword doesn't override it.
     if (contact.optOut?.isOptedOut && contact.optOut.method !== "admin") {
@@ -270,8 +237,8 @@ async function handleMessageReceived(event, line) {
       contact.consent.capturedAt = new Date();
       contact.consentEvents.push({ type: "resubscribe", at: new Date(), method: keyword.method, keyword: keyword.matched, messageId: message._id, lineId: line._id });
       await contact.save();
-      await sendSystemReply(contact, line, "You're resubscribed to messages from Vihara.", "resubscribe-confirm");
-      alertNoDraft("They had opted out and resubscribed, so the confirmation was sent automatically");
+      if (!providerAnswered) await sendSystemReply(contact, line, "You're resubscribed to messages from Vihara.", "resubscribe-confirm");
+      alertNoDraft(providerAnswered ? "They had opted out and resubscribed, and Twilio sent the confirmation" : "They had opted out and resubscribed, so the confirmation was sent automatically");
     } else if (contact.optOut?.isOptedOut) {
       alertNoDraft("They are opted out by an admin, and a keyword does not change that");
     } else {
@@ -298,8 +265,9 @@ async function handleMessageReceived(event, line) {
   publishEvent({ type: "message.inbound", conversationId: String(conversation._id), contactId: String(contact._id) });
 }
 
-async function handleMessageStatus(event) {
-  let message = await VtextMessage.findOne({ "provider.messageId": event.providerMessageId });
+async function handleMessageStatus(event, line) {
+  // Scoped to the receiving line's channel when known: provider ids from different providers must never match each other.
+  let message = await VtextMessage.findOne({ ...(line ? { channelType: line.channelType } : {}), "provider.messageId": event.providerMessageId });
   // BlueBubbles can report the receipt under a different guid than the one we
   // stored at send time. We send our message _id as the tempGuid, so fall back to it.
   if (!message && event.tempGuid && mongoose.isValidObjectId(event.tempGuid)) {
@@ -315,6 +283,8 @@ async function handleMessageStatus(event) {
   const currentIdx = ORDER.indexOf(message.status);
   const incomingIdx = ORDER.indexOf(event.status);
   if (event.status === "failed") {
+    // A late "failed" must not overwrite a text that already reached the phone (carriers sometimes report both).
+    if (message.status === "delivered" || message.status === "read") return;
     message.status = "failed";
     message.error = { kind: event.errorKind || "line", code: event.errorCode, message: event.errorMessage };
     message.failedAt = event.at || new Date();
@@ -329,6 +299,30 @@ async function handleMessageStatus(event) {
   }
   await message.save();
   await learnFromMessageStatus(message, event); // FaceTime test: is this number on iPhone? Never throws.
+
+  // Twilio blocks sends to a number that texted STOP to it (error 21610). Mirror that here so no other line texts them.
+  if (event.status === "failed" && String(event.errorCode) === "21610") {
+    try {
+      const contact = await VtextContact.findById(message.contactId);
+      await recordProviderOptOut(contact, { lineId: message.lineId, messageId: message._id, code: "21610" });
+    } catch (err) {
+      console.error(`[vtext inbound] couldn't record the provider opt-out for message ${message._id}:`, err.message);
+    }
+  }
+
+  // SMS fallback (off unless VTEXT_SMS_FALLBACK_ENABLED): an iMessage that was not delivered goes out once by SMS;
+  // one that turns out delivered stops a fallback that has not gone out yet. Never lets an error here lose the receipt.
+  try {
+    if (message.channelType === smsFallback.IMESSAGE) {
+      if (message.status === "failed" && smsFallback.isExplicitIMessageFailure(message.error?.code)) {
+        await smsFallback.maybeQueueSmsFallback(message, { trigger: "not-delivered", reason: message.error?.code });
+      } else if (message.status === "delivered" || message.status === "read") {
+        await smsFallback.onOriginalConfirmed(message);
+      }
+    }
+  } catch (err) {
+    console.error(`[vtext sms-fallback] receipt handling failed for message ${message._id}:`, err.message);
+  }
   publishEvent({ type: "message.updated", messageId: String(message._id), conversationId: message.conversationId ? String(message.conversationId) : null, status: message.status });
 }
 
@@ -358,7 +352,7 @@ async function processInboundJob(job) {
   const adapter = getAdapter(webhookEvent.channelType);
   let events;
   try {
-    events = adapter.parseWebhook({ body: webhookEvent.body, headers: webhookEvent.headers, line }) || [];
+    events = adapter.parseWebhook({ body: webhookEvent.body, query: webhookEvent.query, headers: webhookEvent.headers, line }) || [];
   } catch (err) {
     webhookEvent.error = `parseWebhook threw: ${err.message}`;
     await webhookEvent.save();
@@ -369,7 +363,7 @@ async function processInboundJob(job) {
     if (event.type === "message.received") {
       await handleMessageReceived(event, line);
     } else if (event.type === "message.status") {
-      await handleMessageStatus(event);
+      await handleMessageStatus(event, line);
     } else if (event.type === "line.heartbeat") {
       await handleLineHeartbeat(event, line);
     }
@@ -404,4 +398,4 @@ async function stopInboundWorker() {
   }
 }
 
-module.exports = { processInboundJob, startInboundWorker, stopInboundWorker };
+module.exports = { processInboundJob, startInboundWorker, stopInboundWorker, handleMessageStatus, handleMessageReceived };

@@ -21,8 +21,9 @@ function resolveChannelCandidates(channelPolicy) {
     return channelPolicy.channels;
   }
   // No explicit channels -> every registered channel except "mock" (opt-in
-  // only, never a silent default for a real send).
-  return CHANNEL_TYPES.filter((type) => type !== "mock");
+  // only, never a silent default for a real send) and fallback-only channels
+  // (twilio-sms), which only carry a text when asked for by name.
+  return CHANNEL_TYPES.filter((type) => type !== "mock" && !getAdapter(type).capabilities.fallbackOnly);
 }
 
 /** True/false/null per the adapter's own checkReachability contract; refreshes a stale or never-checked cache entry. Only called for channels that don't reach every US number (capabilities.reachesAllUsNumbers === false). */
@@ -127,6 +128,7 @@ async function pickInChannel(channel, message, contact) {
 async function selectLine(message, contact) {
   const policy = message.channelPolicy || { mode: "any" };
   const channels = resolveChannelCandidates(policy);
+  let skippedAsUnreachable = false;
 
   for (const channelType of channels) {
     const adapter = getAdapter(channelType);
@@ -148,6 +150,7 @@ async function selectLine(message, contact) {
           // The one channel explicitly requested is confirmed unreachable — no point trying others.
           return { line: null, waitingOnStickyLine: false };
         }
+        skippedAsUnreachable = true;
         continue;
       }
     }
@@ -155,6 +158,13 @@ async function selectLine(message, contact) {
     const result = await pickInChannel(channelType, message, contact);
     if (result === "WAIT") return { line: null, waitingOnStickyLine: true };
     if (result) return { line: result, waitingOnStickyLine: false };
+  }
+
+  // A number confirmed NOT to be on iMessage (an earlier "not delivered") is texted by SMS from then on, when the
+  // SMS fallback is switched on and the message did not pin a channel. twilio-sms is never in the default list.
+  if (skippedAsUnreachable && policy.mode !== "only" && process.env.VTEXT_SMS_FALLBACK_ENABLED === "true") {
+    const result = await pickInChannel("twilio-sms", message, contact);
+    if (result && result !== "WAIT") return { line: result, waitingOnStickyLine: false };
   }
 
   return { line: null, waitingOnStickyLine: false };

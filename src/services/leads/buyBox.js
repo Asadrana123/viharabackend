@@ -77,6 +77,50 @@ const DOWN_PAYMENT = ["Under 10%", "10-20%", "20-30%", "30% or more", "Not sure"
 const downPaymentFrom = (v, needsFinancing) =>
   needsFinancing === "yes" && DOWN_PAYMENT.includes(v) ? v : "";
 
+// "What kind of loan would you need?" and "Are you pre-approved?": the website's /deal form asks both, only when
+// the buyer picks Financing. Our bank partner only offers residential (home) loans; DSCR and fix-and-flip loans
+// are business-purpose and need an investor lender, so the advisor routes the buyer on this. Must match
+// LOAN_OPTIONS in the website's DealFormPage.tsx. Anything else (or no financing) is stored as "" / null.
+const LOAN_TYPES = ["residential", "dscr", "fix_flip", "other"];
+const LOAN_TYPE_LABELS = { residential: "home loan", dscr: "rental loan (DSCR)", fix_flip: "fix-and-flip loan" };
+const LOAN_TYPE_SPOKEN = { residential: "a regular home loan", dscr: "a rental loan, D S C R", fix_flip: "a fix-and-flip loan" };
+const LOAN_TYPE_OTHER_MAX = 120;
+const loanTypeFrom = (v, needsFinancing) => (needsFinancing === "yes" && LOAN_TYPES.includes(v) ? v : "");
+// Only with "other": their own words, trimmed and cut to 120 characters.
+const loanTypeOtherFrom = (v, loanType, needsFinancing) =>
+  loanTypeFrom(loanType, needsFinancing) === "other" && typeof v === "string" ? v.trim().slice(0, LOAN_TYPE_OTHER_MAX) : "";
+// true / false only for financing buyers who answered; null otherwise (cash, old clients, other forms).
+const preApprovedFrom = (v, needsFinancing) => (needsFinancing === "yes" && typeof v === "boolean" ? v : null);
+// The loan in words: the label, or their own words for "other" ("" when not given).
+const loanTypeLabel = ({ loanType, loanTypeOther } = {}) =>
+  loanType === "other" ? (loanTypeOther ? `other: "${loanTypeOther}"` : "other") : LOAN_TYPE_LABELS[loanType] || "";
+// Advisor flag: anything but a home loan needs a business-purpose (investor) lender, not our bank partner.
+const needsBusinessPurposeLender = ({ loanType } = {}) => !!loanType && loanType !== "residential";
+// One line for the advisor (Slack post), e.g.
+// "rental loan (DSCR), not pre-approved yet → needs an investor lender" ("" for cash / no loan type).
+const loanLine = (lead = {}) => {
+  const loan = loanTypeLabel(lead);
+  if (!loan) return "";
+  const approval = lead.preApproved === true ? "pre-approved" : lead.preApproved === false ? "not pre-approved yet" : "pre-approval not given";
+  return `${loan}, ${approval} → ${needsBusinessPurposeLender(lead) ? "needs an investor lender" : "bank partner"}`;
+};
+// For Brevo's LOAN_TYPE: "home loan" / "rental loan (DSCR)" / "fix-and-flip loan", or their own words for "other".
+const loanTypeBrevo = ({ loanType, loanTypeOther } = {}) =>
+  loanType === "other" ? loanTypeOther || "other" : LOAN_TYPE_LABELS[loanType] || "";
+// Advisor flags for the Slack post. property.financeability comes from the financing playbook (productModel):
+//   loan_buyer_on_cash_only_home  financing (not a fix-and-flip loan) on a home marked cash_bridge_only
+//   needs_business_purpose_lender any loan but a home loan
+const advisorFlags = (lead = {}, property = {}) => {
+  const flags = [];
+  if (lead.needsFinancing === "yes" && lead.loanType !== "fix_flip" && property.financeability === "cash_bridge_only")
+    flags.push("loan_buyer_on_cash_only_home");
+  if (needsBusinessPurposeLender(lead)) flags.push("needs_business_purpose_lender");
+  return flags;
+};
+// For Maya ({{prospect_loan_type}}): the loan spoken, or their own words for "other" ("" when not given).
+const loanTypeSpoken = ({ loanType, loanTypeOther } = {}) =>
+  loanType === "other" ? loanTypeOther || "another kind of loan" : LOAN_TYPE_SPOKEN[loanType] || "";
+
 /**
  * Sanitize the buy box and recompute the match range server-side.
  * @param {object} raw            body.buy_box
@@ -214,6 +258,16 @@ module.exports = {
   marketList,
   touchesFrom,
   needsFinancingFrom,
+  LOAN_TYPES,
+  loanTypeFrom,
+  loanTypeOtherFrom,
+  preApprovedFrom,
+  loanTypeLabel,
+  needsBusinessPurposeLender,
+  loanLine,
+  loanTypeSpoken,
+  loanTypeBrevo,
+  advisorFlags,
   needsFinancingLabel,
   downPaymentFrom,
   buildBuyBox,
