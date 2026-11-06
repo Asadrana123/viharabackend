@@ -173,6 +173,7 @@ function mergeParsedListing(json, markdown) {
         // A sold / off-market page has no asking price, whatever the markdown shows.
         price: isNotForSale(json.homeStatus) ? null : firstFilled(json.price, markdown.price),
         homeStatus: json.homeStatus || null,
+        keystoneHomeStatus: json.keystoneHomeStatus || null,
         address: mergeFields(json.address, markdown.address),
         coordinates: json.coordinates || markdown.coordinates || null,
         specs: mergeFields(json.specs, markdown.specs),

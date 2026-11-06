@@ -11,7 +11,11 @@
 // nobody was told yet — one Slack message goes out with the listing link and:
 //   Hide from site   showOnAuctions off + market sync paused (approvers only)
 //   Keep live        clears the alert; the property stays as it is
-// Nothing is hidden automatically. After the daily check a summary goes to the
+// Exception: a CONFIRMED sold home is hidden automatically (showOnAuctions +
+// isLandingPage off, sync paused): sold on two checks at least 20 hours apart,
+// both of the page's status fields say sold, and nobody pressed "Keep live" on
+// the first alert (see recordMarketStatus). Anything else (pending, off market)
+// waits for the buttons. After the daily check a summary goes to the
 // same channel (status counts, live properties not for sale, failures), but only
 // when something changed, a check failed twice in a row, or on Mondays
 // (statusReportRules.js). The alerts above are never held back.
@@ -46,12 +50,29 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const slackChannel = () =>
     process.env.SLACK_MARKET_STATUS_CHANNEL_ID || process.env.SLACK_REPAIR_CHANNEL_ID || process.env.SLACK_ADS_WEEKLY_CHANNEL_ID || "";
 
+const SOLD_STATUSES = new Set(["RECENTLY_SOLD", "SOLD"]);
+// A sold reading must still hold on a later check at least this long after the first.
+const SOLD_CONFIRM_AFTER_MS = 20 * 60 * 60 * 1000;
+const AUTO_HIDDEN_NOTE = "🙈 Still sold on a second check (both of the listing's status fields say sold), so it was taken off the site automatically (auctions page + landing page off). Market sync for it is paused.";
+
 /**
  * Store a freshly read status on product.marketSync (not saved here).
- * @returns {boolean} true when Slack should be told: the status changed, or
- *          the listing is off the market and that status was never reported.
+ *
+ * A visible property is hidden automatically (showOnAuctions + isLandingPage off,
+ * sync paused, product.$locals.autoHidden set) only when the sale is confirmed:
+ *   - this read says sold in BOTH status fields (homeStatus SOLD / RECENTLY_SOLD
+ *     and keystoneHomeStatus e.g. "RecentlySold"), and
+ *   - an earlier read, at least SOLD_CONFIRM_AFTER_MS ago, already said sold and
+ *     that alert is still open (nobody pressed "Keep live").
+ * The first sold read only raises the normal Slack alert.
+ *
+ * @param {object} [evidence]
+ * @param {string|null} [evidence.keystoneHomeStatus] - the page's second status field from this read
+ * @returns {boolean} true when Slack should be told: the status changed, the
+ *          listing is off the market and that status was never reported, or it
+ *          was just hidden as sold.
  */
-function recordMarketStatus(product, newStatus) {
+function recordMarketStatus(product, newStatus, { keystoneHomeStatus } = {}) {
     const sync = product.marketSync;
     if (!newStatus) return false;
 
@@ -59,6 +80,20 @@ function recordMarketStatus(product, newStatus) {
     const changed = Boolean(previous && newStatus !== previous);
     const notYetReported = newStatus !== "FOR_SALE" && newStatus !== sync.reportedStatus;
     sync.marketStatus = newStatus;
+
+    const alert = sync.statusAlert;
+    const soldEarlier = Boolean(
+        alert && SOLD_STATUSES.has(alert.to) && alert.detectedAt &&
+        Date.now() - new Date(alert.detectedAt).getTime() >= SOLD_CONFIRM_AFTER_MS
+    );
+    const confirmedSold = SOLD_STATUSES.has(newStatus) && /sold/i.test(keystoneHomeStatus || "") && soldEarlier;
+    if (confirmedSold && (product.showOnAuctions || product.isLandingPage)) {
+        product.showOnAuctions = false;
+        product.isLandingPage = false;
+        sync.enabled = false;
+        product.$locals.autoHidden = true;
+        return true; // keeps the open alert, so its Slack message can be closed
+    }
     if (!changed && !notYetReported) return false;
 
     sync.statusAlert = { from: previous || null, to: newStatus, detectedAt: new Date() };
@@ -85,7 +120,11 @@ function alertBlocks(product, outcome) {
     if (outcome) {
         blocks.push(context(outcome));
     } else {
-        blocks.push(context("It is still live on the site. Check the listing, then choose:"));
+        blocks.push(context(
+            SOLD_STATUSES.has(alert.to)
+                ? "It is still live on the site. If it still shows sold on the next check (about a day from now), it will be hidden automatically. Press Keep live to stop that."
+                : "It is still live on the site. Check the listing, then choose:"
+        ));
         blocks.push(
             actions([
                 button("Hide from site", "market_status_hide", product._id, "danger"),
@@ -106,16 +145,23 @@ async function reportStatusChange(product) {
         console.warn("[marketStatus] No Slack channel set (SLACK_MARKET_STATUS_CHANNEL_ID); alert not sent.");
         return false;
     }
+    const autoHidden = Boolean(product.$locals?.autoHidden);
     try {
-        const { ts, channel: ch } = await slack.postMessage({ channel, text: alertText(product), blocks: alertBlocks(product) });
+        // Drop the buttons from the first "looks sold" message.
+        if (autoHidden) await closeAlertMessage(product, AUTO_HIDDEN_NOTE);
+        const blocks = alertBlocks(product, autoHidden ? AUTO_HIDDEN_NOTE : undefined);
+        const { ts, channel: ch } = await slack.postMessage({ channel, text: alertText(product), blocks });
         await productModel.updateOne(
             { _id: product._id },
             {
-                $set: {
-                    "marketSync.reportedStatus": product.marketSync.statusAlert.to,
-                    "marketSync.statusAlert.slackChannel": ch,
-                    "marketSync.statusAlert.slackTs": ts,
-                },
+                $set: autoHidden
+                    // Nothing left to decide, so no open alert.
+                    ? { "marketSync.reportedStatus": product.marketSync.statusAlert.to, "marketSync.statusAlert": null }
+                    : {
+                        "marketSync.reportedStatus": product.marketSync.statusAlert.to,
+                        "marketSync.statusAlert.slackChannel": ch,
+                        "marketSync.statusAlert.slackTs": ts,
+                    },
             }
         );
         return true;
@@ -166,14 +212,19 @@ async function handleKeep({ productId, userId }) {
 /** Read one property's status and report a change. Throws on scrape failure. */
 async function checkProduct(product) {
     const payload = await firecrawlService.scrapePropertyImages(product.marketSync.url);
-    const newStatus = parseMarketDataPropertyJson(payload)?.homeStatus || null;
+    const parsed = parseMarketDataPropertyJson(payload);
+    const newStatus = parsed?.homeStatus || null;
     if (!newStatus) throw new Error("No listing status found on the page");
 
-    const report = recordMarketStatus(product, newStatus);
-    // Only the status fields are written, so an admin edit made meanwhile is kept.
+    const report = recordMarketStatus(product, newStatus, { keystoneHomeStatus: parsed.keystoneHomeStatus });
+    // Only the status fields (plus the hide switches for a sold home) are written,
+    // so an admin edit made meanwhile is kept.
+    const hidden = product.$locals.autoHidden
+        ? { showOnAuctions: false, isLandingPage: false, "marketSync.enabled": false }
+        : {};
     await productModel.updateOne(
         { _id: product._id },
-        { $set: { "marketSync.marketStatus": newStatus, ...(report ? { "marketSync.statusAlert": product.marketSync.statusAlert } : {}) } }
+        { $set: { "marketSync.marketStatus": newStatus, ...hidden, ...(report ? { "marketSync.statusAlert": product.marketSync.statusAlert } : {}) } }
     );
     return report ? reportStatusChange(product) : false;
 }
@@ -250,8 +301,12 @@ async function checkAllStatuses({ force = false } = {}) {
     if (!firecrawlService.isConfigured()) return { ...summary, skipped: "FIRECRAWL_API_KEY missing" };
 
     const products = await productModel
-        .find({ showOnAuctions: true, "marketSync.url": { $nin: [null, ""] }, "marketSync.enabled": { $ne: false } })
-        .select("productName slug showOnAuctions marketSync");
+        .find({
+            $or: [{ showOnAuctions: true }, { isLandingPage: true }],
+            "marketSync.url": { $nin: [null, ""] },
+            "marketSync.enabled": { $ne: false },
+        })
+        .select("productName slug showOnAuctions isLandingPage marketSync");
     summary.total = products.length;
 
     const rows = [];

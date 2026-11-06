@@ -159,6 +159,9 @@ function toParsedShape(p) {
         // Only a real asking price — sold / off-market pages have none.
         price: isNotForSale(homeStatus) ? null : toNum(p.price),
         homeStatus,
+        // A second, independent status field ("RecentlySold" on sold pages, absent
+        // on for-sale ones). Used to confirm a sale before a home is hidden.
+        keystoneHomeStatus: typeof p.keystoneHomeStatus === "string" ? p.keystoneHomeStatus : null,
         address: {
             fullAddress: street && city && state && zipCode ? `${street}, ${city}, ${state} ${zipCode}` : null,
             street,

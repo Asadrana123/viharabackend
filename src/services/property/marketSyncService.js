@@ -87,7 +87,7 @@ async function syncProduct(product) {
 
     // Market data status — flag a change for the admin (Slack, after the save),
     // change nothing else.
-    const statusChanged = recordMarketStatus(product, marketData.homeStatus || null);
+    const statusChanged = recordMarketStatus(product, marketData.homeStatus || null, { keystoneHomeStatus: marketData.keystoneHomeStatus });
 
     sync.tweakPercent = tweakPercent;
     sync.estimateUpliftPercent = estimateUpliftPercent;
