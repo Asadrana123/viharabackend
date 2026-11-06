@@ -5,8 +5,8 @@
 // formIntroTexts.js. Rules (Prajwal, 6 Nov 2026):
 //   - Only forms listed in VTEXT_FORM_TEXTS (comma list of keys, or "all"), and only with VTEXT_ENABLED=true.
 //     Nothing is listed by default, so each form is turned on by hand on Render.
-//   - Only when the person ticked the SMS box on the form. This holds even while the Vtext consent
-//     check is OFF: these forms are new to texting, so they start with consent.
+//   - Consent follows the Vtext consent switch, like every other text. Switch ON: only when the person
+//     ticked the SMS box on the form. Switch OFF: every new lead, ticked or not.
 //   - Only 9 AM to 8 PM in the lead's time zone (utils/textingHours.js); a lead at night is texted at 9 AM.
 //   - New leads only (callers don't call this for repeat sign-ups), one text per lead, once per number for
 //     each form (per property for the two texts that name one), and no text when the number already got an
@@ -20,6 +20,7 @@ const { toUsSmsNumber } = require("../../utils/usPhone");
 const { maskPhone } = require("../../utils/maskPii");
 const { notifyVtextAlert } = require("../shared/slackService");
 const { nextTextingTime } = require("../../utils/textingHours");
+const { getSettings, isConsentRequired } = require("./vtextSettingsService");
 const { FORM_TEXTS, renderFormText, templateKeyFor } = require("./formIntroTexts");
 
 const RECENT_MS = 24 * 3_600_000;
@@ -59,13 +60,14 @@ const QUIET_SKIP = /not turned on|did not tick|already got|another automatic tex
  * @param {object} params.lead - needs _id, smsConsent and a phone (phoneNormalized / phone / mobilePhone / phoneNumber)
  * @param {string} [params.name] - the person's name, full or first
  * @param {object} [params.values] - property_short, page_title, auction_date when the form's text needs them
- * @param {object} [deps] - injected by tests: { enqueueOutbound, alreadyTexted, notify, now, env }
+ * @param {object} [deps] - injected by tests: { enqueueOutbound, alreadyTexted, notify, now, env, consentRequired }
  * @returns {Promise<{ queued: boolean, reason?: string, at?: Date }>}
  */
 async function maybeSendFormIntroText({ form, leadType, lead, name, values = {} }, deps = {}) {
   const send = deps.enqueueOutbound || enqueueOutbound;
   const checkTexted = deps.alreadyTexted || alreadyTexted;
   const notify = deps.notify || notifyVtextAlert;
+  const consentRequired = deps.consentRequired || (async () => isConsentRequired(await getSettings()));
   const now = deps.now ? deps.now() : new Date();
   const label = FORM_TEXTS[form]?.label || form;
   const id = lead?._id;
@@ -89,7 +91,9 @@ async function maybeSendFormIntroText({ form, leadType, lead, name, values = {} 
 
   try {
     if (!formTextEnabled(form, deps.env)) return { queued: false, reason: "not turned on" };
-    if (!lead || lead.smsConsent !== true) return await skip("did not tick the SMS box");
+    if (!lead) return await skip("no lead");
+    // Switch ON: the SMS tick is needed. Switch OFF: everyone (Vtext's gate still blocks opt-outs and bad numbers).
+    if (lead.smsConsent !== true && (await consentRequired())) return await skip("did not tick the SMS box (consent check is ON)");
     const phone = toUsSmsNumber(rawPhone);
     if (!phone) return await skip("no valid US mobile number");
 

@@ -61,6 +61,7 @@ const deps = (over = {}) => ({
   enqueueOutbound: async (a) => { calls.push(a); return { message: { _id: "m1" } }; },
   alreadyTexted: async () => null,
   notify: async (a) => { alerts.push(a); },
+  consentRequired: async () => true,
   ...over,
 });
 const lead = (over = {}) => ({ _id: "lead1", phoneNormalized: "+12125550123", smsConsent: true, ...over });
@@ -93,11 +94,18 @@ test("at night it waits for 9 AM in the lead's time zone", async () => {
   assert.equal(calls[0].scheduledFor.toISOString(), "2026-11-10T14:00:00.000Z"); // 9 AM Eastern
 });
 
-test("nothing is sent without the SMS tick, even while the consent check is OFF", async () => {
+test("consent check ON: nothing is sent without the SMS tick", async () => {
   const r = await maybeSendFormIntroText({ form: "partner", leadType: "partner", lead: lead({ smsConsent: false }), name: "Steve" }, deps());
   assert.equal(r.queued, false);
   assert.equal(calls.length, 0);
   assert.equal(alerts.length, 0, "a missing tick is normal, no Slack alert");
+});
+
+test("consent check OFF: sent with or without the SMS tick", async () => {
+  const off = deps({ consentRequired: async () => false });
+  await maybeSendFormIntroText({ form: "partner", leadType: "partner", lead: lead({ smsConsent: false }), name: "Steve" }, off);
+  await maybeSendFormIntroText({ form: "norcal", leadType: "norcal", lead: lead({ _id: "lead2" }), name: "Steve" }, off);
+  assert.equal(calls.length, 2);
 });
 
 test("not turned on: nothing sent, nothing alerted", async () => {
