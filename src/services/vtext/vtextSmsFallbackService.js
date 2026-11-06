@@ -247,7 +247,7 @@ async function onOriginalConfirmed(original, deps = {}) {
 
 /**
  * Last look before a fallback text goes out (called by lineSendWorker). Cancels it when the iMessage was delivered
- * in the meantime, they replied, or the fallback was switched off; defers it to the next 8 AM when texting hours
+ * in the meantime, they replied, or the fallback was switched off; defers it to the next 9 AM when texting hours
  * have closed. Returns true when the message was handled here and must NOT be sent now.
  */
 async function guardFallbackBeforeSend(message, contact, line, reservationDay, deps = {}) {

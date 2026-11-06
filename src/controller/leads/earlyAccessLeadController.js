@@ -14,6 +14,7 @@ const { getVtextMessagesForPhones } = require("../../services/vtext/vtextLeadMes
 const { notifyNewLead } = require("../../services/shared/slackService");
 const { needsFinancingFrom, needsFinancingLabel } = require("../../services/leads/buyBox");
 const { maskEmail } = require("../../utils/maskPii");
+const { maybeSendFormIntroText } = require("../../services/vtext/vtextFormIntroService");
 
 // Discriminator stamped on each note so notes never bleed across lead types.
 const LEAD_NOTE_TYPE = "earlyAccess";
@@ -45,7 +46,7 @@ const EARLY_ACCESS_REGISTERING_AS = {
 const registerAndCall = catchAsyncError(async (req, res, next) => {
   const {
     fullName, email, phone, markets, buyerType, dealSize, needsFinancing, timezone,
-    consent, consentText, consentTimestamp, eventId,
+    consent, consentText, consentTimestamp, eventId, smsConsent, smsConsentText,
   } = req.body;
   // Extra questions added to the form in Admin → Landing Pages (services/leads/formAnswers.js).
   const extraAnswers = sanitizeFormAnswers(req.body.extraAnswers);
@@ -61,6 +62,9 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
   const phoneNormalized = normalisePhone(phone); // canonical E.164 for dedup + calling
   if (!phoneNormalized)
     return next(new ErrorHandler("Enter a valid phone number", 400));
+
+  // SMS box is separate from the call consent and unchecked by default. Only a literal `true` counts.
+  const smsOptedIn = smsConsent === true;
 
   // ── 1. Create the lead up front — dedup gate via the unique email index ──
   let lead;
@@ -79,6 +83,9 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       consent: consent === true,
       consentText: consentText || "",
       consentTimestamp: consentTimestamp ? new Date(consentTimestamp) : null,
+      smsConsent: smsOptedIn,
+      smsConsentText: smsOptedIn ? String(smsConsentText || "") : "",
+      smsConsentAt: smsOptedIn ? new Date() : null,
       eventId: eventId || "",
     });
   } catch (err) {
@@ -107,6 +114,9 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
     console.log(`[early-access] email-only (no consent): ${maskEmail(lead.email)}`);
   }
 
+  // Vtext's Early Access text (only with the SMS box ticked, off unless turned on). Never throws.
+  maybeSendFormIntroText({ form: "earlyAccess", leadType: "earlyAccess", lead, name: lead.fullName });
+
   // ── 3. Respond ──────────────────────────────────────────────────────────
   res.status(200).json({
     success: true,
@@ -123,6 +133,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
     email: lead.email,
     phone: lead.phone,
     consent: lead.consent,
+    smsConsent: lead.smsConsent,
     source: "early-access-lp",
     extraFields: [
       { label: "Markets", value: lead.markets },

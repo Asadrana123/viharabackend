@@ -15,6 +15,7 @@ const { notifyNewLead } = require("../../services/shared/slackService");
 const { needsFinancingFrom, needsFinancingLabel } = require("../../services/leads/buyBox");
 const { norCalPageUrl } = require("../../config/siteUrls");
 const { maskPhone } = require("../../utils/maskPii");
+const { maybeSendFormIntroText } = require("../../services/vtext/vtextFormIntroService");
 
 // Note discriminator for NorCal leads (matches leadNoteModel.LEAD_TYPES + the
 // stop-calling controller's model map).
@@ -134,6 +135,9 @@ const registerNorCalLead = catchAsyncError(async (req, res, next) => {
   } else {
     console.log(`[nor-cal] no-consent registration: ${maskPhone(lead.phoneNormalized)}`);
   }
+
+  // Vtext's NorCal text (new leads only, only with the SMS box ticked, off unless turned on). Never throws.
+  maybeSendFormIntroText({ form: "norcal", leadType: "norcal", lead, name: lead.fullName });
 
   // ── 3. Respond ──
   res.status(200).json({

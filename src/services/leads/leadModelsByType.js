@@ -59,4 +59,20 @@ const ALL_LEAD_SOURCES = {
   homePopup:            { model: HomePopupLead,               label: "Home Popup" },
 };
 
-module.exports = { MODEL_BY_TYPE, ALL_LEAD_SOURCES };
+// Every collection Vtext looks a phone up in, to name a contact and pick up its text consent
+// (vtextLeadLookupService.findLeadRefs). The calling funnel above plus the forms that save an SMS tick
+// but are never called (6 Nov 2026: Buyer List, /lp pages, auction registrations, Sell). Kept separate
+// so adding a form here never adds it to the daily calling sweep. Each needs a `phoneNormalized` field.
+const LandingFormLead = require("../../model/leads/landingFormLeadModel");
+const AuctionRegistration = require("../../model/bidding/auctionRegistration");
+const SellerForm = require("../../model/property/sellingModel");
+
+const VTEXT_LEAD_MODELS = {
+  ...MODEL_BY_TYPE,
+  buyerList: BuyerListLead,
+  landingForm: LandingFormLead,
+  auctionRegistration: AuctionRegistration,
+  sell: SellerForm,
+};
+
+module.exports = { MODEL_BY_TYPE, ALL_LEAD_SOURCES, VTEXT_LEAD_MODELS };

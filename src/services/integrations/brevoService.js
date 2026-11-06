@@ -561,8 +561,11 @@ const syncBuyerListLead = (lead) => {
 // `source` is "new-deals" for the page, "facebook-form" for instant-form leads
 // (same list and attributes, so both get the same Brevo journeys).
 const syncNewDealsLead = (lead, { source = "new-deals" } = {}) => {
-  const optedIn = lead.consent === true;
-  const identity = buildBuyBoxIdentityAttributes(lead, optedIn, lead.consentTimestamp);
+  // Brevo's SMS opt-in: the page's own SMS box since 6 Nov 2026 (its other box is call consent only).
+  // Facebook leads keep using their form consent.
+  const smsBox = source === "new-deals";
+  const optedIn = smsBox ? lead.smsConsent === true : lead.consent === true;
+  const identity = buildBuyBoxIdentityAttributes(lead, optedIn, smsBox ? lead.smsConsentAt : lead.consentTimestamp);
   return upsertBuyBoxContact(lead, {
     listId: BREVO_NEW_DEALS_LIST_ID,
     label: "New Deals",
@@ -574,7 +577,7 @@ const syncNewDealsLead = (lead, { source = "new-deals" } = {}) => {
       DEAL_INTEREST: lead.dealText || "",
       LANDING_PAGE: source,
       LEAD_SOURCE: source,
-      ...buildTrackingAttributes(lead, optedIn, lead.consentVersion),
+      ...buildTrackingAttributes(lead, optedIn, smsBox ? lead.smsConsentVersion : lead.consentVersion),
       ...buildBuyBoxAttributes(lead),
     },
     fallback: identity,

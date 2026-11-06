@@ -23,6 +23,7 @@ const { scheduleLandingFormSignupCall } = require("../../services/calling/landin
 const { sanitizeFormAnswers, answersAsFields } = require("../../services/leads/formAnswers");
 const { str, isValidEmail, touchesFrom, clientIp, splitName } = require("../../services/leads/buyBox");
 const { pageName } = require("../../config/landingFormVoicePrompt");
+const { maybeSendFormIntroText } = require("../../services/vtext/vtextFormIntroService");
 
 const PAGE_SLUG = /^[a-z0-9-]{3,50}$/;
 const alertEmail = () => process.env.LANDING_FORM_ALERT_EMAIL || "vin@vihara.ai";
@@ -127,6 +128,11 @@ const submitLandingForm = catchAsyncError(async (req, res, next) => {
   }).catch((e) => console.error("[slack] landing-form notify failed:", e.message));
 
   sendEmail(alertEmail(), "Vihara", `${updated ? "Updated" : "New"} lead: ${pageName(page)} page`, alertEmailHtml(lead, updated));
+
+  // Vtext's /lp text: first sign-up on this page only, only with the SMS box ticked. Never throws.
+  if (!updated) {
+    maybeSendFormIntroText({ form: "landingPage", leadType: "landingForm", lead, name: lead.fullName, values: { page_title: pageName(page) } });
+  }
 
   // A repeat sign-up that's already been reached isn't called again.
   if (consent && lead.callStatus !== "connected" && !lead.callingStopped) {

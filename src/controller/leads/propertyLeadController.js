@@ -18,6 +18,7 @@ const { getNotesForLeads } = require("../../services/leads/leadNotesService");
 const { listView, scopeQuery, unlessSummary, listSelect, callsForList, shapeLeads } = require("../../services/leads/leadListView");
 const { getVtextMessagesForPhones } = require("../../services/vtext/vtextLeadMessagesService");
 const { maybeSendSignupQuoteText } = require("../../services/vtext/vtextAutoSignupService");
+const { maybeSendFormIntroText } = require("../../services/vtext/vtextFormIntroService");
 const { syncPropertyLead } = require("../../services/integrations/brevoService");
 const { notifyNewLead } = require("../../services/shared/slackService");
 const { onPropertyLeadSignup } = require("../../services/propertyEmail/propertyEmailService");
@@ -246,9 +247,21 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
     }).catch((e) => console.error(`[brevo-sync:${slug}] failed:`, e.message));
 
     // Vtext's own automated signup text — independent of and in addition to
-    // the Brevo sync above, off by default (VTEXT_AUTO_SIGNUP_TEXT_ENABLED).
-    // See vtextAutoSignupService.js's header for the full design.
-    maybeSendSignupQuoteText({ lead, property });
+    // the Brevo sync above. A quoted price gets the "Quote your price" text
+    // (VTEXT_AUTO_SIGNUP_TEXT_ENABLED, see vtextAutoSignupService.js). A
+    // financing buyer with no price (the /deal financing path) gets the
+    // financing text instead (vtextFormIntroService.js, form "dealFinancing").
+    if (!(Number(lead.quotePrice) > 0) && lead.needsFinancing === "yes") {
+      maybeSendFormIntroText({
+        form: "dealFinancing",
+        leadType: "property",
+        lead,
+        name: lead.fullName,
+        values: { property_short: property.street || "" },
+      });
+    } else {
+      maybeSendSignupQuoteText({ lead, property });
+    }
   })();
 });
 
@@ -393,6 +406,9 @@ const registerForDeals = catchAsyncError(async (req, res, next) => {
 
   // Each deal's own E1 (when its email sequence is on). Never throws.
   created.forEach(({ lead, property }) => onPropertyLeadSignup({ property, lead }));
+
+  // ONE Vtext Deal Finder text for the whole sign-up, however many deals (only with the SMS box ticked). Never throws.
+  maybeSendFormIntroText({ form: "dealFinder", leadType: "property", lead: first.lead, name: first.lead.fullName });
 
   // ── Enrich once for all the leads, then Brevo-sync each ─────────────────────
   (async () => {

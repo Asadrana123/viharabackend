@@ -52,15 +52,15 @@ test("{{price_range}} with no price range is refused instead of sending blank", 
   assert.equal(checkRendered(body, out, values, REQUIRED_CONTACT_KEYS), "missing price_range");
 });
 
-test("textingWindow: 8 AM-9 PM in both Eastern and Pacific", () => {
+test("textingWindow: 9 AM-8 PM in both Eastern and Pacific", () => {
   // 2026-10-26 is in daylight time: ET = UTC-4, PT = UTC-7.
-  assert.equal(textingWindow(new Date("2026-10-26T15:00:00Z")).ok, true); // 11 AM ET / 8 AM PT
-  assert.equal(textingWindow(new Date("2026-10-26T14:59:00Z")).ok, false); // 10:59 AM ET / 7:59 AM PT
-  assert.equal(textingWindow(new Date("2026-10-27T00:59:00Z")).ok, true); // 8:59 PM ET / 5:59 PM PT
-  assert.equal(textingWindow(new Date("2026-10-27T01:00:00Z")).ok, false); // 9 PM ET
+  assert.equal(textingWindow(new Date("2026-10-26T16:00:00Z")).ok, true); // noon ET / 9 AM PT
+  assert.equal(textingWindow(new Date("2026-10-26T15:59:00Z")).ok, false); // 11:59 AM ET / 8:59 AM PT
+  assert.equal(textingWindow(new Date("2026-10-26T23:59:00Z")).ok, true); // 7:59 PM ET / 4:59 PM PT
+  assert.equal(textingWindow(new Date("2026-10-27T00:00:00Z")).ok, false); // 8 PM ET
 });
 
-test("leadTextingHours: 8 AM-9 PM in the lead's own time (by area code)", () => {
+test("leadTextingHours: 9 AM-8 PM in the lead's own time (by area code)", () => {
   // 2026-10-26 is daylight time: ET = UTC-4, PT = UTC-7.
   const noon = new Date("2026-10-26T17:00:00Z"); // 1 PM ET / 10 AM PT
   assert.deepEqual(leadTextingHours("+12125550123", noon), { open: true, localTime: "1:00 PM EDT" }); // New York

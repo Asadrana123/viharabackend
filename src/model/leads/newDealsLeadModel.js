@@ -91,12 +91,20 @@ const newDealsLeadSchema = new mongoose.Schema(
     // connects to an advisor on request). Kept so older records still read.
     advisorCallRequested: { type: Boolean, default: false },
 
-    // ── Contact consent (calls incl. Maya + texts). Optional on the form. ────
-    // No consent → lead is saved but never called.
+    // ── Call consent (Maya). Optional on the form. ─────────────────────────
+    // No consent → lead is saved but never called. Before 6 Nov 2026 this one
+    // box said "call and text"; texts now have their own box (smsConsent).
     consent: { type: Boolean, default: false },
     consentText: { type: String, default: "" },
     consentVersion: { type: String, default: "" },
     consentTimestamp: { type: Date, default: null },
+
+    // ── SMS consent (separate, unchecked-by-default box on the form) ─────────
+    // Only a literal true counts; smsConsentAt is stamped by the server. Vtext reads it.
+    smsConsent: { type: Boolean, default: false },
+    smsConsentText: { type: String, default: "" },
+    smsConsentVersion: { type: String, default: "" },
+    smsConsentAt: { type: Date, default: null },
 
     // IANA timezone from the browser — drives the daily callback slots.
     timezone: { type: String, default: "", trim: true },

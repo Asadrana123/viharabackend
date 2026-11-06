@@ -19,6 +19,8 @@ const { renderTemplateForProperty, checkRendered } = require("./vtextTemplateSer
 const { startFollowUp } = require("./vtextFollowUpService");
 const { getSettings, isConsentRequired } = require("./vtextSettingsService");
 const { maskPhone } = require("../../utils/maskPii");
+const { nextTextingTime } = require("../../utils/textingHours");
+const { toUsSmsNumber } = require("../../utils/usPhone");
 
 // The text is never sent without the price, street and city it names, or with a {{placeholder}} left in it.
 const QUOTE_REQUIRED = ["quote_price", "property_short", "city"];
@@ -82,21 +84,26 @@ async function maybeSendSignupQuoteText({ lead, property }) {
       return;
     }
 
+    // Only 9 AM to 8 PM in the lead's time zone (Prajwal, 6 Nov 2026): a sign-up at night is texted at 9 AM.
+    const hold = nextTextingTime(toUsSmsNumber(lead.phoneNormalized) || toUsSmsNumber(lead.phone) || "", new Date());
+
     const { message, blocked, reason } = await enqueueOutbound({
       to: lead.phone,
       body,
       origin: { kind: "automation", templateKey: "property-signup-quote", campaignId: template._id, propertyId: property._id },
       contactName: lead.fullName,
       isReplyToInbound: false,
+      scheduledFor: hold.waited ? hold.at : undefined,
     });
 
     if (blocked) {
       console.error(`[vtext auto-signup] BLOCKED for lead ${lead._id} — reason: ${reason}`);
     } else {
-      console.log(`[vtext auto-signup] QUEUED for lead ${lead._id} — messageId ${message._id}, status ${message.status}`);
+      console.log(`[vtext auto-signup] QUEUED for lead ${lead._id} — messageId ${message._id}, status ${message.status}${hold.waited ? `, held until ${hold.at.toISOString()}` : ""}`);
       // Follow-up texts start from the next day if the lead hasn't replied. Never lets a failure here affect the signup text.
       try {
-        const followUp = await startFollowUp({ contactId: message.contactId, lead, property, signupMessageId: message._id });
+        // A text held until the morning counts as sent that day, so the follow-ups are planned from then.
+        const followUp = await startFollowUp({ contactId: message.contactId, lead, property, signupMessageId: message._id, ...(hold.waited ? { now: hold.at } : {}) });
         console.log(`[vtext auto-signup] follow-ups for lead ${lead._id}: ${followUp.started ? "STARTED" : `not started (${followUp.reason})`}`);
       } catch (err) {
         console.error(`[vtext auto-signup] follow-up enrollment FAILED for lead ${lead._id}:`, err.message);

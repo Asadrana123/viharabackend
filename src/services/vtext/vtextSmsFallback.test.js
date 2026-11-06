@@ -242,7 +242,7 @@ test("outside texting hours the SMS is held until the number's morning", async (
   assert.equal(result.queued, true);
   const sms = await fallbackFor(original);
   assert.ok(sms.scheduledFor > NIGHT, "scheduled for later");
-  assert.equal(leadTextingHours(contact.phoneE164, sms.scheduledFor).open, true, "inside 8 AM-9 PM where they are");
+  assert.equal(leadTextingHours(contact.phoneE164, sms.scheduledFor).open, true, "inside 9 AM-8 PM where they are");
   assert.ok(sms.scheduledFor.getTime() - NIGHT.getTime() < 8 * 3_600_000);
 });
 

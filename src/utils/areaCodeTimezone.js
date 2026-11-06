@@ -24,7 +24,18 @@ const AREA_CODE_TIMEZONES = {
   "704": "America/New_York", "980": "America/New_York", // Charlotte
   "412": "America/New_York", // Pittsburgh
   "313": "America/New_York", // Detroit
+  // Maryland (whole state Eastern)
+  "240": "America/New_York", "301": "America/New_York", "410": "America/New_York",
+  "443": "America/New_York", "667": "America/New_York", "227": "America/New_York",
+  // Michigan (Eastern; 906 covers the Upper Peninsula, where only 4 border counties are Central)
+  "231": "America/New_York", "248": "America/New_York", "269": "America/New_York",
+  "517": "America/New_York", "586": "America/New_York", "616": "America/New_York",
+  "679": "America/New_York", "734": "America/New_York", "810": "America/New_York",
+  "906": "America/New_York", "947": "America/New_York", "989": "America/New_York",
   // Central
+  // Louisiana (whole state Central)
+  "225": "America/Chicago", "318": "America/Chicago", "337": "America/Chicago",
+  "985": "America/Chicago", "457": "America/Chicago",
   "312": "America/Chicago", "773": "America/Chicago", "872": "America/Chicago", // Chicago
   "713": "America/Chicago", "281": "America/Chicago", "832": "America/Chicago", // Houston
   "214": "America/Chicago", "469": "America/Chicago", "972": "America/Chicago", // Dallas
