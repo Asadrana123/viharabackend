@@ -17,7 +17,7 @@ const CalBooking = require("../../model/calcom/calBookingModel");
 const { ALL_LEAD_SOURCES } = require("../leads/leadModelsByType");
 const { normalizeInternationalPhone } = require("../../utils/internationalPhone");
 const { notifyVtextAlert } = require("../shared/slackService");
-const { parseBooking, planReminders } = require("./calcomPayload");
+const { parseBooking, planReminders, isReminderEvent } = require("./calcomPayload");
 
 const CREATE_EVENTS = new Set(["BOOKING_CREATED", "BOOKING_RESCHEDULED"]);
 const CANCEL_EVENTS = new Set(["BOOKING_CANCELLED", "BOOKING_REJECTED"]);
@@ -158,13 +158,18 @@ async function handleCancelled(b, { now }) {
 /**
  * Processes one verified webhook body. Never throws (it runs after Cal.com already got its 200).
  * @param {object} body - { triggerEvent, payload }
- * @param {object} [deps] - for tests: { now, findLeadPhoneByEmail, notify }
+ * Bookings of events not in CALCOM_REMINDER_EVENTS are ignored (nothing saved, no alert).
+ * @param {object} [deps] - for tests: { now, findLeadPhoneByEmail, notify, events }
  */
 async function handleCalWebhook(body, deps = {}) {
   const now = deps.now || new Date();
   try {
     const b = parseBooking(body);
     if (!b || !b.uid) return { action: "ignored" };
+    if (!isReminderEvent(b.eventSlug, deps.events)) {
+      console.log(`[calcom] ${b.event} ${b.uid}: event "${b.eventSlug || "?"}" gets no reminders, ignored`);
+      return { action: "ignored-event" };
+    }
     if (CREATE_EVENTS.has(b.event)) return await handleCreated(b, { now, deps });
     if (CANCEL_EVENTS.has(b.event)) return await handleCancelled(b, { now });
     return { action: "ignored" };

@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const crypto = require("crypto");
-const { verifyCalSignature, parseBooking, planReminders, isTooLate, reminderText, reminderMinutes } = require("./calcomPayload");
+const { verifyCalSignature, parseBooking, planReminders, isTooLate, reminderText, reminderMinutes, reminderEvents, isReminderEvent } = require("./calcomPayload");
 
 const START = new Date("2026-11-04T23:00:00Z"); // 3:00 PM PST
 const min = (n) => n * 60_000;
@@ -34,7 +34,7 @@ test("signature: right secret passes, wrong one and no secret fail", () => {
   assert.equal(verifyCalSignature(raw, undefined, "s3cret"), false);
 });
 
-test("parseBooking reads the booking; the walkthrough form has no phone", () => {
+test("parseBooking reads the booking; no phone when the form has none", () => {
   const b = parseBooking(createdBody());
   assert.equal(b.event, "BOOKING_CREATED");
   assert.equal(b.uid, "abc123");
@@ -91,6 +91,15 @@ test("reminderMinutes reads the env list, default 30", () => {
   assert.deepEqual(reminderMinutes("0,-5"), [30]);
 });
 
+test("reminderEvents: walkthrough + 15min by default, env overrides, case-insensitive", () => {
+  assert.deepEqual([...reminderEvents("")], ["walkthrough", "15min"]);
+  assert.deepEqual([...reminderEvents(" Walkthrough , ")], ["walkthrough"]);
+  assert.equal(isReminderEvent("15min", reminderEvents("")), true);
+  assert.equal(isReminderEvent("partners-program-walkthrough", reminderEvents("")), false);
+  assert.equal(isReminderEvent("", reminderEvents("")), false);
+  assert.equal(parseBooking(createdBody()).eventSlug, "walkthrough");
+});
+
 test("isTooLate within 5 minutes of the call", () => {
   assert.equal(isTooLate(START, new Date(START.getTime() - min(6))), false);
   assert.equal(isTooLate(START, new Date(START.getTime() - min(5))), true);
@@ -108,7 +117,7 @@ test("reminderText: name, local time, Meet link, reschedule link", () => {
   });
   assert.equal(
     text,
-    "Hi Jane, it's Maya from Vihara. Reminder: your advisor walkthrough starts in 30 minutes, at 3:00 PM PST today.\n" +
+    "Hi Jane, it's Maya from Vihara. Reminder: your call with a Vihara advisor starts in 30 minutes, at 3:00 PM PST today.\n" +
       "Join here: https://meet.google.com/abc-defg-hij\n" +
       "Need another time? https://cal.com/reschedule/abc123"
   );
@@ -118,5 +127,5 @@ test("reminderText: no name, no link, timezone from the area code", () => {
   const text = reminderText({ name: "", startTime: START, timeZone: "", phoneE164: "+12125550123", meetingUrl: "", uid: "x", now: new Date(START.getTime() - min(30)) });
   assert.match(text, /^Hi, it's Maya from Vihara\./);
   assert.match(text, /at 6:00 PM EST today\./);
-  assert.match(text, /The Google Meet link is in your calendar invite\./);
+  assert.match(text, /The video link is in your calendar invite\./);
 });

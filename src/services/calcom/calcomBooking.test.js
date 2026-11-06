@@ -57,6 +57,7 @@ const body = (event, payload = {}) => ({
   triggerEvent: event,
   payload: {
     uid: "u1",
+    type: "walkthrough",
     startTime: START.toISOString(),
     attendees: [{ name: "Jane Doe", email: "jane@example.com", timeZone: "America/Los_Angeles" }],
     metadata: { videoCallUrl: "https://meet.google.com/abc" },
@@ -136,6 +137,17 @@ test("cancelled: pending reminders cancelled; a cancel that comes first blocks a
   assert.equal(r.action, "exists");
   assert.equal(rows.length, 1);
   assert.equal(rows[0].status, "cancelled");
+});
+
+test("only walkthrough and 15min get reminders; other events are not saved", async () => {
+  const q = await handleCalWebhook(body("BOOKING_CREATED", { uid: "q1", type: "15min" }), { now: DAY_BEFORE, findLeadPhoneByEmail: leadFound });
+  assert.equal(q.action, "saved");
+  for (const type of ["partners-program-walkthrough", "secret", ""]) {
+    const r = await handleCalWebhook(body("BOOKING_CREATED", { uid: `x-${type}`, type }), { now: DAY_BEFORE, findLeadPhoneByEmail: leadFound });
+    assert.equal(r.action, "ignored-event");
+  }
+  assert.equal((await handleCalWebhook(body("BOOKING_CANCELLED", { uid: "x2", type: "secret" }), { now: DAY_BEFORE })).action, "ignored-event");
+  assert.deepEqual(rows.map((r) => r.uid), ["q1"]);
 });
 
 test("ignored events and junk don't throw", async () => {

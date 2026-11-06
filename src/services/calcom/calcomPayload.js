@@ -22,6 +22,22 @@ function reminderMinutes(raw = process.env.CALCOM_REMINDER_MINUTES) {
   return [...new Set(list.length ? list : [30])].sort((a, b) => b - a);
 }
 
+/**
+ * Cal.com event slugs that get reminders. CALCOM_REMINDER_EVENTS="walkthrough,15min" (the default).
+ * Advisor Walkthrough is what the website links to; our texts link to the profile page and promise a
+ * "15 min advisor call", so those people book "15min". Partners Program and Secret meeting get none.
+ */
+function reminderEvents(raw = process.env.CALCOM_REMINDER_EVENTS) {
+  const list = String(raw || "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  return new Set(list.length ? list : ["walkthrough", "15min"]);
+}
+
+/** True when bookings of this event slug get reminders. */
+const isReminderEvent = (slug, events = reminderEvents()) => events.has(String(slug || "").trim().toLowerCase());
+
 // Once the call is this close, a reminder is no longer sent (it would land as the call starts).
 const LAST_CALL_MINUTES = 5;
 
@@ -137,7 +153,7 @@ const rescheduleUrlOf = (uid) => (uid ? `https://cal.com/reschedule/${uid}` : ""
 
 /**
  * The reminder text. DRAFT wording (2026-11-03), to be signed off by Prajwal.
- *   Hi Jane, it's Maya from Vihara. Reminder: your advisor walkthrough starts in 30 minutes, at 3:00 PM PST today.
+ *   Hi Jane, it's Maya from Vihara. Reminder: your call with a Vihara advisor starts in 30 minutes, at 3:00 PM PST today.
  *   Join here: https://meet.google.com/abc
  *   Need another time? https://cal.com/reschedule/xyz
  */
@@ -150,11 +166,11 @@ function reminderText({ name, startTime, timeZone, phoneE164, meetingUrl, uid, n
   const when = start.hasSame(local, "day") ? "today" : `on ${start.toFormat("ccc, LLL d")}`;
   const clock = `${start.toFormat("h:mm a")} ${start.offsetNameShort || ""}`.trim();
   const first = firstNameOf(name || "");
-  const join = meetingUrl ? `Join here: ${meetingUrl}` : "The Google Meet link is in your calendar invite.";
+  const join = meetingUrl ? `Join here: ${meetingUrl}` : "The video link is in your calendar invite.";
   const reschedule = rescheduleUrlOf(uid);
   // Links sit on their own lines, so no punctuation gets glued to them.
   return [
-    `Hi${first ? ` ${first}` : ""}, it's Maya from Vihara. Reminder: your advisor walkthrough starts in ${minutesLeft} minutes, at ${clock} ${when}.`,
+    `Hi${first ? ` ${first}` : ""}, it's Maya from Vihara. Reminder: your call with a Vihara advisor starts in ${minutesLeft} minutes, at ${clock} ${when}.`,
     join,
     reschedule ? `Need another time? ${reschedule}` : "",
   ]
@@ -165,6 +181,8 @@ function reminderText({ name, startTime, timeZone, phoneE164, meetingUrl, uid, n
 module.exports = {
   LAST_CALL_MINUTES,
   reminderMinutes,
+  reminderEvents,
+  isReminderEvent,
   verifyCalSignature,
   phoneFromBooking,
   meetingUrlOf,
