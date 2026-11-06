@@ -67,7 +67,7 @@ const getLeadThread = catchAsyncError(async (req, res) => {
     conversationId: conversations[0]?._id || null,
     messages: messagesByPhone[lead.phone] || [],
     suggestedPropertyId: product?._id || null,
-    // Warning only: is it 8 AM-9 PM for this lead? The admin can send either way.
+    // Warning only: is it 9 AM-8 PM for this lead? The admin can send either way.
     textingHours: leadTextingHours(lead.phone, new Date()),
   });
 });

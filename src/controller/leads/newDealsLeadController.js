@@ -35,6 +35,7 @@ const { newDealsPageUrl } = require("../../config/siteUrls");
 const { LIVE_DEALS, findDeal, dealLabel } = require("../../config/newDeals");
 const Product = require("../../model/property/productModel");
 const { maskPhone } = require("../../utils/maskPii");
+const { maybeSendFormIntroText } = require("../../services/vtext/vtextFormIntroService");
 const TEST_NAME_FIELDS = ["fullName", "firstName"];
 const {
   str,
@@ -216,7 +217,9 @@ const registerNewDealsLead = catchAsyncError(async (req, res, next) => {
   buyBox.down_payment = buyBox.financing !== "cash" && DOWN_PAYMENTS.includes(rawDown) ? rawDown : "";
   const advisorCallRequested = body.advisor_call_requested === true;
   const tier = computeTier(buyBox, advisorCallRequested);
-  const consent = body.contact_consent === true;
+  const consent = body.contact_consent === true; // call consent (Maya)
+  // Text consent: its own box since 6 Nov 2026 (before, one box covered calls and texts).
+  const smsConsent = body.sms_consent === true;
   const dealInterest = findDeal(str(body.deal_interest, 40)) ? str(body.deal_interest, 40) : "";
   const contactPreferences = contactPrefsFrom(body);
   const contactPreference = mainContactPref(contactPreferences);
@@ -243,6 +246,10 @@ const registerNewDealsLead = catchAsyncError(async (req, res, next) => {
     consentText: consent ? str(body.contact_consent_text, 1000) : "",
     consentVersion: consent ? str(body.contact_consent_version, 60) : "",
     consentTimestamp: consent ? now : null,
+    smsConsent,
+    smsConsentText: smsConsent ? str(body.sms_consent_text, 1000) : "",
+    smsConsentVersion: smsConsent ? str(body.sms_consent_version, 60) : "",
+    smsConsentAt: smsConsent ? now : null,
     timezone: str(body.timezone, 60),
     lastTouch,
     attribution,
@@ -317,6 +324,9 @@ const registerNewDealsLead = catchAsyncError(async (req, res, next) => {
   } else {
     sendWelcomeOnce(plain).catch((e) => console.error("[new-deals] welcome email failed:", e.message));
   }
+
+  // Vtext's New Deals text: new sign-ups only (no text on an update), only with the SMS box ticked. Never throws.
+  if (!updated) maybeSendFormIntroText({ form: "newDeals", leadType: "newDeals", lead: plain, name: plain.fullName });
 
   // Maya's signup call (+ daily retries) — only with consent.
   if (consent) {

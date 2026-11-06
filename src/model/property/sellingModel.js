@@ -1,28 +1,43 @@
-const mongoose = require('mongoose');
-const Schema = mongoose.Schema;
+// model/property/sellingModel.js
+//
+// "Sell your property" form (/sell_properties). The website also emails each submission through
+// web3forms; this copy is what Vtext reads (phone + SMS consent) to send the Sell text.
+// Before 6 Nov 2026 the website didn't post here at all and the old enums no longer matched the
+// form's options, so the answers are now stored as plain strings, exactly as chosen.
+const mongoose = require("mongoose");
 
-const sellerFormSchema = new Schema({
-    firstName: { type: String, required: true },
-    lastName: { type: String, required: true },
-    email: { type: String, required: true },
-    phoneNumber: { type: String, required: true },
-    propertyAddress: { type: String, required: true },
-    city: { type: String, required: true },
-    state: { type: String, required: true },
-    zip: { type: String, required: true },
-    propertyCondition: { type: String, required: true, enum: ['Move-in ready', 'Required minor repairs', 'Required major repairs'] },
-    propertyType: { type: String, required: true, enum: ['Single Family Residence', 'Multi-Unit', 'Land'] },
-    numberOfProperties: { type: String, required: true, enum: ['Single Property', 'Portfolio'] },
-    propertyMarketHistory: { type: String, required: true, enum: ['New to market', 'Currently or has been listed'] },
-    propertyOccupancy: { type: String, required: true, enum: ['Vacant', 'Occupied', 'Occupied with active tenant'] },
-    mortgageExist: { type: String, required: true, enum: ['Yes', 'No'] },
-    mortgageRange: { type: String },
-    minDesiredPrice: { type: Number, required: true },
-    maxDesiredPrice: { type: Number, required: true },
-    relationshipWithProperty: { type: String, required: true, enum: ['Owner', 'Part Owner', 'Representative of owner', 'Other'] },
-    sellingTime: { type: String, required: true, enum: ['Immediately', 'Within a month', 'Within 3 months', 'More than 6 months'] }
-});
+const sellerFormSchema = new mongoose.Schema(
+  {
+    firstName: { type: String, required: true, trim: true },
+    lastName: { type: String, default: "", trim: true },
+    email: { type: String, required: true, trim: true, lowercase: true },
+    phoneNumber: { type: String, required: true, trim: true }, // as typed
+    // Canonical +1XXXXXXXXXX form, so Vtext can find this lead by phone ("" when not a US number).
+    phoneNormalized: { type: String, default: "", trim: true },
+    propertyAddress: { type: String, default: "", trim: true },
+    city: { type: String, default: "", trim: true },
+    state: { type: String, default: "", trim: true },
+    zip: { type: String, default: "", trim: true },
+    propertyCondition: { type: String, default: "" },
+    propertyType: { type: String, default: "" },
+    numberOfProperties: { type: String, default: "" },
+    propertyMarketHistory: { type: String, default: "" },
+    propertyOccupancy: { type: String, default: "" },
+    mortgageExist: { type: String, default: "" },
+    mortgageRange: { type: String, default: "" },
+    minDesiredPrice: { type: Number, default: null },
+    maxDesiredPrice: { type: Number, default: null },
+    relationshipWithProperty: { type: String, default: "" },
+    sellingTime: { type: String, default: "" },
 
-const SellerForm = mongoose.model('SellerForm', sellerFormSchema);
+    // ── SMS consent (separate, unchecked-by-default box on the form) ─────────
+    smsConsent: { type: Boolean, default: false },
+    smsConsentText: { type: String, default: "" },
+    smsConsentAt: { type: Date, default: null },
+  },
+  { timestamps: true }
+);
 
-module.exports = SellerForm;
+sellerFormSchema.index({ phoneNormalized: 1 });
+
+module.exports = mongoose.model("SellerForm", sellerFormSchema);

@@ -20,6 +20,10 @@ const Realtor = require("../../model/users/realtorModel");
 const { endFollowUpsForRegistration } = require("../../services/vtext/vtextFollowUpEnd");
 const createRealtorNewLeadEmail = require('../../htmlPages/users/realtorNewLeadEmail');
 const { trackEvent } = require("../../services/integrations/brevoService");
+const { maybeSendFormIntroText } = require("../../services/vtext/vtextFormIntroService");
+const { formatAuctionDate } = require("../../services/vtext/formIntroTexts");
+const { toUsSmsNumber } = require("../../utils/usPhone");
+const { resolvePropertyTimezone } = require("../../utils/resolveTimezone");
 const {
   isSequenceOn,
   onAuctionRegistration,
@@ -117,8 +121,18 @@ exports.submitAuctionRegistration = catchAsyncError(
       email,
       mobilePhone,
       buyerType,
-      realtorRef
+      realtorRef,
+      smsConsent,
+      smsConsentText
     } = req.body;
+    // SMS box on the form (unchecked by default). Only a literal true counts.
+    const smsOptedIn = smsConsent === true;
+    const smsFields = {
+      phoneNormalized: toUsSmsNumber(mobilePhone) || "",
+      smsConsent: smsOptedIn,
+      smsConsentText: smsOptedIn ? String(smsConsentText || "").slice(0, 1000) : "",
+      smsConsentAt: smsOptedIn ? new Date() : null
+    };
 
     // Validate the required fields
     if (!firstName || !lastName || !email || !mobilePhone || !buyerType) {
@@ -194,6 +208,9 @@ exports.submitAuctionRegistration = catchAsyncError(
       existingRegistration.email = email;
       existingRegistration.mobilePhone = mobilePhone;
       existingRegistration.buyerType = buyerType;
+      existingRegistration.phoneNormalized = smsFields.phoneNormalized;
+      // A tick is kept: re-saving the form without the box doesn't withdraw consent (STOP does).
+      if (smsOptedIn) Object.assign(existingRegistration, smsFields);
       existingRegistration.updatedAt = Date.now();
 
       // First-touch attribution: stamp only if not already attributed.
@@ -241,10 +258,23 @@ exports.submitAuctionRegistration = catchAsyncError(
       email,
       mobilePhone,
       buyerType,
+      ...smsFields,
       ...(attribution || {})
     });
 
     stopVtextFollowUps({ auctionId, mobilePhone, email });
+
+    // Vtext's "registered to bid" text: new registrations only, only with the SMS box ticked. Never throws.
+    maybeSendFormIntroText({
+      form: "auctionRegistration",
+      leadType: "auctionRegistration",
+      lead: registration,
+      name: `${firstName} ${lastName}`.trim(),
+      values: {
+        property_short: auction.street || "",
+        auction_date: formatAuctionDate(auction.auctionStartDate, resolvePropertyTimezone(auction)),
+      },
+    });
 
     // Notify the referring realtor of the new attributed lead (fire-and-forget).
     const sequenceOn = isSequenceOn(auction);

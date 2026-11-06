@@ -69,6 +69,13 @@ const registrationSchema = new mongoose.Schema({
     default: null
   },
 
+  // Canonical +1XXXXXXXXXX form of mobilePhone, so Vtext can find this registration by phone.
+  phoneNormalized: { type: String, default: "", trim: true },
+  // SMS box on the registration form (unchecked by default). Only a literal true counts.
+  smsConsent: { type: Boolean, default: false },
+  smsConsentText: { type: String, default: "" },
+  smsConsentAt: { type: Date, default: null },
+
   submittedAt: {
     type: Date,
     default: Date.now
@@ -78,5 +85,7 @@ const registrationSchema = new mongoose.Schema({
     default: Date.now
   }
 });
+
+registrationSchema.index({ phoneNormalized: 1 });
 
 module.exports = mongoose.model("AuctionRegistration", registrationSchema);

@@ -22,6 +22,7 @@ const TEST_NAME_REGEX = /\btest\b/i;
 const { syncPartnerLead } = require("../../services/integrations/brevoService");
 const { partnerPageUrl } = require("../../config/siteUrls");
 const { maskEmail } = require("../../utils/maskPii");
+const { maybeSendFormIntroText } = require("../../services/vtext/vtextFormIntroService");
 
 /**
  * POST /api/v1/partner/register   (public)
@@ -108,6 +109,9 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
   } else {
     console.log(`[partner] no-consent application: ${maskEmail(lead.email)}`);
   }
+
+  // Vtext's Partner text (only with the SMS box ticked, off unless turned on). Never throws.
+  maybeSendFormIntroText({ form: "partner", leadType: "partner", lead, name: `${lead.firstName} ${lead.lastName}`.trim() });
 
   // ── 3. Respond ──────────────────────────────────────────────────────────
   res.status(200).json({

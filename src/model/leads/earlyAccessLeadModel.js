@@ -63,6 +63,12 @@ const earlyAccessLeadSchema = new mongoose.Schema(
     consentText: { type: String, default: "" },
     consentTimestamp: { type: Date, default: null },
 
+    // ── SMS consent (separate, unchecked-by-default box on the form) ─────────
+    // Only a literal true counts; smsConsentAt is stamped by the server. Vtext reads it.
+    smsConsent: { type: Boolean, default: false },
+    smsConsentText: { type: String, default: "" },
+    smsConsentAt: { type: Date, default: null },
+
     eventId: { type: String, default: "" },
     // Extra questions added to the form in Admin → Landing Pages: [{ question, answer }].
     extraAnswers: formAnswerSchemaDef,

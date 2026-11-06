@@ -11,7 +11,7 @@
 // Also the lead -> Vtext side used by the Leads tab's "Text this lead":
 // resolveLead() loads one lead by (leadType, leadId), and leadConsent() says
 // whether that lead carries texting consent.
-const { MODEL_BY_TYPE, ALL_LEAD_SOURCES } = require("../leads/leadModelsByType");
+const { VTEXT_LEAD_MODELS, ALL_LEAD_SOURCES } = require("../leads/leadModelsByType");
 const { toUsSmsNumber } = require("../../utils/usPhone");
 const { priceRangeOf } = require("../leads/facebookPriceRange");
 
@@ -45,7 +45,7 @@ const CONSENT_FIELDS = "_id fullName firstName lastName smsConsent smsConsentTex
 /** Looks a phone up across every linked lead collection; returns every match (a number rarely appears in more than one source, but nothing stops it). */
 async function findLeadRefs(phoneE164) {
   const refs = [];
-  for (const [leadType, Model] of Object.entries(MODEL_BY_TYPE)) {
+  for (const [leadType, Model] of Object.entries(VTEXT_LEAD_MODELS)) {
     try {
       const lead = await Model.findOne({ phoneNormalized: phoneE164 }).select(CONSENT_FIELDS).lean();
       if (lead) {

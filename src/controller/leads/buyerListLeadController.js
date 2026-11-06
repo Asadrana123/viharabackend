@@ -16,6 +16,7 @@ const { getEmailEventsForEmails } = require("../../services/integrations/emailEv
 const { getNotesForLeads } = require("../../services/leads/leadNotesService");
 const { listView, scopeQuery, unlessSummary, listSelect, callsForList, shapeLeads } = require("../../services/leads/leadListView");
 const { getVtextMessagesForPhones } = require("../../services/vtext/vtextLeadMessagesService");
+const { maybeSendFormIntroText } = require("../../services/vtext/vtextFormIntroService");
 const {
   str,
   isValidEmail,
@@ -174,6 +175,9 @@ const registerBuyerListLead = catchAsyncError(async (req, res, next) => {
     tier: lead.tier,
     updated,
   });
+
+  // Vtext's Buyer List text: new sign-ups only (no text on an update), only with the SMS box ticked. Never throws.
+  if (!updated) maybeSendFormIntroText({ form: "buyerList", leadType: "buyerList", lead: lead.toObject(), name: lead.fullName || lead.firstName });
 
   // ── 5a. Meta Conversions API (server copy of the browser pixel event) ──────
   if (isProductionPageUrl(pageUrl)) {
