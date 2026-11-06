@@ -301,7 +301,9 @@ const productSchema = new mongoose.Schema({
         phone: String,
         email: String,
         licenseNumber: String,
-        image: String
+        image: String,
+        brokerPhone: String,
+        profileUrl: String
     },
 
     // ============================================

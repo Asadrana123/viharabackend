@@ -121,13 +121,22 @@ function mapTaxHistory(history) {
         .filter((e) => e.year != null);
 }
 
-function mapListingAgent(info) {
+// attributionInfo = the MLS listing credit; agent_module = Zillow's card for the
+// same listing agent (photo, profile). Other contact-form agents are paid
+// "Premier Agents", not the listing agent, so they are ignored.
+function mapListingAgent(info, agentModule) {
     if (!info || !info.agentName) return null;
+    const card = agentModule && agentModule.badge_type === "Listing Agent" ? agentModule : null;
+    const photo = card?.image_data?.url || null;
     return {
         name: String(info.agentName).trim(),
         licenseNumber: info.agentLicenseNumber || null,
         phone: info.agentPhoneNumber || null,
-        company: info.brokerName ? String(info.brokerName).replace(/,\s*$/, "").trim() : null,
+        email: info.agentEmail || null,
+        company: info.brokerName ? String(info.brokerName).replace(/,s*$/, "").trim() : null,
+        brokerPhone: info.brokerPhoneNumber || null,
+        image: photo && !/nophoto/i.test(photo) ? photo : null,
+        profileUrl: card?.profile_url ? new URL(card.profile_url, "https://www.zillow.com").href : null,
     };
 }
 
@@ -198,7 +207,7 @@ function toParsedShape(p) {
         taxHistory: mapTaxHistory(p.taxHistory),
         foreclosureHistory: [],
         walkScores: { walkScore: null, bikeScore: null, transitScore: null },
-        listingAgent: mapListingAgent(p.attributionInfo),
+        listingAgent: mapListingAgent(p.attributionInfo, p.contactFormRenderData?.data?.agent_module),
         mlsNumber: p.attributionInfo?.mlsId || p.mlsid || null,
         mlsSource: p.attributionInfo?.mlsName || null,
         marketActivity: {

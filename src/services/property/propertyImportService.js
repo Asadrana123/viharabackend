@@ -310,13 +310,20 @@ function buildSchools(schools = []) {
     return out;
 }
 
+// Missing values are null (not "") so the weekly sync keeps whatever is already
+// stored — e.g. a license number an admin added by hand.
 function buildListingAgent(agent) {
     if (!agent || !agent.name) return null;
+    const pick = (k) => agent[k] || null;
     return {
         name: agent.name,
-        company: agent.company || "",
-        phone: agent.phone || "",
-        licenseNumber: agent.licenseNumber || "",
+        company: pick("company"),
+        phone: pick("phone"),
+        email: pick("email"),
+        licenseNumber: pick("licenseNumber"),
+        brokerPhone: pick("brokerPhone"),
+        image: pick("image"),
+        profileUrl: pick("profileUrl"),
     };
 }
 

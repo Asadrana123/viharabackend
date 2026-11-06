@@ -372,26 +372,33 @@ function extractFromMarkdown(rawMarkdown) {
     : parseString(/Listed by:\s*([^\n]+)/i, markdownText);
   let listingAgent = null;
   if (listedByLine) {
-    const commaIdx = listedByLine.indexOf(',');
-    let namePart = commaIdx !== -1 ? listedByLine.slice(0, commaIdx) : listedByLine;
-    // The company is the next comma segment; a co-listing agent may follow
+    // Split "Text License Phone" into its parts.
+    const splitSegment = (seg) => {
+      let text = (seg || '').trim();
+      const phoneMatch = text.match(/(\(?\d{3}\)?[-.\s]?\d{3}-\d{4})/);
+      const phone = phoneMatch ? phoneMatch[1] : null;
+      if (phoneMatch) text = text.slice(0, phoneMatch.index).trim();
+      const licenseMatch = text.match(/(?:(?:DRE|Lic(?:ense)?\.?)\s*#?\s*)?([A-Z]{0,3}\d{5,10})\s*$/i);
+      const licenseNumber = licenseMatch ? licenseMatch[1] : null;
+      if (licenseMatch) text = text.slice(0, licenseMatch.index).trim();
+      return { text: text || null, phone, licenseNumber };
+    };
+    // Only the first two comma segments matter; a co-listing agent may follow
     // ("Name, Company,Phone, Name 2, Company 2"), so ignore the rest.
-    const companySegment = commaIdx !== -1 ? listedByLine.slice(commaIdx + 1).split(',')[0] : '';
-    const company = companySegment.replace(/\s*\d{3}-\d{3}-\d{4}\s*$/, '').trim() || null;
-
-    const phoneMatch = namePart.match(/(\d{3}-\d{3}-\d{4})/);
-    const phone = phoneMatch ? phoneMatch[1] : null;
-    if (phoneMatch) namePart = namePart.slice(0, phoneMatch.index).trim();
-
-    const licenseMatch = namePart.match(/(?:DRE\s*#\s*)?(\d{5,8})\s*$/i);
-    const licenseNumber = licenseMatch ? licenseMatch[1] : null;
-    if (licenseMatch) namePart = namePart.slice(0, licenseMatch.index).trim();
+    const [first, second] = listedByLine.split(',').map(splitSegment);
+    // Usually "Agent, Broker" — but some MLSs (e.g. NY) print "Broker Phone, Agent Phone".
+    // Swap when the first segment reads like a brokerage and the second doesn't.
+    const BROKER_RE = /\b(real\s*estate|realty|realtors?|properties|homes|group|brokerage|brokers?|llc|inc|ltd|co\b|company|associates|partners|team|era|re\/?max|keller\s*williams|coldwell|century\s*21|compass|exp|sotheby|berkshire|howard\s*hanna|redfin|corcoran|douglas\s*elliman|agency)\b/i;
+    const brokerFirst = second?.text && BROKER_RE.test(first.text || '') && !BROKER_RE.test(second.text);
+    const agent = brokerFirst ? second : first;
+    const broker = brokerFirst ? first : second;
 
     listingAgent = {
-      name: namePart || null,
-      licenseNumber,
-      phone,
-      company,
+      name: agent.text,
+      licenseNumber: agent.licenseNumber,
+      phone: agent.phone || null,
+      company: broker?.text || null,
+      brokerPhone: broker?.phone || null,
     };
   }
   // "MLS#: ML82058659" (require the # so "MLSListings" isn't read as the number)
