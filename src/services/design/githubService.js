@@ -8,11 +8,15 @@
 // repair agent uses it for both the website and the backend repo).
 //
 // ENV:
-//   DESIGN_GITHUB_TOKEN — fine-grained token with Contents, Pull requests and
-//                         Deployments (read) access to the website repo
+//   REPAIR_WEBSITE_GITHUB_TOKEN — fine-grained token with Contents and Pull
+//                         requests access to the website repo (shared with the
+//                         repair agent)
+//   DESIGN_GITHUB_TOKEN — used instead only when the one above isn't set
+//   VERCEL_TOKEN        — finds each commit's preview link (see vercelPreview.js)
 //   DESIGN_GITHUB_REPO  — "owner/name" (default Adarsh-Raut/vihara-next)
 //   DESIGN_BASE_BRANCH  — the branch the live site deploys from (default main)
 const axios = require("axios");
+const vercel = require("./vercelPreview");
 
 class GithubError extends Error {
   constructor(message, status) {
@@ -39,8 +43,9 @@ const isPreviewEnvironment = (name) => /^preview\b/i.test(String(name || ""));
  * @param {() => string} opts.baseBranch  the live branch
  * @param {string} [opts.label]           who is calling, for the missing-token error
  * @param {string} [opts.tokenName]       env var that holds the token, for the same error
+ * @param {boolean} [opts.vercelPreviews] this is the website repo: find previews through Vercel's API
  */
-function createGithubClient({ repo, token, baseBranch, label = "the agent", tokenName = "The GitHub token" }) {
+function createGithubClient({ repo, token, baseBranch, label = "the agent", tokenName = "The GitHub token", vercelPreviews = false }) {
   let client = null;
   let clientKey = "";
   function gh() {
@@ -159,11 +164,14 @@ function createGithubClient({ repo, token, baseBranch, label = "the agent", toke
   }
 
   /**
-   * The preview for a commit, from the preview deployment Vercel reports to GitHub.
+   * The preview for a commit: from Vercel's API when this is the website repo
+   * and VERCEL_TOKEN is set, otherwise from the preview deployment Vercel
+   * reports to GitHub (which vihara-next never gets).
    * @returns {Promise<{state: "pending"|"success"|"failure", url?: string}>}
    */
   async function previewForCommit(sha) {
     if (!sha) throw new GithubError("previewForCommit needs a commit sha");
+    if (vercelPreviews && vercel.isEnabled()) return vercel.vercelPreviewForCommit(sha);
     const exact = previewEnvironment();
     const all = await call("get", "/deployments", null, {
       params: { sha, per_page: 20, ...(exact ? { environment: exact } : {}) },
@@ -239,17 +247,24 @@ function createGithubClient({ repo, token, baseBranch, label = "the agent", toke
   };
 }
 
-// The design agent's client: the website repo with the design token.
+// The design agent's client: the website repo. It uses the same website token
+// as the repair agent (REPAIR_WEBSITE_GITHUB_TOKEN); DESIGN_GITHUB_TOKEN is only
+// used when that isn't set.
 const website = createGithubClient({
   repo: () => process.env.DESIGN_GITHUB_REPO || "Adarsh-Raut/vihara-next",
-  token: () => process.env.DESIGN_GITHUB_TOKEN,
+  token: () => process.env.REPAIR_WEBSITE_GITHUB_TOKEN || process.env.DESIGN_GITHUB_TOKEN || "",
   baseBranch: () => process.env.DESIGN_BASE_BRANCH || "main",
   label: "the design agent",
-  tokenName: "DESIGN_GITHUB_TOKEN",
+  tokenName: "REPAIR_WEBSITE_GITHUB_TOKEN (or DESIGN_GITHUB_TOKEN)",
+  vercelPreviews: true,
 });
+
+/** True when the design agent has a token for the website repo. */
+const hasWebsiteToken = () => Boolean(process.env.REPAIR_WEBSITE_GITHUB_TOKEN || process.env.DESIGN_GITHUB_TOKEN);
 
 module.exports = {
   GithubError,
+  hasWebsiteToken,
   createGithubClient,
   baseBranch: website.baseBranch,
   branchSha: website.branchSha,
