@@ -49,6 +49,8 @@ const auctionRoundSchema = new mongoose.Schema(
     registrations: { type: [registrationSnapshotSchema], default: [] },
 
     sellerEmailSentAt: { type: Date, default: null },
+    // Set by an admin to stop the "auction closed" seller email for this round.
+    skipSellerEmail: { type: Boolean, default: false },
     createdBy: { type: mongoose.Schema.Types.ObjectId, default: null }
   },
   { timestamps: true }

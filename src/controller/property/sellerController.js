@@ -597,6 +597,20 @@ exports.exportSellerAuctionExcel = catchAsyncError(async (req, res, next) => {
 // never block or break auction finalization.
 exports.sendAuctionClosedSellerReport = async (auctionId, roundId = null) => {
   try {
+    if (roundId) {
+      const roundFlags = await AuctionRound.findById(roundId)
+        .select("skipSellerEmail sellerEmailSentAt")
+        .lean();
+      if (roundFlags?.skipSellerEmail) {
+        console.log(`Seller report skipped for auction ${auctionId}: round marked skipSellerEmail.`);
+        return;
+      }
+      if (roundFlags?.sellerEmailSentAt) {
+        console.log(`Seller report already sent for auction ${auctionId} round ${roundId}.`);
+        return;
+      }
+    }
+
     const { error, report } = await gatherAuctionReportById(auctionId, roundId);
     if (error) {
       console.error(`Seller report skipped for auction ${auctionId}: ${error.message}`);
