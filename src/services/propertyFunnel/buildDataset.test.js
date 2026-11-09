@@ -147,9 +147,18 @@ test("ad spend splits across the properties an ad is linked to", () => {
   assert.equal(spend(P), 50);
   assert.equal(spend(Q), 50);
   assert.equal(d.ads[0].awareness, "Warm");
+  assert.equal(d.ads[0].awarenessGuessed, false);
   assert.equal(d.ads[0].propertyLink, "ad_property table");
   assert.deepEqual(d.checks[0], { label: "Meta spend linked to a property", aLabel: "All Meta spend", a: 100, bLabel: "Linked to a property", b: 100 });
   assert.equal(d.adDays[0].paid, null);
+});
+
+test("an ad set's tier is marked guessed until marketing sets it", () => {
+  const d = build({
+    ads: [{ adId: "A1", name: "Ad", campaignId: "C", campaignName: "Camp", adSetId: "S", adSetName: "Toorak Retargeting", audience: "", awarenessAuto: "Warm", status: "active", format: "Image", linkUrl: null, thumbnailUrl: null }],
+  });
+  assert.equal(d.ads[0].awareness, "Warm");
+  assert.equal(d.ads[0].awarenessGuessed, true);
 });
 
 test("a registration with no lead counts on its own UTM (saved from 9 Nov 2026)", () => {

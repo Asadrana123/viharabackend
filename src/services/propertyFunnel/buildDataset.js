@@ -72,7 +72,9 @@ function buildDataset(inp, { days = 60, now = new Date() } = {}) {
     const ids = [...new Set(links.map((l) => l.propertyId))];
     return {
       id: a.adId, name: a.name, campaignId: a.campaignId, campaignName: a.campaignName, adSetId: a.adSetId, adSetName: a.adSetName,
-      audience: a.audience || "", awareness: stageBySet.get(a.adSetId) || a.awarenessAuto || "Cold", status: a.status, format: a.format,
+      audience: a.audience || "", awareness: stageBySet.get(a.adSetId) || a.awarenessAuto || "Cold",
+      // Guessed from the ad set's name until marketing sets it in Funnel Ad Links (pf_ad_set_stages).
+      awarenessGuessed: !stageBySet.has(a.adSetId), status: a.status, format: a.format,
       destination: destinationOf(a.linkUrl), propertyIds: ids,
       propertyLink: !ids.length ? "not linked" : links.some((l) => l.linkedBy === "ad link") ? "ad link" : "ad_property table",
       thumbnailUrl: a.thumbnailUrl || null,
