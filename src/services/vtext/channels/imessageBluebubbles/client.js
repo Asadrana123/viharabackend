@@ -78,6 +78,34 @@ function buildClient({ serverUrl, password }) {
       }
     },
 
+    /**
+     * GET /message/:guid — one message straight from the Mac's Messages database, with its dateDelivered,
+     * dateRead and error. Used to ask about a text whose receipt never reached us. 404 (no such message) → null.
+     */
+    async getMessage(guid) {
+      try {
+        const res = await http.get(`/message/${encodeURIComponent(guid)}`, { params: withAuth() });
+        return res.data?.data || null;
+      } catch (err) {
+        if (err.response && (err.response.status === 404 || err.response.status === 400)) return null;
+        throw err;
+      }
+    },
+
+    /**
+     * POST /message/query — every message (both directions, all chats) created between `after` and `before`
+     * (epoch ms; BlueBubbles filters on message.date), oldest first, one page. `with: ["chat"]` brings
+     * the chat guid; the sender (handle) is always joined. Checked against the v1.9.12 source.
+     */
+    async queryMessages({ after, before, limit = 500, offset = 0 }) {
+      const res = await http.post(
+        "/message/query",
+        { after, before, limit, offset, sort: "ASC", with: ["chat"] },
+        { params: withAuth() }
+      );
+      return Array.isArray(res.data?.data) ? res.data.data : [];
+    },
+
     /** POST /webhook — register this backend's webhook URL for new-message/updated-message events. */
     async registerWebhook({ url, events }) {
       const res = await http.post("/webhook", { url, events }, { params: withAuth() });

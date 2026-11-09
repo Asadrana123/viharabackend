@@ -314,6 +314,41 @@ module.exports = {
     return null;
   },
 
+  /**
+   * Asks the Mac what happened to one of our texts, for when its receipt never reached us (ngrok dropped,
+   * the backend was redeploying, BlueBubbles stalled). Answers with the same status event the webhook would
+   * have sent (delivered / read / failed), or [] when the Mac has nothing new (still just sent) or no such message.
+   */
+  async fetchMessageStatus({ line, credentials, providerMessageId }) {
+    if (!providerMessageId) return [];
+    const creds = credentials || credentialsFor(line);
+    const client = buildClient({ serverUrl: line.config?.serverUrl, password: creds.password });
+    const data = await client.getMessage(providerMessageId);
+    if (!data || !data.isFromMe) return [];
+    return this.parseWebhook({ body: { type: "updated-message", data } });
+  },
+
+  /**
+   * Every message on the Mac created in [after, before], turned into the events the webhook would have sent:
+   * a status event (delivered / read / failed) for each of our own texts, a received event for each reply.
+   * Pages through the results; `maxPages` keeps one run bounded (500 messages a page).
+   * @returns {Promise<object[]>} events in the parseWebhook shape
+   */
+  async fetchRecentEvents({ line, credentials, after, before, maxPages = 4 }) {
+    const creds = credentials || credentialsFor(line);
+    const client = buildClient({ serverUrl: line.config?.serverUrl, password: creds.password });
+    const events = [];
+    const pageSize = 500;
+    for (let page = 0; page < maxPages; page += 1) {
+      const rows = await client.queryMessages({ after, before, limit: pageSize, offset: page * pageSize });
+      for (const data of rows) {
+        events.push(...this.parseWebhook({ body: { type: data.isFromMe ? "updated-message" : "new-message", data } }));
+      }
+      if (rows.length < pageSize) break;
+    }
+    return events;
+  },
+
   async registerWebhooks({ line, credentials, publicUrl }) {
     const creds = credentials || credentialsFor(line);
     const client = buildClient({ serverUrl: line.config?.serverUrl, password: creds.password });

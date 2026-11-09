@@ -27,6 +27,7 @@ const { dayKey } = capacity;
 const { notifyVtextAlert } = require("../../shared/slackService");
 const { publishEvent } = require("../vtextEventsBus");
 const smsFallback = require("../vtextSmsFallbackService");
+const { runCatchup, runReadRecheck, confirmBeforeGivingUp } = require("../vtextBluebubblesCatchup");
 
 const HEARTBEAT_KEY = "vtext:worker:lastHeartbeatAt";
 
@@ -63,10 +64,13 @@ async function runUnconfirmedSendSweep() {
     status: "accepted",
     channelType: { $in: channelTypes },
     updatedAt: { $lt: new Date(now - UNCONFIRMED_MIN() * 60_000), $gt: new Date(now - UNCONFIRMED_LOOKBACK_HOURS() * 3_600_000) },
-  }).select("_id conversationId").lean();
+  }).select("_id conversationId lineId provider").lean();
 
   let marked = 0;
   for (const c of candidates) {
+    // Before giving up, ask the Mac itself: the receipt may exist there and only the webhook push was lost.
+    // If the Mac has a status (delivered / read / not delivered) it is applied like a receipt and the text is left alone.
+    if (await confirmBeforeGivingUp(c)) continue;
     // The filter repeats the status, so a receipt that lands between the find and this write wins.
     const result = await VtextMessage.updateOne(
       { _id: c._id, status: "accepted" },
@@ -494,6 +498,8 @@ const JOB_HANDLERS = {
   "followup-sweep": runFollowUpSweep,
   "failed-send-digest": runFailedSendDigest,
   "rag-sync": runRagSync,
+  "bluebubbles-catchup": () => runCatchup(),
+  "bluebubbles-read-recheck": () => runReadRecheck(),
 };
 
 async function processMaintenanceJob(job) {
@@ -556,6 +562,18 @@ async function ensureMaintenanceSchedulers() {
     "failed-send-digest",
     { every: failedDigestIntervalMs() },
     { name: "failed-send-digest" },
+  );
+  // Ask the Mac for receipts and replies its webhook push may have lost (vtextBluebubblesCatchup.js). One request
+  // per line per run, because the Mac sits behind ngrok's free plan: every 10 min ≈ 4,300 a month, every 2 h ≈ 360.
+  await queue.upsertJobScheduler(
+    "bluebubbles-catchup",
+    { every: Number(process.env.VTEXT_BB_CATCHUP_INTERVAL_MS || 10 * 60_000) },
+    { name: "bluebubbles-catchup" },
+  );
+  await queue.upsertJobScheduler(
+    "bluebubbles-read-recheck",
+    { every: Number(process.env.VTEXT_READ_RECHECK_INTERVAL_MS || 2 * 60 * 60_000) },
+    { name: "bluebubbles-read-recheck" },
   );
   // The knowledge-base refresh only exists when the AI knowledge lookup is switched on, so a deploy
   // without it adds no Redis ticks at all. Daily is plenty for property data.
