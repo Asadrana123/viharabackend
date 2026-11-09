@@ -47,6 +47,7 @@ test("slugs, channels and buyer types", () => {
   assert.equal(slugFromUrl("/new-deals"), null);
   assert.equal(channelFromLead("", { utm_source: "facebook", utm_medium: "paid_social" }), "Meta ads");
   assert.equal(channelFromLead("", {}), "Direct");
+  assert.equal(channelFromLead("", { utm_source: "direct" }), "Direct"); // what the site stores for a visit with no UTM
   assert.equal(buyerType("Cash investor"), "Investor");
   assert.equal(buyerType("Owner-occupant"), "Owner-occupier");
   assert.equal(buyerType(""), null);

@@ -62,7 +62,7 @@ async function loadProperties() {
 
 async function loadRegistrations(since, productIdToSlug) {
   const rows = await AuctionRegistration.find({ status: { $in: COUNTED_REGISTRATION_STATUSES }, submittedAt: { $gte: since } })
-    .select("auctionId userId email mobilePhone phoneNormalized submittedAt")
+    .select("auctionId userId email mobilePhone phoneNormalized submittedAt firstTouch")
     .lean();
   return rows
     .map((r) => ({
@@ -71,6 +71,7 @@ async function loadRegistrations(since, productIdToSlug) {
       userId: r.userId ? String(r.userId) : null,
       emailKey: emailKey(r.email),
       phoneKey: phoneKey(r.phoneNormalized || r.mobilePhone),
+      utm: utmOf(r.firstTouch || {}), // saved on registrations from 9 Nov 2026; {} before
     }))
     .filter((r) => r.propertyId);
 }

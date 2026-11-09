@@ -1,5 +1,24 @@
 const mongoose = require("mongoose");
 
+// Where the registrant came from: UTM first/last touch plus the Meta ids (services/leads/buyBox.js
+// REGISTRATION_TOUCH_KEYS). Saved on new registrations from 9 Nov 2026; older ones have none.
+const registrationTouchSchema = new mongoose.Schema(
+  {
+    utm_source: { type: String, default: "", trim: true },
+    utm_medium: { type: String, default: "", trim: true },
+    utm_campaign: { type: String, default: "", trim: true },
+    utm_term: { type: String, default: "", trim: true },
+    utm_content: { type: String, default: "", trim: true },
+    gclid: { type: String, default: "", trim: true },
+    fbclid: { type: String, default: "", trim: true },
+    ad_id: { type: String, default: "", trim: true },
+    adset_id: { type: String, default: "", trim: true },
+    campaign_id: { type: String, default: "", trim: true },
+    ts: { type: Date, default: null },
+  },
+  { _id: false }
+);
+
 const registrationSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -75,6 +94,10 @@ const registrationSchema = new mongoose.Schema({
   smsConsent: { type: Boolean, default: false },
   smsConsentText: { type: String, default: "" },
   smsConsentAt: { type: Date, default: null },
+
+  // UTM + Meta ad ids of the visit (first and last touch). null on registrations made before 9 Nov 2026.
+  firstTouch: { type: registrationTouchSchema, default: null },
+  lastTouch: { type: registrationTouchSchema, default: null },
 
   submittedAt: {
     type: Date,

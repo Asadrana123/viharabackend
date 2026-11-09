@@ -24,6 +24,7 @@ const { maybeSendFormIntroText } = require("../../services/vtext/vtextFormIntroS
 const { formatAuctionDate } = require("../../services/vtext/formIntroTexts");
 const { toUsSmsNumber } = require("../../utils/usPhone");
 const { resolvePropertyTimezone } = require("../../utils/resolveTimezone");
+const { touchesFrom, REGISTRATION_TOUCH_KEYS } = require("../../services/leads/buyBox");
 const {
   isSequenceOn,
   onAuctionRegistration,
@@ -249,7 +250,8 @@ exports.submitAuctionRegistration = catchAsyncError(
       });
     }
 
-    // Create new registration request
+    // Create new registration request. UTM + Meta ad ids of the visit ride along (new registrations only).
+    const { firstTouch, lastTouch } = touchesFrom(req.body, new Date(), REGISTRATION_TOUCH_KEYS);
     const registration = await AuctionRegistration.create({
       userId,
       auctionId,
@@ -259,6 +261,8 @@ exports.submitAuctionRegistration = catchAsyncError(
       mobilePhone,
       buyerType,
       ...smsFields,
+      firstTouch,
+      lastTouch,
       ...(attribution || {})
     });
 

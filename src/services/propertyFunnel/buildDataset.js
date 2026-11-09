@@ -167,12 +167,12 @@ function buildDataset(inp, { days = 60, now = new Date() } = {}) {
     r.leads++;
     if (l.signedUp) r.signups++;
   }
-  // Registrations count on their own day, on the channel of the lead behind them (else Direct: registrations
-  // don't store UTM yet).
+  // Registrations count on their own day, on the channel of the lead behind them, else on their own UTM
+  // (saved from 9 Nov 2026; older registrations have none and count as Direct).
   for (const [pid, regs] of regsByProp) for (const r of regs) {
     const date = pacificDate(r.at);
     if (date < minDate) continue;
-    row(pid, date, regLead.get(r) || "Direct").registrations++;
+    row(pid, date, regLead.get(r) || channelFromLead("", r.utm || {})).registrations++;
   }
   const propertyDays = [...pd.values()].map((r) => ({ ...r, spend: r.spend == null ? null : Math.round(r.spend * 100) / 100 }));
 

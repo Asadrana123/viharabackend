@@ -9,6 +9,9 @@ const { clientIp: realClientIp } = require("../../utils/clientIp");
 
 const MAX_PRICE = 3000000;
 const TOUCH_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "gclid", "fbclid"];
+// Auction registrations also keep the Meta ids the deal form passes on its "Register to bid" link,
+// so a registration ties back to its ad (Property Funnel, Prajwal 9 Nov 2026).
+const REGISTRATION_TOUCH_KEYS = [...TOUCH_KEYS, "ad_id", "adset_id", "campaign_id"];
 
 const STRATEGIES = ["flip", "rent", "brrrr", "wholesale", "home", "str"]; // str = short-term rental (/new-deals)
 const CONDITIONS = ["turnkey", "light_rehab", "heavy_rehab", "any"];
@@ -43,10 +46,10 @@ const marketList = (value, fallback) =>
     .map((s) => s.trim().toUpperCase())
     .filter(Boolean);
 
-const cleanTouch = (t) => {
+const cleanTouch = (t, keys = TOUCH_KEYS) => {
   if (!t || typeof t !== "object") return null;
   const out = {};
-  TOUCH_KEYS.forEach((k) => {
+  keys.forEach((k) => {
     out[k] = str(t[k], 500);
   });
   const ts = t.ts ? new Date(t.ts) : null;
@@ -55,10 +58,10 @@ const cleanTouch = (t) => {
 };
 
 /** First/last touch from the payload. Storage-blocked browsers send no first touch → use last. */
-const touchesFrom = (body, now = new Date()) => {
-  const lastTouch = cleanTouch(body.last_touch) || { utm_source: "direct", ts: now };
+const touchesFrom = (body, now = new Date(), keys = TOUCH_KEYS) => {
+  const lastTouch = cleanTouch(body.last_touch, keys) || { utm_source: "direct", ts: now };
   if (!lastTouch.utm_source) lastTouch.utm_source = "direct";
-  const firstTouch = cleanTouch(body.first_touch) || lastTouch;
+  const firstTouch = cleanTouch(body.first_touch, keys) || lastTouch;
   if (!firstTouch.utm_source) firstTouch.utm_source = "direct";
   return { firstTouch, lastTouch };
 };
@@ -251,6 +254,7 @@ const spokenBudget = (box = {}) => {
 module.exports = {
   MAX_PRICE,
   TOUCH_KEYS,
+  REGISTRATION_TOUCH_KEYS,
   US_STATES,
   str,
   isValidEmail,

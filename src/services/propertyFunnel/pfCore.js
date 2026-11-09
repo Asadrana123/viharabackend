@@ -74,6 +74,8 @@ function channelFromLead(source, utm = {}) {
   const s = String(utm.utm_source || utm.source || "").toLowerCase();
   const m = String(utm.utm_medium || utm.medium || "").toLowerCase();
   const paid = /(paid|cpc|ppc|ads?|paid_social)/.test(m);
+  // The site stores utm_source "direct" when a visit had no UTM (vihara-next captureTouches).
+  if ((s === "direct" || s === "(direct)") && (!m || m === "(none)" || m === "none")) return "Direct";
   if (/(meta|facebook|fb|instagram|ig)/.test(s)) return paid ? "Meta ads" : "Organic social";
   if (/(linkedin|youtube|tiktok|threads|x|twitter)/.test(s)) return "Organic social";
   if (m === "email" || m === "sms" || /(brevo|sendgrid|vtext)/.test(s)) return "Email & SMS";

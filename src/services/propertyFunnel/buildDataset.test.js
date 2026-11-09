@@ -151,3 +151,13 @@ test("ad spend splits across the properties an ad is linked to", () => {
   assert.deepEqual(d.checks[0], { label: "Meta spend linked to a property", aLabel: "All Meta spend", a: 100, bLabel: "Linked to a property", b: 100 });
   assert.equal(d.adDays[0].paid, null);
 });
+
+test("a registration with no lead counts on its own UTM (saved from 9 Nov 2026)", () => {
+  const regs = inputs().registrations.concat([
+    { propertyId: Q, at: new Date("2026-11-07T20:00:00Z"), userId: "u4", emailKey: "new@example.test", phoneKey: "", utm: { utm_source: "facebook", utm_medium: "paid_social", ad_id: "A9" } },
+  ]);
+  const d = build({ registrations: regs });
+  const row = d.propertyDays.find((r) => r.propertyId === Q && r.date === "2026-11-07");
+  assert.equal(row.channel, "Meta ads");
+  assert.equal(row.registrations, 1);
+});
