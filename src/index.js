@@ -1,4 +1,7 @@
 require('dotenv').config();
+// Before anything else loads: with OUTBOUND_DISABLED=true (local runs) no email, text, call or Slack post
+// leaves this server (config/outboundSwitch.js).
+require('./config/outboundSwitch').installOutboundGuards();
 const http = require('http');
 const app = require('./app');
 const initSocketServer = require('./socket/socketServer');
@@ -50,7 +53,7 @@ server.listen(PORT, () => {
   // Every job below calls or texts real people. OUTBOUND_DISABLED=true (local runs) skips them all
   // (config/outboundSwitch.js).
   if (outboundDisabled()) {
-    console.log('[outbound] OUTBOUND_DISABLED=true: call and text jobs not started, no calls will be placed.');
+    console.log('[outbound] OUTBOUND_DISABLED=true: call and text jobs not started; calls, texts, emails and Slack posts are blocked.');
   } else {
     // Start the early-access daily 1:32 PM callback scheduler (every-minute sweep).
     startEarlyAccessCallScheduler();
