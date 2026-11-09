@@ -88,4 +88,26 @@ const ping = catchAsyncError(async (req, res) => {
   return res.status(200).json({ ok: true });
 });
 
-module.exports = { receive, ping };
+/**
+ * POST /api/webhooks/vtext/:channelType/:lineKey/missing — for the dasd watchdog on the Mac (tools/mac-watchdog).
+ * The Mac sends the ids of replies it received a few minutes ago; we answer which of them never reached us.
+ * Any missing one means BlueBubbles has stalled on the Mac (macOS 27 dasd bug), and the watchdog restarts dasd.
+ * Also says when the backend's own catch-up last found missed replies, which is the same signal arriving later.
+ * Read-only. Same security boundary as the webhook: the per-line key in the URL. Answers only about the ids sent.
+ */
+const missing = catchAsyncError(async (req, res) => {
+  const { channelType, lineKey } = req.params;
+  const line = await VtextLine.findOne({ webhookKey: lineKey }).select("_id channelType").lean();
+  if (!line || line.channelType !== channelType) return res.status(404).json({ ok: false });
+
+  const guids = Array.isArray(req.body?.guids) ? req.body.guids.filter((g) => typeof g === "string" && g.length < 200).slice(0, 200) : [];
+  const VtextMessage = require("../../model/vtext/vtextMessageModel");
+  const { getAlertWatermark } = require("../../services/vtext/vtextAlertService");
+  const known = guids.length
+    ? new Set(await VtextMessage.find({ channelType, direction: "in", "provider.messageId": { $in: guids } }).distinct("provider.messageId"))
+    : new Set();
+  const missedRepliesFoundAt = await getAlertWatermark("bbMissedReplyAt");
+  return res.status(200).json({ ok: true, missing: guids.filter((g) => !known.has(g)), missedRepliesFoundAt });
+});
+
+module.exports = { receive, ping, missing };

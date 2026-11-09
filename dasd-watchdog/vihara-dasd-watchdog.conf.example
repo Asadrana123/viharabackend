@@ -1,0 +1,12 @@
+# /usr/local/etc/vihara-dasd-watchdog.conf: settings for the dasd watchdog. Root only: sudo chmod 600.
+#
+# The BlueBubbles server password (BlueBubbles → Settings → Server Password).
+BB_PASSWORD='paste-the-bluebubbles-password-here'
+# The line's "missing" check on our backend: the line's webhook URL (as registered in BlueBubbles → API & Webhooks)
+# with /missing added at the end.
+BACKEND_MISSING_URL='https://api.vihara.ai/api/webhooks/vtext/imessage-bluebubbles/PASTE-LINE-KEY/missing'
+# Optional (defaults shown):
+# BB_URL='http://localhost:1234'   # BlueBubbles on this Mac (Settings → Server Port)
+# WINDOW_MIN=15                     # look at replies from the last 15 minutes...
+# SETTLE_MIN=3                      # ...but not the last 3 (a webhook may still be on its way)
+# COOLDOWN_MIN=10                   # restart dasd at most once every 10 minutes

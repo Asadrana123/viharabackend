@@ -194,3 +194,30 @@ test("paging: more than one page of messages is read", async (t) => {
   assert.equal(queries[1].offset, 500);
   assert.equal(events.length, 0, "rows with no receipt yet make no events");
 });
+
+test("the watchdog's check answers which replies never arrived, and when the catch-up last found some", async (t) => {
+  if (!mongoUp) return t.skip("no local Mongo");
+  const { missing } = require("../../controller/vtext/vtextWebhookController");
+  const contact = await newContact();
+  await VtextMessage.create({ direction: "in", contactId: contact._id, lineId: line._id, channelType: "imessage-bluebubbles", body: "hi", status: "received", provider: { messageId: "IN-HAVE" } });
+  const call = (params, body) => new Promise((resolve, reject) => {
+    const res = { status: (code) => ({ json: (data) => resolve({ code, data }) }) };
+    missing({ params, body }, res, reject);
+  });
+
+  const ok = await call({ channelType: "imessage-bluebubbles", lineKey: "catchupkey" }, { guids: ["IN-HAVE", "IN-LOST", 42] });
+  assert.equal(ok.code, 200);
+  assert.deepEqual(ok.data.missing, ["IN-LOST"], "non-string ids are ignored");
+  assert.ok("missedRepliesFoundAt" in ok.data);
+  assert.equal((await call({ channelType: "imessage-bluebubbles", lineKey: "wrong" }, { guids: [] })).code, 404);
+  assert.equal((await call({ channelType: "twilio-sms", lineKey: "catchupkey" }, { guids: [] })).code, 404);
+});
+
+test("finding missed replies stamps the time the Mac's watchdog reads", async (t) => {
+  if (!mongoUp) return t.skip("no local Mongo");
+  const contact = await newContact();
+  rows = [{ guid: "IN-9", isFromMe: false, text: "hello?", dateCreated: NOW - 12 * 60_000, handle: { address: contact.phoneE164 }, chats: [] }];
+  const stamps = [];
+  await catchup.runCatchup(deps({ setWatermark: async (k, d) => stamps.push(k) }));
+  assert.deepEqual(stamps.sort(), ["bbCatchupAt", "bbMissedReplyAt"]);
+});

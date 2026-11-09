@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Runs the dasd watchdog every 2 minutes as root (killall dasd needs root). Install: see README.md. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.vihara.dasd-watchdog</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>/usr/local/bin/vihara-dasd-watchdog.sh</string>
+  </array>
+  <key>StartInterval</key>
+  <integer>120</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/var/log/vihara-dasd-watchdog.log</string>
+  <key>StandardErrorPath</key>
+  <string>/var/log/vihara-dasd-watchdog.log</string>
+</dict>
+</plist>

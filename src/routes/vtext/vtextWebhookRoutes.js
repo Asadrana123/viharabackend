@@ -6,7 +6,7 @@
 const express = require("express");
 const router = express.Router();
 
-const { receive, ping } = require("../../controller/vtext/vtextWebhookController");
+const { receive, ping, missing } = require("../../controller/vtext/vtextWebhookController");
 const { requireVtextEnabled } = require("../../middleware/vtextEnabled");
 
 router.use(requireVtextEnabled);
@@ -14,5 +14,7 @@ router.use(requireVtextEnabled);
 // Twilio posts form-encoded bodies (the app-level parser only reads JSON); other channels post JSON and are unaffected.
 router.post("/:channelType/:lineKey", express.urlencoded({ extended: false, limit: "1mb" }), receive);
 router.get("/:channelType/:lineKey", ping);
+// The Mac's dasd watchdog: "which of these replies did you never get?" (JSON body, read-only).
+router.post("/:channelType/:lineKey/missing", missing);
 
 module.exports = router;

@@ -30,6 +30,7 @@ const OVERLAP_MS = 10 * MINUTE;
 const MAX_LOOKBACK_MS = 24 * 60 * MINUTE;
 const FIRST_RUN_LOOKBACK_MS = 30 * MINUTE;
 const WATERMARK_KEY = "bbCatchupAt";
+const MISSED_REPLY_KEY = "bbMissedReplyAt"; // when the catch-up last found replies the webhook never brought
 // Lines that can still receive replies: everything except ones not set up yet or retired.
 const LISTENING_STATUSES = ["warming", "active", "paused", "offline", "quarantined"];
 
@@ -147,7 +148,11 @@ async function runCatchup(deps = {}) {
       const result = await catchUpLine(line, { after, before, includeReplies: true, deps });
       summary.statuses += result.statuses.length;
       summary.replies += result.replies.length;
-      if (result.replies.length) await alertMissedReplies(line, result.replies, deps.notify);
+      if (result.replies.length) {
+        await alertMissedReplies(line, result.replies, deps.notify);
+        // The Mac's dasd watchdog reads this (POST .../missing) and restarts dasd when it is newer than its last restart.
+        await (deps.setWatermark || setAlertWatermark)(MISSED_REPLY_KEY, now).catch(() => {});
+      }
     } catch (err) {
       summary.failedLines.push(line.name);
       console.warn(`[vtext bb-catchup] could not reach ${line.name}:`, err.message);
