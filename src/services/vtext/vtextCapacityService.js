@@ -80,9 +80,10 @@ function isThrottled(line) {
 }
 
 /** The real, computed cap for today — not stored, per sendify-infra.md §3.1. Automatically applies the §7.4 soft reply-ratio throttle from the line's own stored health fields. */
-function effectiveDailyCap(line) {
+/** @param {Date} [at] - the moment to compute the cap for (the warm-up day depends on it); defaults to now */
+function effectiveDailyCap(line, at = new Date()) {
   const limits = limitsFor(line);
-  const warmupCap = warmupPerDay(line, limits);
+  const warmupCap = warmupPerDay(line, limits, at);
   return Math.max(0, Math.floor(warmupCap * (isThrottled(line) ? THROTTLE_MULTIPLIER : 1)));
 }
 

@@ -93,7 +93,11 @@ test("Vtext conversation search: regex characters in a name are matched literall
   const VtextContact = require("../model/vtext/vtextContactModel");
   const VtextConversation = require("../model/vtext/vtextConversationModel");
   let contactQuery;
-  VtextContact.find = (q) => { contactQuery = q; return { select: async () => [] }; };
+  // The controller awaits .select() directly for the name search and .select().lean() for the starred count.
+  VtextContact.find = (q) => {
+    if (q?.$or) contactQuery = q;
+    return { select: () => ({ lean: async () => [], then: (resolve) => resolve([]) }) };
+  };
   const chain = { sort() { return this; }, limit() { return this; }, populate() { return this; }, lean: async () => [] };
   VtextConversation.find = () => chain;
   VtextConversation.countDocuments = async () => 0;

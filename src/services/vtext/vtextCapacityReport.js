@@ -52,7 +52,7 @@ function lineCapacity(line, usage, { newRecipientsThisHour = null, now = new Dat
   const canSend = ROUTABLE_STATUSES.includes(line.status);
   const warmup = capacity.warmupStep(line, limits, now);
   const throttled = capacity.isThrottled(line);
-  const limit = canSend ? capacity.effectiveDailyCap(line) : 0;
+  const limit = canSend ? capacity.effectiveDailyCap(line, now) : 0; // same `now` as the warm-up step above
   const coldLimit = canSend ? capacity.coldCapOf(limit, limits) : 0;
   const used = usage?.assigned || 0;
   const leftNew = Math.max(0, coldLimit - used);
