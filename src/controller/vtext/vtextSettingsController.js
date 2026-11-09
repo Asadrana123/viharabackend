@@ -9,9 +9,12 @@ const getVtextSettings = catchAsyncError(async (req, res) => {
   return res.status(200).json({ success: true, settings });
 });
 
-/** PATCH /api/v1/vtext/settings — body: { aiAutoReplyEnabled?, followUpsEnabled?, requireConsent? } */
+/** PATCH /api/v1/vtext/settings — body: { aiAutoReplyEnabled?, followUpsEnabled?, requireConsent?, smsOnly? } */
 const updateVtextSettings = catchAsyncError(async (req, res) => {
-  const { aiAutoReplyEnabled, followUpsEnabled, requireConsent } = req.body;
+  const { aiAutoReplyEnabled, followUpsEnabled, requireConsent, smsOnly } = req.body;
+  if (smsOnly !== undefined && typeof smsOnly !== "boolean") {
+    return res.status(400).json({ success: false, message: "smsOnly must be a boolean" });
+  }
   if (aiAutoReplyEnabled !== undefined && typeof aiAutoReplyEnabled !== "boolean") {
     return res.status(400).json({ success: false, message: "aiAutoReplyEnabled must be a boolean" });
   }
@@ -23,7 +26,26 @@ const updateVtextSettings = catchAsyncError(async (req, res) => {
   }
 
   const before = await getSettings();
-  const settings = await updateSettings({ aiAutoReplyEnabled, followUpsEnabled, requireConsent }, req.user);
+  const settings = await updateSettings({ aiAutoReplyEnabled, followUpsEnabled, requireConsent, smsOnly }, req.user);
+
+  // Moving texts between iMessage and SMS changes who sees which number and what it costs: tell the channel.
+  if (smsOnly !== undefined && Boolean(before.smsOnly) !== smsOnly) {
+    notifyVtextAlert({
+      level: smsOnly ? "warning" : "info",
+      icon: smsOnly ? "📱" : "💬",
+      title: smsOnly ? "SMS only turned ON" : "SMS only turned OFF, iMessage is back",
+      fields: [
+        { label: "By", value: req.user?.name || "unknown admin" },
+        {
+          label: "Effect",
+          value: smsOnly
+            ? "New texts to US numbers go out by SMS on the Twilio line, not iMessage (Twilio: 100 a day, 20 new people an hour; the rest wait). Images, non-US numbers and texts pinned to a channel still use iMessage."
+            : "New texts go by iMessage first again, with SMS as the fallback.",
+          wide: true,
+        },
+      ],
+    }).catch(() => {});
+  }
 
   // Someone moving the consent switch is worth a Slack message either way.
   if (requireConsent !== undefined && isConsentRequired(before) !== requireConsent) {
