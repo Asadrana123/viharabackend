@@ -291,6 +291,11 @@ async function handleMessageStatus(event, line) {
     message.failedAt = event.at || new Date();
   } else if (incomingIdx > currentIdx) {
     message.status = event.status;
+    // Confirmed after all (a late receipt, or the Mac asked directly): drop the "no receipt" / failure left on it.
+    if ((event.status === "delivered" || event.status === "read") && message.error?.kind) {
+      message.error = undefined;
+      message.failedAt = undefined;
+    }
     if (event.status === "sent") message.sentAt = event.at || new Date();
     if (event.status === "delivered") message.deliveredAt = event.at || new Date();
     if (event.status === "read") {
