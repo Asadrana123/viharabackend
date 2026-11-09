@@ -28,6 +28,7 @@ const { publishEvent } = require("../vtextEventsBus");
 const smsFallback = require("../vtextSmsFallbackService");
 const { reportTextProblem } = require("../vtextTextProblemAlert");
 const { runCatchup, runReadRecheck, confirmBeforeGivingUp } = require("../vtextBluebubblesCatchup");
+const { runDeadLineCheck } = require("../vtextDeadLineAlert");
 
 const HEARTBEAT_KEY = "vtext:worker:lastHeartbeatAt";
 
@@ -459,6 +460,7 @@ const JOB_HANDLERS = {
   "rag-sync": runRagSync,
   "bluebubbles-catchup": () => runCatchup(),
   "bluebubbles-read-recheck": () => runReadRecheck(),
+  "dead-line-check": () => runDeadLineCheck(),
 };
 
 async function processMaintenanceJob(job) {
@@ -527,6 +529,12 @@ async function ensureMaintenanceSchedulers() {
     "bluebubbles-catchup",
     { every: Number(process.env.VTEXT_BB_CATCHUP_INTERVAL_MS || 10 * 60_000) },
     { name: "bluebubbles-catchup" },
+  );
+  // 🔴 when an iMessage line sends but nothing gets delivered for hours (vtextDeadLineAlert.js). One Mongo query per line.
+  await queue.upsertJobScheduler(
+    "dead-line-check",
+    { every: Number(process.env.VTEXT_DEAD_LINE_CHECK_INTERVAL_MS || 30 * 60_000) },
+    { name: "dead-line-check" },
   );
   await queue.upsertJobScheduler(
     "bluebubbles-read-recheck",

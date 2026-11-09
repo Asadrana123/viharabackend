@@ -28,6 +28,17 @@ const vtextSettingsSchema = new mongoose.Schema(
     requireConsent: { type: Boolean, default: true },
     consentChangedAt: { type: Date },
 
+    // "SMS only": while ON, new texts to US numbers skip iMessage and go out through the Twilio SMS line
+    // (vtextRouter.selectLine). For when the iMessage line can't deliver (Apple restricting the account, a dead
+    // Mac) — sending more from a restricted Apple ID can keep it restricted. OFF by default. Images, non-US
+    // numbers and texts pinned to a channel still follow normal routing.
+    smsOnly: { type: Boolean, default: false },
+    smsOnlyChangedAt: { type: Date },
+    smsOnlyChangedBy: {
+      adminId: { type: mongoose.Schema.Types.ObjectId },
+      adminName: { type: String },
+    },
+
     // Bookkeeping for Slack alerts (vtextAlertService.js): when each alert key last
     // fired, and watermarks such as "failed sends reported up to here". Keys are
     // free-form, so it is Mixed. Documents from before this field existed work as-is.

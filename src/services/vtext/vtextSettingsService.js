@@ -32,6 +32,13 @@ async function updateSettings(patch, actor) {
   const update = {};
   if (patch.aiAutoReplyEnabled !== undefined) update.aiAutoReplyEnabled = !!patch.aiAutoReplyEnabled;
   if (patch.followUpsEnabled !== undefined) update.followUpsEnabled = !!patch.followUpsEnabled;
+  if (patch.smsOnly !== undefined) {
+    update.smsOnly = !!patch.smsOnly;
+    update.smsOnlyChangedAt = new Date();
+    update.smsOnlyChangedBy = {};
+    if (actor?._id) update.smsOnlyChangedBy.adminId = actor._id;
+    if (actor?.name) update.smsOnlyChangedBy.adminName = actor.name;
+  }
   if (patch.requireConsent !== undefined) {
     update.requireConsent = !!patch.requireConsent;
     update.consentChangedAt = new Date();

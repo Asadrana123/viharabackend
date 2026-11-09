@@ -12,6 +12,9 @@ const { ROUTABLE_STATUSES, CHANNEL_TYPES } = VtextLine;
 const VtextConversation = require("../../model/vtext/vtextConversationModel");
 const { getAdapter } = require("./channels/registry");
 const capacity = require("./vtextCapacityService");
+const { getSettings } = require("./vtextSettingsService");
+
+const SMS_CHANNEL = "twilio-sms";
 
 const REACHABILITY_STALE_DAYS = 30;
 
@@ -125,8 +128,21 @@ async function pickInChannel(channel, message, contact) {
  * @param {object} contact - a vtextContactModel document (mutated in place for reachability-cache/sticky-line cleanup — caller should already hold the loaded doc, not a .lean() copy)
  * @returns {Promise<{line: object|null, waitingOnStickyLine: boolean}>}
  */
-async function selectLine(message, contact) {
+async function selectLine(message, contact, deps = {}) {
   const policy = message.channelPolicy || { mode: "any" };
+
+  // "SMS only" (Vtext Settings): skip iMessage and send through the Twilio line, while that line exists. Only for
+  // texts the router is free to place: not ones pinned to a channel (mode "only", e.g. an SMS fallback or a
+  // reply on an SMS thread), not images (SMS sends text only), not non-US numbers (the Twilio line is US-only).
+  if (policy.mode !== "only" && !message.media?.file && /^\+1\d{10}$/.test(contact.phoneE164 || "")) {
+    const settings = await (deps.getSettings || getSettings)();
+    if (settings?.smsOnly && (await VtextLine.exists({ channelType: SMS_CHANNEL, status: { $in: ROUTABLE_STATUSES } }))) {
+      const result = await pickInChannel(SMS_CHANNEL, message, contact);
+      if (result === "WAIT") return { line: null, waitingOnStickyLine: true };
+      // No room on the Twilio line right now: wait for it (waiting-capacity) instead of using iMessage.
+      return { line: result || null, waitingOnStickyLine: false };
+    }
+  }
   const channels = resolveChannelCandidates(policy);
   let skippedAsUnreachable = false;
 
