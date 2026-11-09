@@ -2,7 +2,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { awarenessFromName, formatOf, statusOf } = require("./sync/zernioAdsSync");
-const { toPacificDays, pacificDateOfHour } = require("./sync/ga4Sync");
+const { toPacificDays, pacificDateOfHour, normalizePath } = require("./sync/ga4Sync");
 const { toPageRows } = require("./sync/claritySync");
 const { toRow, propertyOf } = require("./sync/zernioPostsSync");
 
@@ -24,9 +24,9 @@ test("GA4 hours (India time) land on the right Pacific day", () => {
   assert.equal(pacificDateOfHour("2026110913"), "2026-11-09");
   assert.equal(pacificDateOfHour("2026110912"), "2026-11-08");
   const rows = toPacificDays([
-    { dateHour: "2026110913", pagePath: "/listing/a#x", sessionDefaultChannelGroup: "Direct", sessionSourceMedium: "(direct) / (none)", sessions: 2, engagedSessions: 1, userEngagementDuration: 30 },
-    { dateHour: "2026110914", pagePath: "/listing/a", sessionDefaultChannelGroup: "Direct", sessionSourceMedium: "(direct) / (none)", sessions: 3, engagedSessions: 2, userEngagementDuration: 40 },
-    { dateHour: "2026110801", pagePath: "/listing/a", sessionDefaultChannelGroup: "Direct", sessionSourceMedium: "(direct) / (none)", sessions: 9, engagedSessions: 9, userEngagementDuration: 9 },
+    { dateHour: "2026110913", pagePathPlusQueryString: "/listing/a?utm_source=meta#x", sessionDefaultChannelGroup: "Direct", sessionSourceMedium: "(direct) / (none)", sessions: 2, engagedSessions: 1, userEngagementDuration: 30 },
+    { dateHour: "2026110914", pagePathPlusQueryString: "/listing/a", sessionDefaultChannelGroup: "Direct", sessionSourceMedium: "(direct) / (none)", sessions: 3, engagedSessions: 2, userEngagementDuration: 40 },
+    { dateHour: "2026110801", pagePathPlusQueryString: "/listing/a", sessionDefaultChannelGroup: "Direct", sessionSourceMedium: "(direct) / (none)", sessions: 9, engagedSessions: 9, userEngagementDuration: 9 },
   ], "2026-11-08");
   const nov9 = rows.find((r) => r.date === "2026-11-09");
   assert.deepEqual([nov9.pagePath, nov9.sessions, nov9.engagedSessions, nov9.engagementSeconds], ["/listing/a", 5, 3, 70]);
@@ -56,4 +56,11 @@ test("organic posts: unknown numbers stay null, property from a link or a street
   const v = toRow({ _id: "p2", platform: "instagram", publishedAt: "2026-11-07T22:31:42Z", content: "", mediaType: "video", analytics: { views: 324 } }, listings);
   assert.equal(v.videoViews, 324);
   assert.equal(v.engagement, null);
+});
+
+test("GA4 paths: the deal form keeps its property, other query params are cut", () => {
+  assert.equal(normalizePath("/deal?property=401-rensselaer-ave-ogdensburg&utm_source=meta&fbclid=x"), "/deal?property=401-rensselaer-ave-ogdensburg");
+  assert.equal(normalizePath("/listing/a?register=1&utm_source=meta"), "/listing/a");
+  assert.equal(normalizePath("/blogs/foreclosed-homes#intro"), "/blogs/foreclosed-homes");
+  assert.equal(normalizePath("/deal"), "/deal");
 });
