@@ -31,6 +31,7 @@ const { startGaReportJob } = require('./jobs/gaReportJob');
 const { startAdsLoopJob } = require('./jobs/adsLoopJob');
 const { startRepairJob } = require('./jobs/repairJob');
 const { startSignupDoctorJob } = require('./jobs/signupDoctorJob');
+const { startPropertyFunnelJob } = require('./jobs/propertyFunnelJob');
 const { startFacetimeSweep } = require('./services/calling/facetime/facetimeSweep');
 const { outboundDisabled } = require('./config/outboundSwitch');
 
@@ -142,4 +143,8 @@ server.listen(PORT, () => {
   // sign-ups and posts the likely reasons to Slack. Report only.
   // Off unless SIGNUP_DOCTOR_ENABLED=true.
   startSignupDoctorJob();
+
+  // Property Funnel tab: Meta ads, GA4, Clarity, Sanity and organic posts into the pf_* collections.
+  // Off unless PROPERTY_FUNNEL_SYNC_ENABLED=true.
+  startPropertyFunnelJob();
 });
