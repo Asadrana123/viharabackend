@@ -135,3 +135,33 @@ test("a push is checked item by item and refused whole on a bad one", () => {
 test("an unknown feature still shows, under Other", () => {
   assert.deepEqual(describe("something-new"), { key: "something-new", label: "something-new", group: "other", groupLabel: "Other" });
 });
+
+test("a refusal for want of credits is noted with the feature; other failures are not", async () => {
+  const notes = [];
+  setSpendSink((d) => notes.push(d));
+  const err = Object.assign(new Error("400 Your credit balance is too low to access the Anthropic API."), { status: 400 });
+  const client = trackAnthropic({ messages: { create: () => Promise.reject(err) } }, "ga-report");
+  await assert.rejects(client.messages.create({}), /credit balance/);
+  const other = trackAnthropic({ messages: { create: () => Promise.reject(new Error("overloaded")) } }, "x");
+  await assert.rejects(other.messages.create({}), /overloaded/);
+  await new Promise((r) => setImmediate(r));
+  assert.equal(notes.length, 1);
+  assert.equal(notes[0].creditOut.note, "ga-report");
+  setSpendSink(null);
+});
+
+test("history from the agents' own records counts only before tracking began", () => {
+  const { historyRows } = require("./spendReport");
+  const cutoff = new Date("2026-11-09T12:00:00Z");
+  const rows = historyRows({
+    designs: [{ _id: "d1", createdAt: new Date("2026-11-01"), usage: { costUsd: 2.5 }, createdByName: "Asad" }, { _id: "d2", createdAt: new Date("2026-11-10"), usage: { costUsd: 9 } }],
+    diagnoses: [{ _id: "c1", createdAt: new Date("2026-10-20"), costUsd: 1.2 }],
+    incidents: [{ _id: "r1", createdAt: new Date("2026-10-21"), costUsd: 0 }],
+  }, cutoff);
+  assert.deepEqual(rows.map((r) => [r.feature, r.usd, r.by]), [["design-studio", 2.5, "Asad"], ["conversion-agent", 1.2, ""]]);
+});
+
+test("spend is split by provider", () => {
+  const s = summarize([{ at: new Date("2026-11-02T10:00:00Z"), feature: "video", provider: "treg", usd: 1 }, { at: new Date("2026-11-02T10:00:00Z"), feature: "ga-report", provider: "anthropic", usd: 0.5 }], { from: new Date("2026-11-01T00:00:00Z"), to: new Date("2026-11-03T00:00:00Z"), tz: "UTC" });
+  assert.deepEqual(s.providers.map((p) => [p.provider, p.usd]), [["treg", 1], ["anthropic", 0.5]]);
+});

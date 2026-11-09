@@ -52,6 +52,8 @@ const aiBalanceSchema = new mongoose.Schema(
     provider: { type: String, required: true, unique: true },
     usd: { type: Number, default: null },
     at: { type: Date, required: true },
+    // anthropic-credits-out: the feature that was refused for want of credits.
+    note: { type: String, default: "" },
   },
   { timestamps: true }
 );

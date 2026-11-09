@@ -41,6 +41,23 @@ function recordClaude(feature, message, extra = {}) {
   }
 }
 
+/** Anthropic refuses a call when the account's credits are gone ("Your credit balance is too low ..."). */
+const isCreditOut = (err) => /credit balance is too low|ran out of credits/i.test(String(err?.message || err?.error?.error?.message || ""));
+
+/** Notes when and where the Anthropic credits ran out, for the AI Spend page. */
+function noteCreditOut(feature, err) {
+  try {
+    if (!isCreditOut(err)) return;
+    const doc = { provider: "anthropic-credits-out", usd: null, at: new Date(), note: feature };
+    if (sink) return sink({ creditOut: doc });
+    if (mongoose.connection.readyState !== 1) return;
+    const { AiBalance } = require("../../model/usage/aiSpendModel");
+    AiBalance.updateOne({ provider: doc.provider }, { $set: doc }, { upsert: true }).catch(() => {});
+  } catch {
+    // never break the caller
+  }
+}
+
 /** Records one Gemini generateContent result (the object with .response.usageMetadata). */
 function recordGemini(feature, model, result, extra = {}) {
   try {
@@ -64,14 +81,17 @@ function wrapMessages(api, feature) {
         return (body, options) => {
           const result = value.call(target, body, options);
           // A create with stream: true returns raw events, not a message; those calls are not used here.
-          if (!body?.stream && result && typeof result.then === "function") result.then((m) => recordClaude(feature, m), () => {});
+          if (!body?.stream && result && typeof result.then === "function") result.then((m) => recordClaude(feature, m), (e) => noteCreditOut(feature, e));
           return result;
         };
       }
       if (prop === "stream" && typeof value === "function") {
         return (body, options) => {
           const stream = value.call(target, body, options);
-          if (stream && typeof stream.on === "function") stream.on("finalMessage", (m) => recordClaude(feature, m));
+          if (stream && typeof stream.on === "function") {
+            stream.on("finalMessage", (m) => recordClaude(feature, m));
+            stream.on("error", (e) => noteCreditOut(feature, e));
+          }
           return stream;
         };
       }
@@ -109,4 +129,4 @@ function trackAnthropic(client, feature) {
   });
 }
 
-module.exports = { trackAnthropic, recordClaude, recordGemini, setSpendSink };
+module.exports = { trackAnthropic, recordClaude, recordGemini, setSpendSink, isCreditOut };

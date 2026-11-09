@@ -44,6 +44,7 @@ function cleanPush(body) {
     provider: str(b?.provider, 40),
     usd: typeof b?.usd === "number" && Number.isFinite(b.usd) ? b.usd : null,
     at: Number.isNaN(new Date(b?.at).getTime()) ? new Date() : new Date(b.at),
+    note: str(b?.note, 80),
   })).filter((b) => b.provider);
   return { items: items.map(cleanItem), balances };
 }
@@ -58,7 +59,10 @@ async function storePush({ items, balances }) {
   }
   const now = new Date();
   for (const b of [...balances, { provider: "creative-os-sync", usd: null, at: now }]) {
-    await AiBalance.updateOne({ provider: b.provider }, { $set: { usd: b.usd, at: b.at } }, { upsert: true });
+    // Keep the newest: the backend may have noted a later credit shortage than the one in this push.
+    const existing = await AiBalance.findOne({ provider: b.provider }).select("at").lean();
+    if (existing && new Date(existing.at) > b.at) continue;
+    await AiBalance.updateOne({ provider: b.provider }, { $set: { usd: b.usd, at: b.at, note: b.note || "" } }, { upsert: true });
   }
   return { received: items.length, stored };
 }

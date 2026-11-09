@@ -17,7 +17,8 @@ const NOT_TRACKED = [
   "Claude Code on the editors' and the team's own laptops (their own plans or keys).",
   "Gemini embeddings for the Vtext knowledge base (the API reports no tokens; a few cents a month).",
   "Twilio texts, Vapi and voice calls, HeyGen avatars outside videos, Higgsfield images: billed by those services, not recorded here.",
-  "Spend before tracking started on this page's first day (records begin when this was deployed).",
+  "Before 2026-11-09: only what features saved themselves (video assets and Claude runs, designs, /image, cast, Design Studio, Conversion and Repair agents, QA runs). The Slack bot's other Claude runs (hook scout, LinkedIn, proposals) were not recorded before then.",
+  "Anthropic's own bill by API key: Anthropic gives it only to organization accounts with an Admin key; the account is an individual one.",
 ];
 
 /** The period asked for: range=7d|30d|90d|1d|month|lastMonth, or from/to dates (YYYY-MM-DD). */
@@ -75,6 +76,7 @@ function summarize(rows, { from, to, tz = "Asia/Kolkata", previousUsd = null, fe
   const tools = new Map();
   const people = new Map();
   const groups = new Map();
+  const providers = new Map();
   const days = new Map(daysBetween(from, to, tz).map((d) => [d, { day: d, total: 0 }]));
   let usd = 0;
   let calls = 0;
@@ -100,6 +102,10 @@ function summarize(rows, { from, to, tz = "Asia/Kolkata", previousUsd = null, fe
     to_.usd += cost || 0;
     to_.calls++;
     if (cost === null) to_.unpriced++;
+
+    const pv = bump(providers, r.provider || "anthropic", () => ({ provider: r.provider || "anthropic", usd: 0, calls: 0 }));
+    pv.usd += cost || 0;
+    pv.calls++;
 
     const g = bump(groups, f.group, () => ({ group: f.group, label: f.groupLabel, usd: 0, calls: 0 }));
     g.usd += cost || 0;
@@ -143,6 +149,7 @@ function summarize(rows, { from, to, tz = "Asia/Kolkata", previousUsd = null, fe
     tz,
     total: { usd: round2(usd), calls, unpriced, previousUsd: previousUsd === null ? null : round2(previousUsd) },
     groups: [...groups.values()].map((g) => ({ ...g, usd: round2(g.usd) })).sort(byUsd),
+    providers: [...providers.values()].map((p) => ({ ...p, usd: round2(p.usd) })).sort(byUsd),
     features: [...features.values()]
       .map((f) => ({ ...f, usd: round2(f.usd), tools: [...f.tools].map(([tool, u]) => ({ tool, usd: round2(u) })).sort((a, b) => b.usd - a.usd) }))
       .sort(byUsd),
@@ -162,26 +169,50 @@ function qaRows(runs) {
     .map((r) => ({ at: r.createdAt, source: "backend", feature: "qa-agent", provider: "anthropic", tool: "Claude (QA agent)", usd: r.costUsd, what: String(r.request || "").slice(0, 120), by: r.requestedBy?.name || "", ref: String(r._id) }));
 }
 
+/**
+ * Claude spend the backend's agents saved on their own records before every call was tracked: Design Studio
+ * requests, conversion diagnoses and repair incidents. Only records from before tracking began (cutoff), since
+ * their later calls are already in AiSpend.
+ */
+function historyRows({ designs = [], diagnoses = [], incidents = [] }, cutoff) {
+  const before = (d) => d && new Date(d) < cutoff;
+  const row = (feature, at, usd, what, by, ref) => ({ at, source: "backend", feature, provider: "anthropic", tool: "Claude (saved by the feature)", usd, what, by: by || "", ref: String(ref || "") });
+  return [
+    ...designs.filter((d) => d.usage?.costUsd > 0 && before(d.createdAt)).map((d) => row("design-studio", d.createdAt, d.usage.costUsd, "Design request", d.createdByName, d._id)),
+    ...diagnoses.filter((d) => d.costUsd > 0 && before(d.createdAt)).map((d) => row("conversion-agent", d.createdAt, d.costUsd, "Conversion diagnosis", "", d._id)),
+    ...incidents.filter((d) => d.costUsd > 0 && before(d.createdAt)).map((d) => row("repair-agent", d.createdAt, d.costUsd, "Repair incident", "", d._id)),
+  ];
+}
+
+/** When the backend began recording every call: its first record, or now if it has none yet. */
+async function trackingStart() {
+  const { AiSpend } = require("../../model/usage/aiSpendModel");
+  const first = await AiSpend.findOne({ source: "backend" }).sort({ at: 1 }).select("at").lean();
+  return first ? new Date(first.at) : new Date();
+}
+
 async function loadRows(from, to) {
   const { AiSpend } = require("../../model/usage/aiSpendModel");
   const QaRun = require("../../model/qa/qaRunModel");
-  const [spend, runs] = await Promise.all([
-    AiSpend.find({ at: { $gte: from, $lte: to } }).select("-_id -__v -createdAt -updatedAt -extId").limit(MAX_ROWS).lean(),
-    QaRun.find({ createdAt: { $gte: from, $lte: to }, costUsd: { $gt: 0 } }).select("request requestedBy costUsd createdAt").lean(),
+  const Design = require("../../model/design/designRequestModel");
+  const Diagnosis = require("../../model/conversion/conversionDiagnosisModel");
+  const Incident = require("../../model/repair/repairIncidentModel");
+  const range = { $gte: from, $lte: to };
+  const [spend, runs, designs, diagnoses, incidents, cutoff] = await Promise.all([
+    AiSpend.find({ at: range }).select("-_id -__v -createdAt -updatedAt -extId").limit(MAX_ROWS).lean(),
+    QaRun.find({ createdAt: range, costUsd: { $gt: 0 } }).select("request requestedBy costUsd createdAt").lean(),
+    Design.find({ createdAt: range, "usage.costUsd": { $gt: 0 } }).select("usage.costUsd createdAt createdByName").lean(),
+    Diagnosis.find({ createdAt: range, costUsd: { $gt: 0 } }).select("costUsd createdAt").lean(),
+    Incident.find({ createdAt: range, costUsd: { $gt: 0 } }).select("costUsd createdAt").lean(),
+    trackingStart(),
   ]);
-  return [...spend, ...qaRows(runs)];
+  return [...spend, ...qaRows(runs), ...historyRows({ designs, diagnoses, incidents }, cutoff)];
 }
 
 async function previousTotal(from, to) {
-  const { AiSpend } = require("../../model/usage/aiSpendModel");
-  const QaRun = require("../../model/qa/qaRunModel");
   const span = to.getTime() - from.getTime();
-  const pFrom = new Date(from.getTime() - span);
-  const [a, q] = await Promise.all([
-    AiSpend.aggregate([{ $match: { at: { $gte: pFrom, $lt: from } } }, { $group: { _id: null, usd: { $sum: { $ifNull: ["$usd", 0] } } } }]),
-    QaRun.aggregate([{ $match: { createdAt: { $gte: pFrom, $lt: from } } }, { $group: { _id: null, usd: { $sum: { $ifNull: ["$costUsd", 0] } } } }]),
-  ]);
-  return (a[0]?.usd || 0) + (q[0]?.usd || 0);
+  const rows = await loadRows(new Date(from.getTime() - span), new Date(from.getTime() - 1));
+  return rows.reduce((n, r) => n + (typeof r.usd === "number" ? r.usd : 0), 0);
 }
 
 /** The whole report for the admin page. */
@@ -189,9 +220,9 @@ async function spendReport(query = {}) {
   const { AiBalance } = require("../../model/usage/aiSpendModel");
   const period = periodOf(query);
   const tz = typeof query.tz === "string" && query.tz ? query.tz : "Asia/Kolkata";
-  const [rows, prev, balances] = await Promise.all([loadRows(period.from, period.to), previousTotal(period.from, period.to), AiBalance.find().select("provider usd at -_id").lean()]);
+  const [rows, prev, balances] = await Promise.all([loadRows(period.from, period.to), previousTotal(period.from, period.to), AiBalance.find().select("provider usd at note -_id").lean()]);
   const feature = typeof query.feature === "string" && query.feature ? query.feature : null;
   return { range: period.range, ...summarize(rows, { from: period.from, to: period.to, tz, previousUsd: prev, feature }), balances };
 }
 
-module.exports = { summarize, periodOf, qaRows, spendReport, NOT_TRACKED };
+module.exports = { summarize, periodOf, qaRows, historyRows, spendReport, NOT_TRACKED };
