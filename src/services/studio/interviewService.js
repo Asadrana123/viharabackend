@@ -9,6 +9,7 @@
 // Env: ANTHROPIC_API_KEY, optional STUDIO_MODEL (default claude-opus-5-5).
 
 const Anthropic = require("@anthropic-ai/sdk");
+const { trackAnthropic } = require("../usage/spendRecorder");
 
 const MODEL = process.env.STUDIO_MODEL || "claude-opus-5-5";
 let client;
@@ -41,7 +42,7 @@ const JUDGE_SYSTEM = [
  */
 async function judgeAnswer(question, answer) {
   try {
-    client = client || new Anthropic();
+    client = client || trackAnthropic(new Anthropic(), "editor-interview");
     const stream = client.beta.messages.stream({
       model: MODEL,
       max_tokens: 2000,

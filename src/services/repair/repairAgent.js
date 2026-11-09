@@ -15,6 +15,7 @@
 
 const path = require("path").posix;
 const Anthropic = require("@anthropic-ai/sdk");
+const { trackAnthropic } = require("../usage/spendRecorder");
 const babel = require("@babel/parser");
 const { createGithubClient, GithubError } = require("../design/githubService");
 const { getRepairConfig, githubTokenName } = require("../../config/repair/repairConfig");
@@ -63,11 +64,11 @@ function getClient() {
     if (!process.env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY is not set — the repair agent is unavailable");
     if (!client) {
         const workspaceId = process.env.ANTHROPIC_WORKSPACE_ID;
-        client = new Anthropic({
+        client = trackAnthropic(new Anthropic({
             timeout: 10 * 60 * 1000,
             maxRetries: 2,
             ...(workspaceId && { defaultHeaders: { "anthropic-workspace-id": workspaceId } }),
-        });
+        }), "repair-agent");
     }
     return client;
 }

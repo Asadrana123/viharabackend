@@ -8,6 +8,7 @@
 // Env: ANTHROPIC_API_KEY, optional ADS_LOOP_MODEL (default claude-opus-5-5).
 
 const Anthropic = require("@anthropic-ai/sdk");
+const { trackAnthropic } = require("../usage/spendRecorder");
 const { getAdsLoopConfig } = require("../../config/adsLoop/adsLoopConfig");
 
 // Created on first use so a missing key fails the job, not server startup.
@@ -23,7 +24,7 @@ let client;
  * @returns {Promise<object>} the parsed answer
  */
 async function claudeJson({ system, content, schema, effort = "high", maxTokens = 32000 }) {
-    client = client || new Anthropic();
+    client = client || trackAnthropic(new Anthropic(), "ads-loop");
     const stream = client.beta.messages.stream({
         model: getAdsLoopConfig().creative.model,
         max_tokens: maxTokens,

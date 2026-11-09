@@ -14,6 +14,7 @@
 // voicemail and call-screening greetings as interested, so it is not used.
 
 const Anthropic = require("@anthropic-ai/sdk");
+const { trackAnthropic } = require("../usage/spendRecorder");
 const { userSaid, isMachineText, deriveOutcome, deriveLeadScore } = require("./callOutcome");
 
 // Bump when the prompt or score table changes, so a regrade can find old grades.
@@ -112,7 +113,7 @@ function gradeByRules({ transcript, endedReason, durationSecs }) {
 let client;
 async function askClaude(transcript) {
   // Runs inside the end-of-call webhook — keep it short; the rules cover a timeout.
-  client = client || new Anthropic({ timeout: 20000, maxRetries: 1 });
+  client = client || trackAnthropic(new Anthropic({ timeout: 20000, maxRetries: 1 }), "call-grading");
   const model = process.env.CALL_GRADE_MODEL || "claude-sonnet-5-5";
   // Haiku has no server-side refusal fallback; the rules cover a refusal there.
   const fallback = model.includes("haiku") ? {} : { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" };

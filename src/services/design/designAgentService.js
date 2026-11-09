@@ -13,6 +13,7 @@
 // the page's own files.
 const path = require("path").posix;
 const Anthropic = require("@anthropic-ai/sdk");
+const { trackAnthropic } = require("../usage/spendRecorder");
 const github = require("./githubService");
 const { runChecks } = require("./designChecks");
 
@@ -35,11 +36,11 @@ function getClient() {
   }
   if (!client) {
     const workspaceId = process.env.ANTHROPIC_WORKSPACE_ID;
-    client = new Anthropic({
+    client = trackAnthropic(new Anthropic({
       timeout: 10 * 60 * 1000,
       maxRetries: 2,
       ...(workspaceId && { defaultHeaders: { "anthropic-workspace-id": workspaceId } }),
-    });
+    }), "design-studio");
   }
   return client;
 }

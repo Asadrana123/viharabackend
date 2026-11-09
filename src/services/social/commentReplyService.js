@@ -1,6 +1,7 @@
 const axios = require("axios");
 const crypto = require("crypto");
 const Anthropic = require("@anthropic-ai/sdk");
+const { trackAnthropic } = require("../usage/spendRecorder");
 const { request: zernioRequest } = require("../adsLoop/zernioClient");
 const SocialCommentReply = require("../../model/social/socialCommentReplyModel");
 const { postToSlack } = require("../shared/slackService");
@@ -61,11 +62,11 @@ let client = null;
 function getClient() {
   if (!client) {
     const workspaceId = process.env.ANTHROPIC_WORKSPACE_ID;
-    client = new Anthropic({
+    client = trackAnthropic(new Anthropic({
       timeout: 60 * 1000,
       maxRetries: 2,
       ...(workspaceId && { defaultHeaders: { "anthropic-workspace-id": workspaceId } }),
-    });
+    }), "comment-replies");
   }
   return client;
 }

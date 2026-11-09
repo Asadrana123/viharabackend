@@ -11,6 +11,7 @@
 //     falls back to a factual template so an import is never blocked.
 
 const { GoogleGenerativeAI } = require("@google/generative-ai");
+const { recordGemini } = require("../usage/spendRecorder");
 
 const { GEMINI_MODEL: MODEL_NAME } = require("../geminiModel");
 
@@ -89,6 +90,7 @@ async function generatePropertyDescription(parsed) {
             contents: [{ role: "user", parts: [{ text: buildPrompt(parsed) }] }],
             generationConfig: { temperature: 0.4 },
         });
+        recordGemini("property-description", MODEL_NAME, result);
         const text = (result?.response?.text() || "").replace(/```/g, "").trim();
         return text || templateDescription(parsed);
     } catch (error) {

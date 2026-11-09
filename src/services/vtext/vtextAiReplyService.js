@@ -12,6 +12,7 @@
 // aiAutoReplyEnabled) must never fall back to a generic canned message;
 // "no draft, a human replies manually" is the only safe failure mode.
 const { GoogleGenerativeAI } = require("@google/generative-ai");
+const { recordGemini } = require("../usage/spendRecorder");
 const { resolvePropertyVariables, TEMPLATE_VARIABLES } = require("./vtextTemplateService");
 const { toorakReplyRules } = require("./vtextToorakReplyRules");
 
@@ -209,6 +210,7 @@ async function generateDraftReply({ contact, messages, replyToBody, propertyCont
           : {}),
       },
     });
+    recordGemini("vtext-replies", MODEL_NAME, result);
     const draft = parseModelOutput(result?.response?.text());
     return draft.reply ? draft : null;
   } catch (error) {

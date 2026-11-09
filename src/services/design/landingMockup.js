@@ -14,6 +14,7 @@
 const github = require("./githubService");
 const { buildLandingTheme } = require("./designChecks");
 const { getClient, MODEL, addUsage } = require("./designAgentService");
+const { trackAnthropic } = require("../usage/spendRecorder");
 const { LANDING_DIRS, LANDING_REFERENCE } = require("../../config/designPages");
 
 const MAX_UPLOAD_CHARS = 3 * 1024 * 1024;
@@ -116,7 +117,7 @@ async function reviewMockup({ ref, mockupHtml, page, editable, isNew, notes }) {
     ? `This will be a NEW landing page (${page.label}, at ${page.path}). It has no data of its own; a form on it saves leads to our lead system (name, email and phone are always asked, plus any other questions), and buttons can link to existing pages such as the Buyer List sign-up (/buyer-list), New Deals (/new-deals) or a property's auction page. For reference, here is the newest existing landing page:`
     : `This mockup is for the existing landing page "${page.label}" at ${page.path}. Its current code (what it already loads, submits and tracks):`;
 
-  const response = await getClient()
+  const response = await trackAnthropic(getClient(), "landing-mockup")
     .beta.messages.stream({
       model: MODEL,
       max_tokens: 16000,

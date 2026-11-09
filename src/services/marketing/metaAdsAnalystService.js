@@ -9,6 +9,7 @@
 //   META_ADS_ANALYST_EFFORT  optional, default high
 
 const Anthropic = require("@anthropic-ai/sdk");
+const { trackAnthropic } = require("../usage/spendRecorder");
 
 // Created on first use so a missing key fails the report, not server startup.
 let client;
@@ -37,7 +38,7 @@ Rules:
  * @returns {Promise<string>} Slack mrkdwn report
  */
 async function analyzeMetaAds(rows) {
-    client = client || new Anthropic();
+    client = client || trackAnthropic(new Anthropic(), "meta-ads-report");
     // Streamed, so the large max_tokens does not hit the SDK's HTTP timeout. At 16,000 the thinking
     // could use most of the room and the report came back cut off mid-sentence.
     const response = await client.beta.messages
