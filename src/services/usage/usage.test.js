@@ -133,7 +133,7 @@ test("a push is checked item by item and refused whole on a bad one", () => {
 });
 
 test("an unknown feature still shows, under Other", () => {
-  assert.deepEqual(describe("something-new"), { key: "something-new", label: "something-new", group: "other", groupLabel: "Other" });
+  assert.deepEqual(describe("something-new"), { key: "something-new", label: "something-new", about: "", group: "other", groupLabel: "Other" });
 });
 
 test("a refusal for want of credits is noted with the feature; other failures are not", async () => {
