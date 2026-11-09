@@ -6,6 +6,7 @@ const { claimDailyDial, ALREADY_CALLED_TODAY } = require("./dailyDialGuard");
 const { pickFacetimeLine } = require("./facetime/facetimeRouter");
 const { queueFacetimeCall, isFacetimeCallId, getFacetimeCall } = require("./facetime/facetimeCallService");
 const { maskPhone } = require("../../utils/maskPii");
+const { outboundDisabled, OUTBOUND_DISABLED_ERROR } = require("../../config/outboundSwitch");
 // Shared *script* blocks — single source of truth in config/voicePromptShared.js.
 // These are the blocks common to EVERY funnel; they get appended to every call
 // below (idempotently), so editing one there — or adding a new one to the table
@@ -365,6 +366,11 @@ const dispatchCall = async (
   person,
   { researchSummary = "", property = PROPERTY, promptConfig = null, source = "", oncePerDay = true } = {}
 ) => {
+  // Local runs: OUTBOUND_DISABLED=true means no real calls from this server (config/outboundSwitch.js).
+  if (outboundDisabled()) {
+    console.log(`⏭️  Call skipped (OUTBOUND_DISABLED): ${person.fullName} → ${maskPhone(phoneNumber)}`);
+    return { success: false, phone: phoneNumber, error: OUTBOUND_DISABLED_ERROR };
+  }
   // One call per number per day (dailyDialGuard). oncePerDay=false is for calls
   // the person asked for (callbacks, a fresh sign-up) and the admin single-call
   // form — they still count as today's call.
