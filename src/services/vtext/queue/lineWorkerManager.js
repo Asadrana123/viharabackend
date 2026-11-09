@@ -80,6 +80,9 @@ async function finalizeExhaustedJob(lineId, job, err) {
     conversationId: message.conversationId ? String(message.conversationId) : null,
     status: message.status,
   });
+
+  // Gave up after every retry: tell the team which lead's text it was. Never throws.
+  await require("../vtextTextProblemAlert").reportTextProblem(message);
 }
 
 async function reconcile() {

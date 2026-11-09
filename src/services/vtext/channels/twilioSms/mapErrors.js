@@ -7,7 +7,7 @@
 // request may have reached Twilio (a timeout, a connection reset, a 5xx) is
 // UNCERTAIN: the text may or may not have been queued, and retrying could text
 // the person twice. UNCERTAIN is a "recipient" error (never retried, shows up
-// in the failed-sends digest) on purpose. Only errors that prove the request
+// as a ⚠️ Slack alert, vtextTextProblemAlert.js) on purpose. Only errors that prove the request
 // never left (DNS, connection refused) are retried as "transient".
 const { ChannelError } = require("../channelError");
 

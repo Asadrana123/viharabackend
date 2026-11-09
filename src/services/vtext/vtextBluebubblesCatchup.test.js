@@ -221,3 +221,29 @@ test("finding missed replies stamps the time the Mac's watchdog reads", async (t
   await catchup.runCatchup(deps({ setWatermark: async (k, d) => stamps.push(k) }));
   assert.deepEqual(stamps.sort(), ["bbCatchupAt", "bbMissedReplyAt"]);
 });
+
+test("the 10-minute sweep with both features: Mac says delivered → no 'no receipt', no SMS, no alert; Mac silent → 'no receipt' and an alert saying why no SMS", async (t) => {
+  if (!mongoUp) return t.skip("no local Mongo");
+  const { runUnconfirmedSendSweep } = require("./workers/maintenanceWorker");
+  process.env.VTEXT_SMS_FALLBACK_ENABLED = "true";
+  process.env.VTEXT_SMS_FALLBACK_NO_RECEIPT_MODE = "auto";
+  const contact = await newContact();
+  const deliveredOnMac = await ourText(contact, "BB-SW1");
+  const silent = await ourText(contact, "BB-SW2");
+  const old = new Date(NOW - 20 * 60_000);
+  await VtextMessage.updateMany({ _id: { $in: [deliveredOnMac._id, silent._id] } }, { $set: { updatedAt: old } }, { timestamps: false });
+  rows = [macRow("BB-SW1", { dateDelivered: NOW - 19 * 60_000 }), macRow("BB-SW2")];
+
+  await runUnconfirmedSendSweep();
+  const a = await VtextMessage.findById(deliveredOnMac._id).lean();
+  assert.equal(a.status, "delivered");
+  assert.equal(a.fallback, undefined);
+  assert.equal(a.problemAlert, undefined);
+
+  const b = await VtextMessage.findById(silent._id).lean();
+  assert.equal(b.status, "unknown");
+  assert.equal(b.error.code, "no-receipt");
+  // No Twilio line in this test database, so no SMS could be queued: the alert is posted (claimed) with that reason.
+  assert.ok(b.problemAlert?.at, "the problem alert was claimed");
+  delete process.env.VTEXT_SMS_FALLBACK_NO_RECEIPT_MODE;
+});

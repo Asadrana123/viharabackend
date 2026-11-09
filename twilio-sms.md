@@ -35,7 +35,7 @@ the default. Suggested rollout: run `verify` for about a week, then decide on `a
 - A late "delivered" receipt for the iMessage **cancels** a fallback that has not gone out. If the SMS already went out, it is
   flagged `fallback.duplicate` and a Slack alert is sent.
 - A Twilio send that might have reached Twilio (timeout, 5xx) is never retried: Twilio has no idempotency key. It fails with
-  code `UNCERTAIN` and shows in the failed-sends digest.
+  code `UNCERTAIN` and is posted to Slack as ⚠️ "Text may or may not have gone out".
 - Checked before the SMS is queued, and again just before it is sent: fallback switched on, consent switch, opt-out, US
   `+1` numbers only, original is not a system reply, original is under `VTEXT_SMS_FALLBACK_MAX_AGE_HOURS`, iMessage not
   delivered, the person has not replied since, hourly cap `VTEXT_SMS_FALLBACK_MAX_PER_HOUR`, and texting hours (8 AM to

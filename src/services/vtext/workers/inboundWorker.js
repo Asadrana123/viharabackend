@@ -22,6 +22,8 @@ const { publishEvent } = require("../vtextEventsBus");
 const { findLeadRefs, consentFromRef } = require("../vtextLeadLookupService");
 const { endFollowUp } = require("../vtextFollowUpService");
 const { notifyVtextAlert } = require("../../shared/slackService");
+const { reportTextProblem } = require("../vtextTextProblemAlert");
+const { notifyOptOut } = require("../vtextOptOutService");
 const { notifyInboundNoDraft } = require("../vtextAlertService");
 const { learnFromMessageStatus } = require("../../calling/facetime/iphoneLearning");
 const smsFallback = require("../vtextSmsFallbackService");
@@ -213,15 +215,14 @@ async function handleMessageReceived(event, line) {
       await sendSystemReply(contact, line, STOP_CONFIRM_TEXT, "stop-confirm");
     }
 
-    notifyVtextAlert({
-      level: "info",
-      title: "Contact opted out",
-      fields: [
-        { label: "Contact", value: contact.phoneE164 },
-        { label: "Method", value: `${keyword.method} ("${keyword.matched}")` },
-        { label: "Cancelled pending sends", value: cancelledCount },
-      ],
-    }).catch(() => {});
+    notifyOptOut({
+      contact,
+      how: keyword.method === "exact" ? `Texted ${keyword.matched}` : `Asked to stop ("${keyword.matched}")`,
+      theirMessage: message.body,
+      lineName: line.name,
+      cancelledCount,
+      conversationId: conversation?._id,
+    });
   } else if (keyword.type === "help") {
     const lastHelp = await lastAutoReplyAt(contact._id, "help");
     if (!providerAnswered && (!lastHelp || Date.now() - lastHelp.getTime() > AUTO_REPLY_COOLDOWN_MS)) {
@@ -317,17 +318,22 @@ async function handleMessageStatus(event, line) {
 
   // SMS fallback (off unless VTEXT_SMS_FALLBACK_ENABLED): an iMessage that was not delivered goes out once by SMS;
   // one that turns out delivered stops a fallback that has not gone out yet. Never lets an error here lose the receipt.
+  let fallback = null;
   try {
     if (message.channelType === smsFallback.IMESSAGE) {
       if (message.status === "failed" && smsFallback.isExplicitIMessageFailure(message.error?.code)) {
-        await smsFallback.maybeQueueSmsFallback(message, { trigger: "not-delivered", reason: message.error?.code });
+        fallback = await smsFallback.maybeQueueSmsFallback(message, { trigger: "not-delivered", reason: message.error?.code });
       } else if (message.status === "delivered" || message.status === "read") {
         await smsFallback.onOriginalConfirmed(message);
       }
     }
   } catch (err) {
     console.error(`[vtext sms-fallback] receipt handling failed for message ${message._id}:`, err.message);
+    fallback = { queued: false, reason: `the fallback could not be queued (${err.message})` };
   }
+  // A "not delivered" receipt (iMessage or Twilio): one Slack message for this lead's text, unless the SMS
+  // fallback is now on its way. Never throws; a repeated receipt posts nothing.
+  if (event.status === "failed" && message.status === "failed") await reportTextProblem(message, { fallback });
   publishEvent({ type: "message.updated", messageId: String(message._id), conversationId: message.conversationId ? String(message.conversationId) : null, status: message.status });
 }
 

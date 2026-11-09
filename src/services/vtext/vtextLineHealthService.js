@@ -89,10 +89,13 @@ async function evaluateAndMaybeQuarantine(line, reason) {
 
   notifyVtextAlert({
     level: "error",
-    title: "Line quarantined",
+    icon: "🔴",
+    title: `Line stopped (quarantined): ${line.name}`,
     fields: [
       { label: "Line", value: line.name },
-      { label: "Reason", value: quarantineReason },
+      { label: "Why", value: quarantineReason, wide: true },
+      { label: "What it means", value: "This line sends nothing until someone resumes it. Its waiting texts were moved to other lines, if there are any.", wide: true },
+      { label: "What to do", value: "Fix the cause, then click Reinstate on the line in Vtext → Lines.", wide: true },
     ],
   }).catch(() => {});
 

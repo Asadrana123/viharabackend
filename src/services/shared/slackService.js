@@ -202,10 +202,11 @@ async function notifyNewLead(lead = {}) {
  *
  * @param {object} params
  * @param {"info"|"warning"|"error"} [params.level]
+ * @param {string} [params.icon] - the header emoji; defaults to one per level
  * @param {string} params.title
- * @param {Array<{label:string,value:*}>} [params.fields]
+ * @param {Array<{label:string,value:*,wide?:boolean}>} [params.fields]
  */
-async function notifyVtextAlert({ level = "info", title, fields = [] } = {}) {
+async function notifyVtextAlert({ level = "info", icon, title, fields = [] } = {}) {
   if (process.env.VTEXT_ENABLE_SLACK_ALERTS !== "true") {
     return false; // silent, deliberately — this is the expected state during dev/testing, not worth a log line every time
   }
@@ -216,16 +217,24 @@ async function notifyVtextAlert({ level = "info", title, fields = [] } = {}) {
     return false;
   }
 
-  const emoji = { info: "ℹ️", warning: "⚠️", error: "🔴" }[level] || "ℹ️";
+  // `icon` names the kind of alert (❌ not delivered, 🚫 opted out, 🤖 AI replied...); the level icon is only the default.
+  const emoji = icon || { info: "ℹ️", warning: "⚠️", warn: "⚠️", error: "🔴" }[level] || "ℹ️";
   const blocks = [
-    { type: "header", text: { type: "plain_text", text: `${emoji} Vtext: ${title}`, emoji: true } },
+    // Slack caps a header at 150 characters
+    { type: "header", text: { type: "plain_text", text: `${emoji} Vtext: ${title}`.slice(0, 150), emoji: true } },
   ];
-  const sectionFields = fields
-    .filter((f) => f && f.value !== undefined && f.value !== null && String(f.value).trim() !== "")
+  const shown = fields.filter((f) => f && f.value !== undefined && f.value !== null && String(f.value).trim() !== "");
+  // Short fields sit side by side (Slack allows 10 per section, 2000 characters each);
+  // a `wide` field (the text itself, a link, a longer note) gets a full-width line of its own.
+  const shortFields = shown
+    .filter((f) => !f.wide)
     .slice(0, 10)
-    .map((f) => ({ type: "mrkdwn", text: `*${f.label}:*\n${f.value}` }));
-  if (sectionFields.length) {
-    blocks.push({ type: "section", fields: sectionFields });
+    .map((f) => ({ type: "mrkdwn", text: `*${f.label}:*\n${String(f.value).slice(0, 1900)}` }));
+  if (shortFields.length) {
+    blocks.push({ type: "section", fields: shortFields });
+  }
+  for (const f of shown.filter((x) => x.wide).slice(0, 10)) {
+    blocks.push({ type: "section", text: { type: "mrkdwn", text: `*${f.label}:*\n${String(f.value).slice(0, 2900)}` } });
   }
   blocks.push({ type: "context", elements: [{ type: "mrkdwn", text: `📅 ${formatTimestamp(new Date())}` }] });
 

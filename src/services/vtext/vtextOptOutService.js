@@ -65,16 +65,45 @@ async function recordProviderOptOut(contact, { lineId, messageId, code = "21610"
   await contact.save();
 
   const cancelled = await cancelPendingOutbound(contact._id);
-  notifyVtextAlert({
-    level: "info",
-    title: "Contact opted out (reported by Twilio)",
-    fields: [
-      { label: "Contact", value: contact.phoneE164 },
-      { label: "Twilio error", value: code },
-      { label: "Cancelled pending sends", value: cancelled },
-    ],
-  }).catch(() => {});
+  notifyOptOut({
+    contact,
+    how: `Twilio says they texted STOP to our SMS number at some point (Twilio ${code})`,
+    cancelledCount: cancelled,
+    lineName: lineId ? (await VtextLine.findById(lineId).select("name").lean().catch(() => null))?.name : undefined,
+  });
   return { changed: true, cancelled };
 }
 
-module.exports = { cancelPendingOutbound, recordProviderOptOut };
+/**
+ * 🚫 One Slack message when someone opts out: who, how, what they wrote, which of our texts they were answering,
+ * and what was stopped. Fire-and-forget, never throws.
+ */
+function notifyOptOut({ contact, how, theirMessage, lineName, cancelledCount, conversationId }) {
+  (async () => {
+    const { inboxUrl, clip } = require("./vtextAlertService");
+    const { whichText } = require("./vtextTextProblemAlert");
+    const lastOut = await VtextMessage.findOne({ contactId: contact._id, direction: "out", "origin.kind": { $ne: "system" }, status: { $in: ["accepted", "sent", "delivered", "read"] } })
+      .sort({ createdAt: -1 })
+      .select("origin fallbackOf")
+      .lean()
+      .catch(() => null);
+    await notifyVtextAlert({
+      level: "info",
+      icon: "🚫",
+      title: "Lead opted out",
+      fields: [
+        { label: "Lead", value: contact.name || "(no name)" },
+        { label: "Phone", value: contact.phoneE164 },
+        { label: "How", value: how },
+        { label: "Last text we sent", value: lastOut ? whichText(lastOut) : undefined },
+        { label: "Line", value: lineName },
+        { label: "Stopped", value: cancelledCount ? `${cancelledCount} queued text${cancelledCount === 1 ? "" : "s"} cancelled` : "Nothing was queued" },
+        theirMessage ? { label: "What they wrote", value: clip(theirMessage, 300), wide: true } : null,
+        { label: "What it means", value: "Vtext will not text them again unless they text START.", wide: true },
+        conversationId ? { label: "Inbox", value: `<${inboxUrl(conversationId)}|Open the conversation>`, wide: true } : null,
+      ].filter(Boolean),
+    });
+  })().catch((err) => console.error("[vtext opt-out] could not send the opt-out alert:", err.message));
+}
+
+module.exports = { cancelPendingOutbound, recordProviderOptOut, notifyOptOut };

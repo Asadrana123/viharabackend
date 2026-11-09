@@ -62,14 +62,16 @@ async function processDraftReplyJob(job) {
     // Generation unavailable or failed: the conversation just stays needs-reply, which used to be
     // completely silent. Tell the team once in a while that nobody is answering this customer.
     await sendAlertWithCooldown("ai-draft-failed", AI_FAILURE_ALERT_COOLDOWN_MS, {
-      level: "warning",
+      level: "error",
+      icon: "🔴",
       title: "AI could not draft a reply",
       fields: [
         { label: "Contact", value: contact.name || "(no name)" },
         { label: "Phone", value: contact.phoneE164 },
-        { label: "Their message", value: clip(inboundMessage.body) },
-        { label: "Why", value: "The AI service returned nothing. It may be down, or its key may be missing." },
-        { label: "Inbox", value: inboxUrl(conversationId) },
+        { label: "Why", value: "The AI service returned nothing. It may be down, or its key may be missing or out of credit.", wide: true },
+        { label: "What to do", value: "Reply to them by hand from the Inbox. This alert repeats at most once in a while, so other customers may be waiting too.", wide: true },
+        { label: "Their message", value: clip(inboundMessage.body), wide: true },
+        { label: "Inbox", value: `<${inboxUrl(conversationId)}|Open the conversation>`, wide: true },
       ],
     }).catch((err) => console.error("[vtext draft-reply] could not send the AI-failure alert:", err.message));
     return;
@@ -120,16 +122,17 @@ async function processDraftReplyJob(job) {
     if (!settings.aiAutoReplyEnabled) {
       notifyVtextAlert({
         level: "warning",
-        title: "AI could not answer",
+        icon: "🙋",
+        title: "AI could not answer, team follow-up needed",
         fields: [
           { label: "Contact", value: contact.name || "(no name)" },
           { label: "Phone", value: contact.phoneE164 },
           { label: "Property", value: propertyContext?.property_name || propertyContext?.property_address },
-          { label: "Question", value: clip(inboundMessage.body) },
-          { label: "AI reply", value: clip(body) },
-          { label: "Status", value: "Waiting for approval in the Inbox" },
           { label: "Topic", value: topic },
-          { label: "Inbox", value: inboxUrl(conversationId) },
+          { label: "Status", value: "Draft waiting for approval, nothing sent yet" },
+          { label: "Question", value: clip(inboundMessage.body), wide: true },
+          { label: "AI draft", value: clip(body), wide: true },
+          { label: "Inbox", value: `<${inboxUrl(conversationId)}|Open the conversation>`, wide: true },
         ],
       }).catch(() => {});
     }
