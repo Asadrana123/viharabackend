@@ -14,19 +14,19 @@ const { bullmqConnection } = require("../queue/connection");
 const { QUEUE_NAMES, QUEUE_PREFIX, getMaintenanceQueue, getRouteQueue, getLineQueue } = require("../queue/queues");
 const { getRedisClient } = require("../queue/connection");
 const VtextMessage = require("../../../model/vtext/vtextMessageModel");
-const VtextContact = require("../../../model/vtext/vtextContactModel");
 const VtextLine = require("../../../model/vtext/vtextLineModel");
 const VtextLineUsage = require("../../../model/vtext/vtextLineUsageModel");
 const VtextLineEvent = require("../../../model/vtext/vtextLineEventModel");
 const { getAdapter, listAdapters } = require("../channels/registry");
 const { evaluateAndMaybeQuarantine, statusBeforeOffline } = require("../vtextLineHealthService");
 const { runFollowUpSweep } = require("../vtextFollowUpService");
-const { sendAlertWithCooldown, getAlertWatermark, setAlertWatermark, isAlertingConfigured } = require("../vtextAlertService");
+const { sendAlertWithCooldown, getAlertWatermark, setAlertWatermark } = require("../vtextAlertService");
 const capacity = require("../vtextCapacityService");
 const { dayKey } = capacity;
 const { notifyVtextAlert } = require("../../shared/slackService");
 const { publishEvent } = require("../vtextEventsBus");
 const smsFallback = require("../vtextSmsFallbackService");
+const { reportTextProblem } = require("../vtextTextProblemAlert");
 
 const HEARTBEAT_KEY = "vtext:worker:lastHeartbeatAt";
 
@@ -84,14 +84,18 @@ async function runUnconfirmedSendSweep() {
       publishEvent({ type: "message.updated", messageId: String(c._id), conversationId: c.conversationId ? String(c.conversationId) : null, status: "unknown" });
       // No receipt does not prove failure (the iMessage may have arrived), so this only sends by SMS in "auto" mode.
       // The default "verify" mode leaves it for a person (the "Send by SMS" button on the Failed tab).
+      let fallback = null;
       if (smsFallback.isEnabled() && smsFallback.noReceiptMode() === "auto") {
         try {
           const original = await VtextMessage.findById(c._id);
-          if (original) await smsFallback.maybeQueueSmsFallback(original, { trigger: "no-receipt-auto", reason: NO_RECEIPT_CODE });
+          if (original) fallback = await smsFallback.maybeQueueSmsFallback(original, { trigger: "no-receipt-auto", reason: NO_RECEIPT_CODE });
         } catch (err) {
           console.error(`[vtext sms-fallback] could not queue the fallback for ${c._id}:`, err.message);
+          fallback = { queued: false, reason: `the fallback could not be queued (${err.message})` };
         }
       }
+      // Posts nothing when the SMS is now on its way; otherwise says why not, or asks a person to check (verify mode).
+      await reportTextProblem(c._id, { fallback });
     }
   }
   if (marked > 0) console.warn(`[vtext stuck-sweep] ${marked} iMessage text(s) with no delivery receipt after ${UNCONFIRMED_MIN()}min -> marked "unknown"`);
@@ -104,7 +108,7 @@ async function runUnconfirmedSendSweep() {
 //  - the line is routable and a send job is still waiting / delayed / active -> leave it (it is just slow);
 //  - the line is routable and no send job exists -> add a fresh one (a unique job id: BullMQ ignores a repeated id);
 //  - the message has waited longer than STALE_ASSIGNED_HOURS -> mark it "unknown" (visible in Vtext -> Failed,
-//    counted in the failed-sends digest, can be retried by hand) instead of sending an old text on its own;
+//    posted to Slack as 🔴 "Text was never sent", can be retried by hand) instead of sending an old text on its own;
 //  - the line is not routable (offline, paused...) -> leave it: its jobs wait there until the line is back.
 const STALE_ASSIGNED_HOURS = () => Number(process.env.VTEXT_STALE_ASSIGNED_HOURS || 12);
 const STUCK_ASSIGNED_CODE = "stuck-assigned";
@@ -163,6 +167,7 @@ async function recoverAssignedMessages(messages, deps = {}) {
           await releaseCapacity(line, reservationDay, { wasReply: m.isReplyToInbound });
           publishEvent({ type: "message.updated", messageId: String(m._id), conversationId: m.conversationId ? String(m.conversationId) : null, status: "unknown" });
           out.expired += 1;
+          await (deps.reportTextProblem || reportTextProblem)(m._id);
         }
         continue;
       }
@@ -269,7 +274,18 @@ async function runLineHealthSweep() {
     await line.save();
     await VtextLineEvent.create({ lineId: line._id, type: "heartbeat-lost", from: fromStatus, to: "offline", reason: line.statusReason, actor: { kind: "system" } });
     publishEvent({ type: "line.updated", lineId: String(line._id), status: "offline" });
-    notifyVtextAlert({ level: "warning", title: "Line offline", fields: [{ label: "Line", value: line.name }] }).catch(() => {});
+    notifyVtextAlert({
+      level: "error",
+      icon: "🔴",
+      title: `Line offline: ${line.name}`,
+      fields: [
+        { label: "Line", value: line.name },
+        { label: "Channel", value: line.channelType === "twilio-sms" ? "SMS (Twilio)" : "iMessage (BlueBubbles)" },
+        { label: "Why", value: `No sign of life for over ${HEARTBEAT_STALE_MIN} minutes, and its health check failed`, wide: true },
+        { label: "What it means", value: "Texts for this line wait until it is back (nothing is lost). It comes back by itself once the check passes.", wide: true },
+        { label: "What to check", value: line.channelType === "twilio-sms" ? "The Twilio console and the line's keys" : "Is the Mac Mini on and online? Are BlueBubbles and ngrok running?", wide: true },
+      ],
+    }).catch(() => {});
   }
 
   // Restoration: an offline line whose heartbeat is fresh again goes back to
@@ -301,6 +317,7 @@ async function runLineHealthSweep() {
     if (!fresh) continue;
 
     const restoreTo = await statusBeforeOffline(line._id);
+    const offlineSince = line.statusChangedAt ? new Date(line.statusChangedAt) : null;
 
     line.status = restoreTo;
     line.statusReason = restoredBy;
@@ -309,7 +326,18 @@ async function runLineHealthSweep() {
     await line.save();
     await VtextLineEvent.create({ lineId: line._id, type: "heartbeat-restored", from: "offline", to: restoreTo, actor: { kind: "system" } });
     publishEvent({ type: "line.updated", lineId: String(line._id), status: restoreTo });
-    notifyVtextAlert({ level: "info", title: "Line restored", fields: [{ label: "Line", value: line.name }] }).catch(() => {});
+    const downMin = offlineSince ? Math.max(1, Math.round((Date.now() - offlineSince.getTime()) / 60_000)) : null;
+    notifyVtextAlert({
+      level: "info",
+      icon: "🟢",
+      title: `Line back online: ${line.name}`,
+      fields: [
+        { label: "Line", value: line.name },
+        { label: "Was down for", value: downMin ? (downMin < 120 ? `about ${downMin} min` : `about ${Math.round(downMin / 60)} hours`) : undefined },
+        { label: "How", value: restoredBy },
+        { label: "What happens now", value: "Texts that waited are sent again by themselves.", wide: true },
+      ],
+    }).catch(() => {});
   }
 
   // Failure-rate quarantine check — consecutiveFailures is evaluated live in
@@ -363,90 +391,21 @@ async function runBacklogAlert() {
   if (count > BACKLOG_ALERT_THRESHOLD) {
     await sendAlertWithCooldown("backlog", BACKLOG_ALERT_COOLDOWN_MS, {
       level: "warning",
-      title: "Outbound backlog over threshold",
-      fields: [{ label: "Messages waiting on capacity", value: count }, { label: "Threshold", value: BACKLOG_ALERT_THRESHOLD }],
+      icon: "⚠️",
+      title: `${count} texts waiting for line capacity`,
+      fields: [
+        { label: "Waiting", value: count },
+        { label: "Alert above", value: BACKLOG_ALERT_THRESHOLD },
+        { label: "What it means", value: "The lines have hit their daily limits, so these texts go out over the next days unless capacity is added.", wide: true },
+        { label: "What to check", value: "Vtext → Lines (daily limits, paused or offline lines)", wide: true },
+      ],
     }).catch((err) => console.error("[vtext backlog-alert] could not send:", err.message));
   }
 }
 
-// One Slack message summarising the texts that failed since the last one, instead of one per
-// failure. Individual failures were silent before: they only showed in the admin's Failed tab.
-// Recipient failures (not on iMessage, bad number) are expected and reported as such; any
-// other kind (line, config, transient) is what the team needs to look at.
-const FAILED_DIGEST_KEY = "failedDigestAt";
-const FAILED_DIGEST_MAX_LOOKBACK_MS = 6 * 60 * 60_000; // never report further back than this, after a long Slack outage
-const failedDigestIntervalMs = () => Number(process.env.VTEXT_FAILED_DIGEST_INTERVAL_MS || 15 * 60_000);
-
-async function runFailedSendDigest() {
-  const runStartedAt = new Date();
-
-  // With Slack off there is nobody to tell. Keep the watermark current anyway, so that switching
-  // alerts on later does not announce hours of old failures at once.
-  if (!isAlertingConfigured()) {
-    await setAlertWatermark(FAILED_DIGEST_KEY, runStartedAt);
-    return;
-  }
-
-  const watermark = await getAlertWatermark(FAILED_DIGEST_KEY);
-  const since = new Date(Math.max(
-    runStartedAt.getTime() - FAILED_DIGEST_MAX_LOOKBACK_MS,
-    (watermark || new Date(runStartedAt.getTime() - failedDigestIntervalMs())).getTime()
-  ));
-
-  const window = { $gt: since, $lte: runStartedAt };
-  const failed = await VtextMessage.find({
-    direction: "out",
-    // "unknown" with no-receipt is a text BlueBubbles accepted that never got out (see runUnconfirmedSendSweep)
-    $and: [
-      { $or: [{ status: "failed" }, { status: "unknown", "error.code": { $in: [NO_RECEIPT_CODE, STUCK_ASSIGNED_CODE] } }] },
-      // every path that fails a message sets failedAt; updatedAt covers a path that ever forgets
-      { $or: [{ failedAt: window }, { failedAt: { $exists: false }, updatedAt: window }] },
-    ],
-  })
-    .select("contactId error")
-    .lean();
-
-  if (!failed.length) {
-    await setAlertWatermark(FAILED_DIGEST_KEY, runStartedAt);
-    return;
-  }
-
-  const kindOf = (m) => (m.error?.code === NO_RECEIPT_CODE ? "no delivery confirmation" : m.error?.code === STUCK_ASSIGNED_CODE ? "never sent (send job lost)" : m.error?.kind || "unknown");
-  const expected = failed.filter((m) => kindOf(m) === "recipient").length;
-  const attention = failed.length - expected;
-  const breakdown = {};
-  for (const m of failed) if (kindOf(m) !== "recipient") breakdown[kindOf(m)] = (breakdown[kindOf(m)] || 0) + 1;
-
-  // up to five examples, the ones that need attention first, numbers masked to the last four digits
-  const examples = [...failed.filter((m) => kindOf(m) !== "recipient"), ...failed.filter((m) => kindOf(m) === "recipient")].slice(0, 5);
-  const contacts = await VtextContact.find({ _id: { $in: examples.map((m) => m.contactId) } }).select("phoneE164").lean();
-  const phoneById = new Map(contacts.map((c) => [String(c._id), c.phoneE164]));
-  const exampleLines = examples.map((m) => {
-    const phone = String(phoneById.get(String(m.contactId)) || "");
-    // "…0404", not "***0404": Slack reads asterisks as bold markup and would mangle the list
-    const who = phone ? `…${phone.slice(-4)}` : "unknown contact";
-    return `${who} (${kindOf(m)}): ${String(m.error?.message || "no reason recorded").slice(0, 80)}`;
-  });
-
-  const minutes = Math.max(1, Math.round((runStartedAt.getTime() - since.getTime()) / 60_000));
-  const fields = [{ label: "Failed", value: `${failed.length} in the last ${minutes} minutes` }];
-  if (expected) fields.push({ label: "Not deliverable (expected)", value: `${expected}: not on iMessage, or a bad number` });
-  if (attention) {
-    fields.push({ label: "Need attention", value: `${attention} (${Object.entries(breakdown).map(([k, n]) => `${k} ${n}`).join(", ")})` });
-  }
-  fields.push({ label: "Examples", value: exampleLines.join("\n") });
-
-  const posted = await notifyVtextAlert({
-    level: attention ? "warning" : "info",
-    title: `${failed.length} text${failed.length === 1 ? "" : "s"} failed`,
-    fields,
-  });
-  if (posted) {
-    await setAlertWatermark(FAILED_DIGEST_KEY, runStartedAt);
-  } else {
-    console.error("[vtext failed-digest] Slack post did not go through; these failures will be included in the next digest");
-  }
-}
+// Failed texts used to be summed up here every 15 minutes ("failed-send-digest"). Each one is now posted on
+// its own, with the lead and what went wrong, by vtextTextProblemAlert.js at the moment it fails.
+const RETIRED_SCHEDULERS = ["failed-send-digest"];
 
 // Refreshes the property knowledge base (Qdrant) the AI replies search, so edits to a property reach it
 // within a day. Skipped quietly unless the knowledge lookup is on and Qdrant is configured. The
@@ -492,7 +451,7 @@ const JOB_HANDLERS = {
   "daily-rollover": runDailyRollover,
   "backlog-alert": runBacklogAlert,
   "followup-sweep": runFollowUpSweep,
-  "failed-send-digest": runFailedSendDigest,
+  "failed-send-digest": async () => {}, // retired: a run already queued in Redis finishes quietly
   "rag-sync": runRagSync,
 };
 
@@ -552,11 +511,10 @@ async function ensureMaintenanceSchedulers() {
     { every: Number(process.env.VTEXT_FOLLOWUP_SWEEP_INTERVAL_MS || 15 * 60_000) },
     { name: "followup-sweep" },
   );
-  await queue.upsertJobScheduler(
-    "failed-send-digest",
-    { every: failedDigestIntervalMs() },
-    { name: "failed-send-digest" },
-  );
+  // The scheduler lives in Redis, so dropping it from this list alone would keep it firing: remove it.
+  for (const id of RETIRED_SCHEDULERS) {
+    await queue.removeJobScheduler(id).catch((err) => console.error(`[vtext maintenance] could not remove the retired "${id}" scheduler:`, err.message));
+  }
   // The knowledge-base refresh only exists when the AI knowledge lookup is switched on, so a deploy
   // without it adds no Redis ticks at all. Daily is plenty for property data.
   if (process.env.VTEXT_RAG_ENABLED === "true") {
@@ -597,7 +555,6 @@ module.exports = {
   HEARTBEAT_KEY,
   runLineHealthSweep,
   runBacklogAlert,
-  runFailedSendDigest,
   runUnconfirmedSendSweep,
   recoverAssignedMessages,
   ensureMaintenanceSchedulers,

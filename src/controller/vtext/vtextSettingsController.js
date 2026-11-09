@@ -29,6 +29,7 @@ const updateVtextSettings = catchAsyncError(async (req, res) => {
   if (requireConsent !== undefined && isConsentRequired(before) !== requireConsent) {
     notifyVtextAlert({
       level: requireConsent ? "info" : "warning",
+      icon: requireConsent ? "🔒" : "🔓",
       title: requireConsent ? "Consent check turned ON" : "Consent check turned OFF", // Slack adds the "Vtext:" prefix itself
       fields: [
         { label: "By", value: req.user?.name || "unknown admin" },

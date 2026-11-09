@@ -15,6 +15,8 @@ const inboxUrl = (conversationId) => {
   const base = process.env.VTEXT_ADMIN_URL || "https://vihara.ai/admin/dashboard?tab=vtext&vtextTab=inbox";
   return conversationId ? `${base}${base.includes("?") ? "&" : "?"}conversation=${conversationId}` : base;
 };
+// Opens another Vtext admin tab ("failed", "lines"...), built from the same admin URL.
+const adminTabUrl = (tab) => inboxUrl().replace(/vtextTab=[^&]*/, `vtextTab=${tab}`);
 const clip = (text, max = 300) => {
   const t = String(text || "").trim();
   return t.length > max ? `${t.slice(0, max - 1)}…` : t;
@@ -39,10 +41,11 @@ function assertKey(key) {
  *
  * @param {string} key - short name for the kind of alert, e.g. "backlog"
  * @param {number} cooldownMs
- * @param {object} alert - { level, title, fields } as for notifyVtextAlert
+ * @param {object} alert - { level, icon, title, fields } as for notifyVtextAlert
+ * @param {object} [deps] - test hook: notify()
  * @returns {Promise<boolean>} true when this call won the slot, false when suppressed
  */
-async function sendAlertWithCooldown(key, cooldownMs, alert) {
+async function sendAlertWithCooldown(key, cooldownMs, alert, deps = {}) {
   assertKey(key);
   await getSettings(); // make sure the settings document exists: the update below only matches an existing one
 
@@ -55,7 +58,7 @@ async function sendAlertWithCooldown(key, cooldownMs, alert) {
   ).lean();
   if (!won) return false;
 
-  await notifyVtextAlert(alert);
+  await (deps.notify || notifyVtextAlert)(alert);
   return true;
 }
 
@@ -67,13 +70,14 @@ async function sendAlertWithCooldown(key, cooldownMs, alert) {
 function notifyInboundNoDraft({ contact, conversationId, body, reason }) {
   return notifyVtextAlert({
     level: "warning",
+    icon: "💬",
     title: "Reply received, no AI reply",
     fields: [
       { label: "Contact", value: contact?.name || "(no name)" },
       { label: "Phone", value: contact?.phoneE164 },
-      { label: "Their message", value: clip(body) },
-      { label: "Why no AI reply", value: reason },
-      { label: "Inbox", value: inboxUrl(conversationId) },
+      { label: "Why no AI reply", value: reason, wide: true },
+      { label: "Their message", value: clip(body), wide: true },
+      { label: "Inbox", value: `<${inboxUrl(conversationId)}|Open the conversation>`, wide: true },
     ],
   }).catch((err) => console.error("[vtext inbound] could not send the no-AI-reply alert:", err.message));
 }
@@ -118,16 +122,17 @@ async function notifyAiReplySent({ message, approvedBy }) {
 
     await notifyVtextAlert({
       level: needsHuman ? "warning" : "info",
+      icon: needsHuman ? "🙋" : "🤖",
       title: needsHuman ? "AI replied, team follow-up needed" : "AI replied to a customer",
       fields: [
         { label: "Contact", value: contact?.name || "(no name)" },
         { label: "Phone", value: contact?.phoneE164 },
         { label: "Property", value: property },
-        { label: "Customer's question", value: clip(question?.body, 500) },
-        { label: "AI reply", value: clip(message.body, 500) },
         { label: "How it was sent", value: sentBy },
-        needsHuman ? { label: "Note", value: "The AI told the customer a team member will follow up." } : null,
-        { label: "Inbox", value: inboxUrl(message.conversationId) },
+        { label: "Customer's question", value: clip(question?.body, 500), wide: true },
+        { label: "AI reply", value: clip(message.body, 500), wide: true },
+        needsHuman ? { label: "What to do", value: "The AI told them a team member will follow up. Someone needs to reply to them.", wide: true } : null,
+        { label: "Inbox", value: `<${inboxUrl(message.conversationId)}|Open the conversation>`, wide: true },
       ].filter(Boolean),
     });
   } catch (err) {
@@ -154,4 +159,4 @@ async function setAlertWatermark(key, date) {
   await VtextSettings.updateOne({}, { $set: { [`alertState.${key}`]: date } }, { upsert: true });
 }
 
-module.exports = { inboxUrl, clip, notifyInboundNoDraft, notifyAiReplySent, sendAlertWithCooldown, getAlertWatermark, setAlertWatermark, isAlertingConfigured };
+module.exports = { inboxUrl, adminTabUrl, clip, notifyInboundNoDraft, notifyAiReplySent, sendAlertWithCooldown, getAlertWatermark, setAlertWatermark, isAlertingConfigured };

@@ -94,7 +94,7 @@ test("Slack alert only for leads somebody should look at", async () => {
   await run(lead(), { enqueueOutbound: async () => { throw new Error("redis down"); } }); // error -> alert
   assert.equal(alerts.length, 4);
   assert.deepEqual(alerts[0].fields.find((f) => f.label === "Why").value, "no price-range answer");
-  assert.equal(alerts[0].fields.find((f) => f.label === "Phone").value, "…0123");
+  assert.match(alerts[0].fields.find((f) => f.label === "Phone").value, /0123$/); // full number: the alert is internal
   alerts.length = 0;
   await run(lead({ consent: false }));
   await run(lead({ callingStopped: true }));

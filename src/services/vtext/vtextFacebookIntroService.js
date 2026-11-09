@@ -52,12 +52,14 @@ async function alertNotTexted(doc, reason, notify = notifyVtextAlert) {
   const phone = String(doc.phoneNormalized || doc.phone || "");
   await notify({
     level: "warning",
+    icon: "📵",
     title: "Facebook lead was not texted",
     fields: [
       { label: "Lead", value: doc.fullName || doc.firstName },
-      { label: "Phone", value: phone ? `…${phone.slice(-4)}` : "none" },
+      { label: "Phone", value: phone || "none" },
       { label: "Form", value: doc.formName || doc.formId },
-      { label: "Why", value: reason },
+      { label: "Why", value: reason, wide: true },
+      { label: "What to do", value: "Reach them another way (call or email), or fix the reason and text them from the Leads tab.", wide: true },
     ],
   });
 }
