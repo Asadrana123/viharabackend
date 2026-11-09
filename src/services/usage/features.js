@@ -5,14 +5,16 @@
  * trackAnthropic / recordGemini at each call site; Creative OS keys arrive with its push.
  * A key not listed here still shows, under "Other", with the key as its name.
  */
+// Eight areas at most, one colour each on the page's chart; LinkedIn sits with the other content work.
 const GROUPS = {
   video: "Videos",
   reports: "Daily & weekly reports",
-  creative: "Creatives, hooks & images",
-  linkedin: "LinkedIn",
+  creative: "Creatives, hooks, images & LinkedIn",
   admin: "Admin tools",
   leads: "Leads, calls & texts",
-  site: "Site, design & testing",
+  site: "Website fixes (sign-up doctor, repair)",
+  design: "Design (Design Studio, landing pages)",
+  testing: "Testing (QA agent)",
   other: "Other",
 };
 
@@ -22,8 +24,8 @@ const FEATURES = {
   "hook-scout": { label: "Hook scout (daily, Slack)", group: "reports" },
   "marcom-fetch": { label: "Team channel fetch (#vihara-marcom)", group: "reports" },
   "weekly-learning": { label: "Weekly learning (Slack)", group: "reports" },
-  "linkedin-week": { label: "LinkedIn weekly posts", group: "linkedin" },
-  "linkedin-revision": { label: "LinkedIn post revisions", group: "linkedin" },
+  "linkedin-week": { label: "LinkedIn weekly posts", group: "creative" },
+  "linkedin-revision": { label: "LinkedIn post revisions", group: "creative" },
   "hook-revision": { label: "Hook revisions", group: "creative" },
   "creative-proposal": { label: "New creative proposals", group: "creative" },
   "creative-revision": { label: "Creative revisions", group: "creative" },
@@ -48,11 +50,12 @@ const FEATURES = {
   "vtext-knowledge": { label: "Vtext knowledge", group: "leads" },
   "copy-generation": { label: "Marketing engine copy", group: "creative" },
   "property-description": { label: "Property descriptions", group: "admin" },
-  "design-studio": { label: "Design Studio", group: "site" },
-  "landing-mockup": { label: "Landing page mockups", group: "site" },
-  "conversion-agent": { label: "Conversion agent", group: "site" },
+  "design-studio": { label: "Design Studio", group: "design" },
+  "landing-mockup": { label: "Landing page mockups", group: "design" },
+  // services/conversion: the sign-up doctor, daily at 07:45 IST when SIGNUP_DOCTOR_ENABLED (jobs/signupDoctorJob.js).
+  "conversion-agent": { label: "Sign-up doctor (conversion agent, daily 07:45)", group: "site" },
   "repair-agent": { label: "Repair agent", group: "site" },
-  "qa-agent": { label: "QA agent", group: "site" },
+  "qa-agent": { label: "QA agent", group: "testing" },
 };
 
 function describe(key) {
