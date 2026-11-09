@@ -1,7 +1,8 @@
 // controller/usage/spendController.js - the admin page's AI Spend tab, and the Creative OS's push
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const ErrorHandler = require("../../utils/errorhandler");
-const { spendReport } = require("../../services/usage/spendReport");
+const { spendReport, periodOf } = require("../../services/usage/spendReport");
+const { anthropicBilling } = require("../../services/usage/anthropicBilling");
 const { cleanPush, storePush } = require("../../services/usage/spendSync");
 
 /** GET /api/v1/admin-spend?range=7d|30d|90d|month|lastMonth&from&to&feature&tz  (admins) */
@@ -28,4 +29,20 @@ const syncSpend = catchAsyncError(async (req, res, next) => {
   res.status(200).json({ success: true, ...result });
 });
 
-module.exports = { getSpend, syncSpend };
+/** GET /api/v1/admin-spend/anthropic?range=...  (admins) - Anthropic's own bill: by API key, model and day. */
+const getAnthropicBilling = catchAsyncError(async (req, res, next) => {
+  let period;
+  try {
+    period = periodOf(req.query);
+  } catch (e) {
+    return next(new ErrorHandler(e.message, 400));
+  }
+  try {
+    res.status(200).json({ success: true, data: await anthropicBilling(period.from, period.to) });
+  } catch (e) {
+    // Shown on the page as it is: a refused key or a failed report, never a blank section.
+    res.status(200).json({ success: true, data: { configured: true, error: e.message } });
+  }
+});
+
+module.exports = { getSpend, syncSpend, getAnthropicBilling };
