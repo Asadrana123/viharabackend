@@ -28,7 +28,8 @@ const DAYS = daysArg > -1 ? Number(process.argv[daysArg + 1]) : 30;
 
 async function main() {
   if (!process.env.DB_URI) throw new Error("DB_URI is not set");
-  await mongoose.connect(process.env.DB_URI);
+  // autoIndex/autoCreate off: connecting must not build indexes or create collections, so a dry run never writes.
+  await mongoose.connect(process.env.DB_URI, { autoIndex: false, autoCreate: false });
   const now = Date.now();
   const lines = await VtextLine.find({ channelType: "imessage-bluebubbles", status: { $ne: "retired" } }).select("+credentials.iv +credentials.tag +credentials.ciphertext");
 
