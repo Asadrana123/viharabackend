@@ -16,6 +16,7 @@ userModel.findById = async (id) => [ADMIN, BUYER].find((u) => u._id === String(i
 
 const app = express();
 app.use(cookieParser());
+app.use(express.json());
 app.use("/api/v1/admin-analytics", require("./analytics/adminAnalyticsRoutes"));
 app.use(require("../middleware/error"));
 
@@ -49,4 +50,13 @@ test("admin, PROPERTY_FUNNEL_SOURCE unset: tells the tab to show its sample", as
   assert.equal(res.status, 200);
   assert.equal(res.headers.get("cache-control"), "no-store");
   assert.deepEqual(await res.json(), { success: true, source: "sample" });
+});
+
+test("ad links and Cold / Warm / Hot can't be read or changed by a non-admin or when signed out", async () => {
+  const put = (path, headers = {}) => fetch(base + path, { method: "PUT", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify({ propertyIds: ["x"], awareness: "Hot" }) });
+  assert.equal((await fetch(base + "/api/v1/admin-analytics/property-funnel/ad-links")).status, 401);
+  assert.equal((await fetch(base + "/api/v1/admin-analytics/property-funnel/ad-links", { headers: as(BUYER) })).status, 403);
+  assert.equal((await put("/api/v1/admin-analytics/property-funnel/ad-links/123")).status, 401);
+  assert.equal((await put("/api/v1/admin-analytics/property-funnel/ad-links/123", as(BUYER))).status, 403);
+  assert.equal((await put("/api/v1/admin-analytics/property-funnel/ad-sets/456/stage", as(BUYER))).status, 403);
 });
