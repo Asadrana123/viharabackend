@@ -61,12 +61,13 @@ async function cancelPendingReminders(uid, reason) {
 async function alertNoPhone(b, reason, notify = notifyVtextAlert) {
   await notify({
     level: "warning",
+    icon: "📵",
     title: "Cal.com booking gets no reminder text",
     fields: [
       { label: "Booker", value: b.attendee.name || "(no name)" },
       { label: "Email", value: b.attendee.email || "(none)" },
       { label: "Call at", value: b.startTime ? b.startTime.toISOString().replace("T", " ").slice(0, 16) + " UTC" : "?" },
-      { label: "Why", value: reason },
+      { label: "Why", value: reason, wide: true },
     ],
   }).catch((e) => console.error("[calcom] Slack alert failed:", e.message));
 }

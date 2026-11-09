@@ -231,14 +231,25 @@ async function onOriginalConfirmed(original, deps = {}) {
 
   if (["sending", "accepted", "sent", "delivered", "read"].includes(fallbackMessage.status)) {
     await VtextMessage.updateOne({ _id: original._id }, { $set: { "fallback.duplicate": true } });
+    const contact = await VtextContact.findById(original.contactId).select("name phoneE164").lean().catch(() => null);
+    const { inboxUrl, clip } = require("./vtextAlertService");
+    const { whichText } = require("./vtextTextProblemAlert");
+    const minutesLate = original.deliveredAt && fallbackMessage.createdAt
+      ? Math.max(1, Math.round((new Date(original.deliveredAt) - new Date(fallbackMessage.createdAt)) / 60_000))
+      : null;
     alert(deps, {
-      level: "warn",
-      title: "SMS fallback sent, then the iMessage was confirmed",
+      level: "warning",
+      icon: "⚠️",
+      title: "Lead may have got the same text twice",
       fields: [
-        { label: "iMessage", value: String(original._id) },
-        { label: "SMS", value: String(fallbackMessage._id) },
-        { label: "Note", value: "This person may have received the text twice" },
-      ],
+        { label: "Lead", value: contact?.name || "(no name)" },
+        { label: "Phone", value: contact?.phoneE164 },
+        { label: "Which text", value: whichText(original) },
+        { label: "What happened", value: `The iMessage got no confirmation, so the SMS copy went out. Then the iMessage was confirmed after all${minutesLate ? ` (${minutesLate} min after the SMS)` : ""}.`, wide: true },
+        { label: "What to do", value: "Nothing usually. If they mention it, say sorry for the double text.", wide: true },
+        { label: "The text", value: clip(original.body, 300), wide: true },
+        original.conversationId ? { label: "Inbox", value: `<${inboxUrl(original.conversationId)}|Open the conversation>`, wide: true } : null,
+      ].filter(Boolean),
     });
     return { action: "duplicate" };
   }
@@ -267,6 +278,10 @@ async function guardFallbackBeforeSend(message, contact, line, reservationDay, d
     message.error = { kind: "compliance", message: cancelReason };
     await message.save();
     if (original) await VtextMessage.updateOne({ _id: original._id }, { $set: { "fallback.status": "cancelled", "fallback.reason": cancelReason } });
+    // Delivered or replied means they have it. Any other reason leaves the lead with nothing: say so.
+    if (original && !/delivered|replied/.test(cancelReason)) {
+      await (deps.reportTextProblem || require("./vtextTextProblemAlert").reportTextProblem)(original._id);
+    }
     return true;
   }
 

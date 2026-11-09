@@ -18,6 +18,7 @@ const { evaluateAndMaybeQuarantine } = require("../vtextLineHealthService");
 const { publishEvent } = require("../vtextEventsBus");
 const smsFallback = require("../vtextSmsFallbackService");
 const { recordProviderOptOut } = require("../vtextOptOutService");
+const { reportTextProblem } = require("../vtextTextProblemAlert");
 
 async function rerouteExcluding(message, lineId) {
   message.excludeLineIds = [...(message.excludeLineIds || []), lineId];
@@ -92,6 +93,7 @@ async function processSendJob(lineId, job) {
     await message.save();
     await capacity.release(line, reservationDay, { wasReply: message.isReplyToInbound });
     publishEvent({ type: "message.updated", messageId: String(message._id), conversationId: message.conversationId ? String(message.conversationId) : null, status: message.status });
+    await reportTextProblem(message);
     return;
   }
 
@@ -172,9 +174,15 @@ async function processSendJob(lineId, job) {
         console.error(`[vtext line-send] couldn't record the provider outcome for ${message._id}:`, e.message);
       }
       // BlueBubbles said the iMessage could not be delivered: the same text goes out once by SMS (when switched on).
+      let fallback = null;
       if (line.channelType === smsFallback.IMESSAGE && smsFallback.isExplicitIMessageFailure(err.code)) {
-        await smsFallback.maybeQueueSmsFallback(message, { trigger: "send-error", reason: err.code }).catch((e) => console.error(`[vtext sms-fallback] could not queue the fallback for ${message._id}:`, e.message));
+        fallback = await smsFallback.maybeQueueSmsFallback(message, { trigger: "send-error", reason: err.code }).catch((e) => {
+          console.error(`[vtext sms-fallback] could not queue the fallback for ${message._id}:`, e.message);
+          return { queued: false, reason: `the fallback could not be queued (${e.message})` };
+        });
       }
+      // One Slack message for this lead's text, unless the SMS fallback is now on its way. Never throws.
+      await reportTextProblem(message, { fallback });
       // Permanent — tells BullMQ not to retry this job at all.
       throw new UnrecoverableError(err.message);
     }

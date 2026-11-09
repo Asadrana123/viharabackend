@@ -78,12 +78,14 @@ async function maybeSendFormIntroText({ form, leadType, lead, name, values = {} 
     if (QUIET_SKIP.test(reason)) return { queued: false, reason };
     await notify({
       level: "warning",
+      icon: "📵",
       title: "Form lead was not texted",
       fields: [
         { label: "Form", value: label },
         { label: "Lead", value: name || String(id) },
-        { label: "Phone", value: rawPhone ? `…${String(rawPhone).slice(-4)}` : "none" },
-        { label: "Why", value: reason },
+        { label: "Phone", value: rawPhone ? String(rawPhone) : "none" },
+        { label: "Why", value: reason, wide: true },
+        { label: "What to do", value: "Reach them another way (call or email), or fix the reason and text them from the Leads tab.", wide: true },
       ],
     }).catch((e) => console.error(`[form-text:${form}] Slack alert failed:`, e.message));
     return { queued: false, reason };

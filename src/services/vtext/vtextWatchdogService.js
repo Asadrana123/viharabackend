@@ -63,7 +63,8 @@ function createWatchdog({ ping, getHeartbeat, staleMs = 3 * MINUTE, graceMs = 3 
         const downMinutes = Math.max(1, Math.round((clock() - problemSince) / MINUTE));
         await sendAlertWithCooldown("watchdog-recovered", MINUTE, {
           level: "info",
-          title: "Workers and Redis recovered",
+          icon: "🟢",
+          title: "Texting system back to normal",
           fields: [{ label: "Was down for", value: `about ${minutes(downMinutes)}` }],
         }).catch((err) => console.error("[vtext watchdog] could not send recovery alert:", err.message));
         alertedStatus = null;
@@ -82,7 +83,8 @@ function createWatchdog({ ping, getHeartbeat, staleMs = 3 * MINUTE, graceMs = 3 
       result.status === "redis-down"
         ? {
             level: "error",
-            title: "Redis unreachable",
+            icon: "🔴",
+            title: "System problem: Redis unreachable",
             fields: [
               { label: "Problem", value: result.detail },
               { label: "Effect", value: "Texts cannot be queued or sent, and the workers are likely stopped as well" },
@@ -91,7 +93,8 @@ function createWatchdog({ ping, getHeartbeat, staleMs = 3 * MINUTE, graceMs = 3 
           }
         : {
             level: "error",
-            title: "Workers stopped",
+            icon: "🔴",
+            title: "System problem: texting workers stopped",
             fields: [
               { label: "Problem", value: result.detail },
               { label: "Effect", value: "Queued texts are not being sent, retried or processed, and line health checks have stopped" },

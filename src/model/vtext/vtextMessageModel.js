@@ -87,6 +87,12 @@ const vtextMessageSchema = new mongoose.Schema(
       duplicate: { type: Boolean }, // the iMessage was confirmed AFTER the SMS had already gone out: the person got both
     },
     fallbackOf: { type: mongoose.Schema.Types.ObjectId, ref: "vtextMessageModel", index: { sparse: true } },
+    // The Slack alert for this text not getting out (vtextTextProblemAlert.js). Claimed once, atomically, so a
+    // repeated receipt or a retry never posts the same text twice. kind "suppressed" = held back by the hourly cap.
+    problemAlert: {
+      at: { type: Date, index: { sparse: true } },
+      kind: { type: String },
+    },
     // Why the compliance gate let this message through at enqueue: "opted-in", "reply",
     // "system", or "consent-not-required" (sent while the admin consent switch was off).
     consentBasis: { type: String },
