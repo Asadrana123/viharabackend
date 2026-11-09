@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const { outboundDisabled } = require('../config/outboundSwitch');
 // Create a transporter
 const transporter = nodemailer.createTransport({
     service: 'Gmail', // You can use other services like Yahoo, Outlook, etc.
@@ -12,6 +13,8 @@ const transporter = nodemailer.createTransport({
 // sendEmail(to, name, subject, html) call keeps working untouched.
 const sendEmail = (to, name, subject, html, attachments = []) => {
     console.log(subject);
+    // Local runs: OUTBOUND_DISABLED=true sends no emails (config/outboundSwitch.js).
+    if (outboundDisabled()) return console.log(`[outbound] email not sent (OUTBOUND_DISABLED=true): ${subject}`);
     const mailOptions = {
         from: `"Vihara" <${process.env.EMAIL_USERNAME}>`,
         to,                            // Recipient address
@@ -39,6 +42,10 @@ const sendEmail = (to, name, subject, html, attachments = []) => {
 // rejection). This reuses the same transporter/credentials but returns a
 // Promise so a bulk sender can record a real success/failure per recipient.
 const sendEmailAsync = (to, subject, html, attachments = []) => {
+    if (outboundDisabled()) {
+        console.log(`[outbound] email not sent (OUTBOUND_DISABLED=true): ${subject}`);
+        return Promise.reject(new Error('Emails are off on this server (OUTBOUND_DISABLED=true)'));
+    }
     const mailOptions = {
         from: `"Vihara" <${process.env.EMAIL_USERNAME}>`,
         to,

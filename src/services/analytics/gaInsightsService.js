@@ -85,7 +85,7 @@ function propertyName() {
  * Runs one report and flattens it to plain objects: { <dimension>: string, <metric>: number }.
  * With more than one date range, GA4 adds a "dateRange" dimension (date_range_0, date_range_1, ...).
  */
-async function runReport({ dimensions = [], metrics, dateRanges, dimensionFilter, orderBys, limit }) {
+async function runReport({ dimensions = [], metrics, dateRanges, dimensionFilter, orderBys, limit, offset }) {
     const [response] = await getClient().runReport({
         property: propertyName(),
         dimensions: dimensions.map((name) => ({ name })),
@@ -94,6 +94,7 @@ async function runReport({ dimensions = [], metrics, dateRanges, dimensionFilter
         dimensionFilter,
         orderBys,
         limit,
+        offset,
     });
 
     const dimNames = [...dimensions, ...(dateRanges.length > 1 ? ["dateRange"] : [])];
@@ -413,4 +414,4 @@ async function fetchGaBreakdown({ since, until, by }) {
     });
 }
 
-module.exports = { fetchGaReportData, fetchGaBreakdown, fetchGaRangeData, fetchGaPageData, fetchGaAudienceData, gaConfigured, BREAKDOWN_NAMES, TRACKED_EVENTS, PROPERTY_TIMEZONE };
+module.exports = { runReport, fetchGaReportData, fetchGaBreakdown, fetchGaRangeData, fetchGaPageData, fetchGaAudienceData, gaConfigured, BREAKDOWN_NAMES, TRACKED_EVENTS, PROPERTY_TIMEZONE };

@@ -1,4 +1,7 @@
 require('dotenv').config();
+// Before anything else loads: with OUTBOUND_DISABLED=true (local runs) no email, text, call or Slack post
+// leaves this server (config/outboundSwitch.js).
+require('./config/outboundSwitch').installOutboundGuards();
 const http = require('http');
 const app = require('./app');
 const initSocketServer = require('./socket/socketServer');
@@ -28,7 +31,9 @@ const { startGaReportJob } = require('./jobs/gaReportJob');
 const { startAdsLoopJob } = require('./jobs/adsLoopJob');
 const { startRepairJob } = require('./jobs/repairJob');
 const { startSignupDoctorJob } = require('./jobs/signupDoctorJob');
+const { startPropertyFunnelJob } = require('./jobs/propertyFunnelJob');
 const { startFacetimeSweep } = require('./services/calling/facetime/facetimeSweep');
+const { outboundDisabled } = require('./config/outboundSwitch');
 
 const PORT = process.env.PORT || 8000;
 
@@ -46,47 +51,53 @@ server.listen(PORT, () => {
   startBrevoBackfillJob();
   // Close ended auctions + email sellers every minute, even if no one is watching.
   startAuctionCloseJob();
-  // Start the early-access daily 1:32 PM callback scheduler (every-minute sweep).
-  startEarlyAccessCallScheduler();
+  // Every job below calls or texts real people. OUTBOUND_DISABLED=true (local runs) skips them all
+  // (config/outboundSwitch.js).
+  if (outboundDisabled()) {
+    console.log('[outbound] OUTBOUND_DISABLED=true: call and text jobs not started; calls, texts, emails and Slack posts are blocked.');
+  } else {
+    // Start the early-access daily 1:32 PM callback scheduler (every-minute sweep).
+    startEarlyAccessCallScheduler();
 
-  // Property auction daily 1:32 PM local callback schedulers.
-  startGeorgiaStCallScheduler();
-  startRensselaerAveCallScheduler();
+    // Property auction daily 1:32 PM local callback schedulers.
+    startGeorgiaStCallScheduler();
+    startRensselaerAveCallScheduler();
 
-  // Partner Program daily 1:32 PM local callback scheduler.
-  startPartnerCallScheduler();
+    // Partner Program daily 1:32 PM local callback scheduler.
+    startPartnerCallScheduler();
 
-  // Northern California early-access daily local callback scheduler
-  // (11:00 AM / 2:30 PM / 6:00 PM in the lead's timezone).
-  startNorCalCallScheduler();
-  startNewDealsCallScheduler();
-  // Facebook / Instagram instant-form leads (same daily loop, own collection).
-  startFacebookFormCallScheduler();
-  // Toorak lead forms: every 15 minutes, pick up any lead the Zernio webhook missed; and Maya's
-  // 3 attempts (call_consent only, 8 AM–9 PM local).
-  startToorakLeadPoller();
-  startToorakCallScheduler();
-  // Forms on landing pages made in Admin → Landing Pages (same daily loop).
-  startLandingFormCallScheduler();
+    // Northern California early-access daily local callback scheduler
+    // (11:00 AM / 2:30 PM / 6:00 PM in the lead's timezone).
+    startNorCalCallScheduler();
+    startNewDealsCallScheduler();
+    // Facebook / Instagram instant-form leads (same daily loop, own collection).
+    startFacebookFormCallScheduler();
+    // Toorak lead forms: every 15 minutes, pick up any lead the Zernio webhook missed; and Maya's
+    // 3 attempts (call_consent only, 8 AM–9 PM local).
+    startToorakLeadPoller();
+    startToorakCallScheduler();
+    // Forms on landing pages made in Admin → Landing Pages (same daily loop).
+    startLandingFormCallScheduler();
 
-  // Human-requested callbacks ("call me back in 10 minutes"). Dials at the exact
-  // time asked, then falls into the daily 1:32 PM retry loop on no-answer.
-  startVoiceCallbackScheduler();
+    // Human-requested callbacks ("call me back in 10 minutes"). Dials at the exact
+    // time asked, then falls into the daily 1:32 PM retry loop on no-answer.
+    startVoiceCallbackScheduler();
 
-  // Unified scheduler for every /auction/:slug landing page. New properties need
-  // no new scheduler — this one sweeps the shared propertyLeadModel collection.
-  startPropertyCallScheduler();
+    // Unified scheduler for every /auction/:slug landing page. New properties need
+    // no new scheduler — this one sweeps the shared propertyLeadModel collection.
+    startPropertyCallScheduler();
 
-  // Buyer Match calls an admin started: 12:30 PM + 6:00 PM buyer-local, up to 7 days.
-  startMatchCallScheduler();
+    // Buyer Match calls an admin started: 12:30 PM + 6:00 PM buyer-local, up to 7 days.
+    startMatchCallScheduler();
 
-  // Cal.com advisor-call reminders as Vtext texts (every-minute sweep).
-  // Off unless CALCOM_REMINDERS_ENABLED=true and VTEXT_ENABLED=true.
-  startCalcomReminderScheduler();
+    // Cal.com advisor-call reminders as Vtext texts (every-minute sweep).
+    // Off unless CALCOM_REMINDERS_ENABLED=true and VTEXT_ENABLED=true.
+    startCalcomReminderScheduler();
 
-  // FaceTime test: catches FaceTime calls a Mac didn't finish (falls back to a phone call)
-  // and Macs that stopped checking in. Off unless FACETIME_ENABLED=true.
-  startFacetimeSweep();
+    // FaceTime test: catches FaceTime calls a Mac didn't finish (falls back to a phone call)
+    // and Macs that stopped checking in. Off unless FACETIME_ENABLED=true.
+    startFacetimeSweep();
+  }
 
   // Weekly market data refresh of every linked property the admin hasn't paused,
   // plus a daily status check that posts sold / off-market properties to Slack.
@@ -99,7 +110,8 @@ server.listen(PORT, () => {
   // In production the worker runs as a separate Render process
   // (src/workers/vtextWorker.js); set VTEXT_RUN_WORKERS_IN_PROCESS=true
   // for local dev / a tiny pilot to boot it inside this same process instead.
-  if (process.env.VTEXT_ENABLED === 'true' && process.env.VTEXT_RUN_WORKERS_IN_PROCESS === 'true') {
+  // OUTBOUND_DISABLED=true keeps them off too: the workers are what actually send texts.
+  if (process.env.VTEXT_ENABLED === 'true' && process.env.VTEXT_RUN_WORKERS_IN_PROCESS === 'true' && !outboundDisabled()) {
     startVtextWorkersInProcess().catch((err) => {
       console.error('[vtext] failed to start in-process workers:', err);
     });
@@ -131,4 +143,8 @@ server.listen(PORT, () => {
   // sign-ups and posts the likely reasons to Slack. Report only.
   // Off unless SIGNUP_DOCTOR_ENABLED=true.
   startSignupDoctorJob();
+
+  // Property Funnel tab: Meta ads, GA4, Clarity, Sanity and organic posts into the pf_* collections.
+  // Off unless PROPERTY_FUNNEL_SYNC_ENABLED=true.
+  startPropertyFunnelJob();
 });
