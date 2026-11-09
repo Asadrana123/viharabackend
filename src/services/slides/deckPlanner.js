@@ -8,6 +8,7 @@
 //
 // Claude never chooses colours, fonts or positions. Those come from the design system.
 const Anthropic = require("@anthropic-ai/sdk");
+const { trackAnthropic } = require("../usage/spendRecorder");
 const { MODEL, EFFORT, SPEAKER_NOTES_CHARS, MIN_SLIDES, MAX_SLIDES } = require("../../config/slidesAgentConfig");
 const { ICON_GROUPS } = require("../../config/slideIcons");
 const { TYPES, TYPE_NAMES, slideProblems, describeLimits } = require("./slideTypes");
@@ -18,7 +19,7 @@ const FIX_ROUNDS = 2;
 let client;
 function getClient() {
   if (!process.env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY is not set, so the Slides agent is unavailable");
-  client = client || new Anthropic({ timeout: 10 * 60 * 1000, maxRetries: 2 });
+  client = client || trackAnthropic(new Anthropic({ timeout: 10 * 60 * 1000, maxRetries: 2 }), "slides-agent");
   return client;
 }
 

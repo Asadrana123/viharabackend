@@ -12,6 +12,7 @@
 // Follow-ups work because the caller passes the conversation's full message
 // history (including earlier tool calls and their results) back in each time.
 const Anthropic = require("@anthropic-ai/sdk");
+const { trackAnthropic } = require("../usage/spendRecorder");
 const { COLLECTIONS, catalogText } = require("./askCollections");
 const { EXECUTORS, AskQueryError } = require("./askQueryService");
 
@@ -29,11 +30,11 @@ function getClient() {
     // A user-level key (sk-ant-usr…) isn't tied to a workspace, so the API needs
     // to be told which workspace to bill. Workspace-scoped keys don't need this.
     const workspaceId = process.env.ANTHROPIC_WORKSPACE_ID;
-    client = new Anthropic({
+    client = trackAnthropic(new Anthropic({
       timeout: 120000,
       maxRetries: 2,
       ...(workspaceId && { defaultHeaders: { "anthropic-workspace-id": workspaceId } }),
-    });
+    }), "admin-ask");
   }
   return client;
 }

@@ -148,6 +148,7 @@ async function rewriteQuery({ messages, replyToBody }) {
       REWRITE_TIMEOUT_MS,
       "query rewrite"
     );
+    require("../usage/spendRecorder").recordGemini("vtext-knowledge", MODEL_NAME, result);
     const rewritten = String(result?.response?.text() || "").trim().replace(/^["']|["']$/g, "");
     return rewritten && rewritten.length <= 300 ? rewritten : original;
   } catch (err) {

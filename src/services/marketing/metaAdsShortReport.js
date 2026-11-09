@@ -18,6 +18,7 @@
 //   META_ADS_SUMMARY_MODEL  optional, default claude-sonnet-5-5
 
 const Anthropic = require("@anthropic-ai/sdk");
+const { trackAnthropic } = require("../usage/spendRecorder");
 const { figuresNotInData } = require("../analytics/gaSummaryService");
 
 let client;
@@ -110,7 +111,7 @@ Rules:
 - Format: "•" bullets, *bold* with single asterisks, no headings with #, no tables, no emojis, no em dashes. Plain words, no filler.`;
 
 async function askClaude(fullReport, keyLine, retryNote) {
-    client = client || new Anthropic();
+    client = client || trackAnthropic(new Anthropic(), "meta-ads-report");
     const response = await client.messages.create({
         model: MODEL,
         max_tokens: 4000,

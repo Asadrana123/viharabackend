@@ -14,6 +14,7 @@
 // Env: ANTHROPIC_API_KEY, optional HOME_AI_SEARCH_MODEL / HOME_AI_SEARCH_EFFORT.
 const crypto = require("crypto");
 const Anthropic = require("@anthropic-ai/sdk");
+const { trackAnthropic } = require("../usage/spendRecorder");
 const productModel = require("../../model/property/productModel");
 
 const MODEL = process.env.HOME_AI_SEARCH_MODEL || "claude-opus-5-5";
@@ -38,11 +39,11 @@ function getClient() {
   if (!client) {
     // Same as admin Ask AI: a user-level key needs to be told which workspace to bill.
     const workspaceId = process.env.ANTHROPIC_WORKSPACE_ID;
-    client = new Anthropic({
+    client = trackAnthropic(new Anthropic({
       timeout: 60000,
       maxRetries: 2,
       ...(workspaceId && { defaultHeaders: { "anthropic-workspace-id": workspaceId } }),
-    });
+    }), "ai-search");
   }
   return client;
 }

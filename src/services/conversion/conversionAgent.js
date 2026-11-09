@@ -17,6 +17,7 @@
 
 const path = require("path").posix;
 const Anthropic = require("@anthropic-ai/sdk");
+const { trackAnthropic } = require("../usage/spendRecorder");
 const { getConversionConfig } = require("../../config/conversion/conversionConfig");
 const { getRepairConfig, missingGithubTokens } = require("../../config/repair/repairConfig");
 const meta = require("../repair/metaGraph");
@@ -47,7 +48,7 @@ function getClient() {
     if (!process.env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY is not set");
     if (!client) {
         const workspaceId = process.env.ANTHROPIC_WORKSPACE_ID;
-        client = new Anthropic({ timeout: 10 * 60 * 1000, maxRetries: 2, ...(workspaceId && { defaultHeaders: { "anthropic-workspace-id": workspaceId } }) });
+        client = trackAnthropic(new Anthropic({ timeout: 10 * 60 * 1000, maxRetries: 2, ...(workspaceId && { defaultHeaders: { "anthropic-workspace-id": workspaceId } }) }), "conversion-agent");
     }
     return client;
 }

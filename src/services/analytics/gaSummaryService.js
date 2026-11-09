@@ -12,6 +12,7 @@
 //   GA_SUMMARY_MODEL  optional, default claude-sonnet-5-5
 
 const Anthropic = require("@anthropic-ai/sdk");
+const { trackAnthropic } = require("../usage/spendRecorder");
 const { buildSummaryFacts } = require("./gaReportFormatter");
 
 // Created on first use so a missing key fails the report, not server startup.
@@ -62,7 +63,7 @@ function figuresNotInData(text, facts) {
 }
 
 async function askClaude(facts, retryNote) {
-    client = client || new Anthropic();
+    client = client || trackAnthropic(new Anthropic(), "ga-report");
     const response = await client.messages.create({
         model: MODEL,
         max_tokens: 4000,

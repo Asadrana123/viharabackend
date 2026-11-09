@@ -8,6 +8,7 @@
 // runs complianceChecker on every line it returns.
 
 const { GoogleGenerativeAI } = require("@google/generative-ai");
+const { recordGemini } = require("../usage/spendRecorder");
 const Errorhandler = require("../../utils/errorhandler");
 const prompts = require("./copyPrompts");
 
@@ -53,6 +54,7 @@ async function generateJson(prompt, temperature = TEMPERATURE) {
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: { temperature, responseMimeType: "application/json" },
     });
+    recordGemini("copy-generation", MODEL_NAME, result);
     return parseJson(result?.response?.text());
 }
 

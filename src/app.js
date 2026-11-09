@@ -87,6 +87,7 @@ const qaAgentRoutes = require("./routes/qa/qaAgentRoutes");
 const adminAskRoutes = require("./routes/adminAsk/adminAskRoutes");
 const studioRoutes = require("./routes/studio/studioRoutes");
 const adminAnalyticsRoutes = require("./routes/analytics/adminAnalyticsRoutes");
+const spendRoutes = require("./routes/usage/spendRoutes");
 // Brand Kit: the colours, fonts and messaging every page uses (public read, admin edit).
 const brandKitRoutes = require("./routes/brand/brandKitRoutes");
 // Design agent (admin-only): Claude redesigns pages → Vercel preview → approve to go live.
@@ -212,6 +213,7 @@ app.use("/api/v1/qa-agent", qaAgentRoutes);
 app.use("/api/v1/admin-ask", adminAskRoutes);
 app.use("/api/v1/studio", studioRoutes); // Video Studio (vihara.ai/studio): editor interviews and profiles
 app.use("/api/v1/admin-analytics", adminAnalyticsRoutes);
+app.use("/api/v1/admin-spend", spendRoutes); // AI Spend: what each feature spends on AI (admin page tab)
 app.use("/api/v1/brand-kit", brandKitRoutes);
 app.use("/api/v1/design", designAdminRoutes);
 app.use("/api/v1/ads-loop", adsLoopRoutes);
