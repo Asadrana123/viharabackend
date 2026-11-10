@@ -45,10 +45,16 @@ function vtextOutcome(status) {
   return null; // not sent yet (queued, waiting, sending, pending-approval) or unknown
 }
 
+/**
+ * When a text happened: for our texts, the time it was sent (a text can wait in the queue for hours,
+ * e.g. sending hours, daily limits or a re-send batch); for replies, and texts with no send time, when it was saved.
+ */
+const textTime = (m) => new Date(m.direction === "out" && m.sentAt ? m.sentAt : m.createdAt);
+
 function vtextTouches(messages, contacts, idx) {
   const phoneOf = new Map(contacts.map((c) => [String(c._id), phoneKey(c.phoneE164)]));
   const byContact = new Map();
-  for (const m of [...messages].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))) {
+  for (const m of [...messages].sort((a, b) => textTime(a) - textTime(b))) {
     const k = String(m.contactId);
     byContact.set(k, [...(byContact.get(k) || []), m]);
   }
@@ -62,12 +68,13 @@ function vtextTouches(messages, contacts, idx) {
         if (!outcome) continue;
         const o = m.origin || {};
         const by = o.sentBy && o.sentBy.adminName ? String(o.sentBy.adminName).split(" ")[0] : AUTOMATED.has(o.kind) ? "Automation" : null;
-        sent.push({ at: new Date(m.createdAt), outcome, by, template: o.templateKey || null });
+        sent.push({ at: textTime(m), outcome, by, template: o.templateKey || null });
       } else if (m.direction === "in") {
         // A reply upgrades the last text we sent before it; a person who texts first is a touch of its own.
-        const last = [...sent].reverse().find((s) => s.at <= new Date(m.createdAt));
+        const at = textTime(m);
+        const last = [...sent].reverse().find((s) => s.at <= at);
         if (last) last.outcome = better(last.outcome, "Replied");
-        else sent.push({ at: new Date(m.createdAt), outcome: "Replied", by: null, template: null });
+        else sent.push({ at, outcome: "Replied", by: null, template: null });
       }
     }
     const optOutAt = c.optOut && c.optOut.isOptedOut && c.optOut.at ? new Date(c.optOut.at) : null;

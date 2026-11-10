@@ -116,6 +116,17 @@ test("AC-8 (our version): not contacted = leads with no text, call or email", ()
   assert.deepEqual(d.leads.filter((l) => !touched.has(l.id)).map((l) => l.id), ["L3"]);
 });
 
+test("a text is placed at the time it was sent, not when it was queued", () => {
+  // Queued before Jane came in (18:00), sent after: counts for her, at the send time.
+  const d = build({
+    messages: [
+      { contactId: "c1", direction: "out", status: "delivered", createdAt: new Date("2026-11-03T11:00:00Z"), sentAt: new Date("2026-11-03T18:20:00Z"), origin: { kind: "automation" } },
+    ],
+  });
+  const text = d.touches.find((x) => x.leadId === "L1" && x.kind === "VText");
+  assert.equal(text.at, "2026-11-03T18:20:00.000Z");
+});
+
 test("an opt-out marks the last text before it", () => {
   const d = build({ contacts: [{ _id: "c1", phoneE164: "+14105552291", optOut: { isOptedOut: true, at: new Date("2026-11-03T18:40:00Z") } }] });
   assert.equal(d.touches.find((x) => x.leadId === "L1").outcome, "Opted out");
