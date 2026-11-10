@@ -100,6 +100,9 @@ test("the image storyboard is drawn on a click within the limit, and each frame 
   assert.deepEqual(framesCommand(run({ state: "frames", spent: 0, framesPrice: 1.05 })), { command: { type: "frames" }, state: "generating" });
   assert.throws(() => framesCommand(run({ state: "frames", spent: 14.5, framesPrice: 1.05 })), /over the \$15 limit/);
   assert.throws(() => framesCommand(run({ state: "approved" })), /not waiting for its storyboard/);
+  // On the storyboard, a picture still to draw can be drawn; with none missing there is nothing to draw.
+  assert.equal(framesCommand(run({ state: "storyboard", spent: 0.6, framesPrice: 0.075 })).state, "generating");
+  assert.throws(() => framesCommand(run({ state: "storyboard", spent: 0.6, framesPrice: 0 })), /not waiting for its storyboard/);
   const board = run({ state: "storyboard", frames: [{ ref: "hook/still", state: "pending" }, { ref: "b1/s1", state: "photo" }], clips: [] });
   const step = clipCommand(board, { ref: "hook/still", decision: "reject", words: "Her shadow falls the wrong way" });
   assert.equal(step.state, "storyboard");

@@ -276,7 +276,10 @@ function generateCommand(run) {
 
 /** The storyboard's frames, drawn at the price shown, for a storyboard plan after Gate A (D-046). */
 function framesCommand(run) {
-  if (run.state !== "frames") throw new Error("This video is not waiting for its storyboard now.");
+  // Also on the storyboard itself, when a picture is still to draw (e.g. after its photo was changed, or a
+  // draw that failed): the editor draws the missing ones without waiting for every other decision.
+  const missing = run.state === "storyboard" && (run.framesPrice ?? 0) > 0;
+  if (run.state !== "frames" && !missing) throw new Error("This video is not waiting for its storyboard now.");
   if ((run.spent ?? 0) + (run.framesPrice ?? 0) > VIDEO_LIMIT_USD) throw new Error(`This is over the $${VIDEO_LIMIT_USD} limit for a video. An admin decides what happens next.`);
   return { command: { type: "frames" }, state: "generating" };
 }
