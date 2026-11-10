@@ -19,6 +19,9 @@ test("the editor tells their own story instead of picking a concept", () => {
   assert.equal(step.command.type, "idea");
   assert.throws(() => ideaCommand(run(), { words: "short" }), /few lines/);
   assert.throws(() => ideaCommand(run({ state: "hook-choice" }), { words: "A long enough story here." }), /not waiting for a concept/);
+  // Stopped while the concepts were written: a changed story is taken; stopped later, it is not.
+  assert.equal(ideaCommand(run({ state: "failed", hooks: [], plan: null }), { words: "Buy-and-hold investors, listen up." }).state, "concepts");
+  assert.throws(() => ideaCommand(run({ state: "failed", hooks: [{ id: "H1" }], plan: null }), { words: "A long enough story here." }), /not waiting for a concept/);
 });
 
 test("craft changes only until the plan is written", () => {

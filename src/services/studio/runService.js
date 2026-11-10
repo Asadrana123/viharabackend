@@ -153,7 +153,10 @@ const craftData = (c) => ({ seconds: c.seconds, pace: c.pace, voice_speed: c.voi
 
 /** The editor tells their own story instead of picking one of the concepts (D-047). */
 function ideaCommand(run, body) {
-  if (run.state !== "concept-choice") throw new Error("This video is not waiting for a concept now.");
+  // A video that stopped before its hooks were written (no concept picked yet) takes a changed story too, so
+  // the editor is never left with only Try again on the same words.
+  const stoppedAtConcepts = run.state === "failed" && !(run.hooks ?? []).length && !run.plan;
+  if (run.state !== "concept-choice" && !stoppedAtConcepts) throw new Error("This video is not waiting for a concept now.");
   const words = String(body?.words ?? "").trim();
   if (words.length < 10) throw new Error("Tell your story in a few lines.");
   if (words.length > MAX_WORDS) throw new Error(`At most ${MAX_WORDS} characters.`);
