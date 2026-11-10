@@ -136,3 +136,10 @@ test("the editor chooses the Claude model that writes the video, from the three 
   assert.throws(() => cleanModel(undefined), /Choose the Claude model/);
   assert.throws(() => cleanModel("claude-opus-5-5"), /Choose the Claude model/);
 });
+
+test("a stopped video can be tried again; others cannot", () => {
+  const { retryCommand } = require("./runService");
+  assert.deepEqual(retryCommand({ state: "failed", coreId: "LV18753-V05" }), { command: { type: "retry" }, state: "concepts" });
+  assert.throws(() => retryCommand({ state: "clips", coreId: "X" }), /stopped video/);
+  assert.throws(() => retryCommand({ state: "failed", coreId: null }), /never started/);
+});

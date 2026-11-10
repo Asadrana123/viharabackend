@@ -33,6 +33,8 @@ router.post("/runs/:id/pick", c.pickForRun);
 router.post("/runs/:id/gate", c.gateForRun);
 router.post("/runs/:id/generate", c.generateForRun);
 router.post("/runs/:id/remake", c.remakeForRun);
+// A stopped writing step (concepts, hooks, plan) run again, e.g. after the credits were topped up.
+router.post("/runs/:id/retry", c.retryForRun);
 router.post("/runs/:id/frames", c.framesForRun);
 router.post("/runs/:id/clip", c.clipForRun);
 router.post("/runs/:id/build", c.buildForRun);

@@ -305,6 +305,16 @@ function remakeCommand(run) {
   return { command: { type: "remake" }, state: "generating" };
 }
 
+/**
+ * Runs the writing step that stopped (the concepts, the hooks or the plan) again, for example after the
+ * Anthropic credits were topped up. The server works out which step it was.
+ */
+function retryCommand(run) {
+  if (run.state !== "failed") throw new Error("Only a stopped video can be tried again.");
+  if (!run.coreId) throw new Error("This video never started. Start a new video for this property.");
+  return { command: { type: "retry" }, state: "concepts" };
+}
+
 function buildCommand(run) {
   const allApproved = run.state === "clips" && run.clips?.length > 0 && run.clips.every((c) => c.state === "approved");
   if (run.state !== "ready-to-build" && !allApproved) throw new Error("This video is not ready to build.");
@@ -336,4 +346,4 @@ function cleanSlot(slot) {
   return s;
 }
 
-module.exports = { cleanCraft, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, VIDEO_LIMIT_USD, CLAUDE_MODELS, cleanModel, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };
+module.exports = { retryCommand, cleanCraft, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, VIDEO_LIMIT_USD, CLAUDE_MODELS, cleanModel, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };
