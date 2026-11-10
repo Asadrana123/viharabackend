@@ -175,7 +175,8 @@ function hookCommand(run, body) {
   const hook = { line1: String(body?.line1 ?? "").trim(), line2: String(body?.line2 ?? "").trim(), vo: String(body?.vo ?? "").trim(), visual: String(body?.visual ?? "").trim() };
   if (!hook.line1 || !hook.line2 || !hook.vo) throw new Error("A hook needs both title lines and what Maya says.");
   if (Object.values(hook).some((v) => v.length > 400)) throw new Error("Keep each part under 400 characters.");
-  const word = HOOK_WORDS.exec(Object.values(hook).join(" "))?.[0];
+  // A figure token such as {starting-bid} shows a figure, not the word "bid": tokens are left out of the check.
+  const word = HOOK_WORDS.exec(Object.values(hook).join(" ").replace(/\{[a-z0-9-]+\}/gi, " "))?.[0];
   if (word) throw new Error(`Hooks never say "${word}": it scares a cold reader off. Say it in deal words instead.`);
   return { command: { type: "hook", data: { hook } }, state: "package" };
 }

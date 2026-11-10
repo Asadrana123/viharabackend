@@ -272,9 +272,12 @@ const decideStudioProposal = catchAsyncError(async (req, res, next) => {
 });
 
 const runView = async (r) => {
-  const { runId, propertyId, requestedByName, coreId, model, state, concepts, hooks, plan, error, frames, framesPrice, clips, cut, spent, costs, remakePrice, media, idea, craft, story, photos, todo, uploads } = r;
+  const { runId, propertyId, requestedByName, coreId, model, state, concepts, hooks, plan, error, frames, framesPrice, clips, cut, spent, costs, remakePrice, media, idea, craft, story, photos, todo, uploads, commands, updatedAt } = r;
   const urls = Object.fromEntries(await Promise.all(Object.entries(media ?? {}).map(async ([slot, m]) => [slot, await viewUrl(m.key)])));
-  return { runId, propertyId, requestedByName, coreId, model: model ?? null, state, concepts, hooks, plan, error, frames: frames ?? [], framesPrice: framesPrice ?? 0, clips, cut, spent, costs: costs ?? null, remakePrice: remakePrice ?? null, urls, idea: idea ?? null, craft: craft ?? null, story: story ?? [], photos: photos ?? [], todo: todo ?? [], uploads: (uploads ?? []).map(({ name, kind, byName, at }) => ({ name, kind, byName, at })) };
+  // The person's steps the server has not finished yet, oldest first, so the page shows a click as sent and
+  // keeps its button from being clicked again while it runs.
+  const pending = (commands ?? []).filter((c) => !c.doneAt).map((c) => ({ type: c.type, at: c.at }));
+  return { runId, propertyId, requestedByName, coreId, model: model ?? null, state, concepts, hooks, plan, error, frames: frames ?? [], framesPrice: framesPrice ?? 0, clips, cut, spent, costs: costs ?? null, remakePrice: remakePrice ?? null, urls, idea: idea ?? null, craft: craft ?? null, story: story ?? [], photos: photos ?? [], todo: todo ?? [], uploads: (uploads ?? []).map(({ name, kind, byName, at }) => ({ name, kind, byName, at })), pending, updatedAt: updatedAt ?? null };
 };
 
 /** GET /api/v1/studio/runs - the videos in progress, newest first, and the properties ready for one. */

@@ -54,6 +54,17 @@ const runSchema = new mongoose.Schema(
     // Files in the private bucket, by slot: animatic, clip-<ref>, cut. Keys never reach a browser.
     media: { type: mongoose.Schema.Types.Mixed, default: {} },
     error: { type: String, default: null },
+    // D-047: the editor's own idea and craft, the voiceover by beat, the photographs a shot may switch to,
+    // what Generate still has to make, and their uploaded images. Without these fields Mongoose drops them on
+    // save, so a saved length or pace never showed as saved and its button stayed live.
+    idea: { type: String, default: null },
+    craft: { type: mongoose.Schema.Types.Mixed, default: null },
+    story: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    photos: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    todo: { type: [String], default: [] },
+    uploads: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    // The stuck error last reported to the Problems page, so it is reported once.
+    stuckReported: { type: String, default: null },
     commands: { type: [commandSchema], default: [] },
   },
   { timestamps: true }

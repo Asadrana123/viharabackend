@@ -33,6 +33,8 @@ test("the editor's own hook never says auction, bid or listing (D-031)", () => {
   assert.equal(ok.command.data.hook.line1, "This house");
   assert.throws(() => hookCommand(run({ state: "hook-choice" }), { line1: "Bidding starts", line2: "now", vo: "x" }), /Bidding/);
   assert.throws(() => hookCommand(run({ state: "hook-choice" }), { line1: "One line", line2: "", vo: "x" }), /both title lines/);
+  // A figure token is a figure on screen, not the word "bid" (the hint tells editors to write figures so).
+  assert.equal(hookCommand(run({ state: "hook-choice" }), { line1: "From {starting-bid}", line2: "in the pines", vo: "Yours from {starting-bid}." }).state, "package");
 });
 
 test("voiceover lines change at the plan, only where the editor changed them", () => {
