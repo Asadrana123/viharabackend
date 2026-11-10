@@ -313,6 +313,12 @@ function remakeCommand(run) {
  * Runs the writing step that stopped (the concepts, the hooks or the plan) again, for example after the
  * Anthropic credits were topped up. The server works out which step it was.
  */
+/** Asks the server for the video as it stands now, e.g. when the page looks out of date. Changes nothing. */
+function viewCommand(run) {
+  if (!run.coreId) throw new Error("This video has not started yet.");
+  return { command: { type: "view" }, state: run.state };
+}
+
 function retryCommand(run) {
   if (run.state !== "failed") throw new Error("Only a stopped video can be tried again.");
   if (!run.coreId) throw new Error("This video never started. Start a new video for this property.");
@@ -350,4 +356,4 @@ function cleanSlot(slot) {
   return s;
 }
 
-module.exports = { retryCommand, cleanCraft, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, VIDEO_LIMIT_USD, CLAUDE_MODELS, cleanModel, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };
+module.exports = { viewCommand, retryCommand, cleanCraft, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, VIDEO_LIMIT_USD, CLAUDE_MODELS, cleanModel, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };

@@ -21,7 +21,7 @@ const { keyMatches, cleanBatch, cleanFeedback, undelivered } = require("../../se
 const { storage, cleanCut, uploadUrl, viewUrl, storedBytes, putObject } = require("../../services/studio/cutStorage");
 const { cleanProposals, decideProblem, canSee, cleanDecision, undeliveredDecisions } = require("../../services/studio/proposalService");
 const { cleanProblem, cleanReply, problemView } = require("../../services/studio/problemService");
-const { retryCommand, newRunId, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, cleanModel, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage } = require("../../services/studio/runService");
+const { viewCommand, retryCommand, newRunId, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, cleanModel, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage } = require("../../services/studio/runService");
 
 const KEY = /^[a-z][a-z0-9-]{1,30}$/;
 
@@ -352,6 +352,7 @@ const gateForRun = runStep(gateCommand);
 const generateForRun = runStep(generateCommand);
 const remakeForRun = runStep(remakeCommand);
 const retryForRun = runStep(retryCommand);
+const viewForRun = runStep(viewCommand);
 const framesForRun = runStep(framesCommand);
 const clipForRun = runStep(clipCommand);
 const buildForRun = runStep(buildCommand);
@@ -386,6 +387,9 @@ const imageForRun = catchAsyncError(async (req, res, next) => {
   res.status(200).json({ success: true, run: await runView(run.toObject()) });
 });
 
+/** Steps that change no state and no frames: a saved length, pace and voice speed, or an added image. */
+const QUIET_STEPS = new Set(["craft", "image", "view"]);
+
 /**
  * POST /api/v1/studio/runs/poll  { updates, done, ready } with the x-studio-key header. The server
  * says what finished and collects what is waiting. A step stays waiting until it says it is done.
@@ -409,11 +413,15 @@ const pollRuns = catchAsyncError(async (req, res, next) => {
     // A person may have acted since: only the latest step's result moves the state on.
     const run = await StudioRun.findOne({ runId });
     if (!run) continue;
-    const waiting = run.commands.filter((c) => !c.doneAt).length;
+    const open = run.commands.filter((c) => !c.doneAt);
+    // A saved length or an added image moves nothing on: it never holds back the server's news.
+    const waiting = open.filter((c) => !QUIET_STEPS.has(c.type)).length;
     const { state, ...rest } = fields;
     const given = Object.fromEntries(Object.entries(rest).filter(([k, v]) => (Array.isArray(v) ? v.length : v !== null) || k === "error" || k === "remakePrice" || k === "todo"));
-    // With steps still waiting, this update is older than what the person sees.
-    if (waiting > 0) {
+    // Only a picture or clip decision still waiting shows the person something newer than this update (its
+    // approve or reject is set at once); any other waiting step leaves the server's frames and clips as sent.
+    // Before, any waiting step kept stale frames, so a storyboard could show nothing to approve.
+    if (open.some((c) => c.type === "clip")) {
       delete given.clips;
       delete given.frames;
     }
@@ -579,4 +587,4 @@ const syncVideos = catchAsyncError(async (req, res, next) => {
   res.status(200).json({ success: true, stored: rows.length, feedback: undelivered(pending), decisions });
 });
 
-module.exports = { retryForRun, me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, importInterview, updateQuestions, listVideos, addVideoFeedback, syncVideos, requireSyncKey, cutLink, confirmCut, listProposals, decideStudioProposal, listRuns, startRun, setRunModel, pickForRun, gateForRun, generateForRun, framesForRun, remakeForRun, clipForRun, buildForRun, cutForRun, ideaForRun, craftForRun, hookForRun, voForRun, shotForRun, imageForRun, pollRuns, fileLink, confirmFile, listProblems, reportProblem, resolveProblem };
+module.exports = { viewForRun, retryForRun, me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, importInterview, updateQuestions, listVideos, addVideoFeedback, syncVideos, requireSyncKey, cutLink, confirmCut, listProposals, decideStudioProposal, listRuns, startRun, setRunModel, pickForRun, gateForRun, generateForRun, framesForRun, remakeForRun, clipForRun, buildForRun, cutForRun, ideaForRun, craftForRun, hookForRun, voForRun, shotForRun, imageForRun, pollRuns, fileLink, confirmFile, listProblems, reportProblem, resolveProblem };
