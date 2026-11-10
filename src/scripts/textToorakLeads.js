@@ -2,11 +2,10 @@
 //
 // One-off, run by hand on the Render shell: text the Toorak leads (config/toorakForms.js) that never got
 // the automatic intro text, because they came in before it was switched on. They get the very same text as
-// the automatic one (TOORAK_TEMPLATES in services/leads/facebookIntroText.js, Prajwal's wording): the home
-// by address with the sale day until that home's sale starts, or the financing text with the advisor link.
+// the automatic one (services/vtext/firstLeadText.js since 10 Nov 2026): "Hi {first name} - this is Maya
+// from Vihara. Are you there? Reply STOP to opt out."
 //
-// Who is skipped (reason printed): test leads, disqualified leads, no first name, no valid US number, a
-// property form not in config/toorakForms.js, admin stopped contact, opted out, bad number, a second lead
+// Who is skipped (reason printed): test leads, disqualified leads, no first name, no valid US number, admin stopped contact, opted out, bad number, a second lead
 // with the same number, and any lead or number that already got an intro text (Toorak or not) or any other
 // text from us. So nobody we are already texting gets a first text again.
 //

@@ -3,42 +3,23 @@ const assert = require("node:assert/strict");
 const { renderFormText, formatAuctionDate, FORM_KEYS, templateKeyFor } = require("./formIntroTexts");
 const { maybeSendFormIntroText, formTextEnabled } = require("./vtextFormIntroService");
 
-// ── Wording (Prajwal, 6 Nov 2026) ────────────────────────────────────────────
+// ── Wording (one first text for every lead, 10 Nov 2026) ─────────────────────
 
-test("every text starts as Maya and ends with the STOP line", () => {
-  const values = { name: "Steve Rogers", property_short: "449 Georgia St", page_title: "Spring Auction", auction_date: "Sat, Nov 15" };
+test("every form sends the same first text", () => {
   for (const form of FORM_KEYS) {
-    const { text } = renderFormText(form, values);
-    assert.ok(text.startsWith("Hi Steve, it's Maya, Vihara's AI assistant. "), form);
-    assert.ok(text.endsWith(" Reply STOP to opt out."), form);
+    assert.equal(renderFormText(form, { name: "Steve Rogers" }).text, "Hi Steve - this is Maya from Vihara. Are you there? Reply STOP to opt out.", form);
   }
 });
 
-test("each form's exact text", () => {
-  const v = { name: "Steve Rogers", property_short: "449 Georgia St", page_title: "Spring Auction", auction_date: "Sat, Nov 15" };
-  const t = (form) => renderFormText(form, v).text;
-  assert.equal(t("dealFinancing"), "Hi Steve, it's Maya, Vihara's AI assistant. Thanks for asking about financing 449 Georgia St. Want a free 15 min call with an advisor? cal.com/vihara-ai-advisor Reply STOP to opt out.");
-  assert.equal(t("dealFinder"), "Hi Steve, it's Maya, Vihara's AI assistant. Thanks for using Deal Finder! I'll text you bank-owned homes that match. What area and budget are you aiming for? Reply STOP to opt out.");
-  assert.equal(t("norcal"), "Hi Steve, it's Maya, Vihara's AI assistant. Thanks for joining NorCal early access. I'll text you bank-owned deals there first. Which city are you looking in? Reply STOP to opt out.");
-  assert.equal(t("partner"), "Hi Steve, it's Maya, Vihara's AI assistant. Thanks for applying to the Vihara Partner Program. Want a quick 15 min call to walk through it? cal.com/vihara-ai-advisor Reply STOP to opt out.");
-  const list = "Hi Steve, it's Maya, Vihara's AI assistant. You're on our list. I'll text you bank-owned homes as they drop. What area and price range? Reply STOP to opt out.";
-  assert.equal(t("newDeals"), list);
-  assert.equal(t("buyerList"), list);
-  assert.equal(t("earlyAccess"), list);
-  assert.equal(t("landingPage"), "Hi Steve, it's Maya, Vihara's AI assistant. Thanks for your interest in Spring Auction. Any questions I can answer? Reply STOP to opt out.");
-  assert.equal(t("auctionRegistration"), "Hi Steve, it's Maya, Vihara's AI assistant. You're registered to bid on 449 Georgia St. Bidding is Sat, Nov 15. Questions? Just reply. Reply STOP to opt out.");
-  assert.equal(t("sell"), "Hi Steve, it's Maya, Vihara's AI assistant. Thanks for reaching out about selling your property. When's a good time for a quick call? Reply STOP to opt out.");
+test("no safe first name: \"Hi, this is Maya\" (never an email name)", () => {
+  assert.equal(renderFormText("sell", { name: "steve@mail.com" }).text, "Hi, this is Maya from Vihara. Are you there? Reply STOP to opt out.");
+  assert.equal(renderFormText("sell", {}).text, "Hi, this is Maya from Vihara. Are you there? Reply STOP to opt out.");
 });
 
-test("no safe first name: just \"Hi,\" (never an email name)", () => {
-  assert.ok(renderFormText("sell", { name: "steve@mail.com" }).text.startsWith("Hi, it's Maya"));
-  assert.ok(renderFormText("sell", {}).text.startsWith("Hi, it's Maya"));
-});
-
-test("a text that needs a property, page or date is skipped without it", () => {
-  assert.equal(renderFormText("dealFinancing", { name: "Steve" }).skip, "missing property_short");
-  assert.equal(renderFormText("auctionRegistration", { name: "Steve", property_short: "1 Main St" }).skip, "missing auction_date");
-  assert.equal(renderFormText("landingPage", { name: "Steve" }).skip, "missing page_title");
+test("no property, page or date is needed any more; an unknown form is skipped", () => {
+  assert.ok(renderFormText("dealFinancing", { name: "Steve" }).text);
+  assert.ok(renderFormText("auctionRegistration", { name: "Steve" }).text);
+  assert.ok(renderFormText("landingPage", { name: "Steve" }).text);
   assert.match(renderFormText("nope", {}).skip, /unknown form/);
 });
 
@@ -132,12 +113,10 @@ test("skips a number that already got a text, without an alert", async () => {
   assert.equal(calls.length + alerts.length, 0);
 });
 
-test("a missing value or a Vtext block alerts Slack", async () => {
-  await maybeSendFormIntroText({ form: "dealFinancing", leadType: "property", lead: lead(), name: "Steve" }, deps());
-  assert.equal(alerts.length, 1);
-  assert.match(alerts[0].fields.find((f) => f.label === "Why").value, /property_short/);
+test("a Vtext block alerts Slack", async () => {
   await maybeSendFormIntroText({ form: "partner", leadType: "partner", lead: lead(), name: "Steve" }, deps({ enqueueOutbound: async () => ({ blocked: true, reason: "opted out" }) }));
-  assert.equal(alerts.length, 2);
+  assert.equal(alerts.length, 1);
+  assert.match(alerts[0].fields.find((f) => f.label === "Why").value, /opted out/);
 });
 
 test("never throws", async () => {

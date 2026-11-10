@@ -1,8 +1,10 @@
 // services/vtext/vtextAutoSignupService.js
 //
-// Automated "Your Price" text: when someone submits the property auction page
-// form with a quoted price, they get a text that repeats the price and says
-// whether it is in range of the starting bid. Triggered from the signup (sendify-infra.md Phase 7, user-requested 2026-10-02).
+// Automated signup text: when someone submits the property auction page form
+// with a quoted price, they get the standard first text (firstLeadText.js:
+// "Hi {name} - this is Maya from Vihara. Are you there?"), then the follow-ups.
+// Until 10 Nov 2026 this repeated the price and said whether it was in range
+// of the starting bid (the "Signup text" templates, no longer read). Triggered from the signup (sendify-infra.md Phase 7, user-requested 2026-10-02).
 // Deliberately narrow in scope for now: property signups only, gated behind
 // its own env flag (independent of VTEXT_ENABLED's own on/off), off by
 // default so it doesn't fire for real traffic until explicitly turned on.
@@ -13,17 +15,14 @@
 // as before. This is a second, independent send through Vtext, using the
 // SAME sms-consent checkbox/basis Brevo's own automation already relies on
 // (lead.smsConsent) — not a new consent regime.
-const VtextTemplate = require("../../model/vtext/vtextTemplateModel");
 const { enqueueOutbound } = require("./vtextMessageService");
-const { renderTemplateForProperty, checkRendered } = require("./vtextTemplateService");
 const { startFollowUp } = require("./vtextFollowUpService");
+const { firstLeadText } = require("./firstLeadText");
+const { firstNameOf } = require("../../utils/firstName");
 const { getSettings, isConsentRequired } = require("./vtextSettingsService");
 const { maskPhone } = require("../../utils/maskPii");
 const { nextTextingTime } = require("../../utils/textingHours");
 const { toUsSmsNumber } = require("../../utils/usPhone");
-
-// The text is never sent without the price, street and city it names, or with a {{placeholder}} left in it.
-const QUOTE_REQUIRED = ["quote_price", "property_short", "city"];
 
 const AUTO_ENABLED = () => process.env.VTEXT_ENABLED === "true" && process.env.VTEXT_AUTO_SIGNUP_TEXT_ENABLED === "true";
 
@@ -57,32 +56,16 @@ async function maybeSendSignupQuoteText({ lead, property }) {
       console.warn(`[vtext auto-signup] lead ${lead._id} has no SMS consent, continuing because the consent check is OFF`);
     }
 
-    // The two texts differ by whether the quote reaches the starting bid. No quote
-    // (a property with no price slider) or no starting bid means there is nothing to compare.
+    // Only /deal sign-ups with a quoted price come this way (no price + needs financing goes to the
+    // dealFinancing form text instead). The follow-ups after this text still talk about the quote.
     const quote = Number(lead.quotePrice);
-    const startBid = Number(property.startBid);
     if (!(quote > 0)) {
       console.error(`[vtext auto-signup] SKIPPED lead ${lead._id} — no quoted price`);
       return;
     }
-    if (!(startBid > 0)) {
-      console.error(`[vtext auto-signup] SKIPPED lead ${lead._id} — property has no starting bid to compare with`);
-      return;
-    }
-    const role = quote >= startBid ? "quote_in_range" : "quote_short";
 
-    const template = await VtextTemplate.findOne({ autoSignupRole: role }).lean();
-    if (!template) {
-      console.error(`[vtext auto-signup] SKIPPED — no template has the role "${role}". Set one in the Vtext admin dashboard (Send tab -> Templates -> Edit -> "Signup text").`);
-      return;
-    }
-
-    const { body, values } = await renderTemplateForProperty(template._id, property._id, lead.fullName, { quotePrice: quote });
-    const renderProblem = checkRendered(template.body, body, values, QUOTE_REQUIRED);
-    if (renderProblem) {
-      console.error(`[vtext auto-signup] SKIPPED lead ${lead._id} — ${renderProblem}`);
-      return;
-    }
+    // The same first text every lead gets (firstLeadText.js, 10 Nov 2026), no longer the "Quote your price" templates.
+    const body = firstLeadText(firstNameOf(lead.fullName || ""));
 
     // Only 9 AM to 8 PM in the lead's time zone (Prajwal, 6 Nov 2026): a sign-up at night is texted at 9 AM.
     const hold = nextTextingTime(toUsSmsNumber(lead.phoneNormalized) || toUsSmsNumber(lead.phone) || "", new Date());
@@ -90,7 +73,7 @@ async function maybeSendSignupQuoteText({ lead, property }) {
     const { message, blocked, reason } = await enqueueOutbound({
       to: lead.phone,
       body,
-      origin: { kind: "automation", templateKey: "property-signup-quote", campaignId: template._id, propertyId: property._id },
+      origin: { kind: "automation", templateKey: "property-signup-quote", propertyId: property._id },
       contactName: lead.fullName,
       isReplyToInbound: false,
       scheduledFor: hold.waited ? hold.at : undefined,

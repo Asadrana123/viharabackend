@@ -36,7 +36,7 @@ test("uses the same text as the automatic Toorak intro (no catch-up wording)", a
   assert.equal(calls[0].body, renderIntro(toorak(), DAYTIME).text);
   assert.equal(
     calls[0].body,
-    "Hey Jane, it's Maya, Vihara's AI assistant. You asked about 2529-2531 E Monument St, Baltimore on Facebook. Still interested? It sells online on Sunday, Nov 15. Reply STOP to opt out."
+    "Hi Jane - this is Maya from Vihara. Are you there? Reply STOP to opt out."
   );
   assert.equal(calls[1].body, renderIntro(financing(), DAYTIME).text);
   assert.equal(calls[0].origin.templateKey, "toorak-intro");
@@ -84,15 +84,15 @@ test("skips leads already texted: the intro, the same number, or any other text 
   assert.equal(calls.length, 1);
 });
 
-test("an unknown property form, a missing name or a non-US number is skipped", async () => {
+test("a missing name or a non-US number is skipped; an unknown property form still gets the text", async () => {
   const leads = [
     toorak({ _id: "a", toorak: { kind: "property", key: "ml-nowhere" } }),
     toorak({ _id: "b", fullName: "", firstName: "" }),
     toorak({ _id: "c", phoneNormalized: "+917019236106" }),
   ];
   const out = await go(fakeDeps(leads).deps);
-  assert.equal(out.sendable.length, 0);
-  assert.equal(out.skipped.length, 3);
+  assert.deepEqual(out.sendable.map((s) => s.id), ["a"]);
+  assert.equal(out.skipped.length, 2);
 });
 
 test("--only and --limit narrow the run", async () => {

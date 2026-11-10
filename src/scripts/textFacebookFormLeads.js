@@ -3,8 +3,7 @@
 // One-off, run by hand: send the Facebook / Instagram form leads (Admin ->
 // Leads -> "Facebook Forms") one intro text through Vtext:
 //
-//   Hi {First_name}, this is Maya from Vihara. Got it: homes up to {price_range}.
-//   I'll text you bank-owned deals that fit first. Reply STOP to opt out.
+//   Hi {First_name} - this is Maya from Vihara. Are you there? Reply STOP to opt out.
 //
 // This script only QUEUES the texts (enqueueOutbound -> the Vtext route queue
 // in Redis). The Vtext workers running on the server pick them up and deliver
@@ -13,8 +12,7 @@
 //
 // Safe to run twice: each lead's message carries the key fb-intro-text-<leadId>,
 // and a lead (or phone number) that already has one is skipped.
-// A lead is skipped, with the reason printed, when it has no first name, no
-// price-range answer, no valid US number, was stopped by an admin, has opted
+// A lead is skipped, with the reason printed, when it has no first name, no valid US number, was stopped by an admin, has opted
 // out of texts, or shares a phone number with an earlier lead. Toorak leads are
 // never included (they get their own automatic text).
 //
@@ -99,11 +97,6 @@ async function run({ argv = process.argv.slice(2), clock = () => new Date(), gap
   log(`Facebook form leads: ${all.length} in the database. Consent check is ${isConsentRequired(settings) ? "ON (contacts without consent will be BLOCKED)" : "OFF (opt-outs and bad numbers still block)"}.`);
   log(`\n${sendable.length} to text${SEND ? "" : " (DRY RUN, nothing is written)"}:`);
   for (const s of sendable) log(`  [${s.id}] ${s.phone.slice(0, 2)}***${s.phone.slice(-4)}  ${s.text}`);
-
-  const labels = new Map();
-  for (const s of sendable) labels.set(s.price, (labels.get(s.price) || 0) + 1);
-  log(`\nDistinct price-range labels in these texts (wording is "homes up to <label>"):`);
-  for (const [label, n] of labels) log(`  ${n}x "${label}"${upToReadsWrong(label) ? "   <-- 'up to' may read wrong, please review" : ""}`);
 
   log(`\n${skipped.length} skipped:`);
   for (const s of skipped) log(`  [${s.id}] ${s.reason}`);

@@ -27,19 +27,13 @@ beforeEach(() => {
   console.log = () => {}; console.error = () => {};
 });
 
-test("renders the shared wording", () => {
-  assert.equal(renderIntro(lead()).text, "Hi John, this is Maya from Vihara. Got it: homes up to $300K. I’ll text you bank-owned deals that fit first. Reply STOP to opt out.");
-  assert.equal(renderIntro(lead({ fullName: "", firstName: "there", email: "a@b.com" })).skip, "no usable first name");
-  assert.equal(renderIntro(lead({ answers: [] })).skip, "no price-range answer");
-});
+const NEW_TEXT = "Hi John - this is Maya from Vihara. Are you there? Reply STOP to opt out.";
 
-test('an "Under $150K" label reads "homes under $150K", not "homes up to Under $150K"', () => {
-  const under = (label) => lead({ answers: [{ key: "price_range", question: "Price?", value: "p0", label }] });
-  assert.equal(renderIntro(under("Under $150K")).text, "Hi John, this is Maya from Vihara. Got it: homes under $150K. I’ll text you bank-owned deals that fit first. Reply STOP to opt out.");
-  assert.equal(renderIntro(under("under $200K")).text.includes("homes under $200K."), true);
-  assert.equal(renderIntro(under("$150K–$300K")).text.includes("homes up to $150K–$300K."), true); // other labels unchanged
-  assert.equal(script.upToReadsWrong("Under $150K"), false);
-  assert.equal(script.upToReadsWrong("$500K+"), true);
+test("renders the one first text every lead gets (no price answer needed)", () => {
+  assert.equal(renderIntro(lead()).text, NEW_TEXT);
+  assert.equal(renderIntro(lead({ answers: [] })).text, NEW_TEXT);
+  assert.equal(renderIntro(lead({ fullName: "", firstName: "there", email: "a@b.com" })).skip, "no usable first name");
+  assert.equal(script.TEMPLATE, "Hi {First_name} - this is Maya from Vihara. Are you there? Reply STOP to opt out.");
 });
 
 test("the script still exports the shared helpers", () => {
@@ -61,7 +55,7 @@ test("queues one text for a new consented lead", async () => {
   assert.equal(calls.length, 1);
   assert.equal(calls[0].to, "+14155550123");
   assert.equal(calls[0].idempotencyKey, "fb-intro-text-lead1");
-  assert.match(calls[0].body, /^Hi John, this is Maya/);
+  assert.equal(calls[0].body, NEW_TEXT);
   assert.deepEqual(calls[0].origin, { kind: "automation", templateKey: TEMPLATE_KEY, leadRef: { leadType: "facebookForm", leadId: "lead1" } });
 });
 
@@ -88,12 +82,11 @@ test("never throws: blocked, duplicate key, other errors", async () => {
 
 test("Slack alert only for leads somebody should look at", async () => {
   const run = (doc, over) => maybeSendFacebookIntroText({ doc, isNew: true }, deps(over));
-  await run(lead({ answers: [] }));                                  // no price answer -> alert
   await run(lead({ fullName: "", firstName: "there", email: "a@b.com" })); // no first name -> alert
   await run(lead(), { enqueueOutbound: async () => ({ message: { _id: "m" }, blocked: true, reason: "opted out" }) }); // blocked -> alert
   await run(lead(), { enqueueOutbound: async () => { throw new Error("redis down"); } }); // error -> alert
-  assert.equal(alerts.length, 4);
-  assert.deepEqual(alerts[0].fields.find((f) => f.label === "Why").value, "no price-range answer");
+  assert.equal(alerts.length, 3);
+  assert.deepEqual(alerts[0].fields.find((f) => f.label === "Why").value, "no usable first name");
   assert.match(alerts[0].fields.find((f) => f.label === "Phone").value, /0123$/); // full number: the alert is internal
   alerts.length = 0;
   await run(lead({ consent: false }));
@@ -104,7 +97,7 @@ test("Slack alert only for leads somebody should look at", async () => {
 });
 
 test("a failing Slack alert never breaks the send path", async () => {
-  await maybeSendFacebookIntroText({ doc: lead({ answers: [] }), isNew: true }, deps({ notify: async () => { throw new Error("slack down"); } }));
+  await maybeSendFacebookIntroText({ doc: lead({ fullName: "", firstName: "there", email: "a@b.com" }), isNew: true }, deps({ notify: async () => { throw new Error("slack down"); } }));
 });
 
 test("the consent switch decides: ON needs the form's consent, OFF texts every new lead", async () => {
@@ -122,7 +115,7 @@ test("the consent switch decides: ON needs the form's consent, OFF texts every n
 
 test("with the switch OFF the other skip rules still apply", async () => {
   const run = (over) => maybeSendFacebookIntroText({ doc: lead({ consent: false, consentSource: "", ...over }), isNew: true }, deps({ consentRequired: async () => false }));
-  await run({ answers: [] });
+  await run({ fullName: "", firstName: "there", email: "a@b.com" });
   await run({ callingStopped: true });
   await run({ phoneNormalized: "", phone: "" });
   assert.equal(calls.length, 0);
@@ -138,31 +131,12 @@ const financing = { key: "financing-v2", kind: "financing", known: true, propert
 
 const BEFORE_SALE = new Date("2026-11-03T15:00:00Z");
 
-test("Toorak property lead: names the home and the sale day, no link, no price answer needed", () => {
-  const r = renderIntro(toorakLead(baltimore), BEFORE_SALE);
-  assert.equal(r.text, "Hey John, it's Maya, Vihara's AI assistant. You asked about 2529-2531 E Monument St, Baltimore on Facebook. Still interested? It sells online on Sunday, Nov 15. Reply STOP to opt out.");
-  assert.equal(r.templateKey, TOORAK_TEMPLATE_KEY);
-});
-
-test("Toorak property lead: the sale sentence goes once that home's sale starts (11 AM local)", () => {
-  const nola = { ...baltimore, key: "ml-1983-law-st" };
-  // 11:30 AM Eastern = 10:30 AM Central: Baltimore's sale has started, New Orleans' hasn't.
-  const at = new Date("2026-11-15T16:30:00Z");
-  assert.equal(renderIntro(toorakLead(baltimore), at).text, "Hey John, it's Maya, Vihara's AI assistant. You asked about 2529-2531 E Monument St, Baltimore on Facebook. Still interested? Reply STOP to opt out.");
-  assert.match(renderIntro(toorakLead(nola), at).text, /1983 Law St, New Orleans on Facebook\. Still interested\? It sells online on Sunday, Nov 15\./);
-  assert.doesNotMatch(renderIntro(toorakLead(nola), new Date("2026-11-15T17:00:00Z")).text, /Nov 15/);
-});
-
-test("Toorak financing lead: asks the area and offers the advisor call", () => {
-  const r = renderIntro(toorakLead(financing), BEFORE_SALE);
-  assert.equal(r.text, "Hey John, it's Maya, Vihara's AI assistant. You asked about financing a home on Facebook. What area are you looking in? Or if you'd rather talk it through, a 15 min advisor call is no cost: cal.com/vihara-ai-advisor Reply STOP to opt out.");
-  assert.equal(r.templateKey, TOORAK_TEMPLATE_KEY);
-});
-
-test("Toorak edge cases: unknown property form and no first name are skipped; no link is fine", () => {
-  const unknown = renderIntro(toorakLead({ key: "unknown", kind: "property", known: false, listingUrl: "https://vihara.ai/auctions" }));
-  assert.match(unknown.skip, /not in config\/toorakForms\.js/);
-  assert.ok(renderIntro(toorakLead({ ...baltimore, listingUrl: "" }), BEFORE_SALE).text);
+test("Toorak leads get the same first text, under their own template key", () => {
+  for (const t of [baltimore, financing, { ...baltimore, key: "ml-1983-law-st" }, { key: "unknown", kind: "property", known: false }]) {
+    const r = renderIntro(toorakLead(t), BEFORE_SALE);
+    assert.equal(r.text, NEW_TEXT);
+    assert.equal(r.templateKey, TOORAK_TEMPLATE_KEY);
+  }
   assert.equal(renderIntro(toorakLead(baltimore, { fullName: "", firstName: "there", email: "a@b.com" })).skip, "no usable first name");
 });
 
@@ -181,8 +155,8 @@ test("Toorak follows the consent switch: ON needs the text box, OFF texts every 
   assert.equal(calls[0].origin.templateKey, TOORAK_TEMPLATE_KEY);
   assert.equal(calls[0].idempotencyKey, "fb-intro-text-lead1");
   assert.equal(calls[0].scheduledFor, undefined); // daytime: goes now
-  assert.match(calls[0].body, /2529-2531 E Monument St/);
-  assert.match(calls[1].body, /financing/);
+  assert.equal(calls[0].body, NEW_TEXT);
+  assert.equal(calls[1].body, NEW_TEXT);
 });
 
 test("other Facebook leads still follow the switch", async () => {
@@ -191,12 +165,12 @@ test("other Facebook leads still follow the switch", async () => {
   assert.equal(calls[0].scheduledFor, undefined);
 });
 
-test("a Toorak lead at night is held until 9 AM in its time zone, worded for then", async () => {
+test("a Toorak lead at night is held until 9 AM in its time zone", async () => {
   // 11 PM Pacific on Nov 14 -> 9 AM Pacific on Nov 15 (17:00Z), which is after Baltimore's sale started (16:00Z).
   await maybeSendFacebookIntroText({ doc: toorakLead(baltimore), isNew: true }, deps({ now: () => new Date("2026-11-15T07:00:00Z") }));
   assert.equal(calls.length, 1);
   assert.equal(calls[0].scheduledFor.toISOString(), "2026-11-15T17:00:00.000Z");
-  assert.doesNotMatch(calls[0].body, /Nov 15/);
+  assert.equal(calls[0].body, NEW_TEXT);
 });
 
 test("the sms_consent box counts as text consent on any form; other leads keep the old template key", async () => {
