@@ -3,31 +3,20 @@
 // The Facebook / Instagram form lead intro text: its wording and the rules for who gets it. Shared by
 // scripts/textFacebookFormLeads.js (one-off, by hand) and services/vtext/vtextFacebookIntroService.js
 // (automatic, on each new lead), so both agree on the text and on who is skipped.
-// The wording lives in TEMPLATE / TOORAK_TEMPLATES only. Change it there.
-//
-// Toorak leads (config/toorakForms.js) get their own wording (Prajwal's, 3 Nov 2026), since their
-// property forms ask no price question: a property form's lead hears about that home, with the sale
-// day until its sale starts (saleStartsAt); a financing form's lead gets the advisor call link. No
-// listing link in the first text: asking a question gets a reply, which keeps the line in good standing.
+// The wording is the one first text every lead gets (services/vtext/firstLeadText.js, 10 Nov 2026):
+// "Hi {First_name} - this is Maya from Vihara. Are you there? Reply STOP to opt out."
+// Toorak leads (config/toorakForms.js) get the same text but keep their own template key, so the
+// Toorak checks and counts still tell them apart.
 const { splitName } = require("./buyBox");
 const { toUsSmsNumber } = require("../../utils/usPhone");
-const { priceRangeOf } = require("./facebookPriceRange");
-const { toorakFormByKey } = require("../../config/toorakForms");
+const { firstLeadText } = require("../vtext/firstLeadText");
 
 const TEMPLATE_KEY = "facebook-form-intro";
-// The owner's exact wording, with the curly apostrophe.
-const TEMPLATE = "Hi {First_name}, this is Maya from Vihara. Got it: homes up to {price_range}. I’ll text you bank-owned deals that fit first. Reply STOP to opt out.";
+const TEMPLATE = firstLeadText("{First_name}");
 const keyFor = (leadId) => `fb-intro-text-${leadId}`;
 
 const TOORAK_TEMPLATE_KEY = "toorak-intro";
-// Prajwal's wording (toorak-texts-now.md, 3 Nov 2026), sale day moved from "this Saturday, Nov 7" to Sunday,
-// Nov 15 (5 Nov 2026). No clock time in the text, on purpose.
-const ADVISOR_LINK = "cal.com/vihara-ai-advisor";
-const TOORAK_TEMPLATES = {
-  property: "Hey {First_name}, it's Maya, Vihara's AI assistant. You asked about {address} on Facebook. Still interested? It sells online on Sunday, Nov 15. Reply STOP to opt out.",
-  propertyAfterSale: "Hey {First_name}, it's Maya, Vihara's AI assistant. You asked about {address} on Facebook. Still interested? Reply STOP to opt out.",
-  financing: `Hey {First_name}, it's Maya, Vihara's AI assistant. You asked about financing a home on Facebook. What area are you looking in? Or if you'd rather talk it through, a 15 min advisor call is no cost: ${ADVISOR_LINK} Reply STOP to opt out.`,
-};
+const TOORAK_TEMPLATES = { property: TEMPLATE, propertyAfterSale: TEMPLATE, financing: TEMPLATE };
 // The one-off "sale moved to Nov 15" update (services/leads/toorakSaleUpdateText.js). Prajwal (5 Nov 2026):
 // it counts as a first text, so a number that got it never gets the normal intro as well.
 const TOORAK_SALE_UPDATE_TEMPLATE_KEY = "toorak-nov15-update";
@@ -67,39 +56,12 @@ function upToReadsWrong(label) {
   return /[–—-]|\bto\b|under|below|less|up to|over|more|plus|\+|above|sure|any/i.test(label);
 }
 
-/**
- * A Toorak lead's text: the home by address (with the sale day until saleStartsAt), or the financing text.
- * A property form not in config/toorakForms.js is skipped (no address to name); the skip posts to Slack.
- */
-function renderToorakIntro(lead, first, now = new Date()) {
-  const { kind, key } = lead.toorak;
-  let template = TOORAK_TEMPLATES.financing;
-  let address = "";
-  if (kind === "property") {
-    const form = toorakFormByKey(key);
-    if (!form?.address) return { skip: "Toorak property form not in config/toorakForms.js (no address to name)" };
-    address = form.address;
-    const saleStarted = form.saleStartsAt && now >= new Date(form.saleStartsAt);
-    template = saleStarted ? TOORAK_TEMPLATES.propertyAfterSale : TOORAK_TEMPLATES.property;
-  }
-  const text = template.replace("{First_name}", () => first).replace("{address}", () => address);
-  if (/[{}]/.test(text)) return { skip: "unresolved placeholder in text" };
-  return { text, first, templateKey: TOORAK_TEMPLATE_KEY };
-}
-
-/** { text, first, templateKey } or { skip: reason } */
-function renderIntro(lead, now = new Date()) {
+/** { text, first, templateKey } or { skip: reason }. Same text for every lead; Toorak keeps its own key. */
+function renderIntro(lead) {
   const first = firstNameOf(lead);
   if (!first) return { skip: "no usable first name" };
-  if (lead.toorak) return renderToorakIntro(lead, first, now);
-  const price = priceRangeOf(lead);
-  if (!price) return { skip: "no price-range answer" };
-  const under = UNDER_LABEL.test(price);
-  const template = under ? TEMPLATE.replace("homes up to {price_range}", "homes {price_range}") : TEMPLATE;
-  const shown = under ? price.replace(/^under/i, "under") : price;
-  const text = template.replace("{First_name}", () => first).replace("{price_range}", () => shown);
-  if (/[{}]/.test(text)) return { skip: "unresolved placeholder in text" };
-  return { text, first, price, templateKey: TEMPLATE_KEY };
+  const text = firstLeadText(first);
+  return { text, first, templateKey: lead.toorak ? TOORAK_TEMPLATE_KEY : TEMPLATE_KEY };
 }
 
 /**

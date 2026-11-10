@@ -9,7 +9,7 @@
 //     ticked the SMS box on the form. Switch OFF: every new lead, ticked or not.
 //   - Only 9 AM to 8 PM in the lead's time zone (utils/textingHours.js); a lead at night is texted at 9 AM.
 //   - New leads only (callers don't call this for repeat sign-ups), one text per lead, once per number for
-//     each form (per property for the two texts that name one), and no text when the number already got an
+//     each form, and no text when the number already got an
 //     automatic text in the last 24 hours (e.g. the property quote text).
 //   - No follow-ups.
 // Vtext's own gate (canSend) still blocks opted-out contacts and bad numbers.
@@ -36,10 +36,8 @@ function formTextEnabled(form, env = process.env) {
 async function alreadyTexted(phone, form, now) {
   const contact = await VtextContact.findOne({ phoneE164: phone }).select("_id").lean();
   if (!contact) return null;
-  if (!FORM_TEXTS[form]?.perProperty) {
-    const same = await VtextMessage.exists({ contactId: contact._id, direction: "out", "origin.templateKey": templateKeyFor(form) });
-    if (same) return "this number already got this form's text";
-  }
+  const same = await VtextMessage.exists({ contactId: contact._id, direction: "out", "origin.templateKey": templateKeyFor(form) });
+  if (same) return "this number already got this form's text";
   const recent = await VtextMessage.exists({
     contactId: contact._id,
     direction: "out",

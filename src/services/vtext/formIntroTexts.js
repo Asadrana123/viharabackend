@@ -1,75 +1,38 @@
 // services/vtext/formIntroTexts.js
 //
-// The first text each website form sends through Vtext, word for word from Prajwal (6 Nov 2026).
-// Every text starts with "Maya, Vihara's AI assistant" and ends with "Reply STOP to opt out."
-// The general and financing texts link cal.com/vihara-ai-advisor. Change wording only with Prajwal.
+// The first text each website form sends through Vtext. Every form now sends the same text
+// (firstLeadText.js, 10 Nov 2026): "Hi {first name} - this is Maya from Vihara. Are you there? Reply STOP to opt out."
+// The per-form entries stay so Slack, the logs and the once-per-number check can still tell the forms apart.
 //
 // Pure: no database, no sending. vtextFormIntroService.js decides whether to send and queues the text.
-// The /deal cash path is not here: it keeps the "Quote your price" text (vtextAutoSignupService.js).
+// The /deal cash path is not here: vtextAutoSignupService.js sends the same text and starts its follow-ups.
 const { DateTime } = require("luxon");
 const { firstNameOf } = require("../../utils/firstName");
+const { firstLeadText } = require("./firstLeadText");
 
 const CAL_LINK = "cal.com/vihara-ai-advisor";
 
+const text = (v) => firstLeadText(v.first_name);
+
 /**
- * One entry per form. `needs` lists the values the text can't go out without.
- * `label` is what Slack and the logs call the form. `perProperty`: the text names a property, so a
- * number can get it again for a different property (otherwise once per number, ever).
+ * One entry per form. `needs` lists the values the text can't go out without (none now: the text only
+ * uses the first name, and goes out as "Hi, this is Maya..." without one).
+ * `label` is what Slack and the logs call the form. Each form's text goes to a number once, ever.
  */
 const FORM_TEXTS = {
-  dealFinancing: {
-    label: "/deal financing",
-    perProperty: true,
-    needs: ["property_short"],
-    text: (v) => `${hi(v)}, it's Maya, Vihara's AI assistant. Thanks for asking about financing ${v.property_short}. Want a free 15 min call with an advisor? ${CAL_LINK} Reply STOP to opt out.`,
-  },
-  dealFinder: {
-    label: "Deal Finder",
-    needs: [],
-    text: (v) => `${hi(v)}, it's Maya, Vihara's AI assistant. Thanks for using Deal Finder! I'll text you bank-owned homes that match. What area and budget are you aiming for? Reply STOP to opt out.`,
-  },
-  norcal: {
-    label: "NorCal early access",
-    needs: [],
-    text: (v) => `${hi(v)}, it's Maya, Vihara's AI assistant. Thanks for joining NorCal early access. I'll text you bank-owned deals there first. Which city are you looking in? Reply STOP to opt out.`,
-  },
-  partner: {
-    label: "Partner Program",
-    needs: [],
-    text: (v) => `${hi(v)}, it's Maya, Vihara's AI assistant. Thanks for applying to the Vihara Partner Program. Want a quick 15 min call to walk through it? ${CAL_LINK} Reply STOP to opt out.`,
-  },
-  // New Deals, Buyer List and Early Access share one text.
-  newDeals: { label: "New Deals", needs: [], text: (v) => onTheList(v) },
-  buyerList: { label: "Buyer List", needs: [], text: (v) => onTheList(v) },
-  earlyAccess: { label: "Early Access", needs: [], text: (v) => onTheList(v) },
-  landingPage: {
-    label: "/lp landing page",
-    needs: ["page_title"],
-    text: (v) => `${hi(v)}, it's Maya, Vihara's AI assistant. Thanks for your interest in ${v.page_title}. Any questions I can answer? Reply STOP to opt out.`,
-  },
-  auctionRegistration: {
-    label: "Auction registration",
-    perProperty: true,
-    needs: ["property_short", "auction_date"],
-    text: (v) => `${hi(v)}, it's Maya, Vihara's AI assistant. You're registered to bid on ${v.property_short}. Bidding is ${v.auction_date}. Questions? Just reply. Reply STOP to opt out.`,
-  },
-  sell: {
-    label: "Sell your property",
-    needs: [],
-    text: (v) => `${hi(v)}, it's Maya, Vihara's AI assistant. Thanks for reaching out about selling your property. When's a good time for a quick call? Reply STOP to opt out.`,
-  },
+  dealFinancing: { label: "/deal financing", needs: [], text },
+  dealFinder: { label: "Deal Finder", needs: [], text },
+  norcal: { label: "NorCal early access", needs: [], text },
+  partner: { label: "Partner Program", needs: [], text },
+  newDeals: { label: "New Deals", needs: [], text },
+  buyerList: { label: "Buyer List", needs: [], text },
+  earlyAccess: { label: "Early Access", needs: [], text },
+  landingPage: { label: "/lp landing page", needs: [], text },
+  auctionRegistration: { label: "Auction registration", needs: [], text },
+  sell: { label: "Sell your property", needs: [], text },
 };
 
 const FORM_KEYS = Object.keys(FORM_TEXTS);
-
-function onTheList(v) {
-  return `${hi(v)}, it's Maya, Vihara's AI assistant. You're on our list. I'll text you bank-owned homes as they drop. What area and price range? Reply STOP to opt out.`;
-}
-
-/** "Hi Steve", or just "Hi" when there is no safe first name (never "Hi there", never an email name). */
-function hi(v) {
-  return v.first_name ? `Hi ${v.first_name}` : "Hi";
-}
 
 /** "Sat, Nov 15", in the property's own time zone, so the date doesn't slip a day. */
 function formatAuctionDate(date, timezone = "America/New_York") {
@@ -81,7 +44,7 @@ function formatAuctionDate(date, timezone = "America/New_York") {
 /**
  * The text for one form, or why it can't be sent.
  * @param {string} form - a FORM_TEXTS key
- * @param {{ name?: string, property_short?: string, page_title?: string, auction_date?: string }} values
+ * @param {{ name?: string }} values
  * @returns {{ text?: string, skip?: string }}
  */
 function renderFormText(form, values = {}) {
