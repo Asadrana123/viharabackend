@@ -128,7 +128,7 @@ async function loadContactHistory(phoneKeys, emails) {
   const contacts = phones.length ? await VtextContact.find({ phoneE164: { $in: phones } }).select("phoneE164 optOut").lean() : [];
   const [messages, calls, emailEvents] = await Promise.all([
     contacts.length
-      ? VtextMessage.find({ contactId: { $in: contacts.map((c) => c._id) } }).select("contactId direction status createdAt origin").lean()
+      ? VtextMessage.find({ contactId: { $in: contacts.map((c) => c._id) } }).select("contactId direction status createdAt sentAt origin").lean()
       : [],
     phones.length
       ? CallLog.find({ phone: { $in: [...phones, ...phoneKeys] } }).select("phone startedAt createdAt durationSeconds endedReason transcript").lean()
