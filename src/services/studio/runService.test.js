@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot } = require("./runService");
+const { newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, soundCommand, cleanSlot } = require("./runService");
 
 const run = (over = {}) => ({ state: "concept-choice", requestedBy: "u1", requestedByName: "Dinesh", concepts: [{ id: "C1" }], hooks: [{ id: "H1" }], plan: { errors: [] }, ...over });
 
@@ -76,8 +76,20 @@ test("the build waits for the clips, and a cut needs words for a change", () => 
   assert.throws(() => buildCommand(run({ state: "clips" })), /not ready to build/);
   const cut = run({ state: "cut" });
   assert.equal(cutCommand(cut, { decision: "approve" }).state, "done");
-  assert.equal(cutCommand(cut, { decision: "revise", words: "0:14 fast" }).state, "revision");
+  assert.equal(cutCommand(cut, { decision: "revise", words: "0:14 fast", tags: ["pacing"] }).state, "revision");
+  assert.deepEqual(cutCommand(cut, { decision: "revise", words: "remove sfx", tags: ["music"] }).command.tags, ["music"]);
+  // Dinesh, 2026-11-11: a change names what it is about, so the server can record it.
+  assert.throws(() => cutCommand(cut, { decision: "revise", words: "remove sfx" }), /Choose what this is about/);
+  assert.throws(() => cutCommand(cut, { decision: "revise", words: "x", tags: ["vibes"] }), /not something that can change/);
   assert.throws(() => cutCommand(cut, { decision: "reject" }), /Say what/);
+});
+
+test("the sound effects are the editor's to turn off; a finished cut is built again (Dinesh, 2026-11-11)", () => {
+  assert.deepEqual(soundCommand(run({ state: "cut", coreId: "NO2508-V02" }), { sfx: false }), { command: { type: "sound", data: { sfx: false, rebuild: true } }, state: "building", sfx: false });
+  assert.equal(soundCommand(run({ state: "storyboard", coreId: "NO2508-V02" }), { sfx: false }).state, "storyboard");
+  assert.throws(() => soundCommand(run({ state: "building", coreId: "NO2508-V02" }), { sfx: true }), /Wait until/);
+  assert.throws(() => soundCommand(run({ state: "cut", coreId: "NO2508-V02" }), { sfx: "no" }), /on or off/);
+  assert.equal(cleanUpdate({ runId: "1793500000.000001", state: "cut", sfx: false }).fields.sfx, false);
 });
 
 test("a rejected clip is made again within the limit, and a cut's change can name its shots (D-046)", () => {

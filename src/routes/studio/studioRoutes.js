@@ -43,6 +43,7 @@ router.post("/runs/:id/cut", c.cutForRun);
 // D-047: the editor's own concept, craft, hook, voiceover lines, camera moves and images.
 router.post("/runs/:id/idea", c.ideaForRun);
 router.post("/runs/:id/craft", c.craftForRun);
+router.post("/runs/:id/sound", c.soundForRun);
 router.post("/runs/:id/hook", c.hookForRun);
 router.post("/runs/:id/vo", c.voForRun);
 router.post("/runs/:id/shot", c.shotForRun);

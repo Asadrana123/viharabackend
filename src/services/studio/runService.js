@@ -92,6 +92,7 @@ function cleanUpdate(u) {
       story: Array.isArray(u?.story) ? u.story.slice(0, 20).map((b) => ({ id: clip(b?.id, 40), role: clip(b?.role, 20), vo: clip(b?.vo, 800), shown: clip(b?.shown, 800), seconds: Number(b?.seconds) || 0 })) : [],
       photos: Array.isArray(u?.photos) ? u.photos.slice(0, 60).map((p) => ({ id: clip(p?.id, 40), kind: clip(p?.kind, 20), slot: clip(p?.slot, 90) })) : [],
       todo: Array.isArray(u?.todo) ? u.todo.slice(0, 40).map((t) => clip(t, 200)) : [],
+      sfx: typeof u?.sfx === "boolean" ? u.sfx : null,
     },
   };
 }
@@ -346,11 +347,31 @@ function cutCommand(run, body) {
   if (decision !== "approve" && !words) throw new Error("Say what should change, or why not.");
   const shots = Array.isArray(body?.shots) ? [...new Set(body.shots.map(String))] : [];
   if (shots.length && decision !== "revise") throw new Error("Shots to make again go with a change.");
+  // What the change is about, from the Creative OS's layers; a change or rejection names one, or ticks a shot.
+  const tags = Array.isArray(body?.tags) ? [...new Set(body.tags.map(String))] : [];
+  const unknownTag = tags.find((t) => !CUT_LAYERS.includes(t));
+  if (unknownTag) throw new Error(`"${unknownTag}" is not something that can change.`);
+  if (decision !== "approve" && !tags.length && !shots.length) throw new Error("Choose what this is about (voice, sound, captions...), or tick the shots to make again.");
   const unknown = shots.filter((s) => !run.clips?.some((c) => c.ref === s));
   if (unknown.length) throw new Error(`There is no clip ${unknown.join(", ")}.`);
-  const command = { type: "cut", decision, words: words.slice(0, MAX_WORDS), ...(shots.length ? { shots } : {}) };
+  const command = { type: "cut", decision, words: words.slice(0, MAX_WORDS), ...(shots.length ? { shots } : {}), ...(tags.length && decision !== "approve" ? { tags } : {}) };
   if (shots.length) return { command, state: "clips", clips: run.clips.map((c) => (shots.includes(c.ref) ? { ...c, state: "rejected", note: words.slice(0, 500) } : c)) };
   return { command, state: decision === "approve" ? "done" : decision === "reject" ? "rejected" : "revision" };
+}
+
+/** The layers a cut change can name, as the Creative OS records them (src/video/record.ts LAYERS). */
+const CUT_LAYERS = ["script", "voice", "music", "captions", "text", "pacing", "shot", "presenter", "accuracy", "cta"];
+
+/**
+ * The editor's sound effects on or off (Dinesh, 2026-11-11). A video with a cut is built again with the
+ * choice; before that it applies when the video is put together.
+ */
+function soundCommand(run, body) {
+  if (typeof body?.sfx !== "boolean") throw new Error("Turn the sound effects on or off.");
+  if (!run.coreId) throw new Error("This video has not started yet.");
+  if (["building", "generating", "done", "rejected"].includes(run.state)) throw new Error(run.state === "building" || run.state === "generating" ? "Wait until this step has finished, then change the sound effects." : "This video is finished.");
+  const rebuild = run.state === "cut";
+  return { command: { type: "sound", data: { sfx: body.sfx, rebuild } }, state: rebuild ? "building" : run.state, sfx: body.sfx };
 }
 
 function cleanSlot(slot) {
@@ -359,4 +380,4 @@ function cleanSlot(slot) {
   return s;
 }
 
-module.exports = { viewCommand, retryCommand, cleanCraft, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, VIDEO_LIMIT_USD, CLAUDE_MODELS, cleanModel, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };
+module.exports = { soundCommand, CUT_LAYERS, viewCommand, retryCommand, cleanCraft, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, VIDEO_LIMIT_USD, CLAUDE_MODELS, cleanModel, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };

@@ -21,7 +21,7 @@ const { keyMatches, cleanBatch, cleanFeedback, undelivered } = require("../../se
 const { storage, cleanCut, uploadUrl, viewUrl, storedBytes, putObject } = require("../../services/studio/cutStorage");
 const { cleanProposals, decideProblem, canSee, cleanDecision, undeliveredDecisions } = require("../../services/studio/proposalService");
 const { cleanProblem, cleanReply, problemView } = require("../../services/studio/problemService");
-const { viewCommand, retryCommand, newRunId, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, cleanModel, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage } = require("../../services/studio/runService");
+const { soundCommand, viewCommand, retryCommand, newRunId, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, cleanModel, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage } = require("../../services/studio/runService");
 
 const KEY = /^[a-z][a-z0-9-]{1,30}$/;
 
@@ -272,12 +272,12 @@ const decideStudioProposal = catchAsyncError(async (req, res, next) => {
 });
 
 const runView = async (r) => {
-  const { runId, propertyId, requestedByName, coreId, model, state, concepts, hooks, plan, error, frames, framesPrice, clips, cut, spent, costs, remakePrice, media, idea, craft, story, photos, todo, uploads, commands, updatedAt } = r;
+  const { runId, propertyId, requestedByName, coreId, model, state, concepts, hooks, plan, error, frames, framesPrice, clips, cut, spent, costs, remakePrice, media, idea, craft, story, photos, todo, uploads, commands, updatedAt, sfx } = r;
   const urls = Object.fromEntries(await Promise.all(Object.entries(media ?? {}).map(async ([slot, m]) => [slot, await viewUrl(m.key)])));
   // The person's steps the server has not finished yet, oldest first, so the page shows a click as sent and
   // keeps its button from being clicked again while it runs.
-  const pending = (commands ?? []).filter((c) => !c.doneAt).map((c) => ({ type: c.type, at: c.at }));
-  return { runId, propertyId, requestedByName, coreId, model: model ?? null, state, concepts, hooks, plan, error, frames: frames ?? [], framesPrice: framesPrice ?? 0, clips, cut, spent, costs: costs ?? null, remakePrice: remakePrice ?? null, urls, idea: idea ?? null, craft: craft ?? null, story: story ?? [], photos: photos ?? [], todo: todo ?? [], uploads: (uploads ?? []).map(({ name, kind, byName, at }) => ({ name, kind, byName, at })), pending, updatedAt: updatedAt ?? null };
+  const pending = (commands ?? []).filter((c) => !c.doneAt).map((c) => ({ type: c.type, at: c.at, ...(c.choice ? { choice: c.choice } : {}) }));
+  return { runId, propertyId, requestedByName, coreId, model: model ?? null, state, concepts, hooks, plan, error, frames: frames ?? [], framesPrice: framesPrice ?? 0, clips, cut, spent, costs: costs ?? null, remakePrice: remakePrice ?? null, urls, idea: idea ?? null, craft: craft ?? null, story: story ?? [], photos: photos ?? [], todo: todo ?? [], uploads: (uploads ?? []).map(({ name, kind, byName, at }) => ({ name, kind, byName, at })), pending, sfx: sfx !== false, updatedAt: updatedAt ?? null };
 };
 
 /** GET /api/v1/studio/runs - the videos in progress, newest first, and the properties ready for one. */
@@ -331,6 +331,7 @@ const runStep = (build) =>
     if (step.frames) run.frames = step.frames;
     if (step.idea) run.idea = step.idea;
     if (step.craft) run.craft = step.craft;
+    if (typeof step.sfx === "boolean") run.sfx = step.sfx;
     await run.save();
     res.status(200).json({ success: true, run: await runView(run.toObject()) });
   });
@@ -359,6 +360,7 @@ const framesForRun = runStep(framesCommand);
 const clipForRun = runStep(clipCommand);
 const buildForRun = runStep(buildCommand);
 const cutForRun = runStep(cutCommand);
+const soundForRun = runStep(soundCommand);
 // D-047: the editor's own concept, craft, hook, voiceover lines and camera moves.
 const ideaForRun = runStep(ideaCommand);
 const craftForRun = runStep(craftCommand);
@@ -445,7 +447,7 @@ const pollRuns = catchAsyncError(async (req, res, next) => {
     return { ...rest, url: await viewUrl(key) };
   };
   const commands = await Promise.all(
-    open.flatMap((r) => r.commands.filter((c) => !c.doneAt).map(async (c) => ({ id: String(c._id), runId: r.runId, propertyId: r.propertyId, type: c.type, what: c.what, choice: c.choice, decision: c.decision, words: c.words, ...(c.shots?.length ? { shots: c.shots } : {}), ...(c.data ? { data: await dataOf(c) } : {}), ...(r.model ? { model: r.model } : {}), byName: c.byName })))
+    open.flatMap((r) => r.commands.filter((c) => !c.doneAt).map(async (c) => ({ id: String(c._id), runId: r.runId, propertyId: r.propertyId, type: c.type, what: c.what, choice: c.choice, decision: c.decision, words: c.words, ...(c.shots?.length ? { shots: c.shots } : {}), ...(c.tags?.length ? { tags: c.tags } : {}), ...(c.data ? { data: await dataOf(c) } : {}), ...(r.model ? { model: r.model } : {}), byName: c.byName })))
   );
   res.status(200).json({ success: true, commands });
 });
@@ -589,4 +591,4 @@ const syncVideos = catchAsyncError(async (req, res, next) => {
   res.status(200).json({ success: true, stored: rows.length, feedback: undelivered(pending), decisions });
 });
 
-module.exports = { viewForRun, retryForRun, me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, importInterview, updateQuestions, listVideos, addVideoFeedback, syncVideos, requireSyncKey, cutLink, confirmCut, listProposals, decideStudioProposal, listRuns, startRun, setRunModel, pickForRun, gateForRun, generateForRun, framesForRun, remakeForRun, clipForRun, buildForRun, cutForRun, ideaForRun, craftForRun, hookForRun, voForRun, shotForRun, imageForRun, pollRuns, fileLink, confirmFile, listProblems, reportProblem, resolveProblem };
+module.exports = { soundForRun, viewForRun, retryForRun, me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, importInterview, updateQuestions, listVideos, addVideoFeedback, syncVideos, requireSyncKey, cutLink, confirmCut, listProposals, decideStudioProposal, listRuns, startRun, setRunModel, pickForRun, gateForRun, generateForRun, framesForRun, remakeForRun, clipForRun, buildForRun, cutForRun, ideaForRun, craftForRun, hookForRun, voForRun, shotForRun, imageForRun, pollRuns, fileLink, confirmFile, listProblems, reportProblem, resolveProblem };

@@ -10,13 +10,15 @@ const mongoose = require("mongoose");
 
 const commandSchema = new mongoose.Schema(
   {
-    type: { type: String, enum: ["open", "pick", "gate", "frames", "generate", "remake", "clip", "build", "cut", "idea", "craft", "hook", "vo", "shot", "image", "retry", "view"], required: true },
+    type: { type: String, enum: ["open", "pick", "gate", "frames", "generate", "remake", "clip", "build", "cut", "idea", "craft", "hook", "vo", "shot", "image", "retry", "view", "sound"], required: true },
     what: { type: String, default: null },
     choice: { type: String, default: null },
     decision: { type: String, default: null },
     words: { type: String, default: "" },
     // A cut revision's shots to make again (D-046).
     shots: { type: [String], default: undefined },
+    // What a cut revision is about (the Creative OS's layers: voice, music, captions...).
+    tags: { type: [String], default: undefined },
     // D-047: the editor's own hook, voiceover lines, camera move, craft or uploaded image, as checked.
     data: { type: mongoose.Schema.Types.Mixed, default: undefined },
     byName: { type: String, required: true },
@@ -63,6 +65,8 @@ const runSchema = new mongoose.Schema(
     photos: { type: [mongoose.Schema.Types.Mixed], default: [] },
     todo: { type: [String], default: [] },
     uploads: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    // The editor's sound effects (whooshes, the CTA click): on unless they turned them off.
+    sfx: { type: Boolean, default: true },
     // The stuck error last reported to the Problems page, so it is reported once.
     stuckReported: { type: String, default: null },
     commands: { type: [commandSchema], default: [] },
