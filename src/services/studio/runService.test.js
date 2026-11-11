@@ -48,7 +48,7 @@ test("Gate A needs words for a change, and a plan with errors cannot be approved
   assert.equal(gateCommand(gate, { decision: "approve" }).state, "approved");
   assert.deepEqual(gateCommand(gate, { decision: "revise", words: " Shorter hook " }), { command: { type: "gate", decision: "revise", words: "Shorter hook" }, state: "package" });
   assert.throws(() => gateCommand(gate, { decision: "reject" }), /Say what/);
-  assert.throws(() => gateCommand(run(), { decision: "approve" }), /not waiting for Gate A/);
+  assert.throws(() => gateCommand(run(), { decision: "approve" }), /not waiting for its plan to be approved/);
   assert.throws(() => gateCommand(run({ state: "gate-a", plan: { errors: ["bad"] } }), { decision: "approve" }), /errors/);
 });
 

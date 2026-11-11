@@ -186,7 +186,7 @@ function hookCommand(run, body) {
 
 /** The editor's own voiceover lines at the plan (D-047). Figures stay in {curly braces}. */
 function voCommand(run, body) {
-  if (run.state !== "gate-a") throw new Error("This video is not at its plan now.");
+  if (run.state !== "gate-a") throw new Error("This video is not waiting for its plan to be approved now, so its lines can no longer change here.");
   const lines = body?.lines && typeof body.lines === "object" ? body.lines : {};
   const story = run.story ?? [];
   const changed = Object.fromEntries(
@@ -194,8 +194,8 @@ function voCommand(run, body) {
       .map(([id, v]) => [String(id), String(v ?? "").trim()])
       .filter(([id, v]) => v && story.some((b) => b.id === id && b.vo !== v))
   );
-  if (!Object.keys(changed).length) throw new Error("Change at least one line.");
-  if (Object.values(changed).some((v) => v.length > 600)) throw new Error("Keep each line under 600 characters.");
+  if (!Object.keys(changed).length) throw new Error("Nothing was changed. Edit at least one of Maya's lines, then save.");
+  if (Object.values(changed).some((v) => v.length > 600)) throw new Error("One of Maya's lines is over 600 characters. Keep each to what she can say in that card's time.");
   return { command: { type: "vo", data: { lines: changed } }, state: "updating" };
 }
 
@@ -213,7 +213,7 @@ function shotCommand(run, body) {
   const option = camera ? frame.options.find((o) => o.id === camera) : null;
   if (camera && !option) throw new Error(`"${camera}" does not fit this shot.`);
   if (image && !(run.photos ?? []).some((p) => p.id === image)) throw new Error(`${image} is not an approved photograph of this property.`);
-  if (option && (run.spent ?? 0) + option.usd > VIDEO_LIMIT_USD) throw new Error(`This is over the ${VIDEO_LIMIT_USD} limit for a video. Choose a free move.`);
+  if (option && (run.spent ?? 0) + option.usd > VIDEO_LIMIT_USD) throw new Error(`This move is over the $${VIDEO_LIMIT_USD} limit for a video. Choose a free move (the ones without a price).`);
   return { command: { type: "shot", choice: ref, data: { ...(camera ? { camera } : {}), ...(image ? { image } : {}) } }, state: "updating" };
 }
 
@@ -258,7 +258,7 @@ function pickCommand(run, body) {
 function gateCommand(run, body) {
   const decision = String(body?.decision ?? "");
   if (!["approve", "revise", "reject"].includes(decision)) throw new Error("Approve, ask for a change, or reject.");
-  if (run.state !== "gate-a") throw new Error("This video is not waiting for Gate A now.");
+  if (run.state !== "gate-a") throw new Error("This video is not waiting for its plan to be approved now.");
   const words = String(body?.words ?? "").trim();
   if (decision !== "approve" && !words) throw new Error("Say what should change, or why not.");
   if (words.length > MAX_WORDS) throw new Error(`At most ${MAX_WORDS} characters.`);

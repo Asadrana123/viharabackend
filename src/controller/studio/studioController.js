@@ -319,7 +319,9 @@ const runStep = (build) =>
     try {
       step = build(run, req.body);
     } catch (e) {
-      return next(new ErrorHandler(e.message, 400));
+      // A click on a step the video has moved past: the page is out of date, so say how to see where it is.
+      const stale = /is not waiting for|not ready to build|has no cut waiting|has not started yet|Only a stopped video/i.test(e.message);
+      return next(new ErrorHandler(stale ? `${e.message} The page may be out of date: click Refresh from server to see where the video is.` : e.message, 400));
     }
     const { name } = await decider(req.user);
     run.commands.push({ ...step.command, byName: name });
