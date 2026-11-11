@@ -23,10 +23,22 @@ const CLAUDE = {
 };
 
 // Google's Gemini API list prices (paid tier, prompts up to 200K tokens). Only models whose price is known.
+// `from` lists a price that starts on a date (Google's introductory prices end on a set day); the call's own
+// date picks the price, so a call made in 2026 keeps its 2026 price.
+// gemini-3.8-flash: https://ai.google.dev/gemini-api/docs/pricing, checked 2026-11-11 (intro price until 2026-12-31).
 const GEMINI = {
+  "gemini-3.8-flash": { input: 0.75, output: 3.75, from: [{ date: "2027-01-01", input: 1.5, output: 7.5 }] },
   "gemini-2.5-flash": { input: 0.3, output: 2.5 },
   "gemini-embedding-001": { input: 0.15, output: 0 },
 };
+
+/** The price that applies on `at`: the latest `from` entry already started, else the base price. Pure. */
+function priceOn(p, at = new Date()) {
+  if (!p?.from?.length) return p;
+  const t = new Date(at).getTime();
+  const started = p.from.filter((f) => Date.parse(`${f.date}T00:00:00Z`) <= t).sort((a, b) => a.date.localeCompare(b.date)).at(-1);
+  return started ? { ...p, input: started.input, output: started.output } : p;
+}
 
 const WEB_SEARCH_USD = 10 / 1000;
 
@@ -78,14 +90,14 @@ function claudeCost(model, usage = {}) {
   return { usd: round6(usd), ...tokens };
 }
 
-/** Cost of one Gemini response from its usageMetadata. */
-function geminiCost(model, meta = {}) {
+/** Cost of one Gemini response from its usageMetadata, at the price on `at` (the call's time, default now). */
+function geminiCost(model, meta = {}, at = new Date()) {
   const inputTokens = meta.promptTokenCount || 0;
   // Thinking tokens are billed as output.
   const outputTokens = (meta.candidatesTokenCount || 0) + (meta.thoughtsTokenCount || 0);
-  const p = geminiPrice(model);
+  const p = priceOn(geminiPrice(model), at);
   if (!p) return { usd: null, inputTokens, outputTokens };
   return { usd: round6((inputTokens * p.input + outputTokens * p.output) / 1e6), inputTokens, outputTokens };
 }
 
-module.exports = { claudePrice, geminiPrice, claudeCost, geminiCost, toolName, WEB_SEARCH_USD };
+module.exports = { claudePrice, geminiPrice, claudeCost, geminiCost, priceOn, toolName, WEB_SEARCH_USD };

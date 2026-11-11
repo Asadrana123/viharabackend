@@ -46,6 +46,7 @@ const FEATURES = {
   "comment-replies": { label: "Replies to social comments", about: "The AI drafts replies to comments on our social posts", group: "leads" },
   "vtext-replies": { label: "Text message replies", about: "The AI drafts replies to people who text us", group: "leads" },
   "vtext-knowledge": { label: "Text message lookups", about: "The AI rewrites a texted question to find the right answer", group: "leads" },
+  "vtext-home-search": { label: "Text message home search", about: "The AI reads a texted question for the homes they want (price, place, beds)", group: "leads" },
   "copy-generation": { label: "Ad text writer", about: "The AI writes ad text in the Marketing Engine", group: "creative" },
   "property-description": { label: "Property descriptions", about: "The AI writes the description of a new property", group: "admin" },
   "design-studio": { label: "Design Studio", about: "The AI designs website pages when an admin asks", group: "design" },

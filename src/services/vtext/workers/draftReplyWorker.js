@@ -89,10 +89,10 @@ async function processDraftReplyJob(job) {
     if (!check.ok) {
       console.warn(`[vtext guard] reply replaced, it contained amount(s) the AI was not given: ${check.unsupported.join(", ")}`);
       guard = { replaced: true, amounts: check.unsupported, originalReply: draft.reply };
-      draft = { reply: SAFE_HANDOFF, needsHuman: true, topic: draft.quotedPrice ? draft.topic : "amount to check" }; // a quoted price stays the topic
+      draft = { reply: SAFE_HANDOFF, needsHuman: true, topic: draft.quotedPrice ? draft.topic : "amount to check", bestTime: draft.bestTime }; // a quoted price stays the topic
     }
   }
-  const { reply: body, needsHuman, topic } = draft;
+  const { reply: body, needsHuman, topic, bestTime } = draft;
 
   const message = await createDraftReply({
     contactId,
@@ -104,6 +104,7 @@ async function processDraftReplyJob(job) {
     model: MODEL_NAME,
     needsHuman,
     topic,
+    bestTime,
     sources: knowledge?.sources,
     retrieval: knowledge?.retrieval,
     guard,
@@ -118,7 +119,9 @@ async function processDraftReplyJob(job) {
   }
 
   if (needsHuman) {
-    await VtextConversation.updateOne({ _id: conversationId }, { $set: { needsHuman: true } });
+    // The reminder clock (vtextNeedsHumanReminder.js) starts when the flag goes on, not on every later flagged text.
+    await VtextConversation.updateOne({ _id: conversationId, needsHuman: { $ne: true } }, { $set: { needsHumanAt: new Date(), needsHumanReminders: 0 } });
+    await VtextConversation.updateOne({ _id: conversationId }, { $set: { needsHuman: true, ...(bestTime ? { bestTimeToReach: bestTime } : {}) } });
     await publishEvent({ type: "message.updated", conversationId: String(conversationId), contactId: String(contactId) });
 
     // A reply sent automatically already posted one combined Slack message (vtextAlertService.notifyAiReplySent),
@@ -134,6 +137,7 @@ async function processDraftReplyJob(job) {
           { label: "Phone", value: contact.phoneE164 },
           { label: "Property", value: propertyContext?.property_name || propertyContext?.property_address },
           { label: "Topic", value: topic },
+          { label: "Best time to reach them", value: bestTime || undefined },
           { label: "Status", value: "Draft waiting for approval, nothing sent yet" },
           { label: "Question", value: clip(inboundMessage.body), wide: true },
           { label: "AI draft", value: clip(body), wide: true },

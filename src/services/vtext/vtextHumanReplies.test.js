@@ -82,6 +82,49 @@ test("the prompt asks for a person texting, not a chatbot", () => {
   assert.doesNotMatch(p, /1 to 3 sentences/);
 });
 
+test("confused: 'Does that make sense?', not a sales question; register: the FAQ page; hand-off asks a good time", () => {
+  const p = buildPrompt(args);
+  assert.match(p, /end with "Does that make sense\?" or an offer of help\. Never a sales question then/);
+  assert.match(p, /our FAQ page, https:\/\/www\.vihara\.ai\/faqs/);
+  assert.match(p, /What's a good time to call or text you\?/);
+  assert.match(p, /"bestTime"/);
+});
+
+test("the lead's own home also carries auction type, occupancy, size, year, HOA and taxes", () => {
+  const { propertyFacts } = require("./vtextKnowledgeService");
+  const f = propertyFacts({ street: "401 Rensselaer Ave", startBid: 25000, onlineOrInPerson: "Online", occupancyStatus: "Occupied", squareFootage: 2048, yearBuilt: 1918, monthlyHOADues: 0, investmentData: { taxData: { annualPropertyTax: 3644 } } });
+  assert.equal(f.property_price, "$25,000");
+  assert.equal(f["Auction type"], "Online auction");
+  assert.equal(f.Occupancy, "Occupied");
+  assert.equal(f["Square feet"], "2,048");
+  assert.equal(f["Year built"], "1918");
+  assert.equal(f["Monthly HOA"], "none");
+  assert.equal(f["Annual property tax"], "$3,644");
+  const bare = propertyFacts({ street: "1 A St" });
+  assert.equal(bare.Occupancy, undefined); // a missing field is left out, never guessed
+  assert.equal(bare["Annual property tax"], undefined);
+});
+
+test("the good-time question is asked once per conversation, not on every hand-off", () => {
+  const asked = buildPrompt({ ...args, messages: [{ direction: "out", body: "I'll have someone reach out. What's a good time to call or text you?" }, { direction: "in", body: "taxes?" }], replyToBody: "taxes?" });
+  assert.match(asked, /You already asked them for a good time to call or text in this conversation\. Do NOT ask again/);
+  assert.doesNotMatch(asked, /ask once when suits them/);
+  const fresh = buildPrompt(args);
+  assert.match(fresh, /ask once when suits them/);
+});
+
+test("a time they give to be called or texted goes to the team and is kept", () => {
+  const d = parseModelOutput(JSON.stringify({ reply: "Got it, after 5 works. I'll let the team know.", needsHuman: false, topic: "", bestTime: "after 5pm" }), "after 5pm is good");
+  assert.equal(d.needsHuman, true);
+  assert.equal(d.bestTime, "after 5pm");
+  assert.equal(d.topic, "wants a call or text");
+  const kept = parseModelOutput(JSON.stringify({ reply: "Got it.", needsHuman: true, topic: "viewing the house", bestTime: "tomorrow morning" }), "tomorrow morning");
+  assert.equal(kept.topic, "viewing the house");
+  const none = parseModelOutput(JSON.stringify({ reply: "It starts at $25k.", needsHuman: false, topic: "", bestTime: "" }), "how much");
+  assert.equal(none.bestTime, "");
+  assert.equal(none.needsHuman, false);
+});
+
 test("long dashes between words become commas; number ranges stay", () => {
   assert.equal(humanizeDashes("You can talk to the team though—would you like that?"), "You can talk to the team though, would you like that?");
   assert.equal(humanizeDashes("It's a 3 bed – great spot"), "It's a 3 bed, great spot");

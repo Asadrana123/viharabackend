@@ -18,6 +18,26 @@ const NorCalLead = require("../../model/leads/norCalLeadModel");
 const Product = require("../../model/property/productModel");
 const VtextConversation = require("../../model/vtext/vtextConversationModel");
 const { PRODUCT_TEMPLATE_FIELDS, resolvePropertyVariables } = require("./vtextTemplateService");
+
+// A few more everyday facts about the lead's own home, read straight from Mongo so they are answered even when the
+// knowledge search is slow or down (is it occupied? online? taxes?). All public listing fields (rag/propertyChunker.js
+// ALLOWED_FIELDS). Kept apart from the Send-tab template variables, which these are not.
+const EXTRA_FIELDS = "onlineOrInPerson occupancyStatus squareFootage yearBuilt monthlyHOADues investmentData.taxData.annualPropertyTax";
+const PROPERTY_FIELDS = `${PRODUCT_TEMPLATE_FIELDS} ${EXTRA_FIELDS}`;
+const usd = (n) => (typeof n === "number" && Number.isFinite(n) && n > 0 ? `$${Math.round(n).toLocaleString("en-US")}` : "");
+
+/** The facts the AI gets for one of the lead's homes: the template variables plus EXTRA_FIELDS, labelled. Pure. */
+function propertyFacts(product = {}) {
+  const extra = {
+    "Auction type": product.onlineOrInPerson ? `${product.onlineOrInPerson} auction` : "",
+    Occupancy: product.occupancyStatus || "",
+    "Square feet": typeof product.squareFootage === "number" && product.squareFootage > 0 ? Math.round(product.squareFootage).toLocaleString("en-US") : "",
+    "Year built": product.yearBuilt ? String(product.yearBuilt) : "",
+    "Monthly HOA": product.monthlyHOADues > 0 ? usd(product.monthlyHOADues) : product.monthlyHOADues === 0 ? "none" : "",
+    "Annual property tax": usd(product.investmentData?.taxData?.annualPropertyTax),
+  };
+  return { ...resolvePropertyVariables(product), ...Object.fromEntries(Object.entries(extra).filter(([, v]) => v)) };
+}
 const { embedQuery } = require("../rag/embeddingService");
 const { search } = require("../rag/qdrantService");
 const { sendAlertWithCooldown } = require("./vtextAlertService");
@@ -95,7 +115,7 @@ async function loadProperties(contact, conversationId, toorak = null) {
   }
   if (!bySlug.size) return [];
 
-  const products = await Product.find({ slug: { $in: [...bySlug.keys()] } }).select(PRODUCT_TEMPLATE_FIELDS).lean();
+  const products = await Product.find({ slug: { $in: [...bySlug.keys()] } }).select(PROPERTY_FIELDS).lean();
   const productBySlug = new Map(products.map((p) => [p.slug, p]));
 
   return [...bySlug.values()]
@@ -263,7 +283,7 @@ async function buildReplyKnowledge({ contact, messages, replyToBody, conversatio
     out.properties = properties.map((p) => ({
       slug: p.slug,
       name: p.product.productName || p.slug,
-      facts: resolvePropertyVariables(p.product),
+      facts: propertyFacts(p.product),
       quotePrice: p.quotePrice,
       current: p.current,
     }));
@@ -342,4 +362,4 @@ async function addOtherHomes(out, { homeSearchStep, ownSlugs, now }) {
   if (other.namedText) out.sources.push("catalog:named-homes");
 }
 
-module.exports = { isRagEnabled, buildReplyKnowledge, formatRetrieved, formatFaq, rewriteQuery };
+module.exports = { isRagEnabled, buildReplyKnowledge, formatRetrieved, formatFaq, rewriteQuery, propertyFacts };

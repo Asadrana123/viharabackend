@@ -16,6 +16,7 @@ const { recordGemini } = require("../usage/spendRecorder");
 const { resolvePropertyVariables, TEMPLATE_VARIABLES } = require("./vtextTemplateService");
 const { toorakReplyRules } = require("./vtextToorakReplyRules");
 const { amountsIn, plainNumbersIn } = require("./vtextReplyGuard"); // pure, requires nothing back
+const { getSiteUrl } = require("../../config/siteUrls");
 
 // e.g. "property_price" -> "Starting bid" — reusing the Send tab's own
 // variable labels (not raw snake_case keys) so the model actually
@@ -129,7 +130,13 @@ function otherHomesBlock(o) {
 // How Maya should sound: a real person from the team texting from their phone, not a chatbot or a help
 // desk. Senior's ask (2026-11-11): "it should feel like a human is texting them". Style only: every fact
 // and safety rule below still applies, and she still says she is Vihara's virtual assistant when asked.
-const HOW_TO_TEXT = `- Write like a friendly person from the team texting from their phone, not like a chatbot, an email or customer support. Usually 1 or 2 short sentences, often under 20 words. Never longer than needed.
+const FAQ_URL = `${getSiteUrl()}/faqs`;
+// Whether we already asked for a good time to call or text, in our own earlier messages (code-checked: the AI
+// asked on every hand-off otherwise, 7 times in one 20-text test).
+const ASKED_TIME = /good time to (call|text|reach)|time works best|best time to (call|reach|text)|what time (of day )?(usually )?works/i;
+const alreadyAskedTime = (messages) => (messages || []).some((m) => m.direction !== "in" && ASKED_TIME.test(m.body || ""));
+
+const howToText = ({ askedTime = false } = {}) => `- Write like a friendly person from the team texting from their phone, not like a chatbot, an email or customer support. Usually 1 or 2 short sentences, often under 20 words. Never longer than needed.
 - Casual and warm: contractions (it's, you're, that's, I'll), everyday words ("yep", "sure", "totally", "no worries", "sounds good") where they fit. Plain, kind words an older person would be comfortable with.
 - Match them: a short text gets a short reply; a chatty or warm text gets a warmer one. If they write "thank you dear", be warm back.
 - Don't repeat their question back, don't restate facts you already sent in this conversation, and don't reuse a sentence from your earlier messages. After the first time, call it "the house" or "the home", not the full address.
@@ -140,7 +147,13 @@ const HOW_TO_TEXT = `- Write like a friendly person from the team texting from t
 - When they answer our first text ("yes I'm here", "hi", "who is this?" aside), say hi back by first name if you have it and mention the home in a few words, then ask one easy question, for example "Hey Margaret! Thanks for getting back to me. Have you had a chance to look at the house on Rensselaer Ave?"
 - When they are wrapping up ("thanks", "thank you", "ok", "got it", "bye", "will do"), just reply short and warm with no question, for example "You're welcome! Text me anytime." or "Sounds good!".
 - If they say yes to something you offered: do it (send the link from the facts), or for someone from the team, say they'll reach out soon and set needsHuman true.
-- When you can't answer, hand it over the way a person would, not like a form: "Good question, let me check with the team and get back to you." or "I'll have someone from our team text you about that." Never "a team member will follow up with you shortly".
+- When they ask what something means, say they don't understand, or say they're new to this, explain it simply and end with "Does that make sense?" or an offer of help. Never a sales question then (cash or finance, living or renting, budget). Sales questions only once they sound like they're following and interested.
+- When you can't answer, hand it over the way a person would, not like a form. Never "a team member will follow up with you shortly".
+${askedTime
+    ? `- You already asked them for a good time to call or text in this conversation. Do NOT ask again. If they gave one, say someone will reach out then; if not, just say someone from the team will reach out.`
+    : `- When you hand it over, ask once when suits them: "Good question, I'll have someone from our team reach out about that. What's a good time to call or text you?"`}
+- When they give a time for us to call or text them ("after 5", "tomorrow morning", "anytime"), confirm it in a few words ("Got it, after 5 works. I'll let the team know.") and set needsHuman true.
+- "How do I register?", "How do I sign up?", "How does it work, step by step?": one short line pointing them to our FAQ page, ${FAQ_URL}, for example "It only takes a few minutes, the steps are on our FAQ page: ${FAQ_URL}". Don't list the steps in the text.
 - Common worries get a short honest answer, not a hand-off (use only what is written here and in the facts):
   "What's the catch?", "Why so cheap?", "Is this a scam?", "Is this legit?": these are bank-owned and distressed homes sold at auction, that's why prices start low, and everything is on the public listing they can look at. Offer the link.
   "I've never bought at auction", "How does this work?": no worries, it's simpler than it sounds; they register on the home's page and bid while the auction is open, and someone from the team can walk them through it. Ask if they'd like that.
@@ -189,7 +202,7 @@ ${severalProperties ? (hasCurrentProperty
   return `You are replying on behalf of Vihara, a real-estate auction company, to a text conversation with a prospect named ${contact?.name || "this contact"}.
 
 How to write (this matters as much as the facts):
-${HOW_TO_TEXT}
+${howToText({ askedTime: alreadyAskedTime(earlierHistory) })}
 
 Rules:
 - If a fact below answers the question (e.g. a price, address, bed/bath count), state it directly and confidently — don't defer to "a team member" for something you were already given.
@@ -208,6 +221,7 @@ Respond with a JSON object and nothing else, with exactly these fields:
 - "reply": the text message to send, as plain text.
 - "needsHuman": true only when your reply hands it to the team (the answer is NOT in the facts above, or they said yes to someone from the team reaching out). Otherwise false.
 - "topic": when needsHuman is true, two to five words naming what they asked about (for example "starting bid" or "auction date"). Otherwise an empty string.
+- "bestTime": a time they give in THIS message for us to call or text them, in their words ("after 5pm", "tomorrow morning", "anytime"). Otherwise an empty string.
 - "quotedPrice": the price in dollars that the contact offers or says they would pay in THIS message (for example 20000 for "I'd pay 20k for it"), as a number. Otherwise null. Not a budget for finding other homes ("anything under 200k?"), and not a price we told them.`;
 }
 
@@ -251,7 +265,7 @@ const money = (n) => `$${Math.round(n).toLocaleString("en-US")}`;
 const shortMoney = (n) => (n >= 1000 && n % 1000 === 0 ? `$${n / 1000}k` : money(n));
 
 /**
- * Turns the model's raw output into { reply, needsHuman, topic, quotedPrice }. Never throws.
+ * Turns the model's raw output into { reply, needsHuman, topic, quotedPrice, bestTime }. Never throws.
  * A quoted price (the AI's field, or found in their text) always goes to the team: needsHuman true, topic "quoted price $20k".
  * @param {string} raw - the model's output
  * @param {string} [replyToBody] - the customer's text, for the quoted-price check
@@ -262,12 +276,14 @@ function parseModelOutput(raw, replyToBody = "") {
   let needsHuman = false;
   let topic = "";
   let quotedPrice = null;
+  let bestTime = "";
   try {
     const parsed = JSON.parse(cleaned);
     if (parsed && typeof parsed.reply === "string" && parsed.reply.trim()) {
       reply = parsed.reply.trim();
       needsHuman = parsed.needsHuman === true;
       topic = typeof parsed.topic === "string" ? parsed.topic.trim().slice(0, 80) : "";
+      bestTime = typeof parsed.bestTime === "string" ? parsed.bestTime.trim().slice(0, 60) : "";
       const q = Number(parsed.quotedPrice);
       if (parsed.quotedPrice !== null && Number.isFinite(q) && q >= 1000) quotedPrice = Math.round(q);
     }
@@ -279,7 +295,12 @@ function parseModelOutput(raw, replyToBody = "") {
     needsHuman = true;
     topic = `quoted price ${shortMoney(quotedPrice)}`;
   }
-  return { reply: humanizeDashes(reply), needsHuman: needsHuman || looksLikeDeferral(reply), topic, quotedPrice };
+  // A time to call or text them means the team is to reach out: always for a person.
+  if (bestTime) {
+    needsHuman = true;
+    if (!topic) topic = "wants a call or text";
+  }
+  return { reply: humanizeDashes(reply), needsHuman: needsHuman || looksLikeDeferral(reply), topic, quotedPrice, bestTime };
 }
 
 /**
