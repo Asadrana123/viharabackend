@@ -136,6 +136,8 @@ const vtextMessageSchema = new mongoose.Schema(
       topic: { type: String },
       // A time the customer gave in the message this answers, for the team to call or text them ("after 5 pm").
       bestTime: { type: String },
+      // The language the customer texted in when it isn't English ("Spanish"); the AI replies in it and Slack says so.
+      language: { type: String },
       // What the AI looked up to write this (vtextKnowledgeService.js): the knowledge-base chunks it was given and how the search went.
       sources: { type: [String], default: undefined },
       retrieval: {

@@ -49,7 +49,7 @@ async function postReminder(conversation, which, now) {
   const [contact, lastIn, lastFlagged, product] = await Promise.all([
     VtextContact.findById(conversation.contactId).select("name phoneE164").lean(),
     VtextMessage.findOne({ conversationId: conversation._id, direction: "in" }).sort({ createdAt: -1 }).select("body").lean(),
-    VtextMessage.findOne({ conversationId: conversation._id, "aiDraft.needsHuman": true }).sort({ createdAt: -1 }).select("aiDraft.topic").lean(),
+    VtextMessage.findOne({ conversationId: conversation._id, "aiDraft.needsHuman": true }).sort({ createdAt: -1 }).select("aiDraft.topic aiDraft.language").lean(),
     conversation.propertyId ? Product.findById(conversation.propertyId).select("street city").lean() : null,
   ]);
   const waited = waitedWords(conversation.needsHumanAt, now);
@@ -63,6 +63,7 @@ async function postReminder(conversation, which, now) {
       { label: "Property", value: product ? [product.street, product.city].filter(Boolean).join(", ") : undefined },
       { label: "Topic", value: lastFlagged?.aiDraft?.topic },
       { label: "Best time to reach them", value: conversation.bestTimeToReach },
+      { label: "Language", value: lastFlagged?.aiDraft?.language ? `Texting in ${lastFlagged.aiDraft.language}` : undefined },
       { label: "Their last text", value: clip(lastIn?.body, 300), wide: true },
       { label: "What to do", value: "Text them from the Inbox, or click Mark handled if it's already done.", wide: true },
       { label: "Inbox", value: `<${inboxUrl(conversation._id)}|Open the conversation>`, wide: true },

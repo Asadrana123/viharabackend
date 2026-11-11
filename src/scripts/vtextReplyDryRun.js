@@ -83,6 +83,7 @@ async function main() {
     }
     console.log(`Reply:    ${draft ? draft.reply : '(no reply)'}`);
     if (draft) console.log(`Handoff:  ${draft.needsHuman ? `yes (${draft.topic || 'no topic'})` : 'no'}`);
+    if (draft?.language) console.log(`Language: ${draft.language}`);
     if (draft) history.push({ direction: 'out', body: draft.reply });
   }
 }

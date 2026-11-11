@@ -14,7 +14,7 @@ const { notifyAiReplySent } = require("./vtextAlertService");
  * deliberately does NOT touch the route queue (unlike enqueueOutbound).
  * @returns {Promise<object>} the created VtextMessage document
  */
-async function createDraftReply({ contactId, conversationId, lineId, channelType, inboundMessageId, body, model, needsHuman, topic, bestTime, sources, retrieval, guard }) {
+async function createDraftReply({ contactId, conversationId, lineId, channelType, inboundMessageId, body, model, needsHuman, topic, bestTime, language, sources, retrieval, guard }) {
   return VtextMessage.create({
     direction: "out",
     contactId,
@@ -27,7 +27,7 @@ async function createDraftReply({ contactId, conversationId, lineId, channelType
     ...(channelType === "twilio-sms" ? { channelPolicy: { mode: "only", channels: ["twilio-sms"] } } : {}),
     origin: { kind: "automation", templateKey: "ai-reply-draft", replyToMessageId: inboundMessageId },
     isReplyToInbound: true,
-    aiDraft: { approvalStatus: "pending", model, generatedAt: new Date(), needsHuman: !!needsHuman, topic: topic || undefined, bestTime: bestTime || undefined, sources: sources?.length ? sources : undefined, retrieval: retrieval || undefined, guard: guard || undefined },
+    aiDraft: { approvalStatus: "pending", model, generatedAt: new Date(), needsHuman: !!needsHuman, topic: topic || undefined, bestTime: bestTime || undefined, language: language || undefined, sources: sources?.length ? sources : undefined, retrieval: retrieval || undefined, guard: guard || undefined },
   });
 }
 

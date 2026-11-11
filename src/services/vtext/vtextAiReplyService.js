@@ -135,15 +135,33 @@ const FAQ_URL = `${getSiteUrl()}/faqs`;
 // asked on every hand-off otherwise, 7 times in one 20-text test).
 const ASKED_TIME = /good time to (call|text|reach)|time works best|best time to (call|reach|text)|what time (of day )?(usually )?works/i;
 const alreadyAskedTime = (messages) => (messages || []).some((m) => m.direction !== "in" && ASKED_TIME.test(m.body || ""));
+// "Are you thinking of living there or renting it out?" ended 9 of 50 test replies (edge-case test, 2026-11-11):
+// asked once per conversation, code-checked like the good-time question.
+const LIVE_OR_RENT = /(live|living|move|moving) (in )?there[^.?!]{0,40}(rent|renting)|(rent|renting) it out[^.?!]{0,40}(live|living)/i;
+const alreadyAskedLiveOrRent = (messages) => (messages || []).some((m) => m.direction !== "in" && LIVE_OR_RENT.test(m.body || ""));
 
-const howToText = ({ askedTime = false } = {}) => `- Write like a friendly person from the team texting from their phone, not like a chatbot, an email or customer support. Usually 1 or 2 short sentences, often under 20 words. Never longer than needed.
+/**
+ * Takes the live-or-rent question off the end of a reply when it was already asked in this conversation (the
+ * prompt says not to; this catches a slip). The rest of the reply stays; a reply that is only that question stays.
+ */
+function dropRepeatedLiveOrRent(reply, messages) {
+  const text = String(reply || "");
+  if (!alreadyAskedLiveOrRent(messages)) return text;
+  const sentences = text.match(/[^.?!]+[.?!]*\s*/g) || [text];
+  const kept = sentences.filter((s) => !(s.includes("?") && LIVE_OR_RENT.test(s)));
+  const out = kept.join("").trim();
+  return out || text;
+}
+
+const howToText = ({ askedTime = false, askedLiveOrRent = false } = {}) => `- Reply in the language they wrote in (Spanish gets Spanish), with the same rules.
+- Write like a friendly person from the team texting from their phone, not like a chatbot, an email or customer support. Usually 1 or 2 short sentences, often under 20 words. Never longer than needed.
 - Casual and warm: contractions (it's, you're, that's, I'll), everyday words ("yep", "sure", "totally", "no worries", "sounds good") where they fit. Plain, kind words an older person would be comfortable with.
 - Match them: a short text gets a short reply; a chatty or warm text gets a warmer one. If they write "thank you dear", be warm back.
 - Don't repeat their question back, don't restate facts you already sent in this conversation, and don't reuse a sentence from your earlier messages. After the first time, call it "the house" or "the home", not the full address.
 - Never use the long dash (— or –). People don't type it on a phone. Use a comma or a new sentence.
 - Numbers like a person texts them: "$25k" or "$25,000", "about $55k". Never more decimals than that.
 - Never write phrases a chatbot writes: "I'm here to help", "I am here to assist", "Great question", "I understand your concern", "Is there anything else I can help you with?", "Let me know if you have any other questions", "Feel free to reach out", "I hope this helps", "Certainly!", "Absolutely!". No "Dear Margaret", no sign-off, no exclamation mark on every sentence.
-- Keep the chat going: when you answer a question, end with ONE short, easy question that moves things forward, picked to fit (for example "Want me to send you the link?", "Are you thinking of living there or renting it out?", "Paying cash or planning to finance?", "What area are you looking in?", "What's your budget roughly?"). Only offer what you can do in a text: send a link or details, answer questions, or have someone from the team reach out. Don't ask a question you already asked, and skip it when the reply is already a question or when they are upset.
+- Keep the chat going: when you answer a question, end with ONE short, easy question that moves things forward, picked to fit (for example "Want me to send you the link?", ${askedLiveOrRent ? "" : '"Are you thinking of living there or renting it out?", '}"Paying cash or planning to finance?", "What area are you looking in?", "What's your budget roughly?"). Only offer what you can do in a text: send a link or details, answer questions, or have someone from the team reach out. Don't ask a question you already asked, and skip it when the reply is already a question or when they are upset. Ending with no question is fine too.${askedLiveOrRent ? "\n- You already asked if they'd live there or rent it out in this conversation. Do NOT ask it again in any wording: use another easy question or none." : ""}
 - When they answer our first text ("yes I'm here", "hi", "who is this?" aside), say hi back by first name if you have it and mention the home in a few words, then ask one easy question, for example "Hey Margaret! Thanks for getting back to me. Have you had a chance to look at the house on Rensselaer Ave?"
 - When they are wrapping up ("thanks", "thank you", "ok", "got it", "bye", "will do"), just reply short and warm with no question, for example "You're welcome! Text me anytime." or "Sounds good!".
 - If they say yes to something you offered: do it (send the link from the facts), or for someone from the team, say they'll reach out soon and set needsHuman true.
@@ -155,7 +173,7 @@ ${askedTime
 - When they give a time for us to call or text them ("after 5", "tomorrow morning", "anytime"), confirm it in a few words ("Got it, after 5 works. I'll let the team know.") and set needsHuman true.
 - "How do I register?", "How do I sign up?", "How does it work, step by step?": one short line pointing them to our FAQ page, ${FAQ_URL}, for example "It only takes a few minutes, the steps are on our FAQ page: ${FAQ_URL}". Don't list the steps in the text.
 - Common worries get a short honest answer, not a hand-off (use only what is written here and in the facts):
-  "What's the catch?", "Why so cheap?", "Is this a scam?", "Is this legit?": these are bank-owned and distressed homes sold at auction, that's why prices start low, and everything is on the public listing they can look at. Offer the link.
+  "What's the catch?", "Why so cheap?", "Is this a scam?", "Is this legit?": these are bank-owned homes sold at auction, that's why prices start low, and everything is on the public listing they can look at. Offer the link.
   "I've never bought at auction", "How does this work?": no worries, it's simpler than it sounds; they register on the home's page and bid online while the auction is open. End with "Does that make sense?". If they then say no or still sound lost, offer someone from the team to walk them through it.
   "Who is this?", "How did you get my number?": it's Maya, Vihara's virtual assistant, texting because they reached out to us about one of our homes. (Not when they say they never signed up: the next rule is for that.)
 - When they say they never signed up, don't know us, or never asked for these texts ("I didn't sign up for anything", "I don't know you", "why are you texting me?" said as a complaint): say sorry for the mix-up, never say or hint that they signed up or reached out, and tell them they can reply STOP and we won't text again. No question back and don't ask for a good time. Set needsHuman true, topic "says they didn't sign up". For example: "Sorry about that! Someone may have entered your number on our site by mistake. Reply STOP and we won't text you again."
@@ -181,7 +199,7 @@ Yes, we have 2 homes under $200k right now:
   const knowledgeRules = knowledge
     ? `- Everything under "Property on file"${hasCatalog ? `, "More details" and "Other homes"` : ` and "More details"`} is all you know. If a fact there answers the question, use it; if it does not, do not guess.
 ${hasCatalog ? otherHomesRules : ""}
-- You are never given the seller's minimum (reserve) price, the current highest bid or who is bidding. If asked about those, say a team member will follow up.
+- You are never given the seller's minimum (reserve) price, the current highest bid or who is bidding. If asked about those, never guess: say plainly that it isn't shared before the auction ends, and give the starting bid if you have it (for example "That isn't shared before the auction ends, but bidding starts at $25k. Want the link?"). Don't say someone will reach out and don't ask for a good time. Still set needsHuman true so the team knows, topic "asked for the reserve" or "asked for the highest bid".
 - If the contact quoted a price, you can acknowledge it once, but it is not a formal offer and you must not accept, reject or negotiate it. Call it "the price you mentioned" or "your quote", never a bid or an offer. Start by acknowledging it in a few words, the way a person would (for example "Got it, $80k." or "Thanks, noted your $80k."), then give the starting bid and market estimate, then offer to have someone from the team talk it through. Do not open the reply with "For the price you mentioned" or "Thanks for letting me know about your". Never say whether it will win or be accepted: you can state the starting bid and the market estimate, and say a team member can talk it through.
 - Your name is Maya and you are Vihara's virtual assistant. If asked who you are, or whether you are a real person, a bot or an AI, say so plainly: you are Maya, Vihara's virtual assistant, and they can ask to speak with someone on the team. Do not use the words "team member will follow up" for this, it is not a hand-off. Never say or imply that you are human.
 - If the message is not about this property, ${hasCatalog ? "other homes for sale, " : ""}Vihara or the auction (for example the weather, a joke, a poem, general chat), reply in one short friendly sentence, the way a person would, and steer back to the home (for example "Ha, I wish I knew! Anything else you want to know about the house?"). Do not say a team member will follow up for these, and keep needsHuman false.
@@ -204,7 +222,7 @@ ${severalProperties ? (hasCurrentProperty
   return `You are replying on behalf of Vihara, a real-estate auction company, to a text conversation with a prospect named ${contact?.name || "this contact"}.
 
 How to write (this matters as much as the facts):
-${howToText({ askedTime: alreadyAskedTime(earlierHistory) })}
+${howToText({ askedTime: alreadyAskedTime(earlierHistory), askedLiveOrRent: alreadyAskedLiveOrRent(earlierHistory) })}
 
 Rules:
 - If a fact below answers the question (e.g. a price, address, bed/bath count), state it directly and confidently — don't defer to "a team member" for something you were already given.
@@ -221,10 +239,11 @@ ${knowledge ? `<<<\n${replyToBody}\n>>>` : replyToBody}
 
 Respond with a JSON object and nothing else, with exactly these fields:
 - "reply": the text message to send, as plain text.
-- "needsHuman": true only when your reply hands it to the team (the answer is NOT in the facts above, or they said yes to someone from the team reaching out). Otherwise false.
+- "needsHuman": true only when your reply hands it to the team (the answer is NOT in the facts above, or they said yes to someone from the team reaching out), or when a rule above says to set it. Otherwise false.
 - "topic": when needsHuman is true, two to five words naming what they asked about (for example "starting bid" or "auction date"). Otherwise an empty string.
 - "bestTime": a time they give in THIS message for us to call or text them, in their words ("after 5pm", "tomorrow morning", "anytime"). Otherwise an empty string.
-- "quotedPrice": the price in dollars that the contact offers or says they would pay in THIS message (for example 20000 for "I'd pay 20k for it"), as a number. Otherwise null. Not a budget for finding other homes ("anything under 200k?"), and not a price we told them.`;
+- "quotedPrice": the price in dollars that the contact offers or says they would pay in THIS message (for example 20000 for "I'd pay 20k for it"), as a number. Otherwise null. Not a budget for finding other homes ("anything under 200k?"), and not a price we told them.
+- "language": the language THEIR message is written in, in English ("English", "Spanish", "Chinese"). "English" when unsure or when it is only a number, emoji or "ok".`;
 }
 
 // If the model ignores the JSON format and just writes the sentence, a deferral is still
@@ -271,6 +290,23 @@ function promisesToStop(text) {
   return PROMISE_TO_STOP.test(String(text || ""));
 }
 
+// The seller's lowest price or the current highest bid: never shared, but the team wants to know who asks
+// (user, 2026-11-11). Code-checked on the customer's text so the Slack flag never depends on the AI.
+const RESERVE_ASK = /\breserve\b|\b(seller|owner|bank)'?s?\s+(lowest|minimum|bottom)\b|\blowest\b[^.?!]{0,25}\b(take|accept)\b|\b(highest|current|top|leading) bid\b|\bbid(ding)? (is )?at (right )?now\b/i;
+
+/** "asked for the reserve" / "asked for the highest bid" when their text asks for either, else "". */
+function detectReserveAsk(text) {
+  const t = String(text || "");
+  if (!RESERVE_ASK.test(t)) return "";
+  return /\b(highest|current|top|leading) bid\b|\bbid(ding)? (is )?at\b/i.test(t) ? "asked for the highest bid" : "asked for the reserve";
+}
+
+/** "Spanish" etc. for a non-English text, "" for English or unknown. */
+function cleanLanguage(value) {
+  const v = typeof value === "string" ? value.trim().slice(0, 30) : "";
+  return !v || /^(english|en|unknown|none)$/i.test(v) ? "" : v.charAt(0).toUpperCase() + v.slice(1);
+}
+
 const money = (n) => `$${Math.round(n).toLocaleString("en-US")}`;
 const shortMoney = (n) => (n >= 1000 && n % 1000 === 0 ? `$${n / 1000}k` : money(n));
 
@@ -287,6 +323,7 @@ function parseModelOutput(raw, replyToBody = "") {
   let topic = "";
   let quotedPrice = null;
   let bestTime = "";
+  let language = "";
   try {
     const parsed = JSON.parse(cleaned);
     if (parsed && typeof parsed.reply === "string" && parsed.reply.trim()) {
@@ -294,6 +331,7 @@ function parseModelOutput(raw, replyToBody = "") {
       needsHuman = parsed.needsHuman === true;
       topic = typeof parsed.topic === "string" ? parsed.topic.trim().slice(0, 80) : "";
       bestTime = typeof parsed.bestTime === "string" ? parsed.bestTime.trim().slice(0, 60) : "";
+      language = cleanLanguage(parsed.language);
       const q = Number(parsed.quotedPrice);
       if (parsed.quotedPrice !== null && Number.isFinite(q) && q >= 1000) quotedPrice = Math.round(q);
     }
@@ -315,7 +353,13 @@ function parseModelOutput(raw, replyToBody = "") {
     needsHuman = true;
     if (!topic) topic = "told them we'd stop texting";
   }
-  return { reply: humanizeDashes(reply), needsHuman: needsHuman || looksLikeDeferral(reply), topic, quotedPrice, bestTime };
+  // Asking for the reserve or the highest bid: answered in the text, and the team is told.
+  const reserveAsk = detectReserveAsk(replyToBody);
+  if (reserveAsk) {
+    needsHuman = true;
+    if (!topic) topic = reserveAsk;
+  }
+  return { reply: humanizeDashes(reply), needsHuman: needsHuman || looksLikeDeferral(reply), topic, quotedPrice, bestTime, language };
 }
 
 /**
@@ -348,6 +392,7 @@ async function generateDraftReply({ contact, messages, replyToBody, propertyCont
     });
     recordGemini("vtext-replies", MODEL_NAME, result);
     const draft = parseModelOutput(result?.response?.text(), replyToBody);
+    draft.reply = dropRepeatedLiveOrRent(draft.reply, messages);
     return draft.reply ? draft : null;
   } catch (error) {
     console.error("[vtext ai-reply] Gemini failed, no draft:", error?.message || error);
@@ -355,4 +400,4 @@ async function generateDraftReply({ contact, messages, replyToBody, propertyCont
   }
 }
 
-module.exports = { MODEL_NAME, getClient, isAiReplyAvailable, buildPropertyContext, buildPrompt, generateDraftReply, parseModelOutput, looksLikeDeferral, humanizeDashes, detectQuotedPrice, promisesToStop };
+module.exports = { MODEL_NAME, getClient, isAiReplyAvailable, buildPropertyContext, buildPrompt, generateDraftReply, parseModelOutput, looksLikeDeferral, humanizeDashes, detectQuotedPrice, promisesToStop, detectReserveAsk, cleanLanguage, dropRepeatedLiveOrRent };

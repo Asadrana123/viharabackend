@@ -89,10 +89,10 @@ async function processDraftReplyJob(job) {
     if (!check.ok) {
       console.warn(`[vtext guard] reply replaced, it contained amount(s) the AI was not given: ${check.unsupported.join(", ")}`);
       guard = { replaced: true, amounts: check.unsupported, originalReply: draft.reply };
-      draft = { reply: SAFE_HANDOFF, needsHuman: true, topic: draft.quotedPrice ? draft.topic : "amount to check", bestTime: draft.bestTime }; // a quoted price stays the topic
+      draft = { reply: SAFE_HANDOFF, needsHuman: true, topic: draft.quotedPrice ? draft.topic : "amount to check", bestTime: draft.bestTime, language: draft.language }; // a quoted price stays the topic
     }
   }
-  const { reply: body, needsHuman, topic, bestTime } = draft;
+  const { reply: body, needsHuman, topic, bestTime, language } = draft;
 
   const message = await createDraftReply({
     contactId,
@@ -105,6 +105,7 @@ async function processDraftReplyJob(job) {
     needsHuman,
     topic,
     bestTime,
+    language,
     sources: knowledge?.sources,
     retrieval: knowledge?.retrieval,
     guard,
@@ -138,6 +139,7 @@ async function processDraftReplyJob(job) {
           { label: "Property", value: propertyContext?.property_name || propertyContext?.property_address },
           { label: "Topic", value: topic },
           { label: "Best time to reach them", value: bestTime || undefined },
+          { label: "Language", value: language ? `Texting in ${language}` : undefined },
           { label: "Status", value: "Draft waiting for approval, nothing sent yet" },
           { label: "Question", value: clip(inboundMessage.body), wide: true },
           { label: "AI draft", value: clip(body), wide: true },

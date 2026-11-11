@@ -138,6 +138,8 @@ async function notifyAiReplySent({ message, approvedBy }) {
         needsHuman && (message.aiDraft?.bestTime || conversation?.bestTimeToReach)
           ? { label: "Best time to reach them", value: message.aiDraft?.bestTime || conversation.bestTimeToReach }
           : null,
+        // Not English: the AI answers in their language, so whoever follows up knows (user, 2026-11-11).
+        message.aiDraft?.language ? { label: "Language", value: `Texting in ${message.aiDraft.language}` } : null,
         { label: "How it was sent", value: sentBy },
         { label: "Customer's question", value: clip(question?.body, 500), wide: true },
         { label: "AI reply", value: clip(message.body, 500), wide: true },
