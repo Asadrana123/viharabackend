@@ -103,7 +103,7 @@ async function notifyAiReplySent({ message, approvedBy }) {
     const [contact, question, conversation] = await Promise.all([
       VtextContact.findById(message.contactId).lean(),
       message.origin?.replyToMessageId ? VtextMessage.findById(message.origin.replyToMessageId).select("body").lean() : null,
-      message.conversationId ? VtextConversation.findById(message.conversationId).select("propertyId").lean() : null,
+      message.conversationId ? VtextConversation.findById(message.conversationId).select("propertyId bestTimeToReach").lean() : null,
     ]);
 
     // The property the customer signed up on; the conversation's own property is the fallback.
@@ -117,7 +117,11 @@ async function notifyAiReplySent({ message, approvedBy }) {
 
     const auto = !approvedBy?.adminId && /auto/i.test(approvedBy?.adminName || "");
     const edited = message.aiDraft?.approvalStatus === "edited";
-    const sentBy = auto ? "Sent automatically" : `Approved by ${approvedBy?.adminName || "an admin"}${edited ? " (edited)" : ""}`;
+    // An auto reply waits a human-like 20-50 s before it goes out (vtextDraftReplyService.humanReplyDelayMs).
+    const waitSec = message.scheduledFor ? Math.round((new Date(message.scheduledFor).getTime() - Date.now()) / 1000) : 0;
+    const sentBy = auto
+      ? waitSec > 5 ? `Sent automatically, goes out in about ${waitSec} seconds` : "Sent automatically"
+      : `Approved by ${approvedBy?.adminName || "an admin"}${edited ? " (edited)" : ""}`;
     const needsHuman = Boolean(message.aiDraft?.needsHuman);
 
     await notifyVtextAlert({
@@ -128,10 +132,18 @@ async function notifyAiReplySent({ message, approvedBy }) {
         { label: "Contact", value: contact?.name || "(no name)" },
         { label: "Phone", value: contact?.phoneE164 },
         { label: "Property", value: property },
+        // What it is about at a glance ("quoted price $20k", "property taxes"), only when the team must follow up.
+        needsHuman && message.aiDraft?.topic ? { label: "Topic", value: message.aiDraft.topic } : null,
+        // A time they gave for us to call or text them: in this text, else an earlier one in the conversation.
+        needsHuman && (message.aiDraft?.bestTime || conversation?.bestTimeToReach)
+          ? { label: "Best time to reach them", value: message.aiDraft?.bestTime || conversation.bestTimeToReach }
+          : null,
+        // Not English: the AI answers in their language, so whoever follows up knows (user, 2026-11-11).
+        message.aiDraft?.language ? { label: "Language", value: `Texting in ${message.aiDraft.language}` } : null,
         { label: "How it was sent", value: sentBy },
         { label: "Customer's question", value: clip(question?.body, 500), wide: true },
         { label: "AI reply", value: clip(message.body, 500), wide: true },
-        needsHuman ? { label: "What to do", value: "The AI told them a team member will follow up. Someone needs to reply to them.", wide: true } : null,
+        needsHuman ? { label: "What to do", value: "Someone from the team should reply to them.", wide: true } : null,
         { label: "Inbox", value: `<${inboxUrl(message.conversationId)}|Open the conversation>`, wide: true },
       ].filter(Boolean),
     });

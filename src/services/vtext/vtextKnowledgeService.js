@@ -18,9 +18,30 @@ const NorCalLead = require("../../model/leads/norCalLeadModel");
 const Product = require("../../model/property/productModel");
 const VtextConversation = require("../../model/vtext/vtextConversationModel");
 const { PRODUCT_TEMPLATE_FIELDS, resolvePropertyVariables } = require("./vtextTemplateService");
+
+// A few more everyday facts about the lead's own home, read straight from Mongo so they are answered even when the
+// knowledge search is slow or down (is it occupied? online? taxes?). All public listing fields (rag/propertyChunker.js
+// ALLOWED_FIELDS). Kept apart from the Send-tab template variables, which these are not.
+const EXTRA_FIELDS = "onlineOrInPerson occupancyStatus squareFootage yearBuilt monthlyHOADues investmentData.taxData.annualPropertyTax";
+const PROPERTY_FIELDS = `${PRODUCT_TEMPLATE_FIELDS} ${EXTRA_FIELDS}`;
+const usd = (n) => (typeof n === "number" && Number.isFinite(n) && n > 0 ? `$${Math.round(n).toLocaleString("en-US")}` : "");
+
+/** The facts the AI gets for one of the lead's homes: the template variables plus EXTRA_FIELDS, labelled. Pure. */
+function propertyFacts(product = {}) {
+  const extra = {
+    "Auction type": product.onlineOrInPerson ? `${product.onlineOrInPerson} auction` : "",
+    Occupancy: product.occupancyStatus || "",
+    "Square feet": typeof product.squareFootage === "number" && product.squareFootage > 0 ? Math.round(product.squareFootage).toLocaleString("en-US") : "",
+    "Year built": product.yearBuilt ? String(product.yearBuilt) : "",
+    "Monthly HOA": product.monthlyHOADues > 0 ? usd(product.monthlyHOADues) : product.monthlyHOADues === 0 ? "none" : "",
+    "Annual property tax": usd(product.investmentData?.taxData?.annualPropertyTax),
+  };
+  return { ...resolvePropertyVariables(product), ...Object.fromEntries(Object.entries(extra).filter(([, v]) => v)) };
+}
 const { embedQuery } = require("../rag/embeddingService");
 const { search } = require("../rag/qdrantService");
 const { sendAlertWithCooldown } = require("./vtextAlertService");
+const { isEnabled: isCatalogEnabled, loadOpenIndex, extractHomeSearch, searchListings, describeFilters, loadListingsBySlugs, findMentionedSlugs, formatCatalog } = require("./vtextListingCatalog");
 
 const MAX_PROPERTIES = 3;
 const TOP_K = Number(process.env.RAG_VTEXT_TOP_K || 5);
@@ -94,7 +115,7 @@ async function loadProperties(contact, conversationId, toorak = null) {
   }
   if (!bySlug.size) return [];
 
-  const products = await Product.find({ slug: { $in: [...bySlug.keys()] } }).select(PRODUCT_TEMPLATE_FIELDS).lean();
+  const products = await Product.find({ slug: { $in: [...bySlug.keys()] } }).select(PROPERTY_FIELDS).lean();
   const productBySlug = new Map(products.map((p) => [p.slug, p]));
 
   return [...bySlug.values()]
@@ -245,12 +266,13 @@ async function reportRagFailure(reason, contact) {
  *   propertyContext: object|null,
  * }>} propertyContext is the first property's key facts, the same shape buildPropertyContext returns (the Slack alert uses it).
  */
-async function buildReplyKnowledge({ contact, messages, replyToBody, conversationId, toorak = null }) {
+async function buildReplyKnowledge({ contact, messages, replyToBody, conversationId, toorak = null, now = new Date() }) {
   const out = {
     properties: [],
     leadDetails: [],
     retrievedText: "",
     faqText: "",
+    mentionedSlugs: [],
     sources: [],
     retrieval: { used: false, query: "", topScore: null, faqTopScore: null, ms: 0 },
     propertyContext: null,
@@ -261,7 +283,7 @@ async function buildReplyKnowledge({ contact, messages, replyToBody, conversatio
     out.properties = properties.map((p) => ({
       slug: p.slug,
       name: p.product.productName || p.slug,
-      facts: resolvePropertyVariables(p.product),
+      facts: propertyFacts(p.product),
       quotePrice: p.quotePrice,
       current: p.current,
     }));
@@ -277,28 +299,67 @@ async function buildReplyKnowledge({ contact, messages, replyToBody, conversatio
   }
 
   if (!replyToBody) return out;
-  // A lead with no property can still ask how the auctions work, so the search runs for them too.
-  if (!out.properties.length && out.leadDetails.length === 0 && !hasFaq()) return out;
+
+  // Other homes we have open (vtextListingCatalog.js, never throws): a search when the text asks for homes
+  // ("anything under $200k?", "anything in Baltimore?"), and any other home the text names. The lead's own
+  // homes are left out: they are above. Its filter step runs alongside the question rewrite below.
+  const ownSlugs = new Set(out.properties.map((p) => String(p.slug).toLowerCase()));
+  const catalogOn = isCatalogEnabled();
+  const index = catalogOn ? await loadOpenIndex({ now }) : { homes: [], facets: null };
+  const otherHomes = index.homes.filter((h) => !ownSlugs.has(h.slug));
+  const homeSearchStep = catalogOn ? extractHomeSearch({ messages, replyToBody, facets: index.facets }) : null;
 
   const started = Date.now();
+  let query = String(replyToBody).trim();
   try {
-    const query = await rewriteQuery({ messages, replyToBody });
+    query = await rewriteQuery({ messages, replyToBody });
     out.retrieval.query = query;
-    const { property, faq } = await withTimeout(searchKnowledge(query, out.properties.map((p) => p.slug)), TIMEOUT_MS, "knowledge search");
+    // A question about one of the other homes ("taxes on the Baltimore one?") searches that home's details too.
+    // The rewritten question carries what a short follow-up refers to.
+    out.mentionedSlugs = findMentionedSlugs(`${replyToBody} ${query}`, otherHomes);
+    const searchSlugs = [...ownSlugs, ...out.mentionedSlugs];
+    const { property, faq } = await withTimeout(searchKnowledge(query, searchSlugs), TIMEOUT_MS, "knowledge search");
 
     out.retrieval.used = true;
     out.retrieval.topScore = property.length ? property[0].score : null;
     out.retrieval.faqTopScore = faq.length ? faq[0].score : null;
-    out.retrievedText = formatRetrieved(property, out.properties.length > 1);
+    out.retrievedText = formatRetrieved(property, searchSlugs.length > 1);
     out.faqText = formatFaq(faq);
-    out.sources = [...property, ...faq].map((r) => r.payload?.key).filter(Boolean);
+    out.sources.push(...[...property, ...faq].map((r) => r.payload?.key).filter(Boolean));
   } catch (err) {
     out.retrieval.error = err.message;
     console.error("[vtext rag] search failed, writing the reply from the basic facts only:", err.message);
     await reportRagFailure(err.message, contact);
   }
   out.retrieval.ms = Date.now() - started;
+
+  if (catalogOn) await addOtherHomes(out, { homeSearchStep, ownSlugs: [...ownSlugs], now });
   return out;
 }
 
-module.exports = { isRagEnabled, buildReplyKnowledge, formatRetrieved, formatFaq, rewriteQuery };
+/**
+ * Fills `out.otherHomes` for the prompt: { searched, failed, description, total, relaxed, matchesText, namedText }.
+ * `catalogText` (every line the AI was shown) feeds the dollar check. Never throws.
+ */
+async function addOtherHomes(out, { homeSearchStep, ownSlugs, now }) {
+  const other = { searched: false, failed: false, description: "", total: 0, relaxed: "", matchesText: "", namedText: "" };
+  try {
+    const step = await homeSearchStep;
+    if (!step.ok) other.failed = true;
+    else if (step.filters) {
+      const result = await searchListings(step.filters, { excludeSlugs: ownSlugs, now });
+      Object.assign(other, { searched: true, description: describeFilters(step.filters), total: result.total, relaxed: result.relaxed, matchesText: formatCatalog(result.listings) });
+      out.homeSearch = { filters: step.filters, total: result.total, relaxed: result.relaxed, shown: result.listings.map((l) => l.slug) };
+    }
+    if (out.mentionedSlugs.length) other.namedText = formatCatalog(await loadListingsBySlugs(out.mentionedSlugs, { now }));
+  } catch (err) {
+    console.error("[vtext catalog] home search failed:", err.message);
+    other.failed = true;
+  }
+  out.otherHomes = other;
+  out.catalogText = [other.matchesText, other.namedText].filter(Boolean).join("\n");
+  if (other.searched) out.sources.push("catalog:home-search");
+  if (other.namedText) out.sources.push("catalog:named-homes");
+}
+
+module.exports = { isRagEnabled, buildReplyKnowledge, formatRetrieved, formatFaq, rewriteQuery, propertyFacts };

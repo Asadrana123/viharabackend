@@ -36,6 +36,11 @@ const vtextConversationSchema = new mongoose.Schema(
     // The AI told the customer "a team member will follow up" (draftReplyWorker.js). Cleared when an
     // admin replies by hand, or with "Mark handled" in the Inbox.
     needsHuman: { type: Boolean, default: false },
+    // When needsHuman was last turned on, and how many Slack reminders went out since (vtextNeedsHumanReminder.js).
+    needsHumanAt: { type: Date },
+    needsHumanReminders: { type: Number, default: 0 },
+    // A time the customer gave for the team to call or text them ("after 5 pm", "tomorrow morning"), as they said it.
+    bestTimeToReach: { type: String },
 
     lineRetired: { type: Boolean, default: false }, // set when its line gets quarantined/retired
     assignedAdminId: { type: mongoose.Schema.Types.ObjectId },

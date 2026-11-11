@@ -17,7 +17,7 @@ test("prices a Claude response from its usage, cache and web search included", (
 test("a dated model id finds its price; an unknown model has none and is not guessed", () => {
   assert.equal(claudePrice("claude-haiku-4-5-20251001").id, "claude-haiku-4-5");
   assert.equal(claudeCost("claude-unknown-9", { input_tokens: 10 }).usd, null);
-  assert.equal(geminiCost("gemini-3.8-flash", { promptTokenCount: 10 }).usd, null);
+  assert.equal(geminiCost("gemini-9-unknown", { promptTokenCount: 10 }).usd, null); // 3.8 Flash has a price since 2026-11-11
   assert.equal(geminiCost("gemini-2.5-flash", { promptTokenCount: 1_000_000, candidatesTokenCount: 0 }).usd, 0.3);
 });
 
@@ -164,4 +164,15 @@ test("history from the agents' own records counts only before tracking began", (
 test("spend is split by provider", () => {
   const s = summarize([{ at: new Date("2026-11-02T10:00:00Z"), feature: "video", provider: "treg", usd: 1 }, { at: new Date("2026-11-02T10:00:00Z"), feature: "ga-report", provider: "anthropic", usd: 0.5 }], { from: new Date("2026-11-01T00:00:00Z"), to: new Date("2026-11-03T00:00:00Z"), tz: "UTC" });
   assert.deepEqual(s.providers.map((p) => [p.provider, p.usd]), [["treg", 1], ["anthropic", 0.5]]);
+});
+
+test("Gemini 3.8 Flash: intro price in 2026, the higher price from 2027-01-01; older models unchanged", () => {
+  const meta = { promptTokenCount: 1_000_000, candidatesTokenCount: 100_000, thoughtsTokenCount: 900_000 }; // 1M in, 1M out
+  assert.equal(geminiCost("gemini-3.8-flash", meta, new Date("2026-11-11T12:00:00Z")).usd, 4.5); // 0.75 + 3.75
+  assert.equal(geminiCost("gemini-3.8-flash", meta, new Date("2026-12-31T23:59:00Z")).usd, 4.5);
+  assert.equal(geminiCost("gemini-3.8-flash", meta, new Date("2027-01-01T00:00:00Z")).usd, 9); // 1.5 + 7.5
+  assert.equal(geminiCost("gemini-2.5-flash", meta, new Date("2027-06-01T00:00:00Z")).usd, 2.8); // 0.3 + 2.5, no date change
+  assert.equal(geminiCost("gemini-9-pro", meta).usd, null); // not on file: still "price not on file"
+  // Claude is untouched
+  assert.equal(claudeCost("claude-sonnet-5-5", { input_tokens: 1_000_000, output_tokens: 1_000_000 }).usd, 12);
 });

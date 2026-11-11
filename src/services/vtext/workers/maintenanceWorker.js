@@ -29,6 +29,7 @@ const smsFallback = require("../vtextSmsFallbackService");
 const { reportTextProblem } = require("../vtextTextProblemAlert");
 const { runCatchup, runReadRecheck, confirmBeforeGivingUp } = require("../vtextBluebubblesCatchup");
 const { runDeadLineCheck } = require("../vtextDeadLineAlert");
+const { runNeedsHumanReminders } = require("../vtextNeedsHumanReminder");
 
 const HEARTBEAT_KEY = "vtext:worker:lastHeartbeatAt";
 
@@ -461,6 +462,7 @@ const JOB_HANDLERS = {
   "bluebubbles-catchup": () => runCatchup(),
   "bluebubbles-read-recheck": () => runReadRecheck(),
   "dead-line-check": () => runDeadLineCheck(),
+  "needs-human-reminder": () => runNeedsHumanReminders(),
 };
 
 async function processMaintenanceJob(job) {
@@ -535,6 +537,13 @@ async function ensureMaintenanceSchedulers() {
     "dead-line-check",
     { every: Number(process.env.VTEXT_DEAD_LINE_CHECK_INTERVAL_MS || 30 * 60_000) },
     { name: "dead-line-check" },
+  );
+  // ⏰ Slack reminder when a "Needs a human" customer still has no team reply after 30 min / 2 h (vtextNeedsHumanReminder.js).
+  // Every 10 min ≈ 4,300 Redis ticks a month; one small indexed Mongo query when nothing is waiting.
+  await queue.upsertJobScheduler(
+    "needs-human-reminder",
+    { every: Number(process.env.VTEXT_NEEDS_HUMAN_REMINDER_INTERVAL_MS || 10 * 60_000) },
+    { name: "needs-human-reminder" },
   );
   await queue.upsertJobScheduler(
     "bluebubbles-read-recheck",

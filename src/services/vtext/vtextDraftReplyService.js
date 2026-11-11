@@ -14,7 +14,7 @@ const { notifyAiReplySent } = require("./vtextAlertService");
  * deliberately does NOT touch the route queue (unlike enqueueOutbound).
  * @returns {Promise<object>} the created VtextMessage document
  */
-async function createDraftReply({ contactId, conversationId, lineId, channelType, inboundMessageId, body, model, needsHuman, topic, sources, retrieval, guard }) {
+async function createDraftReply({ contactId, conversationId, lineId, channelType, inboundMessageId, body, model, needsHuman, topic, bestTime, language, sources, retrieval, guard }) {
   return VtextMessage.create({
     direction: "out",
     contactId,
@@ -27,7 +27,7 @@ async function createDraftReply({ contactId, conversationId, lineId, channelType
     ...(channelType === "twilio-sms" ? { channelPolicy: { mode: "only", channels: ["twilio-sms"] } } : {}),
     origin: { kind: "automation", templateKey: "ai-reply-draft", replyToMessageId: inboundMessageId },
     isReplyToInbound: true,
-    aiDraft: { approvalStatus: "pending", model, generatedAt: new Date(), needsHuman: !!needsHuman, topic: topic || undefined, sources: sources?.length ? sources : undefined, retrieval: retrieval || undefined, guard: guard || undefined },
+    aiDraft: { approvalStatus: "pending", model, generatedAt: new Date(), needsHuman: !!needsHuman, topic: topic || undefined, bestTime: bestTime || undefined, language: language || undefined, sources: sources?.length ? sources : undefined, retrieval: retrieval || undefined, guard: guard || undefined },
   });
 }
 
@@ -43,7 +43,7 @@ async function createDraftReply({ contactId, conversationId, lineId, channelType
  * @param {object} params.approvedBy - { adminId, adminName }
  * @returns {Promise<object>} the updated VtextMessage document
  */
-async function approveDraft(messageId, { body, approvedBy }) {
+async function approveDraft(messageId, { body, approvedBy, delayMs = 0 }) {
   const message = await VtextMessage.findById(messageId);
   if (!message) throw new Error("Message not found");
   if (message.status !== "pending-approval") {
@@ -58,9 +58,13 @@ async function approveDraft(messageId, { body, approvedBy }) {
   message.aiDraft.approvalStatus = edited ? "edited" : "approved";
   message.aiDraft.approvedBy = approvedBy;
   message.aiDraft.approvedAt = new Date();
+  // A human-like pause before an auto-sent reply (humanReplyDelayMs). Held the same way as any scheduled text:
+  // routeWorker never sends it before scheduledFor, and the stuck-message sweep leaves it alone until then.
+  const wait = Math.max(0, Math.round(Number(delayMs) || 0));
+  if (wait > 0) message.scheduledFor = new Date(Date.now() + wait);
   await message.save();
 
-  await getRouteQueue().add("route", { messageId: String(message._id) }, { jobId: `route-${message._id}-1` });
+  await getRouteQueue().add("route", { messageId: String(message._id) }, { jobId: `route-${message._id}-1`, ...(wait > 0 ? { delay: wait } : {}) });
 
   // Both ways a reply goes out (auto-approved and approved by an admin) end up here. Not awaited: never delays the send.
   notifyAiReplySent({ message, approvedBy });
@@ -68,4 +72,28 @@ async function approveDraft(messageId, { body, approvedBy }) {
   return message;
 }
 
-module.exports = { createDraftReply, approveDraft };
+/**
+ * How long an auto-sent AI reply waits before it goes out, so it does not land a few seconds after the
+ * customer's text the way a bot's does. A random 20 to 50 seconds; a longer reply waits longer, as if it
+ * were being typed (about 1 second per 8 characters past the first 160), up to 90 seconds.
+ * Env: VTEXT_AI_REPLY_DELAY_MIN_SEC (20), VTEXT_AI_REPLY_DELAY_MAX_SEC (50), VTEXT_AI_REPLY_DELAY_LONG_MAX_SEC (90).
+ * MAX 0 switches the wait off. Only for replies the AI sends on its own; an admin's approval sends at once.
+ * @param {string} body - the reply text
+ * @param {() => number} [random] - 0..1, for tests
+ * @returns {number} milliseconds
+ */
+function humanReplyDelayMs(body, random = Math.random) {
+  const sec = (name, fallback) => {
+    const v = Number(process.env[name]);
+    return process.env[name] !== undefined && process.env[name] !== "" && Number.isFinite(v) && v >= 0 ? v : fallback;
+  };
+  const max = sec("VTEXT_AI_REPLY_DELAY_MAX_SEC", 50);
+  if (max <= 0) return 0;
+  const min = Math.min(sec("VTEXT_AI_REPLY_DELAY_MIN_SEC", 20), max);
+  const cap = Math.max(sec("VTEXT_AI_REPLY_DELAY_LONG_MAX_SEC", 90), max);
+  const base = min + random() * (max - min);
+  const typing = Math.max(0, String(body || "").length - 160) / 8;
+  return Math.round(Math.min(base + typing, cap) * 1000);
+}
+
+module.exports = { createDraftReply, approveDraft, humanReplyDelayMs };
