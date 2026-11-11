@@ -44,7 +44,7 @@ const unlessSummary = (view, list) => (view.summary ? [] : list);
 const ROW_FIELDS = [
   "fullName", "firstName", "lastName", "name", "email", "phone", "createdAt",
   "tier", "buyerType", "persona", "primaryMarket", "market", "markets", "formName",
-  "formId", "hot", "hotReasons", "leadStatus", "phoneInvalid", "smsConsent", "loanType",
+  "formId", "hot", "hotReasons", "leadStatus", "phoneInvalid", "smsConsent", "loanType", "partner",
 ];
 
 // Read on the server (funding, the All Leads filter); they don't go out on a row.

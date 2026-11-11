@@ -32,7 +32,7 @@ const { listView, scopeQuery, unlessSummary, listSelect, callsForList, shapeLead
 const { getVtextMessagesForPhones } = require("../../services/vtext/vtextLeadMessagesService");
 const { scheduleNewDealsSignupCall } = require("../../services/calling/newDealsCallScheduler");
 const { newDealsPageUrl } = require("../../config/siteUrls");
-const { LIVE_DEALS, findDeal, dealLabel } = require("../../config/newDeals");
+const { LIVE_DEALS, findDeal, dealLabel, NEW_DEALS_PARTNER } = require("../../config/newDeals");
 const Product = require("../../model/property/productModel");
 const { maskPhone } = require("../../utils/maskPii");
 const { maybeSendFormIntroText } = require("../../services/vtext/vtextFormIntroService");
@@ -228,6 +228,8 @@ const registerNewDealsLead = catchAsyncError(async (req, res, next) => {
   const attribution = attributionFrom(body.attribution, ["variant", "market_param"]);
   const pageUrl = str(body.page_url, 2000);
   const submittedAt = body.submitted_at ? new Date(body.submitted_at) : now;
+  // Only the /new-deals page is a Premier Mortgage sign-up (/find and /request share this endpoint).
+  const partner = str(body.landing_page, 40) === "new-deals" ? NEW_DEALS_PARTNER : "";
 
   const fields = {
     fullName,
@@ -258,6 +260,8 @@ const registerNewDealsLead = catchAsyncError(async (req, res, next) => {
     fbc: str(body.fbc, 500),
     eventId,
     submittedAt: Number.isNaN(submittedAt.getTime()) ? now : submittedAt,
+    // A sign-up from another page never clears an existing tag.
+    ...(partner ? { partner } : {}),
   };
 
   // A new request replaces the last one; sending the same request again keeps its date and email.
@@ -360,7 +364,7 @@ const registerNewDealsLead = catchAsyncError(async (req, res, next) => {
     email: lead.email,
     phone: lead.phone,
     consent: lead.consent,
-    source: `new-deals · ${lead.firstTouch?.utm_source || "direct"}`,
+    source: `new-deals · ${lead.firstTouch?.utm_source || "direct"}${lead.partner ? ` · ${lead.partner}` : ""}`,
     extraFields: [
       { label: "Tier", value: lead.tier },
       ...(request

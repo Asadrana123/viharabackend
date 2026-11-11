@@ -23,6 +23,10 @@ const NEW_DEALS = [
   { id: "nola-03", live: true, slug: "2508-12-s-prieur-st-new-orleans", city: "New Orleans", state: "LA", area: "Orleans Parish", price: 257296, type: "Multi-unit", fit: "Multi-unit income" },
 ];
 
+// Every sign-up from the /new-deals page is tagged with this partner (admin,
+// Slack). /find and /request post to the same endpoint and are NOT tagged.
+const NEW_DEALS_PARTNER = "Premier Mortgage";
+
 const STATE_WORDS = { MD: "Maryland", MI: "Michigan", LA: "Louisiana" };
 const usd = (n) => `$${Math.round(n).toLocaleString("en-US")}`;
 
@@ -55,4 +59,4 @@ const dealsForPrompt = () =>
       .join(" ")
   ).join("\n");
 
-module.exports = { NEW_DEALS, LIVE_DEALS, findDeal, dealLabel, dealSpoken, dealsForPrompt };
+module.exports = { NEW_DEALS_PARTNER, NEW_DEALS, LIVE_DEALS, findDeal, dealLabel, dealSpoken, dealsForPrompt };

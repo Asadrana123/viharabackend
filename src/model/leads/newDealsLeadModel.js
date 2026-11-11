@@ -141,6 +141,8 @@ const newDealsLeadSchema = new mongoose.Schema(
     welcomeEmailError: { type: String, default: "" },
 
     source: { type: String, default: "new-deals" },
+    // Partner these leads are tagged under (e.g. "Premier Mortgage" for /new-deals sign-ups). Empty = none.
+    partner: { type: String, default: "", trim: true },
   },
   { timestamps: true }
 );
