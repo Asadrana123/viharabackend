@@ -125,6 +125,41 @@ test("a time they give to be called or texted goes to the team and is kept", () 
   assert.equal(none.needsHuman, false);
 });
 
+// Edge-case test fixes (2026-11-11): E7, E27, U3.
+test("never bought at auction: ends with 'Does that make sense?', the team only if still lost", () => {
+  const p = buildPrompt(args);
+  assert.match(p, /bid online while the auction is open\. End with "Does that make sense\?"/);
+  assert.doesNotMatch(p, /Ask if they'd like that/);
+});
+
+test("'I didn't sign up': sorry, never says they signed up, STOP offered, team told", () => {
+  const p = buildPrompt(args);
+  assert.match(p, /never say or hint that they signed up or reached out/);
+  assert.match(p, /topic "says they didn't sign up"/);
+  assert.match(p, /Not when they say they never signed up/);
+});
+
+test("angry: no promise to stop, STOP offered, team told", () => {
+  const p = buildPrompt(args);
+  assert.match(p, /Never promise to stop texting them or to leave them alone, because only them replying STOP does that/);
+  assert.match(p, /topic "upset"/);
+});
+
+test("a reply that promises to stop texting always goes to the team", () => {
+  const { promisesToStop } = require("./vtextAiReplyService");
+  assert.equal(promisesToStop("Sorry about that, Margaret. I won't bother you anymore. Take care."), true);
+  assert.equal(promisesToStop("We'll stop texting you."), true);
+  assert.equal(promisesToStop("I will not text you again."), true);
+  assert.equal(promisesToStop("I'll leave you alone."), true);
+  assert.equal(promisesToStop("The starting bid is $25k. Want me to send you the link?"), false);
+  assert.equal(promisesToStop("I'll have someone from our team text you about that."), false);
+  const d = parseModelOutput(JSON.stringify({ reply: "Sorry about that. I won't bother you anymore.", needsHuman: false, topic: "" }), "you people are useless");
+  assert.equal(d.needsHuman, true);
+  assert.equal(d.topic, "told them we'd stop texting");
+  const kept = parseModelOutput(JSON.stringify({ reply: "Sorry, that's fair. Reply STOP and we won't text you again.", needsHuman: true, topic: "upset" }), "useless");
+  assert.equal(kept.topic, "upset");
+});
+
 test("long dashes between words become commas; number ranges stay", () => {
   assert.equal(humanizeDashes("You can talk to the team though—would you like that?"), "You can talk to the team though, would you like that?");
   assert.equal(humanizeDashes("It's a 3 bed – great spot"), "It's a 3 bed, great spot");

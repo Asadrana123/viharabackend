@@ -156,8 +156,10 @@ ${askedTime
 - "How do I register?", "How do I sign up?", "How does it work, step by step?": one short line pointing them to our FAQ page, ${FAQ_URL}, for example "It only takes a few minutes, the steps are on our FAQ page: ${FAQ_URL}". Don't list the steps in the text.
 - Common worries get a short honest answer, not a hand-off (use only what is written here and in the facts):
   "What's the catch?", "Why so cheap?", "Is this a scam?", "Is this legit?": these are bank-owned and distressed homes sold at auction, that's why prices start low, and everything is on the public listing they can look at. Offer the link.
-  "I've never bought at auction", "How does this work?": no worries, it's simpler than it sounds; they register on the home's page and bid while the auction is open, and someone from the team can walk them through it. Ask if they'd like that.
-  "Who is this?", "How did you get my number?": it's Maya, Vihara's virtual assistant, texting because they reached out to us about one of our homes.`;
+  "I've never bought at auction", "How does this work?": no worries, it's simpler than it sounds; they register on the home's page and bid online while the auction is open. End with "Does that make sense?". If they then say no or still sound lost, offer someone from the team to walk them through it.
+  "Who is this?", "How did you get my number?": it's Maya, Vihara's virtual assistant, texting because they reached out to us about one of our homes. (Not when they say they never signed up: the next rule is for that.)
+- When they say they never signed up, don't know us, or never asked for these texts ("I didn't sign up for anything", "I don't know you", "why are you texting me?" said as a complaint): say sorry for the mix-up, never say or hint that they signed up or reached out, and tell them they can reply STOP and we won't text again. No question back and don't ask for a good time. Set needsHuman true, topic "says they didn't sign up". For example: "Sorry about that! Someone may have entered your number on our site by mistake. Reply STOP and we won't text you again."
+- When they are angry, frustrated or rude ("this is a waste of my time", "you people are useless"): keep it short and say sorry. Never promise to stop texting them or to leave them alone, because only them replying STOP does that. Offer someone from the team, and tell them they can reply STOP. Don't ask for a good time. Set needsHuman true, topic "upset". For example: "Sorry, that's fair. I can have someone from the team call you instead, or reply STOP and we won't text again."`;
 
 function buildPrompt({ contact, messages, replyToBody, propertyContext, knowledge, toorak, now = new Date() }) {
   const facts = buildFactsBlock({ propertyContext, knowledge });
@@ -261,6 +263,14 @@ function detectQuotedPrice(text) {
   return plain || null;
 }
 
+// "I won't bother you anymore", "we'll stop texting you": a promise only the STOP keyword can keep. If the AI
+// still writes one, the team must see the chat, or the person is texted again after being told it would stop.
+const PROMISE_TO_STOP = /\b(won'?t|will not|not going to|never)\s+(bother|text|message|contact|reach out to)\s+you\b|\b(stop|no more)\s+(texting|messaging|contacting|bothering)\s+you\b|\bleave you alone\b/i;
+
+function promisesToStop(text) {
+  return PROMISE_TO_STOP.test(String(text || ""));
+}
+
 const money = (n) => `$${Math.round(n).toLocaleString("en-US")}`;
 const shortMoney = (n) => (n >= 1000 && n % 1000 === 0 ? `$${n / 1000}k` : money(n));
 
@@ -299,6 +309,11 @@ function parseModelOutput(raw, replyToBody = "") {
   if (bestTime) {
     needsHuman = true;
     if (!topic) topic = "wants a call or text";
+  }
+  // A promise to stop texting goes to the team (only STOP opts someone out).
+  if (promisesToStop(reply)) {
+    needsHuman = true;
+    if (!topic) topic = "told them we'd stop texting";
   }
   return { reply: humanizeDashes(reply), needsHuman: needsHuman || looksLikeDeferral(reply), topic, quotedPrice, bestTime };
 }
@@ -340,4 +355,4 @@ async function generateDraftReply({ contact, messages, replyToBody, propertyCont
   }
 }
 
-module.exports = { MODEL_NAME, getClient, isAiReplyAvailable, buildPropertyContext, buildPrompt, generateDraftReply, parseModelOutput, looksLikeDeferral, humanizeDashes, detectQuotedPrice };
+module.exports = { MODEL_NAME, getClient, isAiReplyAvailable, buildPropertyContext, buildPrompt, generateDraftReply, parseModelOutput, looksLikeDeferral, humanizeDashes, detectQuotedPrice, promisesToStop };
