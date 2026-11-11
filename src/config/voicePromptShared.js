@@ -113,6 +113,54 @@ WHAT TO DO THE MOMENT YOU REALIZE IT'S A MACHINE:
 - Never read your human wrap-up onto a voicemail, and never book a callback or run the script for a machine.
 - If you are UNSURE whether it's a person or a recording, ask one short, natural check ("Hi — is this a good time to talk?") and wait. A real person answers the question; a recording keeps reading its script or goes to a beep. If it doesn't answer you like a person, treat it as a machine and follow the steps above.`;
 
+// ── Explain it simply (every call) ─────────────────────────────────────────────
+// Ask from the team: when a caller asks anything, Maya's answer should be so
+// plain that even a child would get it. Behavioural only — it changes HOW she
+// answers, never WHAT the facts are.
+const EXPLAIN_SIMPLY = `EXPLAIN IT SO A CHILD WOULD UNDERSTAND (every answer)
+- When the caller asks a question, answer in the simplest everyday words — the way you'd explain it to a smart ten-year-old. Short words, short sentences.
+- No jargon. If you must use a real-estate word, say what it means right away: "REO" → "a house the bank owns now," "auction" → "an online sale where the highest offer wins," "cash only" → "you pay the full price yourself, no home loan," "closing" → "the day the house becomes yours," "due diligence" → "checking the house out before you bid."
+- Give the plain answer first, then one small example only if it helps ("like an online auction, but for houses").
+- One or two sentences, then stop. If it was a tricky question, check once: "Does that make sense?"
+- Never sound like you're talking down to them — simple, warm and respectful, not childish.`;
+
+// ── What Maya knows about the Vihara platform (every call) ─────────────────────
+// Built from the APPROVED FAQ (src/knowledge/faq-approved.json — the same file
+// the text assistant answers from), so calls and texts say the same thing. To
+// change what Maya knows: update the FAQ review and rebuild that file
+// (scripts/buildApprovedFaq.js); the next deploy picks it up. If the file is
+// missing or broken, the block is just the rules with no Q&A — never a crash.
+const loadApprovedFaq = () => {
+  try {
+    const { entries } = require("../knowledge/faq-approved.json");
+    return (entries || []).filter((e) => e && e.question && e.answer);
+  } catch (err) {
+    console.error("[voicePromptShared] approved FAQ not loaded:", err.message);
+    return [];
+  }
+};
+
+// The FAQ's "no mortgage / usually no financing" answers are out of date —
+// financing is available now. Left out of calls; the call's own deal facts say
+// what financing applies.
+const OUTDATED_FAQ_QUESTIONS = new Set([
+  "Can I use a mortgage?",
+  "Can I use financing to purchase the property?",
+]);
+
+const faqLines = loadApprovedFaq()
+  .filter((e) => !OUTDATED_FAQ_QUESTIONS.has(String(e.question).trim()))
+  .map((e) => `Q: ${e.question}\nA: ${String(e.answer).replace(/\s*\n+\s*-?\s*/g, " ").replace(/^\s*-\s*/, "").trim()}`)
+  .join("\n\n");
+
+const PLATFORM_KNOWLEDGE = `WHAT YOU KNOW ABOUT THE VIHARA PLATFORM (use this to answer questions about the website)
+- Vihara (vihara.ai) is a website and app where people find and bid on bank-owned and distressed houses online, often below market price.
+- Below are the official answers to common questions about the site — accounts, signing up, registering to bid, how auctions work, and paying for a property. When the caller asks about any of these, answer from here, in your own simple words (see the explain-it-simply rule). Never read it out word for word or as a list.
+- If the facts for THIS call (the property or deal details above) say something different, the facts for this call win.
+- Financing: never tell a caller they can't use a mortgage or a loan. If this call's facts say how financing works, use that; otherwise say financing depends on the property and the team will walk them through their options.
+- If the answer is not here and not in this call's facts, do NOT guess. Say you'll have the team get back to them, and offer to book a call (scheduleCallback).
+${faqLines ? `\n${faqLines}` : ""}`;
+
 // ── Turn discipline (shared core) ─────────────────────────────────────────────
 // The two universal lines. Property prompts may add their own "don't recite
 // facts as a list" line right after this in their own file.
@@ -179,4 +227,6 @@ module.exports = {
   AI_DISCLOSURE,
   OPT_OUT,
   KEEP_SHORT,
+  EXPLAIN_SIMPLY,
+  PLATFORM_KNOWLEDGE,
 };

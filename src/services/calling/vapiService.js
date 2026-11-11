@@ -26,6 +26,8 @@ const {
   AI_DISCLOSURE,
   OPT_OUT,
   KEEP_SHORT,
+  EXPLAIN_SIMPLY,
+  PLATFORM_KNOWLEDGE,
 } = require("../../config/voicePromptShared");
 
 const VAPI_API_KEY = process.env.VAPI_API_KEY;
@@ -207,6 +209,8 @@ const UNIVERSAL_BLOCKS = [
   { guard: /BAD examples/, text: BAD_EXAMPLES },
   { guard: /CALLBACK REQUESTS/i, text: CALLBACK_REQUESTS },
   { guard: /CALLER'S LOCAL TIME/, text: TIME_CONTEXT },
+  { guard: /WHAT YOU KNOW ABOUT THE VIHARA PLATFORM/, text: PLATFORM_KNOWLEDGE },
+  { guard: /EXPLAIN IT SO A CHILD WOULD UNDERSTAND/, text: EXPLAIN_SIMPLY },
   { guard: /##\s*How to sound/i, text: HUMAN_STYLE },
   { guard: /##\s*Handling objections/i, text: OBJECTION_PLAYBOOK },
   { guard: /##\s*If the caller goes quiet/i, text: NO_RESPONSE_HANDLING },
