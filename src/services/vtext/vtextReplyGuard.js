@@ -71,6 +71,7 @@ function collectSourceTexts({ knowledge, messages, replyToBody }) {
   texts.push(...(knowledge?.leadDetails || []));
   if (knowledge?.retrievedText) texts.push(knowledge.retrievedText);
   if (knowledge?.faqText) texts.push(knowledge.faqText);
+  if (knowledge?.catalogText) texts.push(knowledge.catalogText); // the other open homes (vtextListingCatalog.js)
   for (const m of messages || []) if (m?.body) texts.push(m.body);
   if (replyToBody) texts.push(replyToBody);
   return texts;

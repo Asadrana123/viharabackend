@@ -102,7 +102,27 @@ function buildFactsBlock({ propertyContext, knowledge }) {
   if (knowledge.leadDetails.length) block += `\n\nWhat this contact has told us:\n${knowledge.leadDetails.map((l) => `- ${l}`).join("\n")}`;
   if (knowledge.retrievedText) block += `\n\nMore details about the property, looked up for this question:\n${knowledge.retrievedText}`;
   if (knowledge.faqText) block += `\n\nGeneral information about how Vihara auctions work, from our FAQ (true for every property):\n${knowledge.faqText}`;
+  if (knowledge.otherHomes) block += `\n\n${otherHomesBlock(knowledge.otherHomes)}`;
   return block;
+}
+
+/** The "Other homes" part: what the home search found (vtextKnowledgeService.addOtherHomes), and any other home the text named. */
+function otherHomesBlock(o) {
+  const shown = o.matchesText ? o.matchesText.split("\n").filter(Boolean).length : 0;
+  let text;
+  if (o.failed) {
+    text = "Other homes: the search for other homes did not work for this message, so you do not know which other homes we have.";
+  } else if (!o.searched) {
+    text = "Other homes: not searched, because this message did not look like a question about which homes we have.";
+  } else if (o.total > 0) {
+    text = `Other homes that match what they asked (${o.description}), not this contact's own home: ${o.total} open home${o.total === 1 ? "" : "s"} match${o.total > shown ? `; these are the first ${shown}` : ""}:\n${o.matchesText}`;
+  } else if (shown) {
+    text = `Other homes: none of our open homes match what they asked (${o.description}). The closest ones, which do NOT fit everything they asked (${o.relaxed === "price" ? "they are outside the price they gave" : o.relaxed === "place" ? "we have no homes in the place they asked about; these are elsewhere" : "they are not what they asked for"}):\n${o.matchesText}`;
+  } else {
+    text = `Other homes: none of our open homes match what they asked (${o.description}), and we have no other homes open right now.`;
+  }
+  if (o.namedText) text += `\n\nOther homes they named:\n${o.namedText}`;
+  return text;
 }
 
 function buildPrompt({ contact, messages, replyToBody, propertyContext, knowledge, toorak, now = new Date() }) {
@@ -110,12 +130,25 @@ function buildPrompt({ contact, messages, replyToBody, propertyContext, knowledg
   // Extra rules only when the knowledge lookup is on, so the prompt is unchanged while it is off.
   const severalProperties = (knowledge?.properties?.length || 0) > 1;
   const hasCurrentProperty = (knowledge?.properties || []).some((p) => p.current);
+  // The other homes on Vihara (vtextListingCatalog.js), when the home search is on.
+  const hasCatalog = Boolean(knowledge?.otherHomes);
+  const otherHomesRules = `- If they ask what else is for sale (another price, budget, area, town, state, size, number of bedrooms, type of home, or just "anything else?"), answer from "Other homes". Its homes were searched for exactly what they asked, and it says how many match. Name at most 3, in the order given. Start with one short line saying how many match, then put each home on its own line: street and town, starting bid, then its link. If more match than you name, say how many more and offer to send them or to narrow it down (a town, a price, bedrooms). In this shape (made-up homes, never send them):
+Yes, we have 2 homes under $200k right now:
+12 Oak St, Springfield - starting bid $95,000 - https://...
+40 Elm Ave, Riverside - starting bid $120,000 - https://...
+  This reply may be longer than 3 sentences. If they ask for the rest, send the next ones from the list that you have not sent yet.
+- If "Other homes" says none match, say so plainly and kindly (for example: "We don't have anything under $100k open right now, but new homes are added often."). If it gives the closest ones, you may name one or two and say how they differ (for example "the closest is $126,477"). That is an answer: do not say a team member will follow up for this, and keep needsHuman false.
+- If they ask about other homes but "Other homes" says it was not searched or did not work, do not say we have none: say you will check and a team member will follow up, and set needsHuman true.
+- Do not bring up other homes when they did not ask about them. A question about their own home is answered about their own home.
+- When you talk about one of the other homes, use only that home's own line (and its "More details" lines, which are labelled with its name). Never move a fact from one home to another, and never call another home "your" home.
+- A link must be copied exactly from the list, never made up. Plain text, no markdown around it.\n`;
   const knowledgeRules = knowledge
-    ? `- Everything under "Property on file" and "More details" is all you know. If a fact there answers the question, use it; if it does not, do not guess.
+    ? `- Everything under "Property on file"${hasCatalog ? `, "More details" and "Other homes"` : ` and "More details"`} is all you know. If a fact there answers the question, use it; if it does not, do not guess.
+${hasCatalog ? otherHomesRules : ""}
 - You are never given the seller's minimum (reserve) price, the current highest bid or who is bidding. If asked about those, say a team member will follow up.
 - If the contact quoted a price, you can acknowledge it once, but it is not a formal offer and you must not accept, reject or negotiate it. Call it "the price you mentioned" or "your quote", never a bid or an offer. Start by acknowledging it in a few words (for example "Thanks for letting me know about your $80k"), then give the starting bid and market estimate, then say a team member can talk it through. Do not open the reply with "For the price you mentioned". Never say whether it will win or be accepted: you can state the starting bid and the market estimate, and say a team member can talk it through.
 - Your name is Maya and you are Vihara's virtual assistant. If asked who you are, or whether you are a real person, a bot or an AI, say so plainly: you are Maya, Vihara's virtual assistant, and they can ask to speak with someone on the team. Do not use the words "team member will follow up" for this, it is not a hand-off. Never say or imply that you are human.
-- If the message is not about this property, Vihara or the auction (for example the weather, a joke, a poem, general chat), reply in one friendly sentence that you can help with questions about the property. Do not say a team member will follow up for these, and keep needsHuman false.
+- If the message is not about this property, ${hasCatalog ? "other homes for sale, " : ""}Vihara or the auction (for example the weather, a joke, a poem, general chat), reply in one friendly sentence that you can help with questions about the property. Do not say a team member will follow up for these, and keep needsHuman false.
 - If the contact says they did not get a call, a reply or a follow-up they expected, thank them for letting us know and say a team member will reach out. Do not apologise for a delay or admit anything went wrong, and do not promise a phone call, a time or any particular way of reaching them. Set needsHuman true.
 - Do not give investment advice or say whether this is a good deal or a good investment. You may share the facts you have (estimate, rent, taxes) and say a team member can talk it through.
 - Under "General information" is how Vihara auctions work in general. Use it only when it directly answers the question asked, in your own words, in 1 to 3 sentences, and add nothing that is not in it. Do not stretch a related entry to answer a different question (for example, an entry about setting proxy bids on several properties does not answer how many properties someone may bid on). If it does not directly answer, say you do not have it and a team member will follow up. Advice about what someone should do (for example, to inspect the property) does not mean it is allowed or available: do not answer a can-I question with yes unless the information says so. If they ask whether cash or a deposit is needed up front to bid, how much to put down, or how much money they need to be able to bid, always say a team member will follow up. Do not answer these from the cash-only information. (Only a question that names the earnest money deposit or EMD is answered from the property facts when they state it. A question that just says deposit, put down, or money needed to bid is not.) Never say what Vihara does or does not offer, provide or charge (financing, lenders, services, fees) unless it is written in the information above. If it seems to conflict with a fact about the property, trust the property fact.
