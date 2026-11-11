@@ -217,7 +217,10 @@ const registerNewDealsLead = catchAsyncError(async (req, res, next) => {
   buyBox.down_payment = buyBox.financing !== "cash" && DOWN_PAYMENTS.includes(rawDown) ? rawDown : "";
   const advisorCallRequested = body.advisor_call_requested === true;
   const tier = computeTier(buyBox, advisorCallRequested);
-  const consent = body.contact_consent === true; // call consent (Maya)
+  // Only the /new-deals page is a Premier Mortgage sign-up (/find and /request share this endpoint).
+  const partner = str(body.landing_page, 40) === "new-deals" ? NEW_DEALS_PARTNER : "";
+  // Call consent (Maya). /new-deals leads are text + email only: never called, even if an old page sends consent.
+  const consent = !partner && body.contact_consent === true;
   // Text consent: its own box since 6 Nov 2026 (before, one box covered calls and texts).
   const smsConsent = body.sms_consent === true;
   const dealInterest = findDeal(str(body.deal_interest, 40)) ? str(body.deal_interest, 40) : "";
@@ -228,8 +231,6 @@ const registerNewDealsLead = catchAsyncError(async (req, res, next) => {
   const attribution = attributionFrom(body.attribution, ["variant", "market_param"]);
   const pageUrl = str(body.page_url, 2000);
   const submittedAt = body.submitted_at ? new Date(body.submitted_at) : now;
-  // Only the /new-deals page is a Premier Mortgage sign-up (/find and /request share this endpoint).
-  const partner = str(body.landing_page, 40) === "new-deals" ? NEW_DEALS_PARTNER : "";
 
   const fields = {
     fullName,
@@ -332,7 +333,7 @@ const registerNewDealsLead = catchAsyncError(async (req, res, next) => {
   // Vtext's New Deals text: new sign-ups only (no text on an update), only with the SMS box ticked. Never throws.
   if (!updated) maybeSendFormIntroText({ form: "newDeals", leadType: "newDeals", lead: plain, name: plain.fullName });
 
-  // Maya's signup call (+ daily retries) — only with consent.
+  // Maya's signup call (+ daily retries) — only with consent (never for /new-deals, see consent above).
   if (consent) {
     scheduleNewDealsSignupCall(plain).catch((e) => console.error("[new-deals-call] scheduling failed:", e.message));
   } else {

@@ -25,6 +25,8 @@ const NEW_DEALS = [
 
 // Every sign-up from the /new-deals page is tagged with this partner (admin,
 // Slack). /find and /request post to the same endpoint and are NOT tagged.
+// These leads are reached by text and email only: Maya never calls them
+// (controller ignores call consent; the daily call sweep skips them).
 const NEW_DEALS_PARTNER = "Premier Mortgage";
 
 const STATE_WORDS = { MD: "Maryland", MI: "Michigan", LA: "Louisiana" };

@@ -27,7 +27,7 @@ const { enqueueBurst, PRIORITY } = require("./callDispatchQueue");
 const { FOLLOW_UP_DAYS, FOLLOW_UP_CALL_OPTS, nextFollowUpAt, noAnswerUpdate, skipUpdate } = require("./followUpCadence");
 const newDealsVoicePrompt = require("../../config/newDealsVoicePrompt");
 const { facebookFormPromptFor } = require("../../config/facebookFormVoicePrompt");
-const { dealSpoken } = require("../../config/newDeals");
+const { dealSpoken, NEW_DEALS_PARTNER } = require("../../config/newDeals");
 const { spokenList, spokenBudget, stateName } = require("../leads/buyBox");
 const { TOORAK_FORM_IDS } = require("../../config/toorakForms");
 
@@ -201,7 +201,14 @@ function createBuyBoxCallScheduler({ Model, source, logTag, payloadFor = (lead) 
   return { scheduleSignupCall, start, sweepDueCalls };
 }
 
-const newDealsCalls = createBuyBoxCallScheduler({ Model: NewDealsLead, source: "new-deals", logTag: "new-deals-daily" });
+// /new-deals (Premier Mortgage) leads are text + email only, so the daily
+// callbacks skip them, including ones consented before calls were turned off.
+const newDealsCalls = createBuyBoxCallScheduler({
+  Model: NewDealsLead,
+  source: "new-deals",
+  logTag: "new-deals-daily",
+  sweepFilter: { partner: { $ne: NEW_DEALS_PARTNER } },
+});
 /**
  * Facebook / Instagram instant-form leads: the form decides Maya's script
  * (config/facebookFormVoicePrompt.js), and every answer on the form is passed
