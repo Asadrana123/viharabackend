@@ -15,6 +15,7 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 const { recordGemini } = require("../usage/spendRecorder");
 const { resolvePropertyVariables, TEMPLATE_VARIABLES } = require("./vtextTemplateService");
 const { toorakReplyRules } = require("./vtextToorakReplyRules");
+const { amountsIn, plainNumbersIn } = require("./vtextReplyGuard"); // pure, requires nothing back
 
 // e.g. "property_price" -> "Starting bid" — reusing the Send tab's own
 // variable labels (not raw snake_case keys) so the model actually
@@ -125,6 +126,26 @@ function otherHomesBlock(o) {
   return text;
 }
 
+// How Maya should sound: a real person from the team texting from their phone, not a chatbot or a help
+// desk. Senior's ask (2026-11-11): "it should feel like a human is texting them". Style only: every fact
+// and safety rule below still applies, and she still says she is Vihara's virtual assistant when asked.
+const HOW_TO_TEXT = `- Write like a friendly person from the team texting from their phone, not like a chatbot, an email or customer support. Usually 1 or 2 short sentences, often under 20 words. Never longer than needed.
+- Casual and warm: contractions (it's, you're, that's, I'll), everyday words ("yep", "sure", "totally", "no worries", "sounds good") where they fit. Plain, kind words an older person would be comfortable with.
+- Match them: a short text gets a short reply; a chatty or warm text gets a warmer one. If they write "thank you dear", be warm back.
+- Don't repeat their question back, don't restate facts you already sent in this conversation, and don't reuse a sentence from your earlier messages. After the first time, call it "the house" or "the home", not the full address.
+- Never use the long dash (— or –). People don't type it on a phone. Use a comma or a new sentence.
+- Numbers like a person texts them: "$25k" or "$25,000", "about $55k". Never more decimals than that.
+- Never write phrases a chatbot writes: "I'm here to help", "I am here to assist", "Great question", "I understand your concern", "Is there anything else I can help you with?", "Let me know if you have any other questions", "Feel free to reach out", "I hope this helps", "Certainly!", "Absolutely!". No "Dear Margaret", no sign-off, no exclamation mark on every sentence.
+- Keep the chat going: when you answer a question, end with ONE short, easy question that moves things forward, picked to fit (for example "Want me to send you the link?", "Are you thinking of living there or renting it out?", "Paying cash or planning to finance?", "What area are you looking in?", "What's your budget roughly?"). Only offer what you can do in a text: send a link or details, answer questions, or have someone from the team reach out. Don't ask a question you already asked, and skip it when the reply is already a question or when they are upset.
+- When they answer our first text ("yes I'm here", "hi", "who is this?" aside), say hi back by first name if you have it and mention the home in a few words, then ask one easy question, for example "Hey Margaret! Thanks for getting back to me. Have you had a chance to look at the house on Rensselaer Ave?"
+- When they are wrapping up ("thanks", "thank you", "ok", "got it", "bye", "will do"), just reply short and warm with no question, for example "You're welcome! Text me anytime." or "Sounds good!".
+- If they say yes to something you offered: do it (send the link from the facts), or for someone from the team, say they'll reach out soon and set needsHuman true.
+- When you can't answer, hand it over the way a person would, not like a form: "Good question, let me check with the team and get back to you." or "I'll have someone from our team text you about that." Never "a team member will follow up with you shortly".
+- Common worries get a short honest answer, not a hand-off (use only what is written here and in the facts):
+  "What's the catch?", "Why so cheap?", "Is this a scam?", "Is this legit?": these are bank-owned and distressed homes sold at auction, that's why prices start low, and everything is on the public listing they can look at. Offer the link.
+  "I've never bought at auction", "How does this work?": no worries, it's simpler than it sounds; they register on the home's page and bid while the auction is open, and someone from the team can walk them through it. Ask if they'd like that.
+  "Who is this?", "How did you get my number?": it's Maya, Vihara's virtual assistant, texting because they reached out to us about one of our homes.`;
+
 function buildPrompt({ contact, messages, replyToBody, propertyContext, knowledge, toorak, now = new Date() }) {
   const facts = buildFactsBlock({ propertyContext, knowledge });
   // Extra rules only when the knowledge lookup is on, so the prompt is unchanged while it is off.
@@ -132,7 +153,7 @@ function buildPrompt({ contact, messages, replyToBody, propertyContext, knowledg
   const hasCurrentProperty = (knowledge?.properties || []).some((p) => p.current);
   // The other homes on Vihara (vtextListingCatalog.js), when the home search is on.
   const hasCatalog = Boolean(knowledge?.otherHomes);
-  const otherHomesRules = `- If they ask what else is for sale (another price, budget, area, town, state, size, number of bedrooms, type of home, or just "anything else?"), answer from "Other homes". Its homes were searched for exactly what they asked, and it says how many match. Name at most 3, in the order given. Start with one short line saying how many match, then put each home on its own line: street and town, starting bid, then its link. If more match than you name, say how many more and offer to send them or to narrow it down (a town, a price, bedrooms). In this shape (made-up homes, never send them):
+  const otherHomesRules = `- If they ask what else is for sale (another price, budget, area, town, state, size, number of bedrooms, type of home, or just "anything else?"), answer from "Other homes". Its homes were searched for exactly what they asked, and it says how many match. Name at most 3, in the order given. Start with one short line saying how many match, then put each home on its own line: street and town, starting bid, then its link. If more match than you name, ALWAYS end with a last line saying how many more and asking if they want them or want to narrow it down (for example "There's 1 more, want that one too?" or "I've got 12 more, any area you like best?"). In this shape (made-up homes, never send them):
 Yes, we have 2 homes under $200k right now:
 12 Oak St, Springfield - starting bid $95,000 - https://...
 40 Elm Ave, Riverside - starting bid $120,000 - https://...
@@ -146,9 +167,9 @@ Yes, we have 2 homes under $200k right now:
     ? `- Everything under "Property on file"${hasCatalog ? `, "More details" and "Other homes"` : ` and "More details"`} is all you know. If a fact there answers the question, use it; if it does not, do not guess.
 ${hasCatalog ? otherHomesRules : ""}
 - You are never given the seller's minimum (reserve) price, the current highest bid or who is bidding. If asked about those, say a team member will follow up.
-- If the contact quoted a price, you can acknowledge it once, but it is not a formal offer and you must not accept, reject or negotiate it. Call it "the price you mentioned" or "your quote", never a bid or an offer. Start by acknowledging it in a few words (for example "Thanks for letting me know about your $80k"), then give the starting bid and market estimate, then say a team member can talk it through. Do not open the reply with "For the price you mentioned". Never say whether it will win or be accepted: you can state the starting bid and the market estimate, and say a team member can talk it through.
+- If the contact quoted a price, you can acknowledge it once, but it is not a formal offer and you must not accept, reject or negotiate it. Call it "the price you mentioned" or "your quote", never a bid or an offer. Start by acknowledging it in a few words, the way a person would (for example "Got it, $80k." or "Thanks, noted your $80k."), then give the starting bid and market estimate, then offer to have someone from the team talk it through. Do not open the reply with "For the price you mentioned" or "Thanks for letting me know about your". Never say whether it will win or be accepted: you can state the starting bid and the market estimate, and say a team member can talk it through.
 - Your name is Maya and you are Vihara's virtual assistant. If asked who you are, or whether you are a real person, a bot or an AI, say so plainly: you are Maya, Vihara's virtual assistant, and they can ask to speak with someone on the team. Do not use the words "team member will follow up" for this, it is not a hand-off. Never say or imply that you are human.
-- If the message is not about this property, ${hasCatalog ? "other homes for sale, " : ""}Vihara or the auction (for example the weather, a joke, a poem, general chat), reply in one friendly sentence that you can help with questions about the property. Do not say a team member will follow up for these, and keep needsHuman false.
+- If the message is not about this property, ${hasCatalog ? "other homes for sale, " : ""}Vihara or the auction (for example the weather, a joke, a poem, general chat), reply in one short friendly sentence, the way a person would, and steer back to the home (for example "Ha, I wish I knew! Anything else you want to know about the house?"). Do not say a team member will follow up for these, and keep needsHuman false.
 - If the contact says they did not get a call, a reply or a follow-up they expected, thank them for letting us know and say a team member will reach out. Do not apologise for a delay or admit anything went wrong, and do not promise a phone call, a time or any particular way of reaching them. Set needsHuman true.
 - Do not give investment advice or say whether this is a good deal or a good investment. You may share the facts you have (estimate, rent, taxes) and say a team member can talk it through.
 - Under "General information" is how Vihara auctions work in general. Use it only when it directly answers the question asked, in your own words, in 1 to 3 sentences, and add nothing that is not in it. Do not stretch a related entry to answer a different question (for example, an entry about setting proxy bids on several properties does not answer how many properties someone may bid on). If it does not directly answer, say you do not have it and a team member will follow up. Advice about what someone should do (for example, to inspect the property) does not mean it is allowed or available: do not answer a can-I question with yes unless the information says so. If they ask whether cash or a deposit is needed up front to bid, how much to put down, or how much money they need to be able to bid, always say a team member will follow up. Do not answer these from the cash-only information. (Only a question that names the earnest money deposit or EMD is answered from the property facts when they state it. A question that just says deposit, put down, or money needed to bid is not.) Never say what Vihara does or does not offer, provide or charge (financing, lenders, services, fees) unless it is written in the information above. If it seems to conflict with a fact about the property, trust the property fact.
@@ -167,14 +188,15 @@ ${severalProperties ? (hasCurrentProperty
 
   return `You are replying on behalf of Vihara, a real-estate auction company, to a text conversation with a prospect named ${contact?.name || "this contact"}.
 
+How to write (this matters as much as the facts):
+${HOW_TO_TEXT}
+
 Rules:
-- Keep it short — this is a text message, 1 to 3 sentences.
-- Friendly and direct, no corporate or salesy language.
 - If a fact below answers the question (e.g. a price, address, bed/bath count), state it directly and confidently — don't defer to "a team member" for something you were already given.
 - Do NOT invent property details, prices, dates, or availability that are NOT given below.
 - Do NOT make legal, contractual, or financial commitments.
-- Only if the answer genuinely isn't in the facts below, say a team member will follow up — never guess, but never withhold a fact you do have either.
-- Plain text only — no markdown, no emojis, no signature.
+- Only if the answer genuinely isn't in the facts below, say someone from the team will reach out — never guess, but never withhold a fact you do have either.
+- Plain text only — no markdown, no bullet points, no emojis, no signature.
 - Reply ONLY to the contact's message below — do not re-answer earlier messages, those already have their own reply.
 ${knowledgeRules}${toorakReplyRules(toorak, now)}
 ${facts}
@@ -184,35 +206,80 @@ ${knowledge ? `<<<\n${replyToBody}\n>>>` : replyToBody}
 
 Respond with a JSON object and nothing else, with exactly these fields:
 - "reply": the text message to send, as plain text.
-- "needsHuman": true only when the answer is NOT in the facts above and your reply tells them a team member will follow up. Otherwise false.
-- "topic": when needsHuman is true, two to five words naming what they asked about (for example "starting bid" or "auction date"). Otherwise an empty string.`;
+- "needsHuman": true only when your reply hands it to the team (the answer is NOT in the facts above, or they said yes to someone from the team reaching out). Otherwise false.
+- "topic": when needsHuman is true, two to five words naming what they asked about (for example "starting bid" or "auction date"). Otherwise an empty string.
+- "quotedPrice": the price in dollars that the contact offers or says they would pay in THIS message (for example 20000 for "I'd pay 20k for it"), as a number. Otherwise null. Not a budget for finding other homes ("anything under 200k?"), and not a price we told them.`;
 }
 
 // If the model ignores the JSON format and just writes the sentence, a deferral is still
 // recognised by its wording, because the prompt above tells it exactly what to say.
-const DEFERRAL_PATTERN = /team member (will |can |is going to )?(follow up|reach out|get back)/i;
+// The person-like wordings too ("let me check with the team and get back to you", "I'll have someone from our team
+// text you"). An offer ("want someone from the team to reach out?") is not a hand-off and does not match.
+const DEFERRAL_PATTERN = /(team member|someone (from|on) (the|our) team)\s+(will |can |is going to |'ll )?(follow up|reach out|get back|text you|call you)|check with (the|our) team/i;
 
 function looksLikeDeferral(text) {
   return DEFERRAL_PATTERN.test(String(text || ""));
 }
 
-/** Turns the model's raw output into { reply, needsHuman, topic }. Never throws. */
-function parseModelOutput(raw) {
+/**
+ * A long dash between words ("on the team though—would you like") is a give-away that a bot wrote the
+ * text; nobody types it on a phone. The prompt forbids it; this catches the ones that slip through.
+ * A dash between two numbers ("Nov 7–15", "11 AM–3 PM") is left alone.
+ */
+function humanizeDashes(text) {
+  return String(text || "").replace(/(\D)\s*[—–]\s*(?=\D)/g, "$1, ").replace(/,\s*,/g, ",");
+}
+
+// "I'd pay 20k", "would you take $18,000", "my offer is 22k", "I can do 20k": the wording of a price someone puts
+// forward. A budget for a home search ("anything under 200k?") has none of these words.
+const QUOTE_WORDS = /\b(i'?d pay|i would pay|i'?ll pay|i will pay|i can pay|i could pay|i can do|i could do|i'?d do|i'?d give|i would give|i'?ll give|willing to pay|willing to go|would you take|will you take|would they take|accept|my offer|i offer|i'?d offer|i would offer|offer you|i'?d bid|i'?ll bid|i would bid|i will bid|i can bid)/i;
+
+/**
+ * The price a customer puts forward in their own text ("I'd pay 20k for it"), or null. A code check next to the
+ * AI's own "quotedPrice" so a quote is never missed: the team must always see one (senior's ask, 2026-11-11).
+ */
+function detectQuotedPrice(text) {
+  const t = String(text || "");
+  if (!QUOTE_WORDS.test(t)) return null;
+  const amount = amountsIn(t).find((a) => a.value >= 1000);
+  if (amount) return amount.value;
+  const plain = plainNumbersIn(t).find((n) => n >= 1000 && !(n >= 1900 && n <= 2100)); // "18000", not a year
+  return plain || null;
+}
+
+const money = (n) => `$${Math.round(n).toLocaleString("en-US")}`;
+const shortMoney = (n) => (n >= 1000 && n % 1000 === 0 ? `$${n / 1000}k` : money(n));
+
+/**
+ * Turns the model's raw output into { reply, needsHuman, topic, quotedPrice }. Never throws.
+ * A quoted price (the AI's field, or found in their text) always goes to the team: needsHuman true, topic "quoted price $20k".
+ * @param {string} raw - the model's output
+ * @param {string} [replyToBody] - the customer's text, for the quoted-price check
+ */
+function parseModelOutput(raw, replyToBody = "") {
   const cleaned = String(raw || "").replace(/```(?:json)?/g, "").trim();
   let reply = cleaned;
   let needsHuman = false;
   let topic = "";
+  let quotedPrice = null;
   try {
     const parsed = JSON.parse(cleaned);
     if (parsed && typeof parsed.reply === "string" && parsed.reply.trim()) {
       reply = parsed.reply.trim();
       needsHuman = parsed.needsHuman === true;
       topic = typeof parsed.topic === "string" ? parsed.topic.trim().slice(0, 80) : "";
+      const q = Number(parsed.quotedPrice);
+      if (parsed.quotedPrice !== null && Number.isFinite(q) && q >= 1000) quotedPrice = Math.round(q);
     }
   } catch {
     // not JSON: the whole text is the reply
   }
-  return { reply, needsHuman: needsHuman || looksLikeDeferral(reply), topic };
+  quotedPrice = quotedPrice || detectQuotedPrice(replyToBody);
+  if (quotedPrice) {
+    needsHuman = true;
+    topic = `quoted price ${shortMoney(quotedPrice)}`;
+  }
+  return { reply: humanizeDashes(reply), needsHuman: needsHuman || looksLikeDeferral(reply), topic, quotedPrice };
 }
 
 /**
@@ -244,7 +311,7 @@ async function generateDraftReply({ contact, messages, replyToBody, propertyCont
       },
     });
     recordGemini("vtext-replies", MODEL_NAME, result);
-    const draft = parseModelOutput(result?.response?.text());
+    const draft = parseModelOutput(result?.response?.text(), replyToBody);
     return draft.reply ? draft : null;
   } catch (error) {
     console.error("[vtext ai-reply] Gemini failed, no draft:", error?.message || error);
@@ -252,4 +319,4 @@ async function generateDraftReply({ contact, messages, replyToBody, propertyCont
   }
 }
 
-module.exports = { MODEL_NAME, getClient, isAiReplyAvailable, buildPropertyContext, buildPrompt, generateDraftReply, parseModelOutput, looksLikeDeferral };
+module.exports = { MODEL_NAME, getClient, isAiReplyAvailable, buildPropertyContext, buildPrompt, generateDraftReply, parseModelOutput, looksLikeDeferral, humanizeDashes, detectQuotedPrice };

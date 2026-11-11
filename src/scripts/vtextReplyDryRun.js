@@ -23,7 +23,7 @@ const Product = require('../model/property/productModel');
 const { buildReplyKnowledge } = require('../services/vtext/vtextKnowledgeService');
 const { loadOpenIndex, describeFilters } = require('../services/vtext/vtextListingCatalog');
 const { generateDraftReply } = require('../services/vtext/vtextAiReplyService');
-const { SAFE_HANDOFF, checkReplyAmounts, collectSourceTexts } = require('../services/vtext/vtextReplyGuard');
+const { SAFE_HANDOFF, checkReplyAmounts, collectSourceTexts, customerTextsOf } = require('../services/vtext/vtextReplyGuard');
 
 async function main() {
   const args = process.argv.slice(2);
@@ -71,7 +71,11 @@ async function main() {
 
     let draft = await generateDraftReply({ contact, messages: history, replyToBody: question, propertyContext: knowledge.propertyContext, knowledge });
     if (draft) {
-      const check = checkReplyAmounts({ reply: draft.reply, sourceTexts: collectSourceTexts({ knowledge, messages: history, replyToBody: question }) });
+      const check = checkReplyAmounts({
+        reply: draft.reply,
+        sourceTexts: collectSourceTexts({ knowledge, messages: history, replyToBody: question }),
+        customerTexts: customerTextsOf({ messages: history, replyToBody: question }),
+      });
       if (!check.ok) {
         console.log(`Guard:    replaced, amounts not given to the AI: ${check.unsupported.join(', ')} (draft was: ${draft.reply})`);
         draft = { reply: SAFE_HANDOFF, needsHuman: true, topic: 'amount to check' };

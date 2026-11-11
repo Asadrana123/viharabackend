@@ -117,7 +117,11 @@ async function notifyAiReplySent({ message, approvedBy }) {
 
     const auto = !approvedBy?.adminId && /auto/i.test(approvedBy?.adminName || "");
     const edited = message.aiDraft?.approvalStatus === "edited";
-    const sentBy = auto ? "Sent automatically" : `Approved by ${approvedBy?.adminName || "an admin"}${edited ? " (edited)" : ""}`;
+    // An auto reply waits a human-like 20-50 s before it goes out (vtextDraftReplyService.humanReplyDelayMs).
+    const waitSec = message.scheduledFor ? Math.round((new Date(message.scheduledFor).getTime() - Date.now()) / 1000) : 0;
+    const sentBy = auto
+      ? waitSec > 5 ? `Sent automatically, goes out in about ${waitSec} seconds` : "Sent automatically"
+      : `Approved by ${approvedBy?.adminName || "an admin"}${edited ? " (edited)" : ""}`;
     const needsHuman = Boolean(message.aiDraft?.needsHuman);
 
     await notifyVtextAlert({
@@ -128,10 +132,12 @@ async function notifyAiReplySent({ message, approvedBy }) {
         { label: "Contact", value: contact?.name || "(no name)" },
         { label: "Phone", value: contact?.phoneE164 },
         { label: "Property", value: property },
+        // What it is about at a glance ("quoted price $20k", "property taxes"), only when the team must follow up.
+        needsHuman && message.aiDraft?.topic ? { label: "Topic", value: message.aiDraft.topic } : null,
         { label: "How it was sent", value: sentBy },
         { label: "Customer's question", value: clip(question?.body, 500), wide: true },
         { label: "AI reply", value: clip(message.body, 500), wide: true },
-        needsHuman ? { label: "What to do", value: "The AI told them a team member will follow up. Someone needs to reply to them.", wide: true } : null,
+        needsHuman ? { label: "What to do", value: "Someone from the team should reply to them.", wide: true } : null,
         { label: "Inbox", value: `<${inboxUrl(message.conversationId)}|Open the conversation>`, wide: true },
       ].filter(Boolean),
     });

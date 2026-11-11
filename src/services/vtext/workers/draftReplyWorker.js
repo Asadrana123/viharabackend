@@ -16,10 +16,10 @@ const { bullmqConnection } = require("../queue/connection");
 const { QUEUE_NAMES, QUEUE_PREFIX } = require("../queue/queues");
 const { getSettings } = require("../vtextSettingsService");
 const { buildPropertyContext, generateDraftReply, MODEL_NAME } = require("../vtextAiReplyService");
-const { createDraftReply, approveDraft } = require("../vtextDraftReplyService");
+const { createDraftReply, approveDraft, humanReplyDelayMs } = require("../vtextDraftReplyService");
 const { isRagEnabled, buildReplyKnowledge } = require("../vtextKnowledgeService");
 const { loadToorakLead } = require("../vtextToorakReplyRules");
-const { SAFE_HANDOFF, checkReplyAmounts, collectSourceTexts } = require("../vtextReplyGuard");
+const { SAFE_HANDOFF, checkReplyAmounts, collectSourceTexts, customerTextsOf } = require("../vtextReplyGuard");
 const { publishEvent } = require("../vtextEventsBus");
 const { notifyVtextAlert } = require("../../shared/slackService");
 const { sendAlertWithCooldown, inboxUrl, clip } = require("../vtextAlertService");
@@ -81,11 +81,15 @@ async function processDraftReplyJob(job) {
   // say) must not go out. The draft is swapped for a plain hand-off and the original kept for review.
   let guard;
   if (knowledge) {
-    const check = checkReplyAmounts({ reply: draft.reply, sourceTexts: collectSourceTexts({ knowledge, messages: history, replyToBody: inboundMessage.body }) });
+    const check = checkReplyAmounts({
+      reply: draft.reply,
+      sourceTexts: collectSourceTexts({ knowledge, messages: history, replyToBody: inboundMessage.body }),
+      customerTexts: customerTextsOf({ messages: history, replyToBody: inboundMessage.body }),
+    });
     if (!check.ok) {
       console.warn(`[vtext guard] reply replaced, it contained amount(s) the AI was not given: ${check.unsupported.join(", ")}`);
       guard = { replaced: true, amounts: check.unsupported, originalReply: draft.reply };
-      draft = { reply: SAFE_HANDOFF, needsHuman: true, topic: "amount to check" };
+      draft = { reply: SAFE_HANDOFF, needsHuman: true, topic: draft.quotedPrice ? draft.topic : "amount to check" }; // a quoted price stays the topic
     }
   }
   const { reply: body, needsHuman, topic } = draft;
@@ -108,7 +112,8 @@ async function processDraftReplyJob(job) {
 
   const settings = await getSettings();
   if (settings.aiAutoReplyEnabled) {
-    await approveDraft(message._id, { approvedBy: { adminId: null, adminName: "AI (auto-approved)" } });
+    // A human-like pause before it goes out (20-50 s, longer for a long reply): an answer a few seconds after their text reads as a bot.
+    await approveDraft(message._id, { approvedBy: { adminId: null, adminName: "AI (auto-approved)" }, delayMs: humanReplyDelayMs(body) });
     await publishEvent({ type: "message.updated", conversationId: String(conversationId), contactId: String(contactId) });
   }
 
