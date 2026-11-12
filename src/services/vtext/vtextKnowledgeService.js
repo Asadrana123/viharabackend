@@ -41,7 +41,7 @@ function propertyFacts(product = {}) {
 const { embedQuery } = require("../rag/embeddingService");
 const { search } = require("../rag/qdrantService");
 const { sendAlertWithCooldown } = require("./vtextAlertService");
-const { isEnabled: isCatalogEnabled, loadOpenIndex, extractHomeSearch, searchListings, describeFilters, loadListingsBySlugs, findMentionedSlugs, formatCatalog } = require("./vtextListingCatalog");
+const { isEnabled: isCatalogEnabled, loadOpenIndex, extractHomeSearch, searchListings, statesNear, describeFilters, loadListingsBySlugs, findMentionedSlugs, formatCatalog } = require("./vtextListingCatalog");
 
 const MAX_PROPERTIES = 3;
 const TOP_K = Number(process.env.RAG_VTEXT_TOP_K || 5);
@@ -286,6 +286,7 @@ async function buildReplyKnowledge({ contact, messages, replyToBody, conversatio
       facts: propertyFacts(p.product),
       quotePrice: p.quotePrice,
       current: p.current,
+      startBid: p.product.startBid ?? null,
     }));
     out.propertyContext = (out.properties.find((p) => p.current) || out.properties[0])?.facts || null;
 
@@ -307,7 +308,11 @@ async function buildReplyKnowledge({ contact, messages, replyToBody, conversatio
   const catalogOn = isCatalogEnabled();
   const index = catalogOn ? await loadOpenIndex({ now }) : { homes: [], facets: null };
   const otherHomes = index.homes.filter((h) => !ownSlugs.has(h.slug));
-  const homeSearchStep = catalogOn ? extractHomeSearch({ messages, replyToBody, facets: index.facets }) : null;
+  // Where their own home is, so "anything else in the area?" means that town.
+  const ownHome = index.homes.find((h) => h.slug === String(out.properties.find((p) => p.current)?.slug || "").toLowerCase())
+    || index.homes.find((h) => ownSlugs.has(h.slug));
+  const ownPlace = ownHome ? [ownHome.city, ownHome.state].filter(Boolean).join(", ") : "";
+  const homeSearchStep = catalogOn ? extractHomeSearch({ messages, replyToBody, facets: index.facets, ownPlace }) : null;
 
   const started = Date.now();
   let query = String(replyToBody).trim();
@@ -333,7 +338,7 @@ async function buildReplyKnowledge({ contact, messages, replyToBody, conversatio
   }
   out.retrieval.ms = Date.now() - started;
 
-  if (catalogOn) await addOtherHomes(out, { homeSearchStep, ownSlugs: [...ownSlugs], now });
+  if (catalogOn) await addOtherHomes(out, { homeSearchStep, ownSlugs: [...ownSlugs], now, index });
   return out;
 }
 
@@ -341,13 +346,20 @@ async function buildReplyKnowledge({ contact, messages, replyToBody, conversatio
  * Fills `out.otherHomes` for the prompt: { searched, failed, description, total, relaxed, matchesText, namedText }.
  * `catalogText` (every line the AI was shown) feeds the dollar check. Never throws.
  */
-async function addOtherHomes(out, { homeSearchStep, ownSlugs, now }) {
+async function addOtherHomes(out, { homeSearchStep, ownSlugs, now, index }) {
   const other = { searched: false, failed: false, description: "", total: 0, relaxed: "", matchesText: "", namedText: "" };
   try {
     const step = await homeSearchStep;
     if (!step.ok) other.failed = true;
     else if (step.filters) {
-      const result = await searchListings(step.filters, { excludeSlugs: ownSlugs, now });
+      // Nearby first (the state of the town asked), then the homes closest in price to their own home.
+      const own = out.properties.find((p) => p.current) || out.properties[0];
+      const result = await searchListings(step.filters, {
+        excludeSlugs: ownSlugs,
+        now,
+        nearStates: statesNear(step.filters, index?.homes),
+        anchorBid: own?.startBid ?? null,
+      });
       Object.assign(other, { searched: true, description: describeFilters(step.filters), total: result.total, relaxed: result.relaxed, matchesText: formatCatalog(result.listings) });
       out.homeSearch = { filters: step.filters, total: result.total, relaxed: result.relaxed, shown: result.listings.map((l) => l.slug) };
     }

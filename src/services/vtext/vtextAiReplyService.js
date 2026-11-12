@@ -108,6 +108,15 @@ function buildFactsBlock({ propertyContext, knowledge }) {
   return block;
 }
 
+/** How the closest homes differ from what was asked, by searchListings' `relaxed`. */
+const CLOSEST_WHY = {
+  state: "we have nothing in the town or county they asked about; these are the nearest, in the same state",
+  price: "they are outside the price they gave",
+  state_price: "we have nothing in the town or county they asked about at that price; these are in the same state but outside the price they gave",
+  place: "we have no homes in the place they asked about; these are elsewhere",
+  all: "nothing nearby or like what they asked; these are the open homes closest in price to what they are looking at",
+};
+
 /** The "Other homes" part: what the home search found (vtextKnowledgeService.addOtherHomes), and any other home the text named. */
 function otherHomesBlock(o) {
   const shown = o.matchesText ? o.matchesText.split("\n").filter(Boolean).length : 0;
@@ -119,7 +128,7 @@ function otherHomesBlock(o) {
   } else if (o.total > 0) {
     text = `Other homes that match what they asked (${o.description}), not this contact's own home: ${o.total} open home${o.total === 1 ? "" : "s"} match${o.total > shown ? `; these are the first ${shown}` : ""}:\n${o.matchesText}`;
   } else if (shown) {
-    text = `Other homes: none of our open homes match what they asked (${o.description}). The closest ones, which do NOT fit everything they asked (${o.relaxed === "price" ? "they are outside the price they gave" : o.relaxed === "place" ? "we have no homes in the place they asked about; these are elsewhere" : "they are not what they asked for"}):\n${o.matchesText}`;
+    text = `Other homes: none of our open homes match what they asked (${o.description}). The closest ones, which do NOT fit everything they asked (${CLOSEST_WHY[o.relaxed] || CLOSEST_WHY.all}):\n${o.matchesText}`;
   } else {
     text = `Other homes: none of our open homes match what they asked (${o.description}), and we have no other homes open right now.`;
   }
@@ -191,7 +200,9 @@ Yes, we have 2 homes under $200k right now:
 12 Oak St, Springfield - starting bid $95,000 - https://...
 40 Elm Ave, Riverside - starting bid $120,000 - https://...
   This reply may be longer than 3 sentences. If they ask for the rest, send the next ones from the list that you have not sent yet.
-- If "Other homes" says none match, say so plainly and kindly (for example: "We don't have anything under $100k open right now, but new homes are added often."). If it gives the closest ones, you may name one or two and say how they differ (for example "the closest is $126,477"). That is an answer: do not say a team member will follow up for this, and keep needsHuman false.
+- If "Other homes" says none match and gives the closest ones, ALWAYS offer them: say in a few words that nothing fits exactly, then name the first one or two in the order given (street and town, starting bid, link, each on its own line) and say how they differ. Never answer only "we don't have any" when closest ones are listed. For example (made-up home): "Nothing else in Springfield right now, but the closest is in Riverside, same state:
+40 Elm Ave, Riverside - starting bid $120,000 - https://..."
+  Only when it says we have no other homes open at all, say so plainly and kindly (for example: "We don't have anything else open right now, but new homes are added often."). Either way that is an answer: do not say a team member will follow up for this, and keep needsHuman false.
 - If they ask about other homes but "Other homes" says it was not searched or did not work, do not say we have none: say you will check and a team member will follow up, and set needsHuman true.
 - Do not bring up other homes when they did not ask about them. A question about their own home is answered about their own home.
 - When you talk about one of the other homes, use only that home's own line (and its "More details" lines, which are labelled with its name). Never move a fact from one home to another, and never call another home "your" home.

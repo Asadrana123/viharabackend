@@ -21,7 +21,7 @@
 const Product = require("../../model/property/productModel");
 const { listingPageUrl } = require("../../config/siteUrls");
 const { resolvePropertyTimezone } = require("../../utils/resolveTimezone");
-const { formatAuctionDate } = require("./vtextFormatters");
+const { formatAuctionDate, formatAuctionTime } = require("./vtextFormatters");
 
 const INDEX_TTL_MS = 5 * 60_000;
 const MAX_SHOWN = Number(process.env.VTEXT_HOME_SEARCH_LIMIT || 10); // homes handed to the reply AI per search
@@ -74,8 +74,9 @@ function toListing(p) {
   if (money(rent)) parts.push(`rent estimate ${money(rent)} a month`);
   const opens = formatAuctionDate(p.auctionStartDate, tz);
   const closes = formatAuctionDate(p.auctionEndDate, tz);
+  const hours = formatAuctionTime(p.auctionStartDate, p.auctionEndDate, tz); // same-day auctions only
   if (opens && closes && opens !== closes) parts.push(`bidding ${opens} to ${closes}`);
-  else if (opens || closes) parts.push(`auction ${opens || closes}`);
+  else if (opens || closes) parts.push(`auction ${opens || closes}${hours ? `, ${hours}` : ""}`);
   if (p.slug) parts.push(listingPageUrl(p.slug));
 
   return { slug: String(p.slug || "").toLowerCase(), name: p.productName || p.street || p.slug, line: parts.join(" | ") };
@@ -137,7 +138,7 @@ function cleanFilters(raw, facets) {
   return f;
 }
 
-function buildExtractPrompt({ messages, replyToBody, facets }) {
+function buildExtractPrompt({ messages, replyToBody, facets, ownPlace = "" }) {
   const recent = (messages || []).slice(0, -1).slice(-HISTORY_FOR_EXTRACT)
     .map((m) => `${m.direction === "in" ? "Contact" : "Us"}: ${m.body}`).join("\n");
   return `A contact is texting a real-estate auction company. Decide whether their LAST message asks which homes we have for sale (other homes, homes under or over a price, in a place, with some number of bedrooms, of some type, "anything else?", "send me more", "what about <place>"). Questions only about one specific home's details (its taxes, its address, is it vacant) are NOT a home search.
@@ -152,7 +153,7 @@ States: ${facets.states.join(", ") || "(none)"}
 Counties: ${facets.counties.join(", ") || "(none)"}
 Towns: ${facets.cities.join(", ") || "(none)"}
 Home types: ${facets.propertyTypes.join(", ") || "(none)"}
-
+${ownPlace ? `\nThe home they signed up for is in ${ownPlace}. "The area", "nearby", "around here", "close by" or "near me" means that town (put the town in cities).\n` : ""}
 ${recent ? `Earlier messages (oldest first):\n${recent}\n\n` : ""}Last message:
 <<<
 ${replyToBody}
@@ -175,7 +176,7 @@ function withTimeout(promise, ms, label) {
  * @returns {Promise<{ ok: boolean, filters: object|null, error?: string }>} ok=false when the step failed
  *   (Gemini down, slow, bad JSON); filters=null when it worked and this is not a home search.
  */
-async function extractHomeSearch({ messages, replyToBody, facets }) {
+async function extractHomeSearch({ messages, replyToBody, facets, ownPlace = "" }) {
   const text = String(replyToBody || "").trim();
   if (!text) return { ok: true, filters: null };
   try {
@@ -185,7 +186,7 @@ async function extractHomeSearch({ messages, replyToBody, facets }) {
     const model = client.getGenerativeModel({ model: MODEL_NAME });
     const result = await withTimeout(
       model.generateContent({
-        contents: [{ role: "user", parts: [{ text: buildExtractPrompt({ messages, replyToBody: text, facets }) }] }],
+        contents: [{ role: "user", parts: [{ text: buildExtractPrompt({ messages, replyToBody: text, facets, ownPlace }) }] }],
         generationConfig: { temperature: 0, responseMimeType: "application/json", thinkingConfig: { thinkingBudget: 0 } },
       }),
       EXTRACT_TIMEOUT_MS,
@@ -249,30 +250,90 @@ function describeFilters(f) {
 }
 
 /**
- * The open homes matching the filters (the lead's own left out), cheapest first unless asked otherwise.
- * None match: the same search without the place (when they named only a place we have no homes in),
- * else without the price, then any open home, marked `relaxed` so the reply can say they do not fit exactly.
- * @returns {Promise<{ total: number, listings: object[], relaxed: ""|"place"|"price"|"all" }>}
+ * The states of the towns and counties they asked about, from the open-home index (the lead's own home
+ * included, so "anything else in Baltimore?" still knows Baltimore is in MD). Pure.
+ * @param {object} filters
+ * @param {Array<{city, county, state}>} homes
+ * @returns {string[]}
  */
-async function searchListings(filters, { now = new Date(), excludeSlugs = [], limit = MAX_SHOWN } = {}) {
+function statesNear(filters, homes) {
+  if (!filters || (!filters.cities.length && !filters.counties.length)) return [];
+  const lower = (list) => new Set(list.map((v) => String(v).toLowerCase()));
+  const cities = lower(filters.cities);
+  const counties = lower(filters.counties);
+  const states = (homes || [])
+    .filter((h) => cities.has(String(h.city || "").toLowerCase()) || counties.has(String(h.county || "").toLowerCase()))
+    .map((h) => String(h.state || "").trim())
+    .filter(Boolean);
+  return [...new Set(states)];
+}
+
+/** The same search, widened from the towns/counties asked to their whole state. null when that adds nothing. Pure. */
+function nearbyFilters(filters, nearStates) {
+  if (!filters.cities.length && !filters.counties.length) return null;
+  const extra = (nearStates || []).filter((s) => !filters.states.includes(s));
+  if (!extra.length) return null;
+  return { ...filters, cities: [], counties: [], states: [...filters.states, ...extra] };
+}
+
+const PROJECTION = Object.fromEntries(FIELDS.split(" ").map((f) => [f, 1]));
+
+/**
+ * The open homes matching the filters (the lead's own left out), cheapest first unless asked otherwise.
+ * None match: nearby first, then something rather than nothing, marked `relaxed` so the reply can say how they differ:
+ *   1. the same search in the whole state of the town they asked about ("state")
+ *   2. with a price: the place they asked, any price ("price"), then the whole state, any price ("state_price")
+ *      (when they named only a place we have no homes in: the same search anywhere else, "place")
+ *   3. any open home, closest in starting bid to the price they gave or to their own home ("all")
+ * @param {object} filters
+ * @param {{ now?: Date, excludeSlugs?: string[], limit?: number, nearStates?: string[], anchorBid?: number|null }} opts
+ *   nearStates: from statesNear(); anchorBid: the starting bid of the lead's own home
+ * @returns {Promise<{ total: number, listings: object[], relaxed: ""|"state"|"price"|"state_price"|"place"|"all" }>}
+ */
+async function searchListings(filters, { now = new Date(), excludeSlugs = [], limit = MAX_SHOWN, nearStates = [], anchorBid = null } = {}) {
   const sort = filters.sort === "price_desc" ? { startBid: -1, slug: 1 } : { startBid: 1, slug: 1 };
-  const run = async (drop) => {
-    const q = buildListingQuery(filters, { now, excludeSlugs, drop });
+  const run = async (f, drop) => {
+    const q = buildListingQuery(f, { now, excludeSlugs, drop });
     const [total, docs] = await Promise.all([Product.countDocuments(q), Product.find(q).select(FIELDS).sort(sort).limit(limit).lean()]);
     return { total, listings: docs.map(toListing) };
   };
+  const closest = (r, relaxed) => ({ total: 0, listings: r.listings.slice(0, MAX_NAMED), relaxed });
+  const hasPrice = Boolean(filters.maxPrice || filters.minPrice);
+
   if (onlyUnknownPlace(filters)) {
-    const elsewhere = await run("place");
-    return { total: 0, listings: elsewhere.listings.slice(0, 3), relaxed: elsewhere.total ? "place" : "" };
+    const elsewhere = await run(filters, "place");
+    if (elsewhere.total) return closest(elsewhere, "place");
+  } else {
+    const exact = await run(filters, "");
+    if (exact.total) return { ...exact, relaxed: "" };
+    const near = nearbyFilters(filters, nearStates);
+    if (near) {
+      const inState = await run(near, "");
+      if (inState.total) return closest(inState, "state");
+    }
+    if (hasPrice) {
+      const noPrice = await run(filters, "price");
+      if (noPrice.total) return closest(noPrice, "price");
+      if (near) {
+        const inStateNoPrice = await run(near, "price");
+        if (inStateNoPrice.total) return closest(inStateNoPrice, "state_price");
+      }
+    }
   }
-  const exact = await run("");
-  if (exact.total) return { ...exact, relaxed: "" };
-  if (filters.maxPrice || filters.minPrice) {
-    const noPrice = await run("price");
-    if (noPrice.total) return { total: 0, listings: noPrice.listings.slice(0, 3), relaxed: "price" };
-  }
-  const any = await run("all");
-  return { total: 0, listings: any.listings.slice(0, 3), relaxed: any.total ? "all" : "" };
+
+  // Nothing nearby: still offer something, the homes closest in starting bid to what they are looking at.
+  const anchor = filters.maxPrice || filters.minPrice || num(anchorBid);
+  const q = buildListingQuery(filters, { now, excludeSlugs, drop: "all" });
+  const docs = anchor
+    ? await Product.aggregate([
+        { $match: q },
+        { $addFields: { _gap: { $abs: { $subtract: [{ $ifNull: ["$startBid", 0] }, anchor] } } } },
+        { $sort: { _gap: 1, slug: 1 } },
+        { $limit: MAX_NAMED },
+        { $project: PROJECTION },
+      ])
+    : await Product.find(q).select(FIELDS).sort(sort).limit(MAX_NAMED).lean();
+  return { total: 0, listings: docs.map(toListing), relaxed: docs.length ? "all" : "" };
 }
 
 /** The lines for homes the message named (open homes only). */
@@ -292,26 +353,54 @@ async function loadListingsBySlugs(slugs, { now = new Date() } = {}) {
 // Words that say nothing about which home is meant ("st", "ave", "the", a direction).
 const STREET_NOISE = new Set(["st", "street", "ave", "avenue", "rd", "road", "dr", "drive", "ln", "lane", "way", "blvd", "boulevard", "ct", "court", "pl", "place", "hwy", "highway", "state", "n", "s", "e", "w", "the", "of"]);
 const words = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(Boolean);
+// "St", "Ave" and the like: after a short or numbered street name they make it clear a street is meant.
+const STREET_TYPES = ["st", "street", "ave", "avenue", "rd", "road", "dr", "drive", "ln", "lane", "way", "blvd", "boulevard", "ct", "court", "pl", "place", "hwy", "highway"];
+// A link to one of our listing or auction pages ("vihara.ai/listing/1983-law-st-new-orleans").
+const LISTING_LINK = /vihara\.ai\/(?:listing|auction)\/([a-z0-9-]+)/gi;
 
 /**
- * The homes a message names, so their details can be looked up too. A street matches on its name (house
- * number and "St"/"Ave" left out, and only a name of 4+ letters, so "10th" or "Law" alone does not match).
- * A town matches only when 2 or fewer open homes are in it, otherwise the message does not say which.
+ * The homes a message names, so their details can be looked up too. A home is named by:
+ * - a link to its page;
+ * - its house number with its street name ("1983 Law St", "703 59th Ave", "2508 Prieur");
+ * - its street name alone when 4+ letters ("Prieur", "Sallander"), or a shorter or numbered one followed by
+ *   "St"/"Ave"/... ("Law St", "10th street"), so "is there a law about this" or "the 10th" do not match;
+ * - its town, only when 2 or fewer open homes are in it, otherwise the message does not say which.
  * @param {string} text - the message, plus the rewritten question when it is a follow-up
  * @param {Array<{slug, street, city}>} homes
  * @returns {string[]} slugs, at most `max`
  */
 function findMentionedSlugs(text, homes, max = MAX_NAMED) {
-  const said = ` ${words(text).join(" ")} `;
+  const raw = String(text || "");
+  const said = ` ${words(raw).join(" ")} `;
   if (!said.trim()) return [];
   const found = [];
   const add = (slug) => {
     if (slug && !found.includes(slug) && found.length < max) found.push(slug);
   };
 
-  for (const h of homes || []) {
-    const name = words(h.street).filter((w) => !/^\d/.test(w) && !STREET_NOISE.has(w));
-    if (name.length && name.join("").length >= 4 && said.includes(` ${name.join(" ")} `)) add(h.slug);
+  const linked = new Set([...raw.matchAll(LISTING_LINK)].map((m) => m[1].toLowerCase()));
+  for (const h of homes || []) if (linked.has(h.slug)) add(h.slug);
+
+  const saidWords = new Set(said.trim().split(" "));
+  const streets = (homes || []).map((h) => {
+    const street = words(h.street);
+    const name = street.filter((w) => !/^\d+$/.test(w) && !STREET_NOISE.has(w)); // "law", "59th", "prieur"
+    const houseNumber = /^\d+$/.test(street[0] || "") ? street[0] : "";
+    return { slug: h.slug, name, nameText: name.join(" "), houseNumber };
+  }).filter((s) => s.name.length);
+  // House number + street first; that street's other homes are then not meant ("1983 Law St" is not 1977 Law St).
+  const byNumber = new Set();
+  for (const s of streets) {
+    if (s.houseNumber && saidWords.has(s.houseNumber) && s.name.some((w) => saidWords.has(w))) {
+      add(s.slug);
+      byNumber.add(s.nameText);
+    }
+  }
+  for (const s of streets) {
+    if (byNumber.has(s.nameText)) continue;
+    const longName = s.name.join("").length >= 4 && !/^\d/.test(s.name[0]);
+    if (longName && said.includes(` ${s.nameText} `)) add(s.slug);
+    else if (STREET_TYPES.some((type) => said.includes(` ${s.nameText} ${type} `))) add(s.slug);
   }
 
   const byCity = new Map();
@@ -340,6 +429,8 @@ module.exports = {
   buildExtractPrompt,
   buildListingQuery,
   describeFilters,
+  statesNear,
+  nearbyFilters,
   searchListings,
   loadListingsBySlugs,
   findMentionedSlugs,
