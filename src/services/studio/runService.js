@@ -9,7 +9,7 @@ const crypto = require("node:crypto");
 const STATES = new Set(["queued", "concepts", "concept-choice", "hooks", "hook-choice", "package", "gate-a", "approved", "frames", "storyboard", "generating", "clips", "ready-to-build", "building", "cut", "revision", "done", "rejected", "failed", "updating"]);
 // The limit for a video (D-044). The server checks it again against what was really spent.
 const VIDEO_LIMIT_USD = 15;
-const SLOT = /^(animatic|cut|clip-[a-z0-9-]{1,80}|frame-[a-z0-9-]{1,80}|photo-[a-z0-9-]{1,80})$/;
+const SLOT = /^(animatic|cut|layers|clip-[a-z0-9-]{1,80}|frame-[a-z0-9-]{1,80}|photo-[a-z0-9-]{1,80})$/;
 const FRAME_KINDS = new Set(["photo", "presenter", "generated", "later", "screen"]);
 const MAX_WORDS = 2000;
 // The Claude models an editor may choose to write a video's concepts, hooks and plan. The choice is theirs.
@@ -356,7 +356,67 @@ function cutCommand(run, body) {
   if (unknown.length) throw new Error(`There is no clip ${unknown.join(", ")}.`);
   const command = { type: "cut", decision, words: words.slice(0, MAX_WORDS), ...(shots.length ? { shots } : {}), ...(tags.length && decision !== "approve" ? { tags } : {}) };
   if (shots.length) return { command, state: "clips", clips: run.clips.map((c) => (shots.includes(c.ref) ? { ...c, state: "rejected", note: words.slice(0, 500) } : c)) };
-  return { command, state: decision === "approve" ? "done" : decision === "reject" ? "rejected" : "revision" };
+  // A change that names no shot goes back to the plan (D-050, Dinesh: "When you make changes, it doesn't
+  // happen"): Claude writes it again in the editor's words, they approve it, and the cut is built again.
+  return { command, state: decision === "approve" ? "done" : decision === "reject" ? "rejected" : "package" };
+}
+
+/**
+ * The video in layers for Premiere (D-050, Dinesh): the last build's footage, graphics with transparency, voice,
+ * sound and captions, as one download. Nothing paid; the video stays where it is.
+ */
+function layersCommand(run) {
+  if (!["cut", "revision", "done"].includes(run.state)) throw new Error("Layers come from a video that has been put together. Build the video first.");
+  return { command: { type: "layers" }, state: run.state };
+}
+
+/** What a chat attachment may be: a photo, a PDF or a text document (D-050). */
+const CHAT_TYPES = { "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "application/pdf": ".pdf", "text/plain": ".txt", "text/markdown": ".md" };
+const CHAT_MAX_FILES = 5;
+
+/**
+ * A message in a video's Studio chat (D-050, Dinesh: "an intelligent chatbox ... And have a link file pin where
+ * we can add, photo or document"). Claude reads the video and answers; the chat itself changes nothing.
+ */
+function chatMessage(run, body, files = []) {
+  if (!run.coreId) throw new Error("This video has not started yet. The chat opens once its story is being written.");
+  const text = String(body?.text ?? "").trim();
+  if (!text && !files.length) throw new Error("Write a message, or attach a photo or a document.");
+  if (text.length > MAX_WORDS) throw new Error(`A message is at most ${MAX_WORDS} characters.`);
+  if (files.length > CHAT_MAX_FILES) throw new Error(`Attach at most ${CHAT_MAX_FILES} files to one message.`);
+  const attachments = files.map((f) => {
+    const ext = CHAT_TYPES[f.mimetype];
+    if (!ext) throw new Error(`"${f.originalname}" cannot be attached: photos (PNG, JPG, WebP), PDFs and text files can.`);
+    const sha256 = require("crypto").createHash("sha256").update(f.buffer).digest("hex");
+    return { key: `chat/${run.runId}/${sha256}${ext}`, name: clip(f.originalname, 120), contentType: f.mimetype };
+  });
+  return { text: text || "(see the attached file)", attachments };
+}
+
+/** Claude's answers from the server, checked: which video, the reply, and the change it hands back. */
+function cleanChats(list) {
+  if (list === undefined) return [];
+  if (!Array.isArray(list) || list.length > 100) throw new Error("Send at most 100 chat answers as a list.");
+  return list.map((c) => {
+    const runId = String(c?.runId ?? "");
+    if (!/^\d{6,}\.\d{1,9}$/.test(runId)) throw new Error(`"${runId}" is not a run id.`);
+    return { runId, text: clip(c?.text, 4000), change: c?.change ? clip(c.change, 2000) : null };
+  });
+}
+
+/** States after the plan from which an editor may go back and change it (D-050). */
+const REOPEN_FROM = ["approved", "frames", "storyboard", "clips", "ready-to-build", "cut", "revision"];
+
+/**
+ * Going back to change the plan from a later step, in the editor's words (D-050, Dinesh: "I can't go back and
+ * fix it"). What was approved and made stays; only what the change touches is made again, after they approve
+ * the plan at its new price.
+ */
+function reopenCommand(run, body) {
+  if (!REOPEN_FROM.includes(run.state)) throw new Error(run.state === "gate-a" ? "The plan is open now: change its lines or ask for a change on it." : run.state === "done" || run.state === "rejected" ? "This video is finished. Start a new video for a new version." : "Wait until this step has finished, then go back to the plan.");
+  const words = String(body?.words ?? "").trim();
+  if (!words) throw new Error("Say what should change, in your words: which part, and how.");
+  return { command: { type: "reopen", words: words.slice(0, MAX_WORDS) }, state: "package" };
 }
 
 /** The layers a cut change can name, as the Creative OS records them (src/video/record.ts LAYERS). */
@@ -380,4 +440,4 @@ function cleanSlot(slot) {
   return s;
 }
 
-module.exports = { soundCommand, CUT_LAYERS, viewCommand, retryCommand, cleanCraft, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, VIDEO_LIMIT_USD, CLAUDE_MODELS, cleanModel, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };
+module.exports = { chatMessage, cleanChats, CHAT_TYPES, layersCommand, reopenCommand, REOPEN_FROM, soundCommand, CUT_LAYERS, viewCommand, retryCommand, cleanCraft, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, VIDEO_LIMIT_USD, CLAUDE_MODELS, cleanModel, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };

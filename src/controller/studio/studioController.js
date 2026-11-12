@@ -21,7 +21,7 @@ const { keyMatches, cleanBatch, cleanFeedback, undelivered } = require("../../se
 const { storage, cleanCut, uploadUrl, viewUrl, storedBytes, putObject } = require("../../services/studio/cutStorage");
 const { cleanProposals, decideProblem, canSee, cleanDecision, undeliveredDecisions } = require("../../services/studio/proposalService");
 const { cleanProblem, cleanReply, problemView } = require("../../services/studio/problemService");
-const { soundCommand, viewCommand, retryCommand, newRunId, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, cleanModel, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage } = require("../../services/studio/runService");
+const { chatMessage, cleanChats, layersCommand, reopenCommand, soundCommand, viewCommand, retryCommand, newRunId, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, cleanModel, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage } = require("../../services/studio/runService");
 
 const KEY = /^[a-z][a-z0-9-]{1,30}$/;
 
@@ -272,12 +272,12 @@ const decideStudioProposal = catchAsyncError(async (req, res, next) => {
 });
 
 const runView = async (r) => {
-  const { runId, propertyId, requestedByName, coreId, model, state, concepts, hooks, plan, error, frames, framesPrice, clips, cut, spent, costs, remakePrice, media, idea, craft, story, photos, todo, uploads, commands, updatedAt, sfx } = r;
+  const { runId, propertyId, requestedByName, coreId, model, state, concepts, hooks, plan, error, frames, framesPrice, clips, cut, spent, costs, remakePrice, media, idea, craft, story, photos, todo, uploads, chat, commands, updatedAt, sfx } = r;
   const urls = Object.fromEntries(await Promise.all(Object.entries(media ?? {}).map(async ([slot, m]) => [slot, await viewUrl(m.key)])));
   // The person's steps the server has not finished yet, oldest first, so the page shows a click as sent and
   // keeps its button from being clicked again while it runs.
   const pending = (commands ?? []).filter((c) => !c.doneAt).map((c) => ({ type: c.type, at: c.at, ...(c.choice ? { choice: c.choice } : {}) }));
-  return { runId, propertyId, requestedByName, coreId, model: model ?? null, state, concepts, hooks, plan, error, frames: frames ?? [], framesPrice: framesPrice ?? 0, clips, cut, spent, costs: costs ?? null, remakePrice: remakePrice ?? null, urls, idea: idea ?? null, craft: craft ?? null, story: story ?? [], photos: photos ?? [], todo: todo ?? [], uploads: (uploads ?? []).map(({ name, kind, byName, at }) => ({ name, kind, byName, at })), pending, sfx: sfx !== false, updatedAt: updatedAt ?? null };
+  return { runId, propertyId, requestedByName, coreId, model: model ?? null, state, concepts, hooks, plan, error, frames: frames ?? [], framesPrice: framesPrice ?? 0, clips, cut, spent, costs: costs ?? null, remakePrice: remakePrice ?? null, urls, idea: idea ?? null, craft: craft ?? null, story: story ?? [], photos: photos ?? [], todo: todo ?? [], uploads: (uploads ?? []).map(({ name, kind, byName, at }) => ({ name, kind, byName, at })), pending, sfx: sfx !== false, chat: (chat ?? []).map(({ role, byName, text, change = null, attachments = [], at }) => ({ role, byName, text, change, attachments: attachments.map((x) => x.name), at })), updatedAt: updatedAt ?? null };
 };
 
 /** GET /api/v1/studio/runs - the videos in progress, newest first, and the properties ready for one. */
@@ -361,6 +361,8 @@ const clipForRun = runStep(clipCommand);
 const buildForRun = runStep(buildCommand);
 const cutForRun = runStep(cutCommand);
 const soundForRun = runStep(soundCommand);
+const reopenForRun = runStep(reopenCommand);
+const layersForRun = runStep(layersCommand);
 // D-047: the editor's own concept, craft, hook, voiceover lines and camera moves.
 const ideaForRun = runStep(ideaCommand);
 const craftForRun = runStep(craftCommand);
@@ -391,8 +393,36 @@ const imageForRun = catchAsyncError(async (req, res, next) => {
   res.status(200).json({ success: true, run: await runView(run.toObject()) });
 });
 
+/**
+ * POST /api/v1/studio/runs/:id/chat (multipart: text, files) - a message in the video's chat (D-050). The
+ * attachments go to the private bucket; the server reads them through short-lived links. Changes nothing.
+ */
+const chatForRun = catchAsyncError(async (req, res, next) => {
+  const run = await StudioRun.findOne({ runId: String(req.params.id) });
+  if (!run) return next(new ErrorHandler("No such video.", 404));
+  const problem = actProblem(run, req.user);
+  if (problem) return next(new ErrorHandler(problem, 403));
+  const files = req.files ?? [];
+  if (files.length && !storage()) return next(new ErrorHandler("File storage is not set up, so files cannot be attached yet.", 503));
+  let message;
+  try {
+    message = chatMessage(run, req.body, files);
+  } catch (e) {
+    return next(new ErrorHandler(e.message, 400));
+  }
+  for (const [i, a] of message.attachments.entries()) await putObject(a.key, files[i].buffer, a.contentType);
+  const { name } = await decider(req.user);
+  const attachments = message.attachments.map(({ key, name: n }) => ({ key, name: n }));
+  const history = (run.chat ?? []).slice(-20).map(({ role, byName, text }) => ({ role, byName, text }));
+  run.chat = [...(run.chat ?? []), { role: "editor", byName: name, text: message.text, attachments, at: new Date() }].slice(-200);
+  run.markModified("chat");
+  run.commands.push({ type: "chat", words: message.text, data: { history, attachments }, byName: name });
+  await run.save();
+  res.status(200).json({ success: true, run: await runView(run.toObject()) });
+});
+
 /** Steps that change no state and no frames: a saved length, pace and voice speed, or an added image. */
-const QUIET_STEPS = new Set(["craft", "image", "view"]);
+const QUIET_STEPS = new Set(["craft", "image", "view", "chat"]);
 
 /**
  * POST /api/v1/studio/runs/poll  { updates, done, ready } with the x-studio-key header. The server
@@ -401,8 +431,10 @@ const QUIET_STEPS = new Set(["craft", "image", "view"]);
 const pollRuns = catchAsyncError(async (req, res, next) => {
   let updates;
   let ready;
+  let chats;
   try {
     updates = cleanUpdates(req.body?.updates);
+    chats = cleanChats(req.body?.chats);
     ready = req.body?.ready === undefined ? null : cleanReady(req.body.ready);
   } catch (e) {
     return next(new ErrorHandler(e.message, 400));
@@ -438,10 +470,14 @@ const pollRuns = catchAsyncError(async (req, res, next) => {
     }
     await run.save();
   }
+  // Claude's answers in the chat (D-050): added to the conversation, never a change of state.
+  for (const c of chats) await StudioRun.updateOne({ runId: c.runId }, { $push: { chat: { $each: [{ role: "claude", byName: "Claude", text: c.text, change: c.change, at: new Date() }], $slice: -200 } } });
   if (ready) await StudioReady.updateOne({ key: "videos" }, { $set: { rows: ready, checkedAt: new Date() } }, { upsert: true });
   const open = await StudioRun.find({ commands: { $elemMatch: { doneAt: null } } }).lean();
   // An uploaded image goes to the server as a short-lived link, never as its storage key (D-047).
   const dataOf = async (c) => {
+    // A chat message's attachments go as short-lived links too (D-050).
+    if (c.type === "chat") return { ...c.data, attachments: await Promise.all((c.data?.attachments ?? []).map(async (a) => ({ name: a.name, url: await viewUrl(a.key) }))) };
     if (c.type !== "image" || !c.data?.key) return c.data;
     const { key, ...rest } = c.data;
     return { ...rest, url: await viewUrl(key) };
@@ -591,4 +627,4 @@ const syncVideos = catchAsyncError(async (req, res, next) => {
   res.status(200).json({ success: true, stored: rows.length, feedback: undelivered(pending), decisions });
 });
 
-module.exports = { soundForRun, viewForRun, retryForRun, me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, importInterview, updateQuestions, listVideos, addVideoFeedback, syncVideos, requireSyncKey, cutLink, confirmCut, listProposals, decideStudioProposal, listRuns, startRun, setRunModel, pickForRun, gateForRun, generateForRun, framesForRun, remakeForRun, clipForRun, buildForRun, cutForRun, ideaForRun, craftForRun, hookForRun, voForRun, shotForRun, imageForRun, pollRuns, fileLink, confirmFile, listProblems, reportProblem, resolveProblem };
+module.exports = { chatForRun, layersForRun, reopenForRun, soundForRun, viewForRun, retryForRun, me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, importInterview, updateQuestions, listVideos, addVideoFeedback, syncVideos, requireSyncKey, cutLink, confirmCut, listProposals, decideStudioProposal, listRuns, startRun, setRunModel, pickForRun, gateForRun, generateForRun, framesForRun, remakeForRun, clipForRun, buildForRun, cutForRun, ideaForRun, craftForRun, hookForRun, voForRun, shotForRun, imageForRun, pollRuns, fileLink, confirmFile, listProblems, reportProblem, resolveProblem };

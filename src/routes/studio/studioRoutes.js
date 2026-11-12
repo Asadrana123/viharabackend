@@ -6,6 +6,8 @@ const c = require("../../controller/studio/studioController");
 
 const router = express.Router();
 // An editor's image of the property (D-047): held in memory, checked, then stored in the private bucket.
+// A chat message's photos and documents (D-050).
+const chatUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024, files: 5 } });
 const imageUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024, files: 1 } });
 
 // The Creative OS, with its shared key, before the sign-in check below.
@@ -44,6 +46,9 @@ router.post("/runs/:id/cut", c.cutForRun);
 router.post("/runs/:id/idea", c.ideaForRun);
 router.post("/runs/:id/craft", c.craftForRun);
 router.post("/runs/:id/sound", c.soundForRun);
+router.post("/runs/:id/reopen", c.reopenForRun);
+router.post("/runs/:id/layers", c.layersForRun);
+router.post("/runs/:id/chat", chatUpload.array("files", 5), c.chatForRun);
 router.post("/runs/:id/hook", c.hookForRun);
 router.post("/runs/:id/vo", c.voForRun);
 router.post("/runs/:id/shot", c.shotForRun);

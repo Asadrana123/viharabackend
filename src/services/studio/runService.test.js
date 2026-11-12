@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, soundCommand, cleanSlot } = require("./runService");
+const { newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, soundCommand, reopenCommand, layersCommand, chatMessage, cleanChats, cleanSlot } = require("./runService");
 
 const run = (over = {}) => ({ state: "concept-choice", requestedBy: "u1", requestedByName: "Dinesh", concepts: [{ id: "C1" }], hooks: [{ id: "H1" }], plan: { errors: [] }, ...over });
 
@@ -76,7 +76,7 @@ test("the build waits for the clips, and a cut needs words for a change", () => 
   assert.throws(() => buildCommand(run({ state: "clips" })), /not ready to build/);
   const cut = run({ state: "cut" });
   assert.equal(cutCommand(cut, { decision: "approve" }).state, "done");
-  assert.equal(cutCommand(cut, { decision: "revise", words: "0:14 fast", tags: ["pacing"] }).state, "revision");
+  assert.equal(cutCommand(cut, { decision: "revise", words: "0:14 fast", tags: ["pacing"] }).state, "package");
   assert.deepEqual(cutCommand(cut, { decision: "revise", words: "remove sfx", tags: ["music"] }).command.tags, ["music"]);
   // Dinesh, 2026-11-11: a change names what it is about, so the server can record it.
   assert.throws(() => cutCommand(cut, { decision: "revise", words: "remove sfx" }), /Choose what this is about/);
@@ -157,4 +157,34 @@ test("a stopped video can be tried again; others cannot", () => {
   assert.deepEqual(retryCommand({ state: "failed", coreId: "LV18753-V05" }), { command: { type: "retry" }, state: "concepts" });
   assert.throws(() => retryCommand({ state: "clips", coreId: "X" }), /stopped video/);
   assert.throws(() => retryCommand({ state: "failed", coreId: null }), /never started/);
+});
+
+test("an editor goes back to the plan from a later step, in their words (D-050, Dinesh)", () => {
+  for (const state of ["storyboard", "clips", "cut", "revision", "ready-to-build"]) {
+    assert.deepEqual(reopenCommand(run({ state }), { words: "Add Maya saying buyers meet deals on the logo" }), { command: { type: "reopen", words: "Add Maya saying buyers meet deals on the logo" }, state: "package" });
+  }
+  assert.throws(() => reopenCommand(run({ state: "cut" }), { words: " " }), /Say what should change/);
+  assert.throws(() => reopenCommand(run({ state: "gate-a" }), { words: "x" }), /plan is open now/);
+  assert.throws(() => reopenCommand(run({ state: "done" }), { words: "x" }), /finished/);
+  assert.throws(() => reopenCommand(run({ state: "generating" }), { words: "x" }), /Wait until/);
+});
+
+test("the layers for Premiere come from a video that has been put together (D-050, Dinesh)", () => {
+  for (const state of ["cut", "revision", "done"]) assert.deepEqual(layersCommand(run({ state })), { command: { type: "layers" }, state });
+  assert.throws(() => layersCommand(run({ state: "clips" })), /Build the video first/);
+  assert.equal(cleanSlot("layers"), "layers");
+});
+
+test("a chat message carries the editor's words and their photos or documents (D-050, Dinesh)", () => {
+  const r = run({ state: "cut", coreId: "AT1405-V01", runId: "1793500000.000001" });
+  const png = { mimetype: "image/png", originalname: "kitchen ref.png", buffer: Buffer.from("x") };
+  const m = chatMessage(r, { text: " Add buyers meet deals at the end " }, [png]);
+  assert.equal(m.text, "Add buyers meet deals at the end");
+  assert.match(m.attachments[0].key, /^chat\/[0-9.]+\/[0-9a-f]{64}\.png$/);
+  assert.equal(chatMessage(r, {}, [png]).text, "(see the attached file)");
+  assert.throws(() => chatMessage(r, { text: " " }), /Write a message/);
+  assert.throws(() => chatMessage(r, { text: "x" }, [{ mimetype: "video/mp4", originalname: "a.mp4", buffer: Buffer.from("x") }]), /cannot be attached/);
+  assert.throws(() => chatMessage(run({ state: "queued" }), { text: "x" }), /has not started/);
+  assert.deepEqual(cleanChats([{ runId: "1793500000.000001", text: "Sure.", change: null }]), [{ runId: "1793500000.000001", text: "Sure.", change: null }]);
+  assert.throws(() => cleanChats([{ runId: "x" }]), /not a run id/);
 });
