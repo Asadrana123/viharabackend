@@ -21,7 +21,7 @@
 const Product = require("../../model/property/productModel");
 const { listingPageUrl } = require("../../config/siteUrls");
 const { resolvePropertyTimezone } = require("../../utils/resolveTimezone");
-const { formatAuctionDate } = require("./vtextFormatters");
+const { formatAuctionDate, formatAuctionTime } = require("./vtextFormatters");
 
 const INDEX_TTL_MS = 5 * 60_000;
 const MAX_SHOWN = Number(process.env.VTEXT_HOME_SEARCH_LIMIT || 10); // homes handed to the reply AI per search
@@ -74,8 +74,9 @@ function toListing(p) {
   if (money(rent)) parts.push(`rent estimate ${money(rent)} a month`);
   const opens = formatAuctionDate(p.auctionStartDate, tz);
   const closes = formatAuctionDate(p.auctionEndDate, tz);
+  const hours = formatAuctionTime(p.auctionStartDate, p.auctionEndDate, tz); // same-day auctions only
   if (opens && closes && opens !== closes) parts.push(`bidding ${opens} to ${closes}`);
-  else if (opens || closes) parts.push(`auction ${opens || closes}`);
+  else if (opens || closes) parts.push(`auction ${opens || closes}${hours ? `, ${hours}` : ""}`);
   if (p.slug) parts.push(listingPageUrl(p.slug));
 
   return { slug: String(p.slug || "").toLowerCase(), name: p.productName || p.street || p.slug, line: parts.join(" | ") };
@@ -352,26 +353,54 @@ async function loadListingsBySlugs(slugs, { now = new Date() } = {}) {
 // Words that say nothing about which home is meant ("st", "ave", "the", a direction).
 const STREET_NOISE = new Set(["st", "street", "ave", "avenue", "rd", "road", "dr", "drive", "ln", "lane", "way", "blvd", "boulevard", "ct", "court", "pl", "place", "hwy", "highway", "state", "n", "s", "e", "w", "the", "of"]);
 const words = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(Boolean);
+// "St", "Ave" and the like: after a short or numbered street name they make it clear a street is meant.
+const STREET_TYPES = ["st", "street", "ave", "avenue", "rd", "road", "dr", "drive", "ln", "lane", "way", "blvd", "boulevard", "ct", "court", "pl", "place", "hwy", "highway"];
+// A link to one of our listing or auction pages ("vihara.ai/listing/1983-law-st-new-orleans").
+const LISTING_LINK = /vihara\.ai\/(?:listing|auction)\/([a-z0-9-]+)/gi;
 
 /**
- * The homes a message names, so their details can be looked up too. A street matches on its name (house
- * number and "St"/"Ave" left out, and only a name of 4+ letters, so "10th" or "Law" alone does not match).
- * A town matches only when 2 or fewer open homes are in it, otherwise the message does not say which.
+ * The homes a message names, so their details can be looked up too. A home is named by:
+ * - a link to its page;
+ * - its house number with its street name ("1983 Law St", "703 59th Ave", "2508 Prieur");
+ * - its street name alone when 4+ letters ("Prieur", "Sallander"), or a shorter or numbered one followed by
+ *   "St"/"Ave"/... ("Law St", "10th street"), so "is there a law about this" or "the 10th" do not match;
+ * - its town, only when 2 or fewer open homes are in it, otherwise the message does not say which.
  * @param {string} text - the message, plus the rewritten question when it is a follow-up
  * @param {Array<{slug, street, city}>} homes
  * @returns {string[]} slugs, at most `max`
  */
 function findMentionedSlugs(text, homes, max = MAX_NAMED) {
-  const said = ` ${words(text).join(" ")} `;
+  const raw = String(text || "");
+  const said = ` ${words(raw).join(" ")} `;
   if (!said.trim()) return [];
   const found = [];
   const add = (slug) => {
     if (slug && !found.includes(slug) && found.length < max) found.push(slug);
   };
 
-  for (const h of homes || []) {
-    const name = words(h.street).filter((w) => !/^\d/.test(w) && !STREET_NOISE.has(w));
-    if (name.length && name.join("").length >= 4 && said.includes(` ${name.join(" ")} `)) add(h.slug);
+  const linked = new Set([...raw.matchAll(LISTING_LINK)].map((m) => m[1].toLowerCase()));
+  for (const h of homes || []) if (linked.has(h.slug)) add(h.slug);
+
+  const saidWords = new Set(said.trim().split(" "));
+  const streets = (homes || []).map((h) => {
+    const street = words(h.street);
+    const name = street.filter((w) => !/^\d+$/.test(w) && !STREET_NOISE.has(w)); // "law", "59th", "prieur"
+    const houseNumber = /^\d+$/.test(street[0] || "") ? street[0] : "";
+    return { slug: h.slug, name, nameText: name.join(" "), houseNumber };
+  }).filter((s) => s.name.length);
+  // House number + street first; that street's other homes are then not meant ("1983 Law St" is not 1977 Law St).
+  const byNumber = new Set();
+  for (const s of streets) {
+    if (s.houseNumber && saidWords.has(s.houseNumber) && s.name.some((w) => saidWords.has(w))) {
+      add(s.slug);
+      byNumber.add(s.nameText);
+    }
+  }
+  for (const s of streets) {
+    if (byNumber.has(s.nameText)) continue;
+    const longName = s.name.join("").length >= 4 && !/^\d/.test(s.name[0]);
+    if (longName && said.includes(` ${s.nameText} `)) add(s.slug);
+    else if (STREET_TYPES.some((type) => said.includes(` ${s.nameText} ${type} `))) add(s.slug);
   }
 
   const byCity = new Map();

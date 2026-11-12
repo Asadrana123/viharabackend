@@ -40,6 +40,7 @@ test("a listing line holds the public facts and the link, never a current bid or
   assert.match(l.line, /starting bid \$58,687/);
   assert.match(l.line, /market estimate \$66,111/);
   assert.match(l.line, /rent estimate \$1,887 a month/);
+  assert.match(l.line, /auction Sun, Nov 15, 11 AM–3:15 PM ET/);
   assert.match(l.line, /\/listing\/2529-2531-e-monument-st-baltimore$/);
   assert.doesNotMatch(l.line, /70,000|90,000/);
   assert.equal(formatCatalog([l]), `- ${l.line}`);
@@ -55,6 +56,20 @@ test("a named street or a town with 1 or 2 homes picks those homes", () => {
   assert.deepEqual(findMentionedSlugs("the 10th of the month", all), []);
   assert.deepEqual(findMentionedSlugs("San Francisco condo?", all), [sf.slug]);
   assert.deepEqual(findMentionedSlugs("", all), []);
+});
+
+test("a home named by its full address, a link, or a short or numbered street with St/Ave", () => {
+  const all = [baltimore, lawSt1, lawSt2, prieur, sf];
+  assert.deepEqual(findMentionedSlugs("is 1983 Law St vacant?", all), [lawSt1.slug]);
+  assert.deepEqual(findMentionedSlugs("what about 1977 law", all), [lawSt2.slug]);
+  assert.deepEqual(findMentionedSlugs("https://www.vihara.ai/listing/1983-law-st-new-orleans is this one vacant?", all), [lawSt1.slug]);
+  assert.deepEqual(findMentionedSlugs("vihara.ai/auction/2529-2531-e-monument-st-baltimore", all), [baltimore.slug]);
+  assert.deepEqual(findMentionedSlugs("the Law St ones", all), [lawSt1.slug, lawSt2.slug]);
+  assert.deepEqual(findMentionedSlugs("the 10th street one", all), [sf.slug]);
+  assert.deepEqual(findMentionedSlugs("2508 Prieur", all), [prieur.slug]);
+  assert.deepEqual(findMentionedSlugs("I paid 1983 dollars in law fees", all), [lawSt1.slug]); // known: number + street word
+  assert.deepEqual(findMentionedSlugs("the law changed in 1990", all), []);
+  assert.deepEqual(findMentionedSlugs("vihara.ai/listing/some-closed-home", all), []);
 });
 
 test("filters keep only real values, spelled as stored", () => {
