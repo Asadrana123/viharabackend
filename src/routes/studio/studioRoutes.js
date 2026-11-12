@@ -52,6 +52,9 @@ router.post("/runs/:id/chat", chatUpload.array("files", 5), c.chatForRun);
 router.post("/runs/:id/hook", c.hookForRun);
 router.post("/runs/:id/vo", c.voForRun);
 router.post("/runs/:id/shot", c.shotForRun);
+// Dinesh, 2026-11-12: what Maya does in a scene, and the timing on the timeline.
+router.post("/runs/:id/maya", c.mayaForRun);
+router.post("/runs/:id/timeline", c.timelineForRun);
 router.post("/runs/:id/image", imageUpload.single("image"), c.imageForRun);
 router.get("/problems", c.listProblems);
 router.post("/problems", c.reportProblem);

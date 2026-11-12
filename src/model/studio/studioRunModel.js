@@ -10,7 +10,7 @@ const mongoose = require("mongoose");
 
 const commandSchema = new mongoose.Schema(
   {
-    type: { type: String, enum: ["open", "pick", "gate", "frames", "generate", "remake", "clip", "build", "cut", "idea", "craft", "hook", "vo", "shot", "image", "retry", "view", "sound", "reopen", "layers", "chat"], required: true },
+    type: { type: String, enum: ["open", "pick", "gate", "frames", "generate", "remake", "clip", "build", "cut", "idea", "craft", "hook", "vo", "shot", "image", "retry", "view", "sound", "reopen", "layers", "chat", "maya", "timeline"], required: true },
     what: { type: String, default: null },
     choice: { type: String, default: null },
     decision: { type: String, default: null },
@@ -69,6 +69,8 @@ const runSchema = new mongoose.Schema(
     sfx: { type: Boolean, default: true },
     // The Studio chat (D-050): the editor's messages with their attachments, and Claude's answers with a change to send.
     chat: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    // The last cut scene by scene, for the Studio's timeline (Dinesh, 2026-11-12); null before it is built.
+    timeline: { type: mongoose.Schema.Types.Mixed, default: null },
     // The stuck error last reported to the Problems page, so it is reported once.
     stuckReported: { type: String, default: null },
     commands: { type: [commandSchema], default: [] },

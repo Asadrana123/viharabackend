@@ -43,6 +43,46 @@ function cleanCosts(c) {
   };
 }
 
+const MAYA_ENERGY = ["calm", "normal", "lively"];
+const secs = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
+/** Maya's action on a presenter frame, as the server reports it; null for any other frame. */
+function cleanMaya(m) {
+  if (!m || typeof m !== "object") return null;
+  return {
+    choice: clip(m.choice, 40),
+    pose: m.pose ? clip(m.pose, 300) : null,
+    gesture: m.gesture ? clip(m.gesture, 300) : null,
+    energy: MAYA_ENERGY.includes(m.energy) ? m.energy : "normal",
+    options: Array.isArray(m.options) ? m.options.slice(0, 20).map((o) => ({ id: clip(o?.id, 40), label: clip(o?.label, 120), action: o?.action === "walk" ? "walk" : "talk", usd: Number(o?.usd) || 0 })) : [],
+  };
+}
+
+const SHOT_KINDS = new Set(["photo", "clip", "screen", "maya"]);
+
+/** The last cut's timeline, as the server reports it; null before the video is built. */
+function cleanTimeline(t) {
+  if (!t || typeof t !== "object" || !Array.isArray(t.beats)) return null;
+  return {
+    seconds: secs(t.seconds),
+    outro: secs(t.outro),
+    builtAt: t.built_at ? clip(t.built_at, 40) : null,
+    beats: t.beats.slice(0, 20).map((b) => ({
+      id: clip(b?.id, 40),
+      start: secs(b?.start),
+      duration: secs(b?.duration),
+      voice: secs(b?.voice),
+      pause: secs(b?.pause),
+      hold: secs(b?.hold),
+      line: clip(b?.line, 800),
+      shots: Array.isArray(b?.shots)
+        ? b.shots.slice(0, 20).map((s) => ({ id: clip(s?.id, 40), ref: clip(s?.ref, 120), kind: SHOT_KINDS.has(s?.kind) ? s.kind : "photo", label: clip(s?.label, 120), start: secs(s?.start), duration: secs(s?.duration), clipSeconds: s?.clip_seconds == null ? null : secs(s.clip_seconds), movable: Boolean(s?.movable) }))
+        : [],
+      captions: Array.isArray(b?.captions) ? b.captions.slice(0, 60).map((c) => ({ text: clip(c?.text, 120), start: secs(c?.start), duration: secs(c?.duration) })) : [],
+    })),
+  };
+}
+
 /** Checks what the server says about one run, and returns the fields stored. */
 function cleanUpdate(u) {
   const runId = String(u?.runId ?? "");
@@ -75,8 +115,12 @@ function cleanUpdate(u) {
             image: f?.image ? clip(f.image, 40) : null,
             choice: f?.choice ? clip(f.choice, 40) : null,
             options: Array.isArray(f?.options) ? f.options.slice(0, 12).map((o) => ({ id: clip(o?.id, 40), label: clip(o?.label, 120), usd: Number(o?.usd) || 0, invents: Boolean(o?.invents) })) : [],
+            // What Maya does in her scene and what she could do instead, with its price (Dinesh, 2026-11-12).
+            maya: cleanMaya(f?.maya),
           }))
         : [],
+      // The last cut scene by scene, for the timeline (Dinesh, 2026-11-12); null before it is built.
+      timeline: cleanTimeline(u?.timeline),
       framesPrice: Number(u?.framesPrice) || 0,
       clips: Array.isArray(u?.clips) ? u.clips.slice(0, 100).map((c) => ({ ref: clip(c?.ref, 120), state: clip(c?.state, 30), note: c?.note ? clip(c.note, 500) : null, slot: clip(c?.slot, 90) })) : [],
       cut: u?.cut ? { name: clip(u.cut.name, 120), state: clip(u.cut.state, 30), seconds: Number(u.cut.seconds) || 0 } : null,
@@ -216,6 +260,66 @@ function shotCommand(run, body) {
   if (image && !(run.photos ?? []).some((p) => p.id === image)) throw new Error(`${image} is not an approved photograph of this property.`);
   if (option && (run.spent ?? 0) + option.usd > VIDEO_LIMIT_USD) throw new Error(`This move is over the $${VIDEO_LIMIT_USD} limit for a video. Choose a free move (the ones without a price).`);
   return { command: { type: "shot", choice: ref, data: { ...(camera ? { camera } : {}), ...(image ? { image } : {}) } }, state: "updating" };
+}
+
+/**
+ * What Maya does in one scene, chosen on the storyboard (Dinesh, 2026-11-12: "Can Maya have some more free
+ * personality"): one of the actions the server offered for that scene, or the editor's own pose and gesture.
+ */
+function mayaCommand(run, body) {
+  if (!SHOT_STATES.includes(run.state)) throw new Error("Maya's actions are chosen on the storyboard, before the video is built.");
+  const beat = String(body?.beat ?? "");
+  const frame = (run.frames ?? []).find((f) => f.beat === beat && f.maya);
+  if (!frame) throw new Error(`Maya is not in the scene "${beat}", or her actions cannot be chosen there.`);
+  const id = String(body?.id ?? "");
+  if (id === "own") {
+    const pose = String(body?.pose ?? "").trim();
+    const gesture = String(body?.gesture ?? "").trim();
+    const energy = String(body?.energy ?? "normal");
+    if (!pose && !gesture) throw new Error("Write what Maya does: her pose, how she moves while she talks, or both.");
+    if (pose.length > 300 || gesture.length > 300) throw new Error("Keep each of Maya's directions under 300 characters.");
+    if (!MAYA_ENERGY.includes(energy)) throw new Error("Choose Maya's energy: calm, normal or lively.");
+    return { command: { type: "maya", choice: beat, data: { id, ...(pose ? { pose } : {}), ...(gesture ? { gesture } : {}), energy } }, state: "updating" };
+  }
+  const option = frame.maya.options.find((o) => o.id === id);
+  if (!option) throw new Error("Choose one of Maya's actions from the list, or write your own.");
+  if ((run.spent ?? 0) + option.usd > VIDEO_LIMIT_USD) throw new Error(`This action is over the $${VIDEO_LIMIT_USD} limit for a video. Keep her as she is.`);
+  return { command: { type: "maya", choice: beat, data: { id } }, state: "updating" };
+}
+
+const TIMELINE_STATES = ["cut", "revision", "ready-to-build"];
+
+/**
+ * The editor's timing on the timeline (Dinesh, 2026-11-12): each changed scene's pause and its shots' lengths and
+ * order. Free; the server writes the plan again and puts the video together again.
+ */
+function timelineCommand(run, body) {
+  if (!TIMELINE_STATES.includes(run.state) || !run.timeline) throw new Error("The timeline is changed once the video is put together, while its cut is waiting for a decision.");
+  const given = Array.isArray(body?.beats) ? body.beats : [];
+  const beats = [];
+  for (const b of given.slice(0, 20)) {
+    const known = run.timeline.beats.find((x) => x.id === String(b?.id ?? ""));
+    if (!known) throw new Error(`There is no scene "${b?.id}" on the timeline. The page may be out of date: click Refresh from server.`);
+    const out = { id: known.id };
+    if (b.pause !== undefined && b.pause !== null) {
+      const pause = Number(b.pause);
+      if (!Number.isFinite(pause) || pause < 0 || pause > 2) throw new Error(`The pause after the line in "${known.id}" is 0 to 2 seconds.`);
+      out.pause = Math.round(pause * 20) / 20;
+    }
+    if (Array.isArray(b.shots)) {
+      const movable = known.shots.filter((s) => s.movable).map((s) => s.id);
+      const ids = b.shots.map((s) => String(s?.id ?? ""));
+      if (ids.length !== movable.length || new Set(ids).size !== ids.length || ids.some((id) => !movable.includes(id))) throw new Error(`The shots of "${known.id}" have changed. Click Refresh from server, then make your change again.`);
+      out.shots = b.shots.map((s) => {
+        const seconds = Number(s.seconds);
+        if (!Number.isFinite(seconds) || seconds < 0.3 || seconds > 20) throw new Error(`A shot is 0.3 to 20 seconds long.`);
+        return { id: String(s.id), seconds: Math.round(seconds * 100) / 100 };
+      });
+    }
+    if (out.pause !== undefined || out.shots) beats.push(out);
+  }
+  if (!beats.length) throw new Error("Nothing was changed on the timeline. Change a shot's length, its order or a pause, then apply.");
+  return { command: { type: "timeline", data: { beats } }, state: "building" };
 }
 
 const IMAGE_KINDS = ["original", "enhanced", "generated"];
@@ -440,4 +544,4 @@ function cleanSlot(slot) {
   return s;
 }
 
-module.exports = { chatMessage, cleanChats, CHAT_TYPES, layersCommand, reopenCommand, REOPEN_FROM, soundCommand, CUT_LAYERS, viewCommand, retryCommand, cleanCraft, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, VIDEO_LIMIT_USD, CLAUDE_MODELS, cleanModel, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };
+module.exports = { mayaCommand, timelineCommand, cleanMaya, cleanTimeline, chatMessage, cleanChats, CHAT_TYPES, layersCommand, reopenCommand, REOPEN_FROM, soundCommand, CUT_LAYERS, viewCommand, retryCommand, cleanCraft, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, VIDEO_LIMIT_USD, CLAUDE_MODELS, cleanModel, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };
