@@ -5,6 +5,7 @@ const ErrorHandler = require("../../utils/errorhandler");
 const CallbackRequest = require("../../model/calling/callbackRequestModel");
 const { createCallbackRequest } = require("../../services/calling/voiceCallbackService");
 const { saveEndOfCallReport } = require("../../services/calling/callLogService");
+const { runFindListingsTool } = require("../../services/calling/listingSearchService");
 
 const VAPI_WEBHOOK_SECRET = process.env.VAPI_WEBHOOK_SECRET;
 const { safeEqual } = require("../../utils/safeEqual");
@@ -43,20 +44,37 @@ function parseArgs(raw) {
   try { return JSON.parse(raw); } catch (_e) { return {}; }
 }
 
-function extractCallbackToolCalls(message = {}) {
+// Tools this webhook answers. Anything else in a tool-calls message is ignored.
+const KNOWN_TOOLS = new Set(["scheduleCallback", "findListings"]);
+
+function extractToolCalls(message = {}) {
   const out = [];
   const list = message.toolCalls || message.toolCallList || [];
   for (const tc of list) {
     const fn = tc.function || tc;
-    if (fn && fn.name === "scheduleCallback") {
-      out.push({ id: tc.id || tc.toolCallId, args: parseArgs(fn.arguments) });
+    if (fn && KNOWN_TOOLS.has(fn.name)) {
+      out.push({ name: fn.name, id: tc.id || tc.toolCallId, args: parseArgs(fn.arguments) });
     }
   }
   const legacy = message.functionCall;
-  if (legacy && legacy.name === "scheduleCallback") {
-    out.push({ id: message.toolCallId, args: parseArgs(legacy.parameters || legacy.arguments) });
+  if (legacy && KNOWN_TOOLS.has(legacy.name)) {
+    out.push({ name: legacy.name, id: message.toolCallId, args: parseArgs(legacy.parameters || legacy.arguments) });
   }
   return out;
+}
+
+// findListings → a short spoken-ready list of live homes. Never throws: a failed
+// search becomes a line Maya can say instead of a webhook error.
+async function answerFindListings(args) {
+  const started = Date.now();
+  try {
+    const text = await runFindListingsTool(args);
+    console.log(`[listings] findListings answered in ${Date.now() - started}ms | filters: ${Object.keys(args || {}).join(",") || "(none)"}`);
+    return text;
+  } catch (err) {
+    console.error("[listings] findListings FAILED:", err.message);
+    return "The listing search isn't working right this second. Don't guess at listings. Tell the caller you can't pull them up right now and offer to book a call with the team (scheduleCallback) to go through them.";
+  }
 }
 
 const handleVapiWebhook = catchAsyncError(async (req, res, next) => {
@@ -101,11 +119,11 @@ const handleVapiWebhook = catchAsyncError(async (req, res, next) => {
     return res.status(200).json({ received: true });
   }
 
-  const toolCalls = extractCallbackToolCalls(message);
-  console.log("[cb-debug] scheduleCallback tool calls found:", toolCalls.length);
+  const toolCalls = extractToolCalls(message);
+  console.log("[cb-debug] tool calls found:", toolCalls.map((t) => t.name).join(",") || 0);
 
   if (toolCalls.length === 0) {
-    console.log("[cb-debug] no scheduleCallback in message. keys on message:", Object.keys(message));
+    console.log("[cb-debug] no known tool in message. keys on message:", Object.keys(message));
     return res.status(200).json({ received: true });
   }
 
@@ -116,6 +134,10 @@ const handleVapiWebhook = catchAsyncError(async (req, res, next) => {
 
   const results = [];
   for (const tc of toolCalls) {
+    if (tc.name === "findListings") {
+      results.push({ toolCallId: tc.id, result: await answerFindListings(tc.args) });
+      continue;
+    }
     try {
       const { callback, spokenReply } = await createCallbackRequest({
         phone: tc.args.phone || customer.number || metadata.phone,

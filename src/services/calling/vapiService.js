@@ -28,7 +28,13 @@ const {
   KEEP_SHORT,
   EXPLAIN_SIMPLY,
   PLATFORM_KNOWLEDGE,
+  LIVE_LISTINGS_RULES,
 } = require("../../config/voicePromptShared");
+const { buildListingsContext } = require("./listingSearchService");
+
+// Live listings on every call: the findListings tool + a short inventory block.
+// MAYA_LISTINGS_ENABLED=false turns both off without a deploy.
+const LISTINGS_ENABLED = String(process.env.MAYA_LISTINGS_ENABLED || "true").toLowerCase() !== "false";
 
 const VAPI_API_KEY = process.env.VAPI_API_KEY;
 const VAPI_ASSISTANT_ID = process.env.VAPI_ASSISTANT_ID;
@@ -293,17 +299,65 @@ const buildCallbackTool = () => {
   };
 };
 
+// findListings: Maya searches the live listings mid-call. Answered by the same
+// webhook as scheduleCallback (voiceCallbackController → listingSearchService).
+// The request-start line is spoken while the search runs, so the caller never
+// sits in silence.
+const buildListingTool = () => {
+  if (!VAPI_WEBHOOK_URL || !LISTINGS_ENABLED) return null;
+  return {
+    type: "function",
+    async: false,
+    function: {
+      name: "findListings",
+      description:
+        "Search the homes that are live on Vihara right now. Use it when the caller asks what's available, or about a city, state, zip, budget, number of bedrooms or type of home. Fill in only what the caller said; leave the rest out.",
+      parameters: {
+        type: "object",
+        properties: {
+          city: { type: "string", description: "City or county the caller named, e.g. 'Atlanta'." },
+          state: { type: "string", description: "US state, name or two-letter code, e.g. 'Georgia' or 'GA'." },
+          zipCode: { type: "string", description: "Five-digit zip code, only if the caller said one." },
+          maxPrice: { type: "number", description: "Highest price the caller wants to pay, in dollars, e.g. 300000." },
+          minPrice: { type: "number", description: "Lowest price, in dollars, only if the caller gave one." },
+          minBeds: { type: "number", description: "Minimum bedrooms." },
+          minBaths: { type: "number", description: "Minimum bathrooms." },
+          propertyType: { type: "string", description: "house, condo, townhome, multi-family, or land." },
+        },
+      },
+    },
+    messages: [
+      { type: "request-start", content: "One sec, let me check what we have." },
+      { type: "request-response-delayed", content: "Still pulling that up.", timingMilliseconds: 3000 },
+      { type: "request-failed", content: "Hmm, I can't pull the listings up right this second." },
+    ],
+    server: {
+      url: VAPI_WEBHOOK_URL,
+      ...(VAPI_WEBHOOK_SECRET ? { secret: VAPI_WEBHOOK_SECRET } : {}),
+    },
+  };
+};
+
 // Build the model override object with the given system content, attaching
 // temperature + tools consistently.
-const buildModel = (systemContent, callbackTool) => ({
+const buildModel = (systemContent, tools = []) => ({
   provider: VAPI_MODEL_PROVIDER,
   model: VAPI_MODEL,
   temperature: VAPI_LLM_TEMPERATURE,
   messages: [{ role: "system", content: systemContent }],
-  ...(callbackTool ? { tools: [callbackTool] } : {}),
+  ...(tools.length ? { tools } : {}),
 });
 
-const buildAssistantOverrides = (contact, researchSummary, property, promptConfig, priorContext = "") => {
+// Live listings rules + the pre-call inventory block. Empty when the tool isn't
+// attached (rules about a tool Maya doesn't have would make her promise searches).
+const buildListingsBlock = (listingTool, listingsContext, systemPrompt = "") => {
+  if (!listingTool) return "";
+  const rules = /LIVE LISTINGS ON VIHARA/.test(systemPrompt) ? "" : `\n\n${LIVE_LISTINGS_RULES}`;
+  const ctx = String(listingsContext || "").trim();
+  return `${rules}${ctx ? `\n\nLive listings right now (from the database a moment ago):\n${ctx}` : ""}`;
+};
+
+const buildAssistantOverrides = (contact, researchSummary, property, promptConfig, priorContext = "", listingsContext = "") => {
   const overrides = {
     // promptConfig.auctionWindow (live listing dates) → {{auction_*_local}} in
     // THIS caller's timezone.
@@ -324,15 +378,18 @@ const buildAssistantOverrides = (contact, researchSummary, property, promptConfi
   if (transcriber) overrides.transcriber = transcriber;
 
   const callbackTool = buildCallbackTool();
+  const listingTool = buildListingTool();
+  const tools = [callbackTool, listingTool].filter(Boolean);
   const priorBlock = buildPriorContextBlock(priorContext);
 
   if (!promptConfig) {
     // No authored prompt. Build a model override only if there's already a
-    // reason to (callback tool and/or memory); when we do, ride the behavioral
+    // reason to (tools and/or memory); when we do, ride the behavioral
     // blocks along so tone/objection handling stay consistent.
-    if (callbackTool || priorBlock) {
-      const content = (CALLBACK_INSTRUCTION.trim() + buildUniversalBlocks("") + priorBlock).trim();
-      overrides.model = buildModel(content, callbackTool);
+    if (tools.length || priorBlock) {
+      const content = ((callbackTool ? CALLBACK_INSTRUCTION.trim() : "") + buildUniversalBlocks("") +
+        buildListingsBlock(listingTool, listingsContext) + priorBlock).trim();
+      overrides.model = buildModel(content, tools);
     }
     console.log("[cb-debug] overrides built (no promptConfig). tools?", !!(overrides.model && overrides.model.tools),
       "| priorContext?", !!priorBlock, "| voiceOverride?", !!voice);
@@ -348,12 +405,14 @@ const buildAssistantOverrides = (contact, researchSummary, property, promptConfi
         ? promptConfig.systemPrompt + CALLBACK_INSTRUCTION
         : promptConfig.systemPrompt;
     const sharedBlocks = buildUniversalBlocks(promptConfig.systemPrompt);
-    const systemContent = withCallback + sharedBlocks + priorBlock;
+    const listingsBlock = buildListingsBlock(listingTool, listingsContext, promptConfig.systemPrompt);
+    const systemContent = withCallback + sharedBlocks + listingsBlock + priorBlock;
 
-    overrides.model = buildModel(systemContent, callbackTool);
-  } else if (callbackTool || priorBlock) {
-    const content = (CALLBACK_INSTRUCTION.trim() + buildUniversalBlocks("") + priorBlock).trim();
-    overrides.model = buildModel(content, callbackTool);
+    overrides.model = buildModel(systemContent, tools);
+  } else if (tools.length || priorBlock) {
+    const content = ((callbackTool ? CALLBACK_INSTRUCTION.trim() : "") + buildUniversalBlocks("") +
+      buildListingsBlock(listingTool, listingsContext) + priorBlock).trim();
+    overrides.model = buildModel(content, tools);
   }
 
   if (promptConfig.firstMessage) overrides.firstMessage = promptConfig.firstMessage;
@@ -400,6 +459,10 @@ const dispatchCall = async (
       timezone: person.timezone || "",
     };
 
+    // Live listings overview + homes that fit this lead's form answers.
+    // Non-fatal and cached for a couple of minutes: "" just means no block.
+    const listingsContext = LISTINGS_ENABLED && VAPI_WEBHOOK_URL ? await buildListingsContext(person) : "";
+
     // FaceTime test: a person in the test group, with a free Mac, gets the same
     // Maya over FaceTime audio instead. Null (the answer whenever FACETIME_ENABLED
     // is off, the admin switch is off, or anything is unsure) = call as usual.
@@ -417,7 +480,7 @@ const dispatchCall = async (
           phone: phoneNumber,
           person,
           metadata,
-          assistantOverrides: buildAssistantOverrides(person, researchSummary, property, promptConfig, ftPriorContext),
+          assistantOverrides: buildAssistantOverrides(person, researchSummary, property, promptConfig, ftPriorContext, listingsContext),
           release: dial.release,
         });
       } catch (err) {
@@ -444,7 +507,7 @@ const dispatchCall = async (
       console.error("[cb-debug] buildPriorContext failed (non-fatal):", err.message);
     }
 
-    const assistantOverrides = buildAssistantOverrides(person, researchSummary, property, promptConfig, priorContext);
+    const assistantOverrides = buildAssistantOverrides(person, researchSummary, property, promptConfig, priorContext, listingsContext);
 
     console.log("[cb-debug] dispatchCall payload", JSON.stringify({
       phoneNumberId,
@@ -453,6 +516,7 @@ const dispatchCall = async (
       toolNames: (assistantOverrides.model?.tools || []).map((t) => t.function?.name),
       toolServerUrl: assistantOverrides.model?.tools?.[0]?.server?.url || null,
       priorContextChars: priorContext.length,
+      listingsContextChars: listingsContext.length,
       voiceOverridden: !!assistantOverrides.voice,
       smartEndpointing: SMART_ENDPOINTING_PROVIDER,
     }));
@@ -496,4 +560,4 @@ const getCall = async (callId) => {
   return data;
 };
 
-module.exports = { parsePhones, dispatchCall, PROPERTY, getCall };
+module.exports = { parsePhones, dispatchCall, PROPERTY, getCall, buildAssistantOverrides };

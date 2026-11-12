@@ -413,4 +413,4 @@ Route to the advisor whenever: they ask something you don't have a verified answ
   return { systemPrompt, firstMessage, voicemailMessage, endCallMessage, auctionWindow };
 }
 
-module.exports = { buildPropertyVoicePrompt };
+module.exports = { buildPropertyVoicePrompt, intToWords, moneyWords, unitWords };

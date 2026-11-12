@@ -213,7 +213,19 @@ const OPT_OUT = `- Honor any opt-out ("remove me," "stop calling") immediately a
 
 const KEEP_SHORT = `Keep the whole call to a few minutes.`;
 
+// ── Live listings (only added when the findListings tool is attached) ─────────
+// The heading is the idempotency guard in vapiService — keep it unique.
+const LIVE_LISTINGS_RULES = `LIVE LISTINGS ON VIHARA (findListings tool)
+- You can see the homes that are live on Vihara right now. A short overview is below under "Live listings right now". For anything else, use the findListings tool.
+- Use findListings when the caller asks what's available, asks about a place, a budget, a size or a type of home, or asks "do you have anything in ___". Fill in only what they actually said (city, state, zip, max price, bedrooms, property type). Never add filters they didn't give.
+- While the tool runs, a short "let me check" line is spoken for you. Don't say it again yourself.
+- Only talk about homes the tool returned or that are listed in this prompt. Never make up an address, price, date or detail. If the tool found nothing, say so plainly and offer to book a call with the team (scheduleCallback) to talk about what they're looking for.
+- Mention one or two homes, a sentence each (street, city, beds and baths, the bid), then ask if they want more. Never read out a list or spell out a link. If they want to see a home, tell them it's on Vihara dot A I and they can find it by its street name. Never promise that someone will text or email them a link.
+- The starting bid is where bidding opens, not the final price. Vihara's value estimate is an estimate, not a promise.
+- If this call is about one specific property, stay on it. Bring up other listings only when the caller asks or says this one isn't right for them.`;
+
 module.exports = {
+  LIVE_LISTINGS_RULES,
   personaIntro,
   NEVER_ASK_CONTACT_SIGNUP,
   NEVER_ASK_CONTACT_REGISTERED,
