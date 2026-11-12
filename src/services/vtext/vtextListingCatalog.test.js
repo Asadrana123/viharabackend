@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const Product = require("../../model/property/productModel");
 const {
   toListing, formatCatalog, findMentionedSlugs, cleanFilters, buildListingQuery, describeFilters,
-  searchListings, loadOpenIndex, buildExtractPrompt, clearCache,
+  searchListings, loadOpenIndex, buildExtractPrompt, clearCache, statesNear, nearbyFilters,
 } = require("./vtextListingCatalog");
 const { buildPrompt } = require("./vtextAiReplyService");
 const { checkReplyAmounts, collectSourceTexts } = require("./vtextReplyGuard");
@@ -23,13 +23,14 @@ const facets = { cities: ["Baltimore", "New Orleans", "San Francisco"], counties
 const NOW = new Date("2026-11-11T00:00:00Z");
 
 /** Product.find(...).select(...)[.sort(...).limit(...)].lean() returning `docs`, and countDocuments returning `count`. */
-function mockProduct(t, { find, count }) {
+function mockProduct(t, { find, count, aggregate }) {
   const chain = (docs) => {
     const c = { select: () => c, sort: () => c, limit: () => c, lean: async () => docs };
     return c;
   };
   t.mock.method(Product, "find", (q) => chain(find(q)));
   if (count) t.mock.method(Product, "countDocuments", async (q) => count(q));
+  if (aggregate) t.mock.method(Product, "aggregate", async (pipeline) => aggregate(pipeline));
 }
 
 test("a listing line holds the public facts and the link, never a current bid or reserve", () => {
@@ -119,11 +120,14 @@ test("search: the matches and how many; none match gives the closest, marked", a
   assert.deepEqual(closest.listings.map((l) => l.slug), [prieur.slug]);
   t.mock.restoreAll();
 
-  // nothing in the place at all: any open home
-  mockProduct(t, { find: (q) => (q.$and ? [] : [baltimore]), count: (q) => (q.$and ? 0 : 1) });
+  // nothing in the place at all: any open home, closest in starting bid to the price they gave
+  let pipeline;
+  mockProduct(t, { find: (q) => (q.$and ? [] : [baltimore]), count: (q) => (q.$and ? 0 : 1), aggregate: (p) => { pipeline = p; return [baltimore]; } });
   const any = await searchListings(f, { now: NOW });
   assert.equal(any.relaxed, "all");
   assert.deepEqual(any.listings.map((l) => l.slug), [baltimore.slug]);
+  assert.deepEqual(pipeline[1].$addFields._gap, { $abs: { $subtract: [{ $ifNull: ["$startBid", 0] }, 200000] } });
+  assert.equal(pipeline[0].$match.$and, undefined);
   t.mock.restoreAll();
 
   // only a place we have no homes in ("anything in Denver under 200k?"): 0 match, closest elsewhere with the price kept
@@ -135,6 +139,65 @@ test("search: the matches and how many; none match gives the closest, marked", a
   assert.equal(elsewhere.relaxed, "place");
   assert.deepEqual(elsewhere.listings.map((l) => l.slug), [baltimore.slug]);
   assert.deepEqual(seen[0].startBid, { $lte: 200000 });
+});
+
+const capitolHeights = { slug: "703-59th-ave-capitol-heights", street: "703 59th Ave", city: "Capitol Heights", state: "MD", startBid: 126753 };
+const inState = (q, st) => JSON.stringify(q.$and || []).includes(`"state":{"$in":${JSON.stringify(st)}`);
+
+test("the state of the towns asked, from the open homes (their own home counts)", () => {
+  const homes = [baltimore, lawSt1, capitolHeights];
+  const f = cleanFilters({ asksAboutHomes: true, cities: ["Baltimore"] }, facets);
+  assert.deepEqual(statesNear(f, homes), ["MD"]);
+  assert.deepEqual(nearbyFilters(f, ["MD"]).states, ["MD"]);
+  assert.deepEqual(nearbyFilters(f, ["MD"]).cities, []);
+  const stateOnly = cleanFilters({ asksAboutHomes: true, states: ["MD"] }, facets);
+  assert.deepEqual(statesNear(stateOnly, homes), []);
+  assert.equal(nearbyFilters(stateOnly, ["MD"]), null); // they already asked for the state
+  assert.equal(nearbyFilters(f, []), null);
+});
+
+test("search: nothing else in the town gives the nearest homes in the same state first", async (t) => {
+  // "other properties in the area?" from the Baltimore lead: Baltimore has only their own home
+  const f = cleanFilters({ asksAboutHomes: true, cities: ["Baltimore"] }, facets);
+  const queries = [];
+  mockProduct(t, {
+    find: (q) => { queries.push(q); return inState(q, ["MD"]) ? [capitolHeights] : []; },
+    count: (q) => (inState(q, ["MD"]) ? 1 : 0),
+    aggregate: () => assert.fail("should not fall back to any home"),
+  });
+  const near = await searchListings(f, { now: NOW, excludeSlugs: [baltimore.slug], nearStates: ["MD"], anchorBid: 58687 });
+  assert.equal(near.total, 0);
+  assert.equal(near.relaxed, "state");
+  assert.deepEqual(near.listings.map((l) => l.slug), [capitolHeights.slug]);
+  assert.deepEqual(queries[queries.length - 1].slug.$nin, [baltimore.slug]);
+  t.mock.restoreAll();
+
+  // with a price: same state at that price, then the town at any price, then the state at any price
+  const cheap = cleanFilters({ asksAboutHomes: true, cities: ["Baltimore"], maxPrice: 50000 }, facets);
+  mockProduct(t, {
+    find: (q) => (inState(q, ["MD"]) && !q.startBid ? [capitolHeights] : []),
+    count: (q) => (inState(q, ["MD"]) && !q.startBid ? 1 : 0),
+    aggregate: () => assert.fail("should not fall back to any home"),
+  });
+  const nearAnyPrice = await searchListings(cheap, { now: NOW, nearStates: ["MD"] });
+  assert.equal(nearAnyPrice.relaxed, "state_price");
+  assert.deepEqual(nearAnyPrice.listings.map((l) => l.slug), [capitolHeights.slug]);
+  t.mock.restoreAll();
+
+  // nothing in the state either: still something, the homes closest in starting bid to their own home
+  let pipeline;
+  mockProduct(t, { find: () => [], count: () => 0, aggregate: (p) => { pipeline = p; return [lawSt1, capitolHeights]; } });
+  const something = await searchListings(f, { now: NOW, nearStates: ["MD"], anchorBid: 58687 });
+  assert.equal(something.relaxed, "all");
+  assert.deepEqual(something.listings.map((l) => l.slug), [lawSt1.slug, capitolHeights.slug]);
+  assert.deepEqual(pipeline[1].$addFields._gap.$abs.$subtract[1], 58687);
+  t.mock.restoreAll();
+
+  // no open homes at all
+  mockProduct(t, { find: () => [], count: () => 0, aggregate: () => [] });
+  const none = await searchListings(f, { now: NOW, nearStates: ["MD"], anchorBid: 58687 });
+  assert.equal(none.relaxed, "");
+  assert.deepEqual(none.listings, []);
 });
 
 test("the open-home index: towns, states and types from the data; a database problem gives an empty one", async (t) => {
@@ -159,6 +222,9 @@ test("the filter step is given our real places and the conversation", () => {
   assert.match(p, /States: CA, LA, MD, Texas/);
   assert.match(p, /Contact: anything under 200k\?/);
   assert.match(p, /keeps the 200k limit/);
+  assert.doesNotMatch(p, /The home they signed up for/);
+  const withOwn = buildExtractPrompt({ messages: [], replyToBody: "anything else in the area?", facets, ownPlace: "Baltimore, MD" });
+  assert.match(withOwn, /The home they signed up for is in Baltimore, MD\. "The area"/);
 });
 
 const knowledge = (otherHomes, catalogText = "") => ({
@@ -178,6 +244,9 @@ test("the prompt: matches with their count, the closest when none match, and the
 
   const closest = buildPrompt(args(knowledge({ ...base, relaxed: "price", matchesText: lines }, lines)));
   assert.match(closest, /none of our open homes match what they asked[^\n]*The closest ones, which do NOT fit[^\n]*outside the price/);
+  assert.match(closest, /ALWAYS offer them/);
+  const nearby = buildPrompt(args(knowledge({ ...base, relaxed: "state", matchesText: lines }, lines)));
+  assert.match(nearby, /the nearest, in the same state/);
 
   const none = buildPrompt(args(knowledge({ ...base })));
   assert.match(none, /we have no other homes open right now/);

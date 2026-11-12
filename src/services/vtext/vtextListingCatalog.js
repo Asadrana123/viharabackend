@@ -137,7 +137,7 @@ function cleanFilters(raw, facets) {
   return f;
 }
 
-function buildExtractPrompt({ messages, replyToBody, facets }) {
+function buildExtractPrompt({ messages, replyToBody, facets, ownPlace = "" }) {
   const recent = (messages || []).slice(0, -1).slice(-HISTORY_FOR_EXTRACT)
     .map((m) => `${m.direction === "in" ? "Contact" : "Us"}: ${m.body}`).join("\n");
   return `A contact is texting a real-estate auction company. Decide whether their LAST message asks which homes we have for sale (other homes, homes under or over a price, in a place, with some number of bedrooms, of some type, "anything else?", "send me more", "what about <place>"). Questions only about one specific home's details (its taxes, its address, is it vacant) are NOT a home search.
@@ -152,7 +152,7 @@ States: ${facets.states.join(", ") || "(none)"}
 Counties: ${facets.counties.join(", ") || "(none)"}
 Towns: ${facets.cities.join(", ") || "(none)"}
 Home types: ${facets.propertyTypes.join(", ") || "(none)"}
-
+${ownPlace ? `\nThe home they signed up for is in ${ownPlace}. "The area", "nearby", "around here", "close by" or "near me" means that town (put the town in cities).\n` : ""}
 ${recent ? `Earlier messages (oldest first):\n${recent}\n\n` : ""}Last message:
 <<<
 ${replyToBody}
@@ -175,7 +175,7 @@ function withTimeout(promise, ms, label) {
  * @returns {Promise<{ ok: boolean, filters: object|null, error?: string }>} ok=false when the step failed
  *   (Gemini down, slow, bad JSON); filters=null when it worked and this is not a home search.
  */
-async function extractHomeSearch({ messages, replyToBody, facets }) {
+async function extractHomeSearch({ messages, replyToBody, facets, ownPlace = "" }) {
   const text = String(replyToBody || "").trim();
   if (!text) return { ok: true, filters: null };
   try {
@@ -185,7 +185,7 @@ async function extractHomeSearch({ messages, replyToBody, facets }) {
     const model = client.getGenerativeModel({ model: MODEL_NAME });
     const result = await withTimeout(
       model.generateContent({
-        contents: [{ role: "user", parts: [{ text: buildExtractPrompt({ messages, replyToBody: text, facets }) }] }],
+        contents: [{ role: "user", parts: [{ text: buildExtractPrompt({ messages, replyToBody: text, facets, ownPlace }) }] }],
         generationConfig: { temperature: 0, responseMimeType: "application/json", thinkingConfig: { thinkingBudget: 0 } },
       }),
       EXTRACT_TIMEOUT_MS,
@@ -249,30 +249,90 @@ function describeFilters(f) {
 }
 
 /**
- * The open homes matching the filters (the lead's own left out), cheapest first unless asked otherwise.
- * None match: the same search without the place (when they named only a place we have no homes in),
- * else without the price, then any open home, marked `relaxed` so the reply can say they do not fit exactly.
- * @returns {Promise<{ total: number, listings: object[], relaxed: ""|"place"|"price"|"all" }>}
+ * The states of the towns and counties they asked about, from the open-home index (the lead's own home
+ * included, so "anything else in Baltimore?" still knows Baltimore is in MD). Pure.
+ * @param {object} filters
+ * @param {Array<{city, county, state}>} homes
+ * @returns {string[]}
  */
-async function searchListings(filters, { now = new Date(), excludeSlugs = [], limit = MAX_SHOWN } = {}) {
+function statesNear(filters, homes) {
+  if (!filters || (!filters.cities.length && !filters.counties.length)) return [];
+  const lower = (list) => new Set(list.map((v) => String(v).toLowerCase()));
+  const cities = lower(filters.cities);
+  const counties = lower(filters.counties);
+  const states = (homes || [])
+    .filter((h) => cities.has(String(h.city || "").toLowerCase()) || counties.has(String(h.county || "").toLowerCase()))
+    .map((h) => String(h.state || "").trim())
+    .filter(Boolean);
+  return [...new Set(states)];
+}
+
+/** The same search, widened from the towns/counties asked to their whole state. null when that adds nothing. Pure. */
+function nearbyFilters(filters, nearStates) {
+  if (!filters.cities.length && !filters.counties.length) return null;
+  const extra = (nearStates || []).filter((s) => !filters.states.includes(s));
+  if (!extra.length) return null;
+  return { ...filters, cities: [], counties: [], states: [...filters.states, ...extra] };
+}
+
+const PROJECTION = Object.fromEntries(FIELDS.split(" ").map((f) => [f, 1]));
+
+/**
+ * The open homes matching the filters (the lead's own left out), cheapest first unless asked otherwise.
+ * None match: nearby first, then something rather than nothing, marked `relaxed` so the reply can say how they differ:
+ *   1. the same search in the whole state of the town they asked about ("state")
+ *   2. with a price: the place they asked, any price ("price"), then the whole state, any price ("state_price")
+ *      (when they named only a place we have no homes in: the same search anywhere else, "place")
+ *   3. any open home, closest in starting bid to the price they gave or to their own home ("all")
+ * @param {object} filters
+ * @param {{ now?: Date, excludeSlugs?: string[], limit?: number, nearStates?: string[], anchorBid?: number|null }} opts
+ *   nearStates: from statesNear(); anchorBid: the starting bid of the lead's own home
+ * @returns {Promise<{ total: number, listings: object[], relaxed: ""|"state"|"price"|"state_price"|"place"|"all" }>}
+ */
+async function searchListings(filters, { now = new Date(), excludeSlugs = [], limit = MAX_SHOWN, nearStates = [], anchorBid = null } = {}) {
   const sort = filters.sort === "price_desc" ? { startBid: -1, slug: 1 } : { startBid: 1, slug: 1 };
-  const run = async (drop) => {
-    const q = buildListingQuery(filters, { now, excludeSlugs, drop });
+  const run = async (f, drop) => {
+    const q = buildListingQuery(f, { now, excludeSlugs, drop });
     const [total, docs] = await Promise.all([Product.countDocuments(q), Product.find(q).select(FIELDS).sort(sort).limit(limit).lean()]);
     return { total, listings: docs.map(toListing) };
   };
+  const closest = (r, relaxed) => ({ total: 0, listings: r.listings.slice(0, MAX_NAMED), relaxed });
+  const hasPrice = Boolean(filters.maxPrice || filters.minPrice);
+
   if (onlyUnknownPlace(filters)) {
-    const elsewhere = await run("place");
-    return { total: 0, listings: elsewhere.listings.slice(0, 3), relaxed: elsewhere.total ? "place" : "" };
+    const elsewhere = await run(filters, "place");
+    if (elsewhere.total) return closest(elsewhere, "place");
+  } else {
+    const exact = await run(filters, "");
+    if (exact.total) return { ...exact, relaxed: "" };
+    const near = nearbyFilters(filters, nearStates);
+    if (near) {
+      const inState = await run(near, "");
+      if (inState.total) return closest(inState, "state");
+    }
+    if (hasPrice) {
+      const noPrice = await run(filters, "price");
+      if (noPrice.total) return closest(noPrice, "price");
+      if (near) {
+        const inStateNoPrice = await run(near, "price");
+        if (inStateNoPrice.total) return closest(inStateNoPrice, "state_price");
+      }
+    }
   }
-  const exact = await run("");
-  if (exact.total) return { ...exact, relaxed: "" };
-  if (filters.maxPrice || filters.minPrice) {
-    const noPrice = await run("price");
-    if (noPrice.total) return { total: 0, listings: noPrice.listings.slice(0, 3), relaxed: "price" };
-  }
-  const any = await run("all");
-  return { total: 0, listings: any.listings.slice(0, 3), relaxed: any.total ? "all" : "" };
+
+  // Nothing nearby: still offer something, the homes closest in starting bid to what they are looking at.
+  const anchor = filters.maxPrice || filters.minPrice || num(anchorBid);
+  const q = buildListingQuery(filters, { now, excludeSlugs, drop: "all" });
+  const docs = anchor
+    ? await Product.aggregate([
+        { $match: q },
+        { $addFields: { _gap: { $abs: { $subtract: [{ $ifNull: ["$startBid", 0] }, anchor] } } } },
+        { $sort: { _gap: 1, slug: 1 } },
+        { $limit: MAX_NAMED },
+        { $project: PROJECTION },
+      ])
+    : await Product.find(q).select(FIELDS).sort(sort).limit(MAX_NAMED).lean();
+  return { total: 0, listings: docs.map(toListing), relaxed: docs.length ? "all" : "" };
 }
 
 /** The lines for homes the message named (open homes only). */
@@ -340,6 +400,8 @@ module.exports = {
   buildExtractPrompt,
   buildListingQuery,
   describeFilters,
+  statesNear,
+  nearbyFilters,
   searchListings,
   loadListingsBySlugs,
   findMentionedSlugs,
