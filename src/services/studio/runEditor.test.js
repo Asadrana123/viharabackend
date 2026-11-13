@@ -57,7 +57,8 @@ test("a camera move is one the shot offers, within the limit", () => {
   assert.throws(() => shotCommand(r, { ref: "b2/s1", camera: "spin" }), /does not fit/);
   assert.throws(() => shotCommand(r, { ref: "b2/s1", image: "img-99" }), /not an approved photograph/);
   assert.throws(() => shotCommand({ ...r, spent: 14.9 }, { ref: "b2/s1", camera: "depth-push" }), /limit/);
-  assert.throws(() => shotCommand({ ...r, state: "cut" }, { ref: "b2/s1", camera: "pan-left" }), /storyboard/);
+  assert.equal(shotCommand({ ...r, state: "cut" }, { ref: "b2/s1", camera: "pan-left" }).command.type, "shot");
+  assert.throws(() => shotCommand({ ...r, state: "revision" }, { ref: "b2/s1", camera: "pan-left" }), /storyboard/);
 });
 
 test("an uploaded image says what it is and is confirmed to show the property as it is", () => {

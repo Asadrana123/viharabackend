@@ -247,10 +247,14 @@ function voCommand(run, body) {
 }
 
 const SHOT_STATES = ["approved", "frames", "storyboard", "clips", "ready-to-build"];
+// A shot's camera move or photo may also change once the cut is made and waiting for a decision (Preetham,
+// 2026-11-13: the change "keeps getting rejected"): the plan is approved again under the editor's name and the
+// video is put together again.
+const CAMERA_STATES = [...SHOT_STATES, "cut"];
 
 /** The editor's camera move or photograph for one shot of the property, on the storyboard (D-047). */
 function shotCommand(run, body) {
-  if (!SHOT_STATES.includes(run.state)) throw new Error("Shots are changed on the storyboard, before the video is built.");
+  if (!CAMERA_STATES.includes(run.state)) throw new Error("A shot's camera move or photo is changed on the storyboard, or on the cut while it waits for your decision. This video is past that point.");
   const ref = String(body?.ref ?? "");
   const frame = (run.frames ?? []).find((f) => f.ref === ref);
   if (!frame || !frame.options?.length) throw new Error(`Shot ${ref} takes no camera move.`);
