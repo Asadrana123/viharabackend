@@ -183,7 +183,59 @@ async function selectLine(message, contact, deps = {}) {
     if (result && result !== "WAIT") return { line: result, waitingOnStickyLine: false };
   }
 
+  // No iMessage line can take it: the line is down, or has no room left for someone new. Send by SMS instead of waiting.
+  if (channels.includes(IMESSAGE_CHANNEL)) {
+    const instead = await (deps.smsInsteadOfIMessage || smsInsteadOfIMessage)(message, contact);
+    if (instead?.waitMs) return { line: null, waitingOnStickyLine: false, retryInMs: instead.waitMs };
+    if (instead?.reason) {
+      const result = await pickInChannel(SMS_CHANNEL, message, contact);
+      if (result === "WAIT") return { line: null, waitingOnStickyLine: true };
+      if (result) return { line: result, waitingOnStickyLine: false, smsInstead: instead.reason };
+    }
+  }
+
   return { line: null, waitingOnStickyLine: false };
 }
 
-module.exports = { selectLine, resolveChannelCandidates };
+const IMESSAGE_CHANNEL = "imessage-bluebubbles";
+const replyWaitMs = () => {
+  const min = Number(process.env.VTEXT_SMS_FALLBACK_REPLY_WAIT_MIN);
+  return (Number.isFinite(min) && min >= 0 && process.env.VTEXT_SMS_FALLBACK_REPLY_WAIT_MIN !== "" && process.env.VTEXT_SMS_FALLBACK_REPLY_WAIT_MIN !== undefined ? min : 30) * 60_000;
+};
+
+/**
+ * Should a text that no iMessage line can take go by SMS instead? (With the SMS fallback switched on.)
+ *  - the iMessage line is down for it (offline, paused, quarantined, retired, or it just failed to reach the Mac):
+ *    yes. A reply to their text waits VTEXT_SMS_FALLBACK_REPLY_WAIT_MIN (30) minutes first, since a short outage
+ *    is common and a reply from a different number starts a second thread on their phone.
+ *  - the iMessage line is up but has no room left: yes for someone we have no iMessage conversation with, no for
+ *    someone we do (switching numbers mid-conversation is worse than waiting).
+ * Not for: texts pinned to a channel, images (SMS sends text only), non-US numbers (the Twilio line is US-only),
+ * or when there is no routable Twilio line.
+ * @returns {Promise<{reason: string} | {waitMs: number} | null>}
+ */
+async function smsInsteadOfIMessage(message, contact, now = Date.now()) {
+  if (process.env.VTEXT_SMS_FALLBACK_ENABLED !== "true") return null;
+  if (message.channelPolicy?.mode === "only") return null;
+  if (message.media?.file) return null;
+  if (!/^\+1\d{10}$/.test(contact.phoneE164 || "")) return null;
+  if (!(await VtextLine.exists({ channelType: SMS_CHANNEL, status: { $in: ROUTABLE_STATUSES } }))) return null;
+
+  const excluded = new Set((message.excludeLineIds || []).map(String));
+  const routable = await VtextLine.find({ channelType: IMESSAGE_CHANNEL, status: { $in: ROUTABLE_STATUSES } }).select("_id").lean();
+  const lineDown = !routable.some((l) => !excluded.has(String(l._id)));
+
+  if (lineDown) {
+    if (message.isReplyToInbound) {
+      const waited = now - new Date(message.createdAt || now).getTime();
+      if (waited < replyWaitMs()) return { waitMs: Math.max(60_000, replyWaitMs() - waited) };
+    }
+    return { reason: "the iMessage line is down" };
+  }
+
+  const talking = await VtextConversation.exists({ contactId: contact._id, channelType: IMESSAGE_CHANNEL });
+  if (talking) return null;
+  return { reason: "the iMessage line has no room left today" };
+}
+
+module.exports = { selectLine, resolveChannelCandidates, smsInsteadOfIMessage };

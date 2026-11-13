@@ -119,6 +119,36 @@ async function runUnconfirmedSendSweep() {
 const STALE_ASSIGNED_HOURS = () => Number(process.env.VTEXT_STALE_ASSIGNED_HOURS || 12);
 const STUCK_ASSIGNED_CODE = "stuck-assigned";
 
+/**
+ * Takes texts off a down line's queue and puts them back for routing: removes the send job, frees the line's capacity,
+ * clears the line. No exclusion is added, so a text still waiting when the line is back can use it again.
+ * @returns {Promise<number>} how many were moved
+ */
+async function moveOffDownLine(lineId, messages, { releaseCapacity, routeQueueFor, lineQueueFor, now }) {
+  let moved = 0;
+  for (const m of messages) {
+    try {
+      const job = await lineQueueFor(lineId).getJob(`send-${m._id}`);
+      if (job) await job.remove();
+    } catch {
+      // best-effort: the status flip below is what stops the old job from sending (lineSendWorker skips a non-assigned text)
+    }
+    const r = await VtextMessage.updateOne(
+      { _id: m._id, status: "assigned" },
+      {
+        $set: { status: "queued" },
+        $unset: { lineId: 1, conversationId: 1 },
+        $push: { statusHistory: { status: "queued", at: new Date(now), detail: "its iMessage line is down, routed again" } },
+      }
+    );
+    if (!r.modifiedCount) continue;
+    await releaseCapacity({ _id: lineId }, dayKey(m.assignedAt || m.updatedAt || new Date(now)), { wasReply: m.isReplyToInbound });
+    await routeQueueFor().add("route", { messageId: String(m._id) }, { jobId: `route-${m._id}-linedown-${now}` });
+    moved += 1;
+  }
+  return moved;
+}
+
 async function recoverAssignedMessages(messages, deps = {}) {
   const lineQueueFor = deps.getLineQueue || getLineQueue;
   const routeQueueFor = deps.getRouteQueue || getRouteQueue;
@@ -146,7 +176,13 @@ async function recoverAssignedMessages(messages, deps = {}) {
   for (const [lineId, list] of byLine) {
     const line = await findLine(lineId);
     if (!line || !VtextLine.ROUTABLE_STATUSES.includes(line.status)) {
-      out.waiting += list.length;
+      // A down iMessage line (offline, paused, quarantined): with the SMS fallback on, its waiting texts go back for
+      // routing, where the router sends them by SMS (a reply after its wait). Otherwise they wait for the line.
+      if (line?.channelType === smsFallback.IMESSAGE && smsFallback.isEnabled()) {
+        out.rerouted += await (deps.moveOffLine || moveOffDownLine)(lineId, list, { releaseCapacity, routeQueueFor, lineQueueFor, now });
+      } else {
+        out.waiting += list.length;
+      }
       continue;
     }
     const queue = lineQueueFor(lineId);
@@ -173,7 +209,19 @@ async function recoverAssignedMessages(messages, deps = {}) {
           await releaseCapacity(line, reservationDay, { wasReply: m.isReplyToInbound });
           publishEvent({ type: "message.updated", messageId: String(m._id), conversationId: m.conversationId ? String(m.conversationId) : null, status: "unknown" });
           out.expired += 1;
-          await (deps.reportTextProblem || reportTextProblem)(m._id);
+          // It was never sent, so an SMS copy cannot double up. The fallback's own checks still apply (age, a reply
+          // since, opt-out, texting hours), so a text that is too old by now is not sent.
+          let fallback = null;
+          if (line.channelType === smsFallback.IMESSAGE && smsFallback.isEnabled()) {
+            try {
+              const original = await VtextMessage.findById(m._id);
+              if (original) fallback = await (deps.queueSmsFallback || smsFallback.maybeQueueSmsFallback)(original, { trigger: "never-sent", reason: STUCK_ASSIGNED_CODE });
+            } catch (err) {
+              console.error(`[vtext sms-fallback] could not queue the fallback for ${m._id}:`, err.message);
+              fallback = { queued: false, reason: `the fallback could not be queued (${err.message})` };
+            }
+          }
+          await (deps.reportTextProblem || reportTextProblem)(m._id, { fallback });
         }
         continue;
       }
