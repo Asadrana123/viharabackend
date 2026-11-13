@@ -224,10 +224,9 @@ ${severalProperties ? (hasCurrentProperty
       : "- This contact has more than one property and none is marked as the one this conversation is about. If their message names one of them (by name, street or city), answer about that one. Otherwise, if the question is about a specific property (price, taxes, bedrooms, HOA, the auction and so on), do not answer for any of them: ask in one short sentence which property they mean, naming each by its street, for example: Which property do you mean, 449 Georgia St or 1703 Brookside Pine Ln? Do not say a team member will follow up for this, and keep needsHuman false. Questions that are not about one property (who you are, wanting to talk to a person, comparing the properties) can be answered normally. Never mix facts from different properties.\n") : ""}`
     : "";
 
-  // Earlier messages are CONTEXT, not something to re-answer — each inbound
-  // message gets its own draft (draftReplyWorker.js), so a reply must focus
-  // on the specific message it's answering, not restate answers to earlier
-  // messages that already have (or will have) their own separate draft.
+  // Earlier messages are CONTEXT, not something to re-answer: they were answered already. Texts they sent in a row
+  // since our last message arrive here as ONE last message (draftReplyWorker.js mergeUnansweredTexts), so the
+  // reply answers all of them together.
   const earlierHistory = messages.slice(0, -1);
 
   return `You are replying on behalf of Vihara, a real-estate auction company, to a text conversation with a prospect named ${contact?.name || "this contact"}.

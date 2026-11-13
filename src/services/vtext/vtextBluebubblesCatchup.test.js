@@ -151,13 +151,23 @@ test("the read recheck never pulls in replies (no AI reply to a day-old message)
   assert.equal(await VtextMessage.countDocuments({ direction: "in" }), 0);
 });
 
-test("the time window: from the last run minus 10 minutes, never more than 24 hours, never the last 2 minutes", async (t) => {
+test("the time window: from the last run minus 60 minutes, never more than 24 hours, never the last 2 minutes", async (t) => {
   if (!mongoUp) return t.skip("no local Mongo");
   await catchup.runCatchup(deps({ watermark: new Date(NOW - 30 * 60_000) }));
-  assert.equal(queries[0].after, NOW - 40 * 60_000);
+  assert.equal(queries[0].after, NOW - 90 * 60_000);
   assert.equal(queries[0].before, NOW - 2 * 60_000);
   await catchup.runCatchup(deps({ watermark: new Date(NOW - 5 * 24 * 60 * 60_000) }));
   assert.equal(queries[1].after, NOW - 24 * 60 * 60_000);
+});
+
+test("a reply that reached the Mac 20 minutes after it was sent is still caught (seen 2026-11-12)", async (t) => {
+  if (!mongoUp) return t.skip("no local Mongo");
+  const contact = await newContact();
+  // Sent 21 minutes ago, but only on the Mac now; the last run was 10 minutes ago and did not see it.
+  rows = [{ guid: "IN-LATE", isFromMe: false, text: "Tested by U", dateCreated: NOW - 21 * 60_000, handle: { address: contact.phoneE164 }, chats: [{ guid: `any;-;${contact.phoneE164}` }] }];
+  const result = await catchup.runCatchup(deps({ watermark: new Date(NOW - 10 * 60_000) }));
+  assert.equal(result.replies, 1);
+  assert.equal(await VtextMessage.countDocuments({ direction: "in", "provider.messageId": "IN-LATE" }), 1);
 });
 
 test("the watermark only moves when the Mac answered", async (t) => {

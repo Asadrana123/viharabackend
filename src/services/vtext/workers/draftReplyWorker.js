@@ -23,6 +23,7 @@ const { SAFE_HANDOFF, checkReplyAmounts, collectSourceTexts, customerTextsOf } =
 const { publishEvent } = require("../vtextEventsBus");
 const { notifyVtextAlert } = require("../../shared/slackService");
 const { sendAlertWithCooldown, inboxUrl, clip } = require("../vtextAlertService");
+const { detectKeyword } = require("../vtextComplianceService");
 
 const HISTORY_LIMIT = 10;
 const AI_FAILURE_ALERT_COOLDOWN_MS = 30 * 60_000; // a Gemini outage must not post once per customer message
@@ -33,31 +34,34 @@ async function processDraftReplyJob(job) {
   const contact = await VtextContact.findById(contactId).lean();
   if (!contact || contact.optOut?.isOptedOut) return; // state may have shifted since enqueue — bail quietly
 
-  // One draft per inbound message (not one per conversation) — a burst of
-  // several messages gets a separate draft for each, so nothing gets
-  // silently skipped. This check is retry-safety (a BullMQ retry of the
-  // same job must not create a second draft for the same inbound message),
-  // not a throttle.
+  // Retry-safety: a BullMQ retry of the same job must not create a second draft for the same inbound message.
   const alreadyDrafted = await VtextMessage.exists({ "origin.replyToMessageId": inboundMessageId });
   if (alreadyDrafted) return;
 
-  const inboundMessage = await VtextMessage.findById(inboundMessageId).select("body").lean();
+  const inboundMessage = await VtextMessage.findById(inboundMessageId).select("body createdAt").lean();
   if (!inboundMessage?.body) return;
 
-  const history = await VtextMessage.find({ conversationId })
+  // Several texts in a row get ONE reply, written by the job for the newest of them. Two replies drafted at the
+  // same time each pick their own human-like pause, so they could go out in the wrong order (seen 2026-11-12).
+  // A newer text only takes over when it will get a draft of its own: a STOP/HELP/START keyword does not.
+  if (await hasNewerTextToAnswer(conversationId, inboundMessage)) return;
+
+  const recent = await VtextMessage.find({ conversationId })
     .sort({ createdAt: -1 })
     .limit(HISTORY_LIMIT)
-    .select("direction body")
+    .select("direction body createdAt")
     .lean();
-  history.reverse();
+  recent.reverse();
+  // Their texts since our last message are answered together, as one message, and the AI sees them that way.
+  const { history, replyToBody } = mergeUnansweredTexts(recent, inboundMessage);
 
   // With the knowledge lookup on, the AI also gets what this lead told us and the property details that
   // match the question (vtextKnowledgeService.js, which never throws). Off, nothing changes.
   // A Toorak lead (Facebook ad) also gets Prajwal's reply rules and its home's facts (vtextToorakReplyRules.js).
   const toorak = await loadToorakLead(contact);
-  const knowledge = isRagEnabled() ? await buildReplyKnowledge({ contact, messages: history, replyToBody: inboundMessage.body, conversationId, toorak }) : null;
+  const knowledge = isRagEnabled() ? await buildReplyKnowledge({ contact, messages: history, replyToBody, conversationId, toorak }) : null;
   const propertyContext = knowledge ? knowledge.propertyContext : await buildPropertyContext(contact, toorak);
-  let draft = await generateDraftReply({ contact, messages: history, replyToBody: inboundMessage.body, propertyContext, knowledge, toorak });
+  let draft = await generateDraftReply({ contact, messages: history, replyToBody, propertyContext, knowledge, toorak });
   if (!draft) {
     // Generation unavailable or failed: the conversation just stays needs-reply, which used to be
     // completely silent. Tell the team once in a while that nobody is answering this customer.
@@ -70,7 +74,7 @@ async function processDraftReplyJob(job) {
         { label: "Phone", value: contact.phoneE164 },
         { label: "Why", value: "The AI service returned nothing. It may be down, or its key may be missing or out of credit.", wide: true },
         { label: "What to do", value: "Reply to them by hand from the Inbox. This alert repeats at most once in a while, so other customers may be waiting too.", wide: true },
-        { label: "Their message", value: clip(inboundMessage.body), wide: true },
+        { label: "Their message", value: clip(replyToBody), wide: true },
         { label: "Inbox", value: `<${inboxUrl(conversationId)}|Open the conversation>`, wide: true },
       ],
     }).catch((err) => console.error("[vtext draft-reply] could not send the AI-failure alert:", err.message));
@@ -83,8 +87,8 @@ async function processDraftReplyJob(job) {
   if (knowledge) {
     const check = checkReplyAmounts({
       reply: draft.reply,
-      sourceTexts: collectSourceTexts({ knowledge, messages: history, replyToBody: inboundMessage.body }),
-      customerTexts: customerTextsOf({ messages: history, replyToBody: inboundMessage.body }),
+      sourceTexts: collectSourceTexts({ knowledge, messages: history, replyToBody }),
+      customerTexts: customerTextsOf({ messages: history, replyToBody }),
     });
     if (!check.ok) {
       console.warn(`[vtext guard] reply replaced, it contained amount(s) the AI was not given: ${check.unsupported.join(", ")}`);
@@ -115,7 +119,7 @@ async function processDraftReplyJob(job) {
   const settings = await getSettings();
   if (settings.aiAutoReplyEnabled) {
     // A human-like pause before it goes out (20-50 s, longer for a long reply): an answer a few seconds after their text reads as a bot.
-    await approveDraft(message._id, { approvedBy: { adminId: null, adminName: "AI (auto-approved)" }, delayMs: humanReplyDelayMs(body) });
+    await approveDraft(message._id, { approvedBy: { adminId: null, adminName: "AI (auto-approved)" }, delayMs: await autoReplyDelayMs({ conversationId, messageId: message._id, body, textAt: inboundMessage.createdAt }) });
     await publishEvent({ type: "message.updated", conversationId: String(conversationId), contactId: String(contactId) });
   }
 
@@ -141,13 +145,64 @@ async function processDraftReplyJob(job) {
           { label: "Best time to reach them", value: bestTime || undefined },
           { label: "Language", value: language ? `Texting in ${language}` : undefined },
           { label: "Status", value: "Draft waiting for approval, nothing sent yet" },
-          { label: "Question", value: clip(inboundMessage.body), wide: true },
+          { label: "Question", value: clip(replyToBody), wide: true },
           { label: "AI draft", value: clip(body), wide: true },
           { label: "Inbox", value: `<${inboxUrl(conversationId)}|Open the conversation>`, wide: true },
         ],
       }).catch(() => {});
     }
   }
+}
+
+/**
+ * How long a new text waits before the AI drafts its reply, so a second text sent right after it is answered in the
+ * same reply. Env VTEXT_AI_REPLY_BATCH_SEC (default 15, 0 switches it off).
+ * @returns {number} milliseconds
+ */
+function replyBatchDelayMs() {
+  const raw = process.env.VTEXT_AI_REPLY_BATCH_SEC;
+  const sec = raw !== undefined && raw !== "" && Number.isFinite(Number(raw)) && Number(raw) >= 0 ? Number(raw) : 15;
+  return Math.round(sec * 1000);
+}
+
+/** True when a later text in this conversation will get its own draft, which then answers this one too. */
+async function hasNewerTextToAnswer(conversationId, inboundMessage) {
+  const newer = await VtextMessage.find({ conversationId, direction: "in", createdAt: { $gt: inboundMessage.createdAt } })
+    .select("body")
+    .lean();
+  return newer.some((m) => m.body && !detectKeyword(m.body).type);
+}
+
+/**
+ * Their texts since our last message become one message: the AI answers all of them, and does not treat the earlier
+ * ones as "already answered" history. A keyword text (STOP/HELP/START) in the run is left out of what the AI answers.
+ * @param {object[]} recent - the conversation's latest messages, oldest first, including `current`
+ * @param {object} current - the text this job was made for (the newest one)
+ * @returns {{ history: object[], replyToBody: string }} history ends with the combined text
+ */
+function mergeUnansweredTexts(recent, current) {
+  let start = recent.length;
+  while (start > 0 && recent[start - 1].direction === "in") start -= 1;
+  const run = recent.slice(start).filter((m) => m.body && !detectKeyword(m.body).type);
+  if (!run.some((m) => String(m._id) === String(current._id))) run.push(current);
+  const replyToBody = run.map((m) => m.body).join("\n");
+  return { history: [...recent.slice(0, start), { direction: "in", body: replyToBody }], replyToBody };
+}
+
+/**
+ * The pause before an auto-sent reply. The human-like pause (humanReplyDelayMs) is counted from their text, not
+ * from now, since the batching wait and the AI call already took part of it. And it never goes out before a reply
+ * still waiting in this conversation, so their order holds.
+ */
+async function autoReplyDelayMs({ conversationId, messageId, body, textAt, now = Date.now() }) {
+  const sinceText = textAt ? Math.max(0, now - new Date(textAt).getTime()) : 0;
+  let wait = Math.max(0, humanReplyDelayMs(body) - sinceText);
+  const waiting = await VtextMessage.findOne({ conversationId, _id: { $ne: messageId }, direction: "out", status: "queued", scheduledFor: { $gt: new Date(now) } })
+    .sort({ scheduledFor: -1 })
+    .select("scheduledFor")
+    .lean();
+  if (waiting) wait = Math.max(wait, waiting.scheduledFor.getTime() - now + 5000);
+  return wait;
 }
 
 let worker = null;
@@ -175,4 +230,4 @@ async function stopDraftReplyWorker() {
   }
 }
 
-module.exports = { processDraftReplyJob, startDraftReplyWorker, stopDraftReplyWorker };
+module.exports = { processDraftReplyJob, startDraftReplyWorker, stopDraftReplyWorker, replyBatchDelayMs, mergeUnansweredTexts, autoReplyDelayMs, _test: { hasNewerTextToAnswer } };
