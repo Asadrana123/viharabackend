@@ -20,6 +20,9 @@ const smsFallback = require("../vtextSmsFallbackService");
 const { recordProviderOptOut } = require("../vtextOptOutService");
 const { reportTextProblem } = require("../vtextTextProblemAlert");
 
+// BlueBubbles could not be reached at all, so the text cannot have gone out.
+const LINE_DOWN_CODES = new Set(["CONNECTION_REFUSED"]);
+
 async function rerouteExcluding(message, lineId) {
   message.excludeLineIds = [...(message.excludeLineIds || []), lineId];
   message.lineId = undefined;
@@ -175,7 +178,7 @@ async function processSendJob(lineId, job) {
       }
       // BlueBubbles said the iMessage could not be delivered: the same text goes out once by SMS (when switched on).
       let fallback = null;
-      if (line.channelType === smsFallback.IMESSAGE && smsFallback.isExplicitIMessageFailure(err.code)) {
+      if (line.channelType === smsFallback.IMESSAGE && smsFallback.fallsBackOnSendError(err.code)) {
         fallback = await smsFallback.maybeQueueSmsFallback(message, { trigger: "send-error", reason: err.code }).catch((e) => {
           console.error(`[vtext sms-fallback] could not queue the fallback for ${message._id}:`, e.message);
           return { queued: false, reason: `the fallback could not be queued (${e.message})` };
@@ -198,6 +201,18 @@ async function processSendJob(lineId, job) {
       // "line" goes through the normal threshold evaluation (§7.4).
       await evaluateAndMaybeQuarantine(line, err.kind === "config" ? `config error: ${err.message}` : undefined);
 
+      await capacity.release(line, reservationDay, { wasReply: message.isReplyToInbound });
+      await rerouteExcluding(message, lineId);
+      return;
+    }
+
+    // The Mac refused the connection (asleep, BlueBubbles closed, tunnel down): BlueBubbles never got the text, so it
+    // certainly did not go out. With the SMS fallback on, it goes back for routing without this line instead of
+    // sitting through retries; the router sends it by SMS (a reply after a wait, vtextRouter.smsInsteadOfIMessage).
+    // Not counted against the line's health: the health check takes a line that stays down offline on its own.
+    if (line.channelType === smsFallback.IMESSAGE && LINE_DOWN_CODES.has(err.code) && smsFallback.isEnabled()) {
+      message.error = { kind: "line", code: err.code, message: err.message };
+      message.statusHistory.push({ status: "queued", detail: `iMessage line unreachable (${err.code}), routed again without it` });
       await capacity.release(line, reservationDay, { wasReply: message.isReplyToInbound });
       await rerouteExcluding(message, lineId);
       return;

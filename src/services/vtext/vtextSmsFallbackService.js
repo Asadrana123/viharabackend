@@ -2,10 +2,17 @@
 //
 // When an iMessage text cannot be delivered, send the same words once by SMS through the Twilio line.
 //
-// The rule that shapes everything here: never text a person twice. So
-//   - only an EXPLICIT "not delivered" sends on its own (a send error from BlueBubbles, or a receipt with
-//     one of VTEXT_SMS_FALLBACK_IMESSAGE_CODES, default error 22). A missing receipt proves nothing: the iMessage
-//     may have arrived while the receipt was lost.
+// The rule that shapes everything here: never text a person twice. So the SMS copy goes on its own only when the
+// iMessage certainly did not go out:
+//   - a send error that says so (Message Send Error, or a rejected recipient once Messages has no sent copy);
+//   - a receipt with any error (Messages shows it Not Delivered);
+//   - a send that kept erroring (timeout, server error) and is not in the Mac's Messages ("send-unconfirmed",
+//     lineWorkerManager.js); when the Mac cannot be asked, a person decides;
+//   - a text whose send job was lost and never went out ("never-sent", the stuck sweep).
+//   Only error 22 / Message Send Error (VTEXT_SMS_FALLBACK_IMESSAGE_CODES) also mark the number SMS-only for 30 days.
+//   A missing receipt proves nothing: the iMessage may have arrived while the receipt was lost.
+// (A text no iMessage line can take, because the line is down or full, is not a copy: the router sends the text itself
+// by SMS, vtextRouter.smsInsteadOfIMessage.)
 //   - a missing receipt (the 10-minute "unknown / no-receipt" sweep) sends on its own only when
 //     VTEXT_SMS_FALLBACK_NO_RECEIPT_MODE=auto. In "verify" (the default) a person decides with the
 //     "Send by SMS" button; "off" does nothing.
@@ -37,8 +44,16 @@ const iMessageCodes = () => (process.env.VTEXT_SMS_FALLBACK_IMESSAGE_CODES || "2
 const maxAgeHours = () => Number(process.env.VTEXT_SMS_FALLBACK_MAX_AGE_HOURS || 24);
 const maxPerHour = () => Number(process.env.VTEXT_SMS_FALLBACK_MAX_PER_HOUR || 30);
 
-/** Does this receipt/send error mean "the recipient is not reachable on iMessage"? */
+/** Does this receipt/send error prove "the recipient is not on iMessage"? Only these mark the number SMS-only for 30 days. */
 const isExplicitIMessageFailure = (errorCode) => errorCode === "MESSAGE_SEND_ERROR" || iMessageCodes().includes(String(errorCode));
+
+/**
+ * Does this send error mean the iMessage did not go out, so the SMS copy goes at once? The explicit ones above, plus a
+ * rejected recipient (HTTP 400/404): the adapter already looked in Messages for a sent copy before calling it failed.
+ * A rejected recipient does not prove the number is off iMessage (a new Mac can give it for a first text), so it
+ * falls back without marking the number.
+ */
+const fallsBackOnSendError = (errorCode) => isExplicitIMessageFailure(errorCode) || errorCode === "INVALID_RECIPIENT";
 
 const PENDING_STATUSES = ["queued", "waiting-window", "waiting-capacity", "assigned"]; // a fallback in one of these has not gone out yet
 
@@ -116,7 +131,7 @@ function alert(deps, payload) {
  * Queue the SMS fallback for an undelivered iMessage.
  * @param {object} original - the iMessage vtextMessageModel document
  * @param {object} info
- * @param {"send-error"|"not-delivered"|"no-receipt-auto"|"manual"} info.trigger
+ * @param {"send-error"|"not-delivered"|"no-receipt-auto"|"manual"|"send-unconfirmed"|"never-sent"} info.trigger
  * @param {string} [info.reason] - why (an error code, a note)
  * @param {object} [deps] - test hooks: now(), enqueue(), notify(), getLineQueue()
  * @returns {Promise<{ queued: boolean, reason?: string, messageId?: string }>}
@@ -190,7 +205,9 @@ async function maybeQueueSmsFallback(original, { trigger, reason } = {}, deps = 
 
   // An explicit failure proves the number is not on iMessage: later texts to it go straight to SMS (the router's
   // reachability cache, 30 days). A missing receipt proves nothing, so that case leaves reachability alone.
-  if (trigger === "send-error" || trigger === "not-delivered") await markIMessageUnreachable(contact, now);
+  // Only an error that proves it (error 22 / Message Send Error) does: any other receipt error code, a rejected
+  // recipient, a lost send job or an unconfirmed send says nothing about the number itself.
+  if ((trigger === "send-error" || trigger === "not-delivered") && isExplicitIMessageFailure(reason)) await markIMessageUnreachable(contact, now);
 
   return { queued: true, messageId: String(result.message._id) };
 }
@@ -304,6 +321,7 @@ module.exports = {
   isEnabled,
   noReceiptMode,
   isExplicitIMessageFailure,
+  fallsBackOnSendError,
   maybeQueueSmsFallback,
   onOriginalConfirmed,
   guardFallbackBeforeSend,

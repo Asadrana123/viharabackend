@@ -88,14 +88,16 @@ async function processRouteJob(job) {
   // right answer but it's over budget right now — stay stuck to it and wait,
   // rather than silently switching the contact to a different number
   // mid-conversation (vtextRouter.pickInChannel's "WAIT" case, §7.2).
-  const { line, waitingOnStickyLine } = await selectLine(message, contact);
+  const { line, waitingOnStickyLine, retryInMs, smsInstead } = await selectLine(message, contact);
   if (!line) {
     message.status = "waiting-capacity";
-    message.statusHistory.push({ status: "waiting-capacity", detail: waitingOnStickyLine ? "sticky line over budget" : "no routable line with capacity" });
+    const detail = retryInMs ? "iMessage line down, a reply waits a while before going by SMS" : waitingOnStickyLine ? "sticky line over budget" : "no routable line with capacity";
+    message.statusHistory.push({ status: "waiting-capacity", detail });
     await message.save();
-    await requeueRoute(message._id, WAITING_CAPACITY_RETRY_MS);
+    await requeueRoute(message._id, retryInMs || WAITING_CAPACITY_RETRY_MS);
     return;
   }
+  if (smsInstead) message.statusHistory.push({ status: "queued", detail: `sent by SMS instead: ${smsInstead}` });
 
   const existingConversation = await VtextConversation.findOne({ contactId: contact._id, lineId: line._id });
   const isNewRecipient = !existingConversation;

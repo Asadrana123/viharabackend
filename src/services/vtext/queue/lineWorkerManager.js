@@ -54,7 +54,7 @@ function workerOptsFor(line) {
  * those never reach BullMQ's own retry-exhaustion path, so attemptsMade
  * stays below the limit here and this naturally no-ops for them).
  */
-async function finalizeExhaustedJob(lineId, job, err) {
+async function finalizeExhaustedJob(lineId, job, err, deps = {}) {
   if (!job) return;
   const attemptsLimit = job.opts?.attempts ?? LINE_JOB_OPTS.attempts;
   if (job.attemptsMade < attemptsLimit) return;
@@ -64,6 +64,23 @@ async function finalizeExhaustedJob(lineId, job, err) {
 
   const message = await VtextMessage.findById(messageId);
   if (!message || ["failed", "accepted", "cancelled"].includes(message.status)) return;
+
+  // An iMessage that kept timing out (or got server errors) may have gone out anyway. Ask the Mac once: in Messages
+  // as sent -> record it sent; not there -> it failed, and the SMS copy goes; the Mac can't be asked -> it failed,
+  // and a person decides (the Slack alert and "Send by SMS"), since an automatic SMS could text them twice.
+  const check = await (deps.checkMac || checkMacAfterGivingUp)(lineId, message);
+  if (check.sent) {
+    message.status = check.sent.deliveredAt ? "delivered" : "accepted";
+    message.provider = { messageId: check.sent.providerMessageId };
+    message.sentAt = message.sentAt || new Date();
+    if (check.sent.deliveredAt) message.deliveredAt = check.sent.deliveredAt;
+    message.error = undefined;
+    message.statusHistory.push({ status: message.status, detail: "found in Messages as sent after the send kept erroring" });
+    await message.save();
+    await capacity.recordSent({ _id: lineId }, reservationDay);
+    publishEvent({ type: "message.updated", messageId: String(message._id), conversationId: message.conversationId ? String(message.conversationId) : null, status: message.status });
+    return;
+  }
 
   message.status = "failed";
   message.failedAt = new Date();
@@ -81,8 +98,50 @@ async function finalizeExhaustedJob(lineId, job, err) {
     status: message.status,
   });
 
-  // Gave up after every retry: tell the team which lead's text it was. Never throws.
-  await require("../vtextTextProblemAlert").reportTextProblem(message);
+  let fallback = check.fallback || null;
+  if (check.notSent) {
+    try {
+      const smsFallback = require("../vtextSmsFallbackService");
+      fallback = await (deps.queueSmsFallback || smsFallback.maybeQueueSmsFallback)(message, { trigger: "send-unconfirmed", reason: message.error?.code || "gave up after retries" });
+    } catch (e) {
+      console.error(`[vtext sms-fallback] could not queue the fallback for ${message._id}:`, e.message);
+      fallback = { queued: false, reason: `the fallback could not be queued (${e.message})` };
+    }
+  }
+
+  // Gave up after every retry: tell the team which lead's text it was (unless the SMS copy is on its way). Never throws.
+  await (deps.reportTextProblem || require("../vtextTextProblemAlert").reportTextProblem)(message, { fallback });
+}
+
+// Errors after which an iMessage may still have gone out. Others either never reached the Mac or are handled elsewhere.
+const UNSURE_CODES = new Set(["TIMEOUT", "NETWORK_ERROR", "SERVER_ERROR", "UNKNOWN_ERROR"]);
+
+/**
+ * @returns {Promise<{ sent?: {providerMessageId, deliveredAt}, notSent?: true, fallback?: {queued:false, reason:string} }>}
+ *   `{}` when there is nothing to check (not an iMessage, another error, or the SMS fallback is off).
+ */
+async function checkMacAfterGivingUp(lineId, message) {
+  const smsFallback = require("../vtextSmsFallbackService");
+  if (message.channelType !== smsFallback.IMESSAGE || !UNSURE_CODES.has(message.error?.code) || !smsFallback.isEnabled()) return {};
+  try {
+    const VtextContact = require("../../../model/vtext/vtextContactModel");
+    const { getAdapter } = require("../channels/registry");
+    const [line, contact] = await Promise.all([
+      VtextLine.findById(lineId).select("+credentials.iv +credentials.tag +credentials.ciphertext"),
+      VtextContact.findById(message.contactId).select("phoneE164").lean(),
+    ]);
+    if (!line || !contact) return {};
+    const sent = await getAdapter(line.channelType).findSentText({
+      line,
+      to: contact.phoneE164,
+      body: message.body,
+      media: message.media?.file ? { file: message.media.file } : undefined,
+      since: message.assignedAt || message.createdAt,
+    });
+    return sent ? { sent } : { notSent: true };
+  } catch (e) {
+    return { fallback: { queued: false, reason: `the Mac could not be asked whether it went out (${e.message}), so a person should check before sending by SMS` } };
+  }
 }
 
 async function reconcile() {
@@ -147,4 +206,4 @@ async function stopLineWorkerManager() {
   activeWorkers.clear();
 }
 
-module.exports = { startLineWorkerManager, stopLineWorkerManager, reconcile };
+module.exports = { startLineWorkerManager, stopLineWorkerManager, reconcile, finalizeExhaustedJob, checkMacAfterGivingUp };

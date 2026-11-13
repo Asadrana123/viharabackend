@@ -109,6 +109,24 @@ async function findSentCopy({ client, chatGuids, body, media, startedAt, sleep }
   return null;
 }
 
+/**
+ * One look (no waiting) for our own sent copy of a text in the Mac's Messages, since `since`. Unlike findSentCopy, it
+ * throws when the Mac cannot be asked, so "could not tell" is never mistaken for "not sent". A chat that does not exist
+ * counts as no copy (the client answers [] for it).
+ * @returns {Promise<object|null>} the Mac's message, or null when it is not there
+ */
+async function lookForSentCopy({ client, to, configGuid, body, media, since }) {
+  const chatGuids = [...new Set([configGuid, chatGuidFor(to, "any"), chatGuidFor(to, "iMessage")].filter(Boolean))];
+  for (const chatGuid of chatGuids) {
+    const messages = await client.getChatMessages({ chatGuid, after: since - CLOCK_SLACK_MS, limit: 25 });
+    const match = messages.find(
+      (m) => m.isFromMe && !m.error && (m.dateCreated || 0) >= since - CLOCK_SLACK_MS && (media ? (m.attachments || []).length > 0 : sameText(m.text, body))
+    );
+    if (match) return match;
+  }
+  return null;
+}
+
 let sleepImpl = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 /** Tests skip the waits. */
 function setSleepForTests(fn) {
@@ -312,6 +330,19 @@ module.exports = {
    */
   async checkReachability() {
     return null;
+  },
+
+  /**
+   * After a send gave up on errors that leave it unclear (timeout, server error), is the text in Messages as sent?
+   * Throws when the Mac cannot be asked.
+   * @returns {Promise<{ providerMessageId: string, deliveredAt: Date|null } | null>}
+   */
+  async findSentText({ line, credentials, to, body, media, since }) {
+    const creds = credentials || credentialsFor(line);
+    const client = buildClient({ serverUrl: line.config?.serverUrl, password: creds.password });
+    const found = await lookForSentCopy({ client, to, configGuid: line.config?.guid, body, media, since: new Date(since).getTime() });
+    if (!found) return null;
+    return { providerMessageId: found.guid, deliveredAt: found.dateDelivered ? new Date(found.dateDelivered) : null };
   },
 
   /**
