@@ -92,3 +92,26 @@ test("Claude's chat answer keeps a change the Studio can make, and drops anythin
   assert.equal(b.action, null);
   assert.deepEqual(c.action, { type: "timeline", label: "Apply this change", beats: [{ id: "b2", pause: 0.1, shots: [{ id: "s1", seconds: 1.2 }] }] });
 });
+
+// D-052 (Asad Rana, 2026-11-13): editors add music tracks and record their licence in the Studio.
+const { cleanTrack, trackRightsCommand } = require("./runService");
+const audio = (over = {}) => ({ buffer: Buffer.from("ID3audio"), size: 8, mimetype: "audio/mpeg", originalname: "Calm Piano!.mp3", ...over });
+
+test("an editor's track is an audio file with its name and source, and a licence when they say they hold one", () => {
+  const t = cleanTrack(run({ state: "cut" }), { title: " Calm piano ", source: "Epidemic Sound, https://x", licensed: "true", licence: "Subscription, Drive /Music", moods: "calm, warm" }, audio());
+  assert.match(t.key, /^uploads\/1793500000\.000001\/[a-f0-9]{64}\.mp3$/);
+  assert.deepEqual({ ...t, key: undefined }, { key: undefined, name: "Calm-Piano-.mp3", title: "Calm piano", source: "Epidemic Sound, https://x", licence: "Subscription, Drive /Music", licensed: true, moods: ["calm", "warm"], contentType: "audio/mpeg" });
+  assert.equal(cleanTrack(run({ state: "storyboard" }), { title: "Pad", source: "Made by Dinesh" }, audio({ mimetype: "application/octet-stream", originalname: "pad.wav" })).key.endsWith(".wav"), true);
+  assert.throws(() => cleanTrack(run({ state: "cut" }), { title: "Pad", source: "x", licensed: "true" }, audio()), /what it is/);
+  assert.throws(() => cleanTrack(run({ state: "cut" }), { title: "", source: "x" }, audio()), /name/);
+  assert.throws(() => cleanTrack(run({ state: "cut" }), { title: "Pad", source: "" }, audio()), /where the track is from/);
+  assert.throws(() => cleanTrack(run({ state: "cut" }), { title: "Pad", source: "x" }, audio({ mimetype: "video/mp4", originalname: "a.mp4" })), /audio file/);
+  assert.throws(() => cleanTrack(run({ state: "done" }), { title: "Pad", source: "x" }, audio()), /finished/);
+});
+
+test("an editor records the licence of a track in the library", () => {
+  const r = run({ state: "cut", music });
+  assert.deepEqual(trackRightsCommand(r, { id: "placeholder-pad", licence: "Made in-house" }), { command: { type: "track", data: { clear: "placeholder-pad", licence: "Made in-house" } }, state: "cut" });
+  assert.throws(() => trackRightsCommand(r, { id: "nope", licence: "x" }), /not in the music library/);
+  assert.throws(() => trackRightsCommand(r, { id: "placeholder-pad", licence: "" }), /licence/);
+});

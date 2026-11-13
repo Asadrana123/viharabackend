@@ -341,6 +341,43 @@ function musicCommand(run, body) {
   return { command: { type: "music", data: { track, ...(track ? { volume: Math.round(volume * 100) / 100 } : {}) } }, state: built ? "building" : "updating" };
 }
 
+const TRACK_TYPES = { "audio/mpeg": ".mp3", "audio/mp3": ".mp3", "audio/wav": ".wav", "audio/x-wav": ".wav", "audio/wave": ".wav", "audio/mp4": ".m4a", "audio/x-m4a": ".m4a", "audio/aac": ".aac", "audio/ogg": ".ogg" };
+const TRACK_EXT = /\.(mp3|wav|m4a|aac|ogg)$/i;
+
+/**
+ * A music track an editor adds in the Studio (D-052, Asad Rana, 2026-11-13: editors have full freedom on the
+ * platform). Checked here before it is stored; the server reads it through a short-lived link. A track they say
+ * they hold the licence for needs what the licence is.
+ */
+function cleanTrack(run, body, file) {
+  if (["done", "rejected", "failed"].includes(run.state)) throw new Error("This video is finished.");
+  if (!file?.buffer?.length) throw new Error("Choose an audio file.");
+  if (file.size > MAX_IMAGE_BYTES) throw new Error("Tracks are at most 25 MB. Save it as an MP3.");
+  const ext = TRACK_TYPES[file.mimetype] ?? (TRACK_EXT.exec(String(file.originalname ?? ""))?.[0] ?? "").toLowerCase();
+  if (!ext) throw new Error("Upload an audio file: MP3, WAV, M4A, AAC or OGG.");
+  const title = String(body?.title ?? "").trim();
+  const source = String(body?.source ?? "").trim();
+  const licence = String(body?.licence ?? "").trim();
+  const licensed = String(body?.licensed) === "true";
+  if (!title || title.length > 80) throw new Error("Give the track a name (up to 80 characters).");
+  if (!source || source.length > 500) throw new Error("Say where the track is from: the library and its link, or who made it.");
+  if (licensed && !licence) throw new Error("You said you hold the licence: say what it is and where it is kept.");
+  if (licence.length > 500) throw new Error("Keep the licence under 500 characters.");
+  const moods = String(body?.moods ?? "").split(",").map((m) => m.trim()).filter(Boolean).slice(0, 6).map((m) => clip(m, 30));
+  const base = String(file.originalname ?? "track").replace(/\.[^.]*$/, "").replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[-.]+/, "").slice(0, 60) || "track";
+  const sha256 = crypto.createHash("sha256").update(file.buffer).digest("hex");
+  return { key: `uploads/${run.runId}/${sha256}${ext}`, name: `${base}${ext}`, title, source, licence: licence || null, licensed, moods, contentType: file.mimetype || "audio/mpeg" };
+}
+
+/** An editor's licence for a track already in the library (D-052). */
+function trackRightsCommand(run, body) {
+  const id = String(body?.id ?? "");
+  const licence = String(body?.licence ?? "").trim();
+  if (!(run.music?.tracks ?? []).some((t) => t.id === id)) throw new Error(`"${id}" is not in the music library. Click Refresh from server.`);
+  if (!licence || licence.length > 500) throw new Error("Say what the licence is and where it is kept (up to 500 characters).");
+  return { command: { type: "track", data: { clear: id, licence } }, state: run.state };
+}
+
 /** The music the server reports: the track now, its volume, and the tracks to choose from. */
 function cleanMusic(m) {
   if (!m || typeof m !== "object") return null;
@@ -590,4 +627,4 @@ function cleanSlot(slot) {
   return s;
 }
 
-module.exports = { musicCommand, cleanMusic, mayaCommand, timelineCommand, cleanMaya, cleanTimeline, chatMessage, cleanChats, CHAT_TYPES, layersCommand, reopenCommand, REOPEN_FROM, soundCommand, CUT_LAYERS, viewCommand, retryCommand, cleanCraft, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, VIDEO_LIMIT_USD, CLAUDE_MODELS, cleanModel, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };
+module.exports = { cleanTrack, trackRightsCommand, musicCommand, cleanMusic, mayaCommand, timelineCommand, cleanMaya, cleanTimeline, chatMessage, cleanChats, CHAT_TYPES, layersCommand, reopenCommand, REOPEN_FROM, soundCommand, CUT_LAYERS, viewCommand, retryCommand, cleanCraft, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, VIDEO_LIMIT_USD, CLAUDE_MODELS, cleanModel, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };
