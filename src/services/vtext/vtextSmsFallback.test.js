@@ -434,7 +434,7 @@ test("the Send by SMS button: refuses the wrong messages, queues a failed one on
   assert.equal((await call(skipped._id)).code, 200);
 });
 
-test("the send worker: a BlueBubbles 'could not deliver' error fails the iMessage and queues the SMS; other errors do not", async (t) => {
+test("the send worker: a BlueBubbles 'could not deliver' or 'rejected recipient' error fails the iMessage and queues the SMS", async (t) => {
   if (!mongoUp) return t.skip("no local Mongo");
   const adapter = getAdapter("imessage-bluebubbles");
   const realSend = adapter.send;
@@ -456,12 +456,17 @@ test("the send worker: a BlueBubbles 'could not deliver' error fails the iMessag
     assert.equal(sms.status, "queued");
     assert.equal(failed.fallback.trigger, "send-error");
 
-    // a bad number is the recipient's problem but not an iMessage-delivery problem: no SMS
+    // a rejected recipient (Messages had no sent copy): the SMS goes too, but the number is not marked off iMessage,
+    // since a new Mac can give this error for a first text to a real iMessage user
     adapter.send = async () => { throw new ChannelError("recipient", "INVALID_RECIPIENT", "bad chat"); };
     const invalid = await assigned();
     await assert.rejects(processSendJob(imessageLine._id, job(invalid)));
-    assert.equal((await reload(invalid)).status, "failed");
-    assert.equal(await fallbackFor(invalid), null);
+    const invalidAfter = await reload(invalid);
+    assert.equal(invalidAfter.status, "failed");
+    assert.equal(invalidAfter.fallback.trigger, "send-error");
+    assert.ok(await fallbackFor(invalid), "the SMS was queued");
+    const invalidContact = await VtextContact.findById(invalid.contactId).lean();
+    assert.notEqual(invalidContact.channelReachability?.find((r) => r.channelType === "imessage-bluebubbles")?.reachable, false);
   } finally {
     adapter.send = realSend;
   }

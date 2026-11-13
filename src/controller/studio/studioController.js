@@ -21,7 +21,7 @@ const { keyMatches, cleanBatch, cleanFeedback, undelivered } = require("../../se
 const { storage, cleanCut, uploadUrl, viewUrl, storedBytes, putObject } = require("../../services/studio/cutStorage");
 const { cleanProposals, decideProblem, canSee, cleanDecision, undeliveredDecisions } = require("../../services/studio/proposalService");
 const { cleanProblem, cleanReply, problemView } = require("../../services/studio/problemService");
-const { mayaCommand, timelineCommand, chatMessage, cleanChats, layersCommand, reopenCommand, soundCommand, viewCommand, retryCommand, newRunId, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, cleanModel, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage } = require("../../services/studio/runService");
+const { cleanTrack, trackRightsCommand, musicCommand, mayaCommand, timelineCommand, chatMessage, cleanChats, layersCommand, reopenCommand, soundCommand, viewCommand, retryCommand, newRunId, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, cleanModel, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage } = require("../../services/studio/runService");
 
 const KEY = /^[a-z][a-z0-9-]{1,30}$/;
 
@@ -272,12 +272,12 @@ const decideStudioProposal = catchAsyncError(async (req, res, next) => {
 });
 
 const runView = async (r) => {
-  const { runId, propertyId, requestedByName, coreId, model, state, concepts, hooks, plan, error, frames, framesPrice, clips, cut, spent, costs, remakePrice, media, idea, craft, story, photos, todo, uploads, chat, commands, updatedAt, sfx, timeline } = r;
+  const { runId, propertyId, requestedByName, coreId, model, state, concepts, hooks, plan, error, frames, framesPrice, clips, cut, spent, costs, remakePrice, media, idea, craft, story, photos, todo, uploads, chat, commands, updatedAt, sfx, timeline, music } = r;
   const urls = Object.fromEntries(await Promise.all(Object.entries(media ?? {}).map(async ([slot, m]) => [slot, await viewUrl(m.key)])));
   // The person's steps the server has not finished yet, oldest first, so the page shows a click as sent and
   // keeps its button from being clicked again while it runs.
   const pending = (commands ?? []).filter((c) => !c.doneAt).map((c) => ({ type: c.type, at: c.at, ...(c.choice ? { choice: c.choice } : {}) }));
-  return { runId, propertyId, requestedByName, coreId, model: model ?? null, state, concepts, hooks, plan, error, frames: frames ?? [], framesPrice: framesPrice ?? 0, clips, cut, spent, costs: costs ?? null, remakePrice: remakePrice ?? null, urls, idea: idea ?? null, craft: craft ?? null, story: story ?? [], photos: photos ?? [], todo: todo ?? [], uploads: (uploads ?? []).map(({ name, kind, byName, at }) => ({ name, kind, byName, at })), pending, sfx: sfx !== false, chat: (chat ?? []).map(({ role, byName, text, change = null, attachments = [], at }) => ({ role, byName, text, change, attachments: attachments.map((x) => x.name), at })), timeline: timeline ?? null, updatedAt: updatedAt ?? null };
+  return { runId, propertyId, requestedByName, coreId, model: model ?? null, state, concepts, hooks, plan, error, frames: frames ?? [], framesPrice: framesPrice ?? 0, clips, cut, spent, costs: costs ?? null, remakePrice: remakePrice ?? null, urls, idea: idea ?? null, craft: craft ?? null, story: story ?? [], photos: photos ?? [], todo: todo ?? [], uploads: (uploads ?? []).map(({ name, kind, byName, at }) => ({ name, kind, byName, at })), pending, sfx: sfx !== false, chat: (chat ?? []).map(({ role, byName, text, change = null, action = null, attachments = [], at }) => ({ role, byName, text, change, action, attachments: attachments.map((x) => x.name), at })), timeline: timeline ?? null, music: music ?? null, updatedAt: updatedAt ?? null };
 };
 
 /** GET /api/v1/studio/runs - the videos in progress, newest first, and the properties ready for one. */
@@ -372,6 +372,8 @@ const shotForRun = runStep(shotCommand);
 // Dinesh, 2026-11-12: what Maya does in a scene, and the timing on the timeline.
 const mayaForRun = runStep(mayaCommand);
 const timelineForRun = runStep(timelineCommand);
+// D-051: the editor's music.
+const musicForRun = runStep(musicCommand);
 
 /** POST /api/v1/studio/runs/:id/image (multipart: image, kind, alterations, disclosure, faithful) - the editor's own image of the property (D-047). */
 const imageForRun = catchAsyncError(async (req, res, next) => {
@@ -395,6 +397,33 @@ const imageForRun = catchAsyncError(async (req, res, next) => {
   await run.save();
   res.status(200).json({ success: true, run: await runView(run.toObject()) });
 });
+
+/**
+ * POST /api/v1/studio/runs/:id/track (multipart: track, title, source, licence, licensed, moods) - a music track
+ * the editor adds to the library, under their name (D-052). Stored in the private bucket; the server reads it.
+ */
+const trackForRun = catchAsyncError(async (req, res, next) => {
+  if (!storage()) return next(new ErrorHandler("File storage is not set up.", 503));
+  const run = await StudioRun.findOne({ runId: String(req.params.id) });
+  if (!run) return next(new ErrorHandler("No such video.", 404));
+  const problem = actProblem(run, req.user);
+  if (problem) return next(new ErrorHandler(problem, 403));
+  let track;
+  try {
+    track = cleanTrack(run, req.body, req.file);
+  } catch (e) {
+    return next(new ErrorHandler(e.message, 400));
+  }
+  await putObject(track.key, req.file.buffer, track.contentType);
+  const { name } = await decider(req.user);
+  const { contentType: _type, ...data } = track;
+  run.commands.push({ type: "track", data, byName: name });
+  run.error = null;
+  await run.save();
+  res.status(200).json({ success: true, run: await runView(run.toObject()) });
+});
+// D-052: an editor's licence for a track already in the library.
+const trackRightsForRun = runStep(trackRightsCommand);
 
 /**
  * POST /api/v1/studio/runs/:id/chat (multipart: text, files) - a message in the video's chat (D-050). The
@@ -425,7 +454,7 @@ const chatForRun = catchAsyncError(async (req, res, next) => {
 });
 
 /** Steps that change no state and no frames: a saved length, pace and voice speed, or an added image. */
-const QUIET_STEPS = new Set(["craft", "image", "view", "chat"]);
+const QUIET_STEPS = new Set(["craft", "image", "view", "chat", "track"]);
 
 /**
  * POST /api/v1/studio/runs/poll  { updates, done, ready } with the x-studio-key header. The server
@@ -474,14 +503,15 @@ const pollRuns = catchAsyncError(async (req, res, next) => {
     await run.save();
   }
   // Claude's answers in the chat (D-050): added to the conversation, never a change of state.
-  for (const c of chats) await StudioRun.updateOne({ runId: c.runId }, { $push: { chat: { $each: [{ role: "claude", byName: "Claude", text: c.text, change: c.change, at: new Date() }], $slice: -200 } } });
+  for (const c of chats) await StudioRun.updateOne({ runId: c.runId }, { $push: { chat: { $each: [{ role: "claude", byName: "Claude", text: c.text, change: c.change, action: c.action, at: new Date() }], $slice: -200 } } });
   if (ready) await StudioReady.updateOne({ key: "videos" }, { $set: { rows: ready, checkedAt: new Date() } }, { upsert: true });
   const open = await StudioRun.find({ commands: { $elemMatch: { doneAt: null } } }).lean();
   // An uploaded image goes to the server as a short-lived link, never as its storage key (D-047).
   const dataOf = async (c) => {
     // A chat message's attachments go as short-lived links too (D-050).
     if (c.type === "chat") return { ...c.data, attachments: await Promise.all((c.data?.attachments ?? []).map(async (a) => ({ name: a.name, url: await viewUrl(a.key) }))) };
-    if (c.type !== "image" || !c.data?.key) return c.data;
+    // An uploaded image (D-047) or music track (D-052) goes as a short-lived link, never as its storage key.
+    if ((c.type !== "image" && c.type !== "track") || !c.data?.key) return c.data;
     const { key, ...rest } = c.data;
     return { ...rest, url: await viewUrl(key) };
   };
@@ -630,4 +660,4 @@ const syncVideos = catchAsyncError(async (req, res, next) => {
   res.status(200).json({ success: true, stored: rows.length, feedback: undelivered(pending), decisions });
 });
 
-module.exports = { mayaForRun, timelineForRun, chatForRun, layersForRun, reopenForRun, soundForRun, viewForRun, retryForRun, me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, importInterview, updateQuestions, listVideos, addVideoFeedback, syncVideos, requireSyncKey, cutLink, confirmCut, listProposals, decideStudioProposal, listRuns, startRun, setRunModel, pickForRun, gateForRun, generateForRun, framesForRun, remakeForRun, clipForRun, buildForRun, cutForRun, ideaForRun, craftForRun, hookForRun, voForRun, shotForRun, imageForRun, pollRuns, fileLink, confirmFile, listProblems, reportProblem, resolveProblem };
+module.exports = { trackForRun, trackRightsForRun, musicForRun, mayaForRun, timelineForRun, chatForRun, layersForRun, reopenForRun, soundForRun, viewForRun, retryForRun, me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, importInterview, updateQuestions, listVideos, addVideoFeedback, syncVideos, requireSyncKey, cutLink, confirmCut, listProposals, decideStudioProposal, listRuns, startRun, setRunModel, pickForRun, gateForRun, generateForRun, framesForRun, remakeForRun, clipForRun, buildForRun, cutForRun, ideaForRun, craftForRun, hookForRun, voForRun, shotForRun, imageForRun, pollRuns, fileLink, confirmFile, listProblems, reportProblem, resolveProblem };

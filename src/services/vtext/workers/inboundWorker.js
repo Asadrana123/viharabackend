@@ -329,7 +329,9 @@ async function handleMessageStatus(event, line) {
   let fallback = null;
   try {
     if (message.channelType === smsFallback.IMESSAGE) {
-      if (message.status === "failed" && smsFallback.isExplicitIMessageFailure(message.error?.code)) {
+      // Any error on our own text's receipt means Messages shows it Not Delivered, so the SMS copy goes. Only the
+      // codes that prove the number is off iMessage (22 by default) also mark it SMS-only for 30 days.
+      if (event.status === "failed" && message.status === "failed") {
         fallback = await smsFallback.maybeQueueSmsFallback(message, { trigger: "not-delivered", reason: message.error?.code });
       } else if (message.status === "delivered" || message.status === "read") {
         await smsFallback.onOriginalConfirmed(message);

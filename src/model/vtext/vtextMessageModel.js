@@ -81,7 +81,8 @@ const vtextMessageSchema = new mongoose.Schema(
     fallback: {
       status: { type: String, enum: ["pending", "queued", "skipped", "cancelled"] },
       messageId: { type: mongoose.Schema.Types.ObjectId, ref: "vtextMessageModel" },
-      trigger: { type: String, enum: ["send-error", "not-delivered", "no-receipt-auto", "manual"] },
+      // send-unconfirmed: the send kept erroring and the Mac's Messages has no sent copy. never-sent: its send job was lost.
+      trigger: { type: String, enum: ["send-error", "not-delivered", "no-receipt-auto", "manual", "send-unconfirmed", "never-sent"] },
       reason: { type: String },
       at: { type: Date },
       duplicate: { type: Boolean }, // the iMessage was confirmed AFTER the SMS had already gone out: the person got both

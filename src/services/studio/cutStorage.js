@@ -10,7 +10,8 @@ const { S3Client, PutObjectCommand, GetObjectCommand, HeadObjectCommand } = requ
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 
 const SHA256 = /^[a-f0-9]{64}$/;
-const FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,100}\.(mp4|png|jpg|jpeg|zip)$/;
+// .mp3: a music track to listen to before choosing it (D-051).
+const FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,100}\.(mp4|png|jpg|jpeg|zip|mp3)$/;
 const MAX_BYTES = 500 * 1e6;
 const UPLOAD_SECONDS = 15 * 60;
 const VIEW_SECONDS = 2 * 60 * 60;

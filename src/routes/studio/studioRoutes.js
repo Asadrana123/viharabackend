@@ -55,6 +55,11 @@ router.post("/runs/:id/shot", c.shotForRun);
 // Dinesh, 2026-11-12: what Maya does in a scene, and the timing on the timeline.
 router.post("/runs/:id/maya", c.mayaForRun);
 router.post("/runs/:id/timeline", c.timelineForRun);
+// D-051: the editor's music.
+router.post("/runs/:id/music", c.musicForRun);
+// D-052: a music track the editor adds, and an editor's licence for a track in the library.
+router.post("/runs/:id/track", imageUpload.single("track"), c.trackForRun);
+router.post("/runs/:id/track-rights", c.trackRightsForRun);
 router.post("/runs/:id/image", imageUpload.single("image"), c.imageForRun);
 router.get("/problems", c.listProblems);
 router.post("/problems", c.reportProblem);
