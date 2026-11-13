@@ -251,14 +251,22 @@ async function handleMessageReceived(event, line) {
     // itself (the LLM call) happens in draftReplyWorker.js, not here, so an
     // LLM round-trip never blocks this webhook-processing job or its retry
     // semantics.
+    // Drafting waits a few seconds (replyBatchDelayMs), so a second text sent right after this one is in before the
+    // AI writes: draftReplyWorker.js then answers both in one reply instead of two that can go out in the wrong order.
     const { getDraftReplyQueue } = require("../queue/queues");
-    await getDraftReplyQueue().add("draft-reply", {
-      conversationId: String(conversation._id),
-      contactId: String(contact._id),
-      inboundMessageId: String(message._id),
-      lineId: String(line._id),
-      channelType: line.channelType,
-    });
+    const { replyBatchDelayMs } = require("./draftReplyWorker");
+    const batchDelay = replyBatchDelayMs();
+    await getDraftReplyQueue().add(
+      "draft-reply",
+      {
+        conversationId: String(conversation._id),
+        contactId: String(contact._id),
+        inboundMessageId: String(message._id),
+        lineId: String(line._id),
+        channelType: line.channelType,
+      },
+      batchDelay > 0 ? { delay: batchDelay } : {}
+    );
   } else {
     alertNoDraft(contact.optOut?.isOptedOut ? "This contact is opted out, so no AI reply is made" : "AI replies are switched off");
   }

@@ -11,7 +11,7 @@
 //
 // Two runs share this code (maintenanceWorker.js):
 //   - "bluebubbles-catchup", every 10 minutes: statuses AND replies since the last successful run (a watermark,
-//     with a 10-minute overlap, never more than 24 hours back).
+//     with a 60-minute overlap, never more than 24 hours back).
 //   - "bluebubbles-read-recheck", every 2 hours: statuses only, for texts from the last 48 hours, because a read
 //     receipt can come hours after the text and only one push is ever made for it.
 // Each run is ONE request per line (plus paging), not one per text: the Mac sits behind ngrok's free plan, which
@@ -26,7 +26,10 @@ const { getAlertWatermark, setAlertWatermark } = require("./vtextAlertService");
 const CHANNEL = "imessage-bluebubbles";
 const MINUTE = 60_000;
 const SETTLE_MS = 2 * MINUTE; // webhook still on its way
-const OVERLAP_MS = 10 * MINUTE;
+// Looks this far behind its last run. A reply can reach the Mac many minutes after it was sent (seen 2026-11-12: about 20
+// minutes late), and the Mac files it under the time it was sent, so a short overlap would skip it for good. Replies and
+// statuses we already have are skipped, so a wide overlap costs nothing but a few more rows in the one request.
+const OVERLAP_MS = 60 * MINUTE;
 const MAX_LOOKBACK_MS = 24 * 60 * MINUTE;
 const FIRST_RUN_LOOKBACK_MS = 30 * MINUTE;
 const WATERMARK_KEY = "bbCatchupAt";
