@@ -1,7 +1,8 @@
 // Dinesh, 2026-11-12: what Maya does in a scene, chosen on the storyboard, and the timing on the timeline.
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { cleanUpdate, mayaCommand, timelineCommand, cleanMaya, cleanTimeline } = require("./runService");
+const { cleanUpdate, cleanChats, mayaCommand, musicCommand, timelineCommand, cleanMaya, cleanTimeline, cleanSlot } = require("./runService");
+const { cleanCut } = require("./cutStorage");
 
 const run = (over = {}) => ({ runId: "1793500000.000001", state: "storyboard", spent: 0, ...over });
 const maya = { choice: "to-camera", pose: null, gesture: null, energy: "normal", options: [{ id: "to-camera", label: "Speaks to camera", action: "talk", usd: 0 }, { id: "walks-in", label: "Walks toward the camera", action: "walk", usd: 0.42 }] };
@@ -58,4 +59,36 @@ test("the server's update carries Maya's options on her frame and the timeline, 
   assert.deepEqual(u.fields.timeline.beats[0].shots.map((s) => [s.kind, s.clipSeconds, s.movable]), [["clip", 5, true], ["photo", null, true]]);
   assert.equal(cleanTimeline(null), null);
   assert.equal(cleanMaya(undefined), null);
+});
+
+// D-051 (Asad Rana, 2026-11-13): the editor chooses the music, and the chat's changes are made on the editor's click.
+const music = { track: null, volume: null, tracks: [{ id: "placeholder-pad", title: "Pad", moods: ["warm"], seconds: 60, cleared: false, slot: "music-placeholder-pad" }] };
+
+test("music is a track from the library at a volume, or none, once the plan is approved", () => {
+  assert.deepEqual(musicCommand(run({ state: "storyboard", music }), { track: "placeholder-pad", volume: 0.2 }), { command: { type: "music", data: { track: "placeholder-pad", volume: 0.2 } }, state: "updating" });
+  // A video already put together is put together again with it.
+  assert.equal(musicCommand(run({ state: "cut", music }), { track: "placeholder-pad" }).state, "building");
+  assert.deepEqual(musicCommand(run({ state: "cut", music: { ...music, track: "placeholder-pad", volume: 0.16 } }), { track: null }).command.data, { track: null });
+  assert.throws(() => musicCommand(run({ state: "cut", music }), { track: "hit-song" }), /not a track/);
+  assert.throws(() => musicCommand(run({ state: "cut", music }), { track: "placeholder-pad", volume: 0.9 }), /volume/);
+  assert.throws(() => musicCommand(run({ state: "cut", music }), { track: null }), /music the video has now/);
+  assert.throws(() => musicCommand(run({ state: "gate-a", music }), { track: "placeholder-pad" }), /once the plan is approved/);
+  assert.throws(() => musicCommand(run({ state: "done", music }), { track: "placeholder-pad" }), /once the plan is approved/);
+});
+
+test("a music track is sent to the Studio to listen to before choosing", () => {
+  assert.equal(cleanSlot("music-placeholder-pad"), "music-placeholder-pad");
+  assert.equal(cleanCut("AT1-V01/music-placeholder-pad", { sha256: "a".repeat(64), name: "music-placeholder-pad.mp3", bytes: 1000 }).key, `cuts/AT1-V01/music-placeholder-pad/${"a".repeat(64)}.mp3`);
+  assert.deepEqual(cleanUpdate({ runId: "1793500000.000001", state: "cut", music }).fields.music, music);
+});
+
+test("Claude's chat answer keeps a change the Studio can make, and drops anything else", () => {
+  const [a, b, c] = cleanChats([
+    { runId: "1793500000.000001", text: "Here it is.", action: { type: "maya", label: "Maya points", beat: "hook", id: "points", energy: "lively" } },
+    { runId: "1793500000.000001", text: "Hmm.", action: { type: "delete", label: "x" } },
+    { runId: "1793500000.000001", text: "Faster cut.", action: { type: "timeline", beats: [{ id: "b2", pause: 0.1, shots: [{ id: "s1", seconds: 1.2 }] }] } },
+  ]);
+  assert.deepEqual(a.action, { type: "maya", label: "Maya points", beat: "hook", id: "points", energy: "lively" });
+  assert.equal(b.action, null);
+  assert.deepEqual(c.action, { type: "timeline", label: "Apply this change", beats: [{ id: "b2", pause: 0.1, shots: [{ id: "s1", seconds: 1.2 }] }] });
 });

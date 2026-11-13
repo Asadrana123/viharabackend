@@ -185,6 +185,6 @@ test("a chat message carries the editor's words and their photos or documents (D
   assert.throws(() => chatMessage(r, { text: " " }), /Write a message/);
   assert.throws(() => chatMessage(r, { text: "x" }, [{ mimetype: "video/mp4", originalname: "a.mp4", buffer: Buffer.from("x") }]), /cannot be attached/);
   assert.throws(() => chatMessage(run({ state: "queued" }), { text: "x" }), /has not started/);
-  assert.deepEqual(cleanChats([{ runId: "1793500000.000001", text: "Sure.", change: null }]), [{ runId: "1793500000.000001", text: "Sure.", change: null }]);
+  assert.deepEqual(cleanChats([{ runId: "1793500000.000001", text: "Sure.", change: null }]), [{ runId: "1793500000.000001", text: "Sure.", change: null, action: null }]);
   assert.throws(() => cleanChats([{ runId: "x" }]), /not a run id/);
 });

@@ -9,7 +9,7 @@ const crypto = require("node:crypto");
 const STATES = new Set(["queued", "concepts", "concept-choice", "hooks", "hook-choice", "package", "gate-a", "approved", "frames", "storyboard", "generating", "clips", "ready-to-build", "building", "cut", "revision", "done", "rejected", "failed", "updating"]);
 // The limit for a video (D-044). The server checks it again against what was really spent.
 const VIDEO_LIMIT_USD = 15;
-const SLOT = /^(animatic|cut|layers|clip-[a-z0-9-]{1,80}|frame-[a-z0-9-]{1,80}|photo-[a-z0-9-]{1,80})$/;
+const SLOT = /^(animatic|cut|layers|clip-[a-z0-9-]{1,80}|frame-[a-z0-9-]{1,80}|photo-[a-z0-9-]{1,80}|music-[a-z0-9-]{1,80})$/;
 const FRAME_KINDS = new Set(["photo", "presenter", "generated", "later", "screen"]);
 const MAX_WORDS = 2000;
 // The Claude models an editor may choose to write a video's concepts, hooks and plan. The choice is theirs.
@@ -121,6 +121,8 @@ function cleanUpdate(u) {
         : [],
       // The last cut scene by scene, for the timeline (Dinesh, 2026-11-12); null before it is built.
       timeline: cleanTimeline(u?.timeline),
+      // The music now and the tracks to choose from (D-051).
+      music: cleanMusic(u?.music),
       framesPrice: Number(u?.framesPrice) || 0,
       clips: Array.isArray(u?.clips) ? u.clips.slice(0, 100).map((c) => ({ ref: clip(c?.ref, 120), state: clip(c?.state, 30), note: c?.note ? clip(c.note, 500) : null, slot: clip(c?.slot, 90) })) : [],
       cut: u?.cut ? { name: clip(u.cut.name, 120), state: clip(u.cut.state, 30), seconds: Number(u.cut.seconds) || 0 } : null,
@@ -322,6 +324,33 @@ function timelineCommand(run, body) {
   return { command: { type: "timeline", data: { beats } }, state: "building" };
 }
 
+const MUSIC_STATES = ["approved", "frames", "storyboard", "clips", "ready-to-build", "cut", "revision"];
+
+/**
+ * The editor's music (D-051, Asad Rana, 2026-11-13): a track from the library at a volume, or none. Free; a video
+ * already put together is put together again with it. An uncleared track plays for review and blocks launch.
+ */
+function musicCommand(run, body) {
+  if (!MUSIC_STATES.includes(run.state)) throw new Error("Music is chosen once the plan is approved, and before the video is finished.");
+  const track = body?.track ? String(body.track) : null;
+  if (track && !(run.music?.tracks ?? []).some((t) => t.id === track)) throw new Error(`"${track}" is not a track in the music library. Click Refresh from server and choose again.`);
+  const volume = track ? Number(body?.volume ?? 0.16) : null;
+  if (track && (!Number.isFinite(volume) || volume < 0.02 || volume > 0.5)) throw new Error("The music's volume is between 2% and 50% of the voice.");
+  if (track === (run.music?.track ?? null) && (!track || Math.abs(volume - (run.music?.volume ?? 0)) < 0.005)) throw new Error("That is the music the video has now.");
+  const built = ["cut", "revision", "ready-to-build"].includes(run.state);
+  return { command: { type: "music", data: { track, ...(track ? { volume: Math.round(volume * 100) / 100 } : {}) } }, state: built ? "building" : "updating" };
+}
+
+/** The music the server reports: the track now, its volume, and the tracks to choose from. */
+function cleanMusic(m) {
+  if (!m || typeof m !== "object") return null;
+  return {
+    track: m.track ? clip(m.track, 80) : null,
+    volume: m.volume == null ? null : Number(m.volume) || 0,
+    tracks: Array.isArray(m.tracks) ? m.tracks.slice(0, 100).map((t) => ({ id: clip(t?.id, 80), title: clip(t?.title, 120), moods: Array.isArray(t?.moods) ? t.moods.slice(0, 10).map((x) => clip(x, 30)) : [], seconds: Number(t?.seconds) || 0, cleared: Boolean(t?.cleared), slot: clip(t?.slot, 90) })) : [],
+  };
+}
+
 const IMAGE_KINDS = ["original", "enhanced", "generated"];
 const IMAGE_TYPES = { "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp" };
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
@@ -504,8 +533,25 @@ function cleanChats(list) {
   return list.map((c) => {
     const runId = String(c?.runId ?? "");
     if (!/^\d{6,}\.\d{1,9}$/.test(runId)) throw new Error(`"${runId}" is not a run id.`);
-    return { runId, text: clip(c?.text, 4000), change: c?.change ? clip(c.change, 2000) : null };
+    return { runId, text: clip(c?.text, 4000), change: c?.change ? clip(c.change, 2000) : null, action: cleanChatAction(c?.action) };
   });
+}
+
+const CHAT_ACTIONS = new Set(["maya", "timeline", "music", "shot"]);
+
+/**
+ * A change Claude wrote in the chat that the Studio can make at once, after the editor clicks Apply (D-051): what
+ * Maya does, the timing, the music, or a shot's camera move or photograph. Only its shape is checked here; the
+ * step it becomes checks it again when the editor applies it, like the same button elsewhere in the Studio.
+ */
+function cleanChatAction(a) {
+  if (!a || typeof a !== "object" || !CHAT_ACTIONS.has(a.type)) return null;
+  const label = clip(a.label, 200) || "Apply this change";
+  if (a.type === "maya") return { type: "maya", label, beat: clip(a.beat, 40), id: clip(a.id, 40), ...(a.pose ? { pose: clip(a.pose, 300) } : {}), ...(a.gesture ? { gesture: clip(a.gesture, 300) } : {}), ...(MAYA_ENERGY.includes(a.energy) ? { energy: a.energy } : {}) };
+  if (a.type === "music") return { type: "music", label, track: a.track ? clip(a.track, 80) : null, ...(a.volume != null ? { volume: Number(a.volume) || 0.16 } : {}) };
+  if (a.type === "shot") return { type: "shot", label, ref: clip(a.ref, 120), ...(a.camera ? { camera: clip(a.camera, 40) } : {}), ...(a.image ? { image: clip(a.image, 40) } : {}) };
+  const beats = Array.isArray(a.beats) ? a.beats.slice(0, 20).map((b) => ({ id: clip(b?.id, 40), ...(b?.pause != null ? { pause: Number(b.pause) } : {}), ...(Array.isArray(b?.shots) ? { shots: b.shots.slice(0, 20).map((s) => ({ id: clip(s?.id, 40), seconds: Number(s?.seconds) })) } : {}) })) : [];
+  return beats.length ? { type: "timeline", label, beats } : null;
 }
 
 /** States after the plan from which an editor may go back and change it (D-050). */
@@ -544,4 +590,4 @@ function cleanSlot(slot) {
   return s;
 }
 
-module.exports = { mayaCommand, timelineCommand, cleanMaya, cleanTimeline, chatMessage, cleanChats, CHAT_TYPES, layersCommand, reopenCommand, REOPEN_FROM, soundCommand, CUT_LAYERS, viewCommand, retryCommand, cleanCraft, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, VIDEO_LIMIT_USD, CLAUDE_MODELS, cleanModel, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };
+module.exports = { musicCommand, cleanMusic, mayaCommand, timelineCommand, cleanMaya, cleanTimeline, chatMessage, cleanChats, CHAT_TYPES, layersCommand, reopenCommand, REOPEN_FROM, soundCommand, CUT_LAYERS, viewCommand, retryCommand, cleanCraft, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, VIDEO_LIMIT_USD, CLAUDE_MODELS, cleanModel, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };
