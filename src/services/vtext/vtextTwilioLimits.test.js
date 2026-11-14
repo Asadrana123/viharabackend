@@ -124,3 +124,39 @@ test("activation needs the limits set by hand: it names what is missing, and wor
   const imessage = await saved("imessage-bluebubbles");
   assert.equal((await call(imessage._id)).code, 200);
 });
+
+test("an iMessage line's daily limit counts only new leads (100 by default); replies and follow-ups are never stopped by it", async (t) => {
+  const iMessageLimits = capacity.limitsFor(plain("imessage-bluebubbles"));
+  assert.equal(iMessageLimits.perDay, 100);
+  assert.equal(iMessageLimits.capCounts, "new-leads");
+  assert.equal(capacity.countsNewLeadsOnly(plain("twilio-sms")), false, "Twilio still counts every text");
+
+  if (!mongoUp) return t.skip("no local Mongo");
+  const line = await saved("imessage-bluebubbles", {
+    limits: { perDay: 3, perMinute: 10, newRecipientsPerHour: 1000, replyReservePct: 15 },
+    warmup: { enabled: false },
+    status: "active",
+  });
+
+  // Replies and follow-ups first: far past the limit, none refused, and they leave the new-lead room alone.
+  for (let i = 0; i < 10; i += 1) {
+    assert.equal((await capacity.reserve(line, { isReply: true, isNewRecipient: false })).ok, true, "a reply");
+    assert.equal((await capacity.reserve(line, { isReply: false, isNewRecipient: false })).ok, true, "a follow-up");
+  }
+  assert.equal(await capacity.remainingToday(line), 3);
+  assert.equal(await capacity.remainingForSend(line, { isNewRecipient: false }), Infinity);
+
+  let fresh = 0;
+  for (let i = 0; i < 5; i += 1) {
+    if ((await capacity.reserve(line, { isReply: false, isNewRecipient: true })).ok) fresh += 1;
+  }
+  assert.equal(fresh, 3, "the reply reserve on the line is ignored: all 3 go to new leads");
+  assert.equal(await capacity.remainingForSend(line, { isNewRecipient: true }), 0);
+  assert.equal((await capacity.reserve(line, { isReply: false, isNewRecipient: true })).reason, "new-leads-per-day limit reached");
+  assert.equal((await capacity.reserve(line, { isReply: true })).ok, true, "a reply still goes when the new leads are used up");
+
+  // A released first text gives its new-lead slot back.
+  await capacity.release(line, capacity.dayKey(), { wasReply: false, wasNewRecipient: true });
+  assert.equal(await capacity.remainingToday(line), 1);
+  assert.equal((await capacity.reserve(line, { isReply: false, isNewRecipient: true })).ok, true);
+});

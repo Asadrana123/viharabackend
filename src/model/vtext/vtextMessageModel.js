@@ -35,6 +35,9 @@ const vtextMessageSchema = new mongoose.Schema(
       file: { type: String },
       label: { type: String },
     },
+    // True when routeWorker reserved this text as a first text to a new lead on its line (the iMessage daily
+    // cap counts only those); capacity.release() then gives that slot back too.
+    reservedNewLead: { type: Boolean },
     segments: { type: Number }, // iMessage has no carrier-style segment billing; logged for cost/debugging anyway
     encoding: { type: String }, // reserved for the SMS fallback channel (Phase 6)
 

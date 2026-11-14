@@ -166,7 +166,7 @@ function reminderText({ name, startTime, timeZone, phoneE164, meetingUrl, uid, n
   const when = start.hasSame(local, "day") ? "today" : `on ${start.toFormat("ccc, LLL d")}`;
   const clock = `${start.toFormat("h:mm a")} ${start.offsetNameShort || ""}`.trim();
   const first = firstNameOf(name || "");
-  const join = meetingUrl ? `Join here: ${meetingUrl}` : "The video link is in your calendar invite.";
+  const join = meetingUrl ? `Join here: ${meetingUrl}` : "Your video call link is in your calendar invite.";
   const reschedule = rescheduleUrlOf(uid);
   // Links sit on their own lines, so no punctuation gets glued to them.
   return [

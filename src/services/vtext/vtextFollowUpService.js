@@ -5,7 +5,7 @@
 // VtextContact.followUp (Mongo is the source of truth, so a Redis flush loses
 // nothing). A repeating maintenance job (runFollowUpSweep) sends whatever is
 // due. See vtextFollowUpSequence.js for the copy, the target days and the
-// rules (one text a day for 7 days, skip a missed day, stop before the auction).
+// rules (3 texts on days 1, 3 and 6, skip a missed day, stop before the auction).
 //
 // Lifecycle: startFollowUp (after the signup text) -> each step on its target
 // day inside a send window -> "no-response" a few days after the last step.
@@ -23,7 +23,7 @@ const { PRODUCT_TEMPLATE_FIELDS, resolvePropertyVariables, resolveContactVariabl
 const { auctionDayOf } = require("./vtextFormatters");
 const { hasRegistered } = require("./vtextRegistrationLookup");
 const { endFollowUp, endFollowUpsForRegistration } = require("./vtextFollowUpEnd");
-const { SEQUENCE_VERSION, TOTAL_STEPS, windowForStep, stepDefinition, valuesForStep, planFollowUps } = require("./vtextFollowUpSequence");
+const { SEQUENCE_VERSION, TOTAL_STEPS, windowForStep, stepDefinition, bodyForContact, valuesForStep, planFollowUps } = require("./vtextFollowUpSequence");
 
 const SWEEP_INTERVAL_MS = () => Number(process.env.VTEXT_FOLLOWUP_SWEEP_INTERVAL_MS || 15 * 60_000);
 const FINAL_GRACE_DAYS = () => Number(process.env.VTEXT_FOLLOWUP_GRACE_DAYS || 2);
@@ -224,8 +224,9 @@ async function processDueContact(contactId, now) {
 
   const def = stepDefinition(entry.step);
   const values = valuesForStep(def, { ...resolvePropertyVariables(product), ...resolveContactVariables(contact.name) });
-  const body = renderTemplate(def.body, values);
-  const renderProblem = checkRendered(def.body, body, values, def.required);
+  const template = bodyForContact(def, contactId);
+  const body = renderTemplate(template, values);
+  const renderProblem = checkRendered(template, body, values, def.required);
   if (renderProblem) {
     console.error(`[vtext follow-up] contact ${contactId} step ${entry.step} skipped: ${renderProblem}`);
     await scheduleNext(contactId, { f, tz, auctionDay, now, doneSteps: [...doneSteps, entry.step], takenDays });
@@ -246,7 +247,6 @@ async function processDueContact(contactId, now) {
     const result = await enqueueOutbound({
       to: contact.phoneE164,
       body,
-      media: def.media,
       origin: { kind: "automation", templateKey: `followup-${step}`, propertyId: f.propertyId },
       idempotencyKey: `followup-${contactId}-${step}`,
       isReplyToInbound: false,

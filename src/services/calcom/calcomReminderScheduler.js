@@ -43,20 +43,23 @@ async function sendOne(booking, reminder, now, send) {
   // Claim it, so an overlapping sweep (or a second server) can't send it too.
   if (!(await setReminder(booking._id, m, "pending", { status: "sending" }))) return "taken";
 
-  const body = reminderText({
-    name: booking.attendee?.name,
-    startTime: booking.startTime,
-    timeZone: booking.attendee?.timeZone,
-    phoneE164: booking.phoneE164,
-    meetingUrl: booking.meetingUrl,
-    uid: booking.uid,
-    now,
-  });
+  const textFor = (links) =>
+    reminderText({
+      name: booking.attendee?.name,
+      startTime: booking.startTime,
+      timeZone: booking.attendee?.timeZone,
+      phoneE164: booking.phoneE164,
+      meetingUrl: links ? booking.meetingUrl : "",
+      uid: links ? booking.uid : "",
+      now,
+    });
 
   try {
     const { message, blocked, reason } = await send({
       to: booking.phoneE164,
-      body,
+      body: textFor(true),
+      // Someone who booked but never texted us gets no links (vtextRichContentGate): the meeting link is in their invite.
+      bodyWithoutLinks: textFor(false),
       origin: { kind: "automation", templateKey: `calcom-reminder-${m}`, ...(booking.leadRef?.leadId ? { leadRef: booking.leadRef } : {}) },
       contactName: booking.attendee?.name || undefined,
       idempotencyKey: keyFor(booking.uid, m),

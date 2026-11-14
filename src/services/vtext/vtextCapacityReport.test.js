@@ -12,11 +12,12 @@ const line = (over = {}) => ({
   routing: { acceptsNewContacts: true }, health: {}, ...over,
 });
 
-test("a fully warmed iMessage line: 100 a day, 85 for new texts, 15 kept for replies", () => {
-  const c = lineCapacity(line(), { assigned: 28, sent: 25, failed: 3, inbound: 4 }, { now: NOW, newRecipientsThisHour: 4 });
+test("a fully warmed iMessage line: 100 new leads a day; replies and follow-ups don't count and have no limit", () => {
+  const c = lineCapacity(line(), { assigned: 28, newRecipients: 12, sent: 25, failed: 3, inbound: 4 }, { now: NOW, newRecipientsThisHour: 4 });
   assert.equal(c.canSend, true);
+  assert.equal(c.counts, "new-leads");
   assert.equal(c.reason, "Full limit");
-  assert.deepEqual([c.limit, c.coldLimit, c.used, c.leftNew, c.leftReplies], [100, 85, 28, 57, 15]);
+  assert.deepEqual([c.limit, c.coldLimit, c.used, c.textsSent, c.leftNew, c.leftReplies], [100, 100, 12, 28, 88, 0]);
   assert.deepEqual([c.sent, c.failed, c.replies, c.newRecipientsThisHour, c.newRecipientsPerHour], [25, 3, 4, 4, 15]);
   assert.equal(c.warmup, null);
 });
@@ -24,10 +25,10 @@ test("a fully warmed iMessage line: 100 a day, 85 for new texts, 15 kept for rep
 test("warm-up: day 12 gets the day-8 step (25), and says so", () => {
   const c = lineCapacity(line({ status: "warming", warmup: { enabled: true, startedAt: new Date(NOW.getTime() - 11.5 * DAY) } }), null, { now: NOW });
   assert.equal(c.limit, 25);
-  assert.equal(c.coldLimit, 21);
+  assert.equal(c.coldLimit, 25);
   assert.deepEqual(c.warmup, { day: 12, of: 29 });
   assert.equal(c.reason, "Warm-up day 12 of 29 (full limit 100)");
-  assert.deepEqual([c.leftNew, c.leftReplies], [21, 4]);
+  assert.deepEqual([c.leftNew, c.leftReplies], [25, 0]);
 });
 
 test("a line whose own warm-up schedule stops below the full limit says so, not 'Full limit'", () => {
@@ -44,9 +45,18 @@ test("low reply rate halves the limit and says why", () => {
   assert.match(c.reason, /halved: reply rate under 5%/);
 });
 
-test("past the cold limit only the reply reserve is left; nothing below zero", () => {
-  assert.deepEqual((({ leftNew, leftReplies }) => [leftNew, leftReplies])(lineCapacity(line(), { assigned: 90 }, { now: NOW })), [0, 10]);
-  assert.deepEqual((({ leftNew, leftReplies }) => [leftNew, leftReplies])(lineCapacity(line(), { assigned: 120 }, { now: NOW })), [0, 0]);
+test("iMessage: lots of replies leave the new-lead room alone; 100 new leads fill it; nothing below zero", () => {
+  const pick = ({ leftNew, leftReplies }) => [leftNew, leftReplies];
+  assert.deepEqual(pick(lineCapacity(line(), { assigned: 250, newRecipients: 10 }, { now: NOW })), [90, 0]);
+  assert.deepEqual(pick(lineCapacity(line(), { assigned: 100, newRecipients: 100 }, { now: NOW })), [0, 0]);
+  assert.deepEqual(pick(lineCapacity(line(), { newRecipients: 120 }, { now: NOW })), [0, 0]);
+});
+
+test("Twilio still counts every text: past the cold limit only the reply reserve is left", () => {
+  const sms = line({ channelType: "twilio-sms", limits: { perDay: 100 } });
+  const c = lineCapacity(sms, { assigned: 90, newRecipients: 5 }, { now: NOW });
+  assert.equal(c.counts, "all");
+  assert.deepEqual([c.limit, c.coldLimit, c.used, c.leftNew, c.leftReplies], [100, 90, 90, 0, 10]);
 });
 
 test("lines that can't send: zero limit and a plain reason", () => {
@@ -61,13 +71,15 @@ test("lines that can't send: zero limit and a plain reason", () => {
 
 test("totals count only lines that can send", () => {
   const lines = [
-    lineCapacity(line(), { assigned: 28, sent: 28 }, { now: NOW }),
-    lineCapacity(line({ _id: "L2", status: "warming", warmup: { enabled: true, startedAt: new Date(NOW.getTime() - 2 * DAY) } }), { assigned: 2, sent: 2 }, { now: NOW }),
-    lineCapacity(line({ _id: "L3", status: "paused" }), { assigned: 7, sent: 7 }, { now: NOW }),
+    lineCapacity(line(), { assigned: 28, newRecipients: 20, sent: 28 }, { now: NOW }),
+    lineCapacity(line({ _id: "L2", status: "warming", warmup: { enabled: true, startedAt: new Date(NOW.getTime() - 2 * DAY) } }), { assigned: 2, newRecipients: 2, sent: 2 }, { now: NOW }),
+    lineCapacity(line({ _id: "L3", status: "paused" }), { assigned: 7, newRecipients: 7, sent: 7 }, { now: NOW }),
+    lineCapacity(line({ _id: "L4", channelType: "twilio-sms", limits: { perDay: 300 } }), { assigned: 40, newRecipients: 30, sent: 40 }, { now: NOW }),
   ];
   const t = totalsOf(lines);
-  assert.deepEqual([t.linesSending, t.linesNotSending, t.limit, t.coldLimit, t.used, t.sent], [2, 1, 110, 93, 30, 30]);
-  assert.deepEqual([t.leftNew, t.leftReplies], [57 + 6, 15 + 2]);
+  assert.deepEqual([t.linesSending, t.linesNotSending, t.textsSent, t.sent], [3, 1, 70, 70]);
+  assert.deepEqual(t.newLeads, { lines: 2, limit: 110, used: 22, left: 80 + 8 });
+  assert.deepEqual(t.allTexts, { lines: 1, limit: 300, used: 40, left: 270 - 40 });
 });
 
 test("the day resets at midnight New York", () => {
@@ -79,12 +91,13 @@ test("the day resets at midnight New York", () => {
 
 test("history: saved caps win, other days are estimated from warm-up, days before the line existed are 0", () => {
   const l = line({ createdAt: new Date("2026-11-01T12:00:00Z"), warmup: { enabled: true, startedAt: new Date("2026-11-01T12:00:00Z") } });
-  const rows = [{ lineId: "L1", day: "2026-11-02", assigned: 6, sent: 5, failed: 1, inbound: 2, cap: 8 }];
+  const rows = [{ lineId: "L1", day: "2026-11-02", assigned: 6, newRecipients: 4, sent: 5, failed: 1, inbound: 2, cap: 8 }];
   const h = historyOf([l], rows, 4, NOW);
   assert.deepEqual(h.map((d) => d.day), ["2026-10-31", "2026-11-01", "2026-11-02", "2026-11-03"]);
   assert.deepEqual(h.map((d) => d.limit), [0, 10, 8, 10]);
   assert.deepEqual(h.map((d) => d.estimated), [false, true, false, true]);
-  assert.deepEqual([h[2].used, h[2].sent, h[2].failed, h[2].replies], [6, 5, 1, 2]);
+  assert.deepEqual([h[2].used, h[2].sent, h[2].failed, h[2].replies], [4, 5, 1, 2]); // used = new leads on iMessage
+  assert.equal(h[2].lines[0].textsSent, 6);
 });
 
 test("warm-up complete: the default schedule counts when the line has none of its own (the prod line's case)", () => {

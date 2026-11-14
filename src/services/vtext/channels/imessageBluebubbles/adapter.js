@@ -161,9 +161,12 @@ module.exports = {
   },
   defaultLimits: {
     perMinute: 3,
+    // perDay counts NEW LEADS only (first texts to someone this line has never texted): replies, AI replies
+    // and follow-ups don't count and have no daily cap (vtextCapacityService, "new-leads").
     perDay: 100,
+    capCounts: "new-leads",
     newRecipientsPerHour: 15,
-    replyReservePct: 15,
+    replyReservePct: 0, // nothing to reserve: replies don't use the daily cap
     jitterMs: { min: 5000, max: 15000 },
     warmupSchedule: [
       { fromDay: 1, perDay: 10 },

@@ -142,7 +142,7 @@ async function moveOffDownLine(lineId, messages, { releaseCapacity, routeQueueFo
       }
     );
     if (!r.modifiedCount) continue;
-    await releaseCapacity({ _id: lineId }, dayKey(m.assignedAt || m.updatedAt || new Date(now)), { wasReply: m.isReplyToInbound });
+    await releaseCapacity({ _id: lineId }, dayKey(m.assignedAt || m.updatedAt || new Date(now)), { wasReply: m.isReplyToInbound, wasNewRecipient: m.reservedNewLead });
     await routeQueueFor().add("route", { messageId: String(m._id) }, { jobId: `route-${m._id}-linedown-${now}` });
     moved += 1;
   }
@@ -206,7 +206,7 @@ async function recoverAssignedMessages(messages, deps = {}) {
           }
         );
         if (r.modifiedCount) {
-          await releaseCapacity(line, reservationDay, { wasReply: m.isReplyToInbound });
+          await releaseCapacity(line, reservationDay, { wasReply: m.isReplyToInbound, wasNewRecipient: m.reservedNewLead });
           publishEvent({ type: "message.updated", messageId: String(m._id), conversationId: m.conversationId ? String(m.conversationId) : null, status: "unknown" });
           out.expired += 1;
           // It was never sent, so an SMS copy cannot double up. The fallback's own checks still apply (age, a reply

@@ -203,7 +203,7 @@ const cancelMessage = catchAsyncError(async (req, res) => {
       // best-effort — the status flip below is what actually stops a send either way
     }
     const line = await VtextLine.findById(message.lineId);
-    if (line) await capacity.release(line, capacity.dayKey(message.updatedAt), { wasReply: message.isReplyToInbound });
+    if (line) await capacity.release(line, capacity.dayKey(message.updatedAt), { wasReply: message.isReplyToInbound, wasNewRecipient: message.reservedNewLead });
   }
 
   // Cancelling a pending AI draft IS rejecting it — no separate reject

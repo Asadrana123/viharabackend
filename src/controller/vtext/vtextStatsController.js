@@ -25,13 +25,14 @@ const getStatsOverview = catchAsyncError(async (req, res) => {
   const lineUtilization = lines.map((line) => {
     const usage = usageByLine.get(String(line._id));
     const cap = capacity.effectiveDailyCap(line);
+    const counted = capacity.countedToday(line, usage); // new leads on an iMessage line, every text otherwise
     return {
       lineId: line._id,
       name: line.name,
       status: line.status,
       assigned: usage?.assigned || 0,
       cap,
-      utilizationPct: cap > 0 ? Math.round(((usage?.assigned || 0) / cap) * 100) : 0,
+      utilizationPct: cap > 0 ? Math.round((counted / cap) * 100) : 0,
     };
   });
 

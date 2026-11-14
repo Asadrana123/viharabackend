@@ -133,6 +133,7 @@ async function processRouteJob(job) {
   await contact.save();
 
   message.lineId = line._id;
+  message.reservedNewLead = isNewRecipient; // so a release gives the new-lead slot back
   message.conversationId = conversation._id;
   message.channelType = line.channelType;
   message.status = "assigned";

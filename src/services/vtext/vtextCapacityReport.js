@@ -5,11 +5,15 @@
 // vtextCapacityService (warm-up, the low-reply slow-down, the reply reserve) and the counts from the
 // per-line, per-day usage rows.
 //
+//   counts      what the limit counts: "new-leads" (iMessage: first texts to new leads only; replies and
+//               follow-ups are not limited) or "all" (Twilio: every text, with a reply reserve)
 //   limit       today's cap (warm-up step or the full limit, halved while the reply rate is low)
-//   coldLimit   the part new texts may use; the rest (replyReservePct, 15% for iMessage) is kept for replies
-//   used        texts reserved today (sent, being sent, or failed after reserving); what the limit counts
-//   leftNew     what new texts can still use today
-//   leftReplies what is kept on top of leftNew for answering people who texted in
+//   coldLimit   the part new texts may use; on an "all" line the rest (replyReservePct) is kept for replies
+//   used        what the limit has counted today: new leads, or every text reserved (sent, being sent, or
+//               failed after reserving)
+//   textsSent   every text reserved today, whatever the limit counts (for information)
+//   leftNew     what new texts (new leads, on an iMessage line) can still use today
+//   leftReplies what is kept on top of leftNew for answering people who texted in ("all" lines only)
 //
 // Only lines that can send right now count in the totals: status "warming" or "active". Others are listed with
 // the reason and zeros. Days run midnight to midnight in VTEXT_DAY_TZ (New York).
@@ -54,7 +58,8 @@ function lineCapacity(line, usage, { newRecipientsThisHour = null, now = new Dat
   const throttled = capacity.isThrottled(line);
   const limit = canSend ? capacity.effectiveDailyCap(line, now) : 0; // same `now` as the warm-up step above
   const coldLimit = canSend ? capacity.coldCapOf(limit, limits) : 0;
-  const used = usage?.assigned || 0;
+  const counts = capacity.countsNewLeadsOnly(line) ? "new-leads" : "all";
+  const used = capacity.countedToday(line, usage);
   const leftNew = Math.max(0, coldLimit - used);
   const leftAll = Math.max(0, limit - used);
   return {
@@ -63,6 +68,7 @@ function lineCapacity(line, usage, { newRecipientsThisHour = null, now = new Dat
     channelType: line.channelType,
     status: line.status,
     canSend,
+    counts,
     reason: reasonFor(line, { canSend, warmup, throttled, fullLimit: limits.perDay }),
     fullLimit: limits.perDay,
     warmup: warmup && warmup.day < warmup.lastStepDay ? { day: warmup.day, of: warmup.lastStepDay } : null,
@@ -71,6 +77,7 @@ function lineCapacity(line, usage, { newRecipientsThisHour = null, now = new Dat
     coldLimit,
     replyReservePct: limits.replyReservePct || 0,
     used,
+    textsSent: usage?.assigned || 0,
     sent: usage?.sent || 0,
     failed: usage?.failed || 0,
     replies: usage?.inbound || 0,
@@ -86,7 +93,15 @@ function lineCapacity(line, usage, { newRecipientsThisHour = null, now = new Dat
 function totalsOf(lines) {
   const sending = lines.filter((l) => l.canSend);
   const sum = (key) => sending.reduce((n, l) => n + (l[key] || 0), 0);
+  const group = (counts) => {
+    const ls = sending.filter((l) => l.counts === counts);
+    const s = (key) => ls.reduce((n, l) => n + (l[key] || 0), 0);
+    return { lines: ls.length, limit: s("limit"), used: s("used"), left: s("leftNew") };
+  };
   return {
+    newLeads: group("new-leads"), // iMessage lines: new leads today, of their limit
+    allTexts: group("all"), // Twilio lines: every text today, of their (cold) limit
+    textsSent: sum("textsSent"),
     linesSending: sending.length,
     linesNotSending: lines.length - sending.length,
     limit: sum("limit"),
@@ -133,13 +148,15 @@ function historyOf(lines, usageRows, days = HISTORY_DAYS, now = new Date()) {
     const perLine = lines.map((line) => {
       const u = byKey.get(`${line._id}:${day}`);
       const { limit, estimated } = limitOn(line, day, u);
-      return { lineId: line._id, name: line.name, limit, estimated, used: u?.assigned || 0, sent: u?.sent || 0, failed: u?.failed || 0, replies: u?.inbound || 0 };
+      const used = capacity.countedToday(line, u); // new leads on an iMessage line (for days before 2026-11-14 too)
+      return { lineId: line._id, name: line.name, counts: capacity.countsNewLeadsOnly(line) ? "new-leads" : "all", limit, estimated, used, textsSent: u?.assigned || 0, sent: u?.sent || 0, failed: u?.failed || 0, replies: u?.inbound || 0 };
     });
     const sum = (key) => perLine.reduce((n, l) => n + l[key], 0);
     return {
       day,
       limit: sum("limit"),
       used: sum("used"),
+      textsSent: sum("textsSent"),
       sent: sum("sent"),
       failed: sum("failed"),
       replies: sum("replies"),

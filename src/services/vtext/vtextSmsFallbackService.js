@@ -109,7 +109,7 @@ async function cancelPendingFallbackMessage(message, reason, deps = {}) {
     }
     const capacity = require("./vtextCapacityService");
     const line = await VtextLine.findById(message.lineId);
-    if (line) await capacity.release(line, capacity.dayKey(message.updatedAt), { wasReply: message.isReplyToInbound });
+    if (line) await capacity.release(line, capacity.dayKey(message.updatedAt), { wasReply: message.isReplyToInbound, wasNewRecipient: message.reservedNewLead });
   }
   message.status = "cancelled";
   message.error = { kind: "compliance", message: reason };
@@ -290,7 +290,7 @@ async function guardFallbackBeforeSend(message, contact, line, reservationDay, d
   else if (original && now.getTime() - new Date(original.sentAt || original.createdAt).getTime() > maxAgeHours() * 3_600_000) cancelReason = `the text is older than ${maxAgeHours()} hours`;
 
   if (cancelReason) {
-    await capacity.release(line, reservationDay, { wasReply: message.isReplyToInbound });
+    await capacity.release(line, reservationDay, { wasReply: message.isReplyToInbound, wasNewRecipient: message.reservedNewLead });
     message.status = "cancelled";
     message.error = { kind: "compliance", message: cancelReason };
     await message.save();
@@ -304,7 +304,7 @@ async function guardFallbackBeforeSend(message, contact, line, reservationDay, d
 
   if (!leadTextingHours(contact.phoneE164, now).open) {
     const until = nextTextingWindowOpen(contact.phoneE164, now);
-    await capacity.release(line, reservationDay, { wasReply: message.isReplyToInbound });
+    await capacity.release(line, reservationDay, { wasReply: message.isReplyToInbound, wasNewRecipient: message.reservedNewLead });
     message.status = "queued";
     message.lineId = undefined;
     message.conversationId = undefined;

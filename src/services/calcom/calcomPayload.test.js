@@ -127,5 +127,5 @@ test("reminderText: no name, no link, timezone from the area code", () => {
   const text = reminderText({ name: "", startTime: START, timeZone: "", phoneE164: "+12125550123", meetingUrl: "", uid: "x", now: new Date(START.getTime() - min(30)) });
   assert.match(text, /^Hi, it's Maya from Vihara\./);
   assert.match(text, /at 6:00 PM EST today\./);
-  assert.match(text, /The video link is in your calendar invite\./);
+  assert.match(text, /Your video call link is in your calendar invite\./);
 });
