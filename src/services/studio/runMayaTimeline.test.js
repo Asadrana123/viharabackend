@@ -115,3 +115,11 @@ test("an editor records the licence of a track in the library", () => {
   assert.throws(() => trackRightsCommand(r, { id: "nope", licence: "x" }), /not in the music library/);
   assert.throws(() => trackRightsCommand(r, { id: "placeholder-pad", licence: "" }), /licence/);
 });
+test("a moving clip is trimmed at its start; a photograph is not (Dinesh, 2026-11-14)", () => {
+  const withClip = { ...timeline, beats: [timeline.beats[0], { id: "b2", shots: [{ id: "s1", movable: true, clipSeconds: 5 }, { id: "s2", movable: true, clipSeconds: null }] }] };
+  const r = run({ state: "cut", timeline: withClip });
+  const step = timelineCommand(r, { beats: [{ id: "b2", shots: [{ id: "s1", seconds: 2, trimIn: 1.24 }, { id: "s2", seconds: 2 }] }] });
+  assert.deepEqual(step.command.data.beats[0].shots, [{ id: "s1", seconds: 2, trim_in: 1.2 }, { id: "s2", seconds: 2 }]);
+  assert.throws(() => timelineCommand(r, { beats: [{ id: "b2", shots: [{ id: "s1", seconds: 2, trimIn: 4.8 }, { id: "s2", seconds: 2 }] }] }), /0 to 4.5 s/);
+  assert.throws(() => timelineCommand(r, { beats: [{ id: "b2", shots: [{ id: "s1", seconds: 2 }, { id: "s2", seconds: 2, trimIn: 1 }] }] }), /Only a moving clip/);
+});

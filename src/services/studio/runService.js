@@ -76,7 +76,7 @@ function cleanTimeline(t) {
       hold: secs(b?.hold),
       line: clip(b?.line, 800),
       shots: Array.isArray(b?.shots)
-        ? b.shots.slice(0, 20).map((s) => ({ id: clip(s?.id, 40), ref: clip(s?.ref, 120), kind: SHOT_KINDS.has(s?.kind) ? s.kind : "photo", label: clip(s?.label, 120), start: secs(s?.start), duration: secs(s?.duration), clipSeconds: s?.clip_seconds == null ? null : secs(s.clip_seconds), movable: Boolean(s?.movable) }))
+        ? b.shots.slice(0, 20).map((s) => ({ id: clip(s?.id, 40), ref: clip(s?.ref, 120), kind: SHOT_KINDS.has(s?.kind) ? s.kind : "photo", label: clip(s?.label, 120), start: secs(s?.start), duration: secs(s?.duration), clipSeconds: s?.clip_seconds == null ? null : secs(s.clip_seconds), movable: Boolean(s?.movable), trimIn: secs(s?.trim_in) }))
         : [],
       captions: Array.isArray(b?.captions) ? b.captions.slice(0, 60).map((c) => ({ text: clip(c?.text, 120), start: secs(c?.start), duration: secs(c?.duration) })) : [],
     })),
@@ -319,7 +319,13 @@ function timelineCommand(run, body) {
       out.shots = b.shots.map((s) => {
         const seconds = Number(s.seconds);
         if (!Number.isFinite(seconds) || seconds < 0.3 || seconds > 20) throw new Error(`A shot is 0.3 to 20 seconds long.`);
-        return { id: String(s.id), seconds: Math.round(seconds * 100) / 100 };
+        // The editor's trim (Dinesh, 2026-11-14): seconds cut from the start of a moving clip.
+        if (s.trimIn === undefined || s.trimIn === null) return { id: String(s.id), seconds: Math.round(seconds * 100) / 100 };
+        const shot = known.shots.find((x) => x.id === String(s.id));
+        const trimIn = Number(s.trimIn);
+        if (shot?.clipSeconds == null) throw new Error("Only a moving clip can be trimmed; a photograph's length is changed instead.");
+        if (!Number.isFinite(trimIn) || trimIn < 0 || trimIn > shot.clipSeconds - 0.5) throw new Error(`This clip can be trimmed by 0 to ${(shot.clipSeconds - 0.5).toFixed(1)} s at its start.`);
+        return { id: String(s.id), seconds: Math.round(seconds * 100) / 100, trim_in: Math.round(trimIn * 10) / 10 };
       });
     }
     if (out.pause !== undefined || out.shots) beats.push(out);
