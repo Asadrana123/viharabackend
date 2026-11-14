@@ -98,21 +98,23 @@ async function pickInChannel(channel, message, contact) {
 
   const scored = [];
   for (const line of candidates) {
-    const remaining = await capacity.remainingForSend(line, { isReply: message.isReplyToInbound });
+    // A brand-new (contact, line) pairing draws on the new-recipient-per-hour
+    // budget — an existing conversation doesn't, regardless of channel. On an
+    // iMessage line it is also the only thing the daily cap counts (new leads).
+    const isNewRecipient = !(await VtextConversation.exists({ contactId: contact._id, lineId: line._id }));
+    const remaining = await capacity.remainingForSend(line, { isReply: message.isReplyToInbound, isNewRecipient });
     if (remaining <= 0) continue;
 
-    // A brand-new (contact, line) pairing draws on the new-recipient-per-hour
-    // budget — an existing conversation doesn't, regardless of channel.
-    const hasExistingConversation = await VtextConversation.exists({ contactId: contact._id, lineId: line._id });
-    if (!hasExistingConversation) {
+    if (isNewRecipient) {
       const used = await capacity.peekNewRecipientCount(line._id);
       const limit = capacity.limitsFor(line).newRecipientsPerHour;
       if (used >= limit) continue;
-      if (await capacity.newRecipientsFullToday(line)) continue;
     }
 
+    // Least used first: by the room left under the cap (for a text the cap doesn't count, the new-lead room).
     const cap = capacity.effectiveDailyCap(line);
-    const score = cap > 0 ? (remaining / cap) * (line.routing?.weight || 1) : 0;
+    const room = Number.isFinite(remaining) ? remaining : await capacity.remainingToday(line);
+    const score = cap > 0 ? (room / cap) * (line.routing?.weight || 1) : 0;
     scored.push({ line, score });
   }
 

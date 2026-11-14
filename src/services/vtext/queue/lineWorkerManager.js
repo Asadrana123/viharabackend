@@ -89,7 +89,7 @@ async function finalizeExhaustedJob(lineId, job, err, deps = {}) {
   if (!message.error) message.error = { kind: "transient", message: err?.message };
   await message.save();
 
-  await capacity.release({ _id: lineId }, reservationDay, { wasReply: message.isReplyToInbound });
+  await capacity.release({ _id: lineId }, reservationDay, { wasReply: message.isReplyToInbound, wasNewRecipient: message.reservedNewLead });
 
   publishEvent({
     type: "message.updated",

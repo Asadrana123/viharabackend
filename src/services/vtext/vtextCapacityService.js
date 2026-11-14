@@ -5,6 +5,14 @@
 //   - reply reserve (cold sends capped lower than replies-to-inbound)
 //   - new-recipient-per-hour (Redis ZSET, ephemeral by design — losing it on
 //     a Redis flush just resets a 1-hour window, not a correctness issue)
+//
+// What the daily cap counts depends on the channel (its adapter's defaultLimits.capCounts):
+//   - "new-leads" (iMessage, since 2026-11-14): only first texts to someone the line has never texted.
+//     Replies (AI or by hand) and follow-ups don't count and have no daily cap. perDay is then "new
+//     leads a day" (100); warm-up and the low-reply slow-down apply to that number. No reply reserve.
+//     This is how the iMessage line providers count it (Linq, Photon: "new conversations per line per day").
+//   - "all" (Twilio, Android, mock): every text counts, with the reply reserve. Carriers and the 10DLC
+//     campaign count every message, so this stays.
 const { DateTime } = require("luxon");
 const VtextLineUsage = require("../../model/vtext/vtextLineUsageModel");
 const { getRedisClient } = require("./queue/connection");
@@ -16,6 +24,11 @@ const dayKey = (date = new Date()) => DateTime.fromJSDate(date).setZone(DAY_TZ).
 function limitsFor(line) {
   const adapter = getAdapter(line.channelType);
   return { ...adapter.defaultLimits, ...stripNullish(line.limits) };
+}
+
+/** True when this line's daily cap counts only first texts to new leads (see the top of this file). */
+function countsNewLeadsOnly(line) {
+  return getAdapter(line.channelType).defaultLimits?.capCounts === "new-leads";
 }
 
 // line.limits fields are individually nullable (schema comment: "null fields
@@ -87,8 +100,8 @@ function effectiveDailyCap(line, at = new Date()) {
   return Math.max(0, Math.floor(warmupCap * (isThrottled(line) ? THROTTLE_MULTIPLIER : 1)));
 }
 
-/** The cap for new (cold) sends: the daily cap minus the reply reserve. */
-const coldCapOf = (cap, limits) => Math.floor(cap * (1 - (limits.replyReservePct || 0) / 100));
+/** The cap for new (cold) sends: the daily cap minus the reply reserve. A new-leads line has no reserve. */
+const coldCapOf = (cap, limits) => (limits.capCounts === "new-leads" ? cap : Math.floor(cap * (1 - (limits.replyReservePct || 0) / 100)));
 
 // Atomic check-and-add over a 1-hour sliding window, in one round trip so two
 // concurrent reservations can't both read "under limit" and both write.
@@ -129,6 +142,7 @@ async function reserve(line, { isReply = false, isNewRecipient = false } = {}) {
   const cap = effectiveDailyCap(line);
   const coldCap = coldCapOf(cap, limits);
   const capToUse = isReply ? cap : coldCap;
+  const newLeadsOnly = countsNewLeadsOnly(line);
 
   if (isNewRecipient) {
     const gotSlot = await checkAndReserveNewRecipientSlot(line._id, limits.newRecipientsPerHour);
@@ -150,11 +164,10 @@ async function reserve(line, { isReply = false, isNewRecipient = false } = {}) {
     { upsert: true }
   );
 
-  // New conversations per day (iMessage: 50, what Linq and Photon use per line). Only a first text to
-  // someone the line has never texted counts; follow-ups and replies don't.
-  const newPerDay = isNewRecipient && limits.newRecipientsPerDay > 0 ? limits.newRecipientsPerDay : null;
-  const filter = { lineId: line._id, day, assigned: { $lt: capToUse } };
-  if (newPerDay) filter.newRecipients = { $lt: newPerDay };
+  // A new-leads line checks the cap only for a first text to a new lead, against the new leads so far.
+  // Its replies and follow-ups have no daily cap, but are still counted in `assigned` for the report.
+  let filter = { lineId: line._id, day, assigned: { $lt: capToUse } };
+  if (newLeadsOnly) filter = isNewRecipient ? { lineId: line._id, day, newRecipients: { $lt: cap } } : { lineId: line._id, day };
 
   const updated = await VtextLineUsage.findOneAndUpdate(
     filter,
@@ -163,10 +176,7 @@ async function reserve(line, { isReply = false, isNewRecipient = false } = {}) {
   );
 
   if (!updated) {
-    if (newPerDay) {
-      const usage = await VtextLineUsage.findOne({ lineId: line._id, day }).select("newRecipients").lean();
-      if ((usage?.newRecipients || 0) >= newPerDay) return { ok: false, reason: "new-conversations-per-day limit reached" };
-    }
+    if (newLeadsOnly) return { ok: false, reason: "new-leads-per-day limit reached" };
     return { ok: false, reason: isReply ? "daily cap reached" : "cold-send cap reached (reply reserve exhausted)" };
   }
 
@@ -174,10 +184,11 @@ async function reserve(line, { isReply = false, isNewRecipient = false } = {}) {
 }
 
 /** Gives back a reservation — a message that was assigned but then couldn't actually send (line went bad, contact opted out between route and send, etc). */
-async function release(line, day, { wasReply = false } = {}) {
+async function release(line, day, { wasReply = false, wasNewRecipient = false } = {}) {
   await VtextLineUsage.updateOne(
     { lineId: line._id, day },
-    { $inc: { assigned: -1, replyAssigned: wasReply ? -1 : 0 } }
+    // A released first text gives its new-lead slot back too (message.reservedNewLead, set by routeWorker).
+    { $inc: { assigned: -1, replyAssigned: wasReply ? -1 : 0, newRecipients: wasNewRecipient ? -1 : 0 } }
   );
 }
 
@@ -194,21 +205,30 @@ async function recordInbound(line) {
   await VtextLineUsage.updateOne({ lineId: line._id, day: dayKey() }, { $inc: { inbound: 1 } }, { upsert: true });
 }
 
+/** What today's cap has counted so far: new leads on a new-leads line, every text otherwise. */
+const countedToday = (line, usage) => (countsNewLeadsOnly(line) ? usage?.newRecipients || 0 : usage?.assigned || 0);
+
+/** Room left under today's cap (new leads left, on a new-leads line). */
 async function remainingToday(line) {
   const cap = effectiveDailyCap(line);
   const day = dayKey();
   const usage = await VtextLineUsage.findOne({ lineId: line._id, day });
-  return Math.max(0, cap - (usage?.assigned || 0));
+  return Math.max(0, cap - countedToday(line, usage));
 }
 
-/** Like remainingToday, but against the cold-send cap when isReply is false (§7.2/§7.4) — a reply can still go out even when a cold send couldn't. */
-async function remainingForSend(line, { isReply = false } = {}) {
+/**
+ * Room left for this one text. On an "all" line: against the cold-send cap when isReply is false (§7.2/§7.4),
+ * so a reply can still go out when a cold send couldn't. On a new-leads line: Infinity for anything but a first
+ * text to a new lead (replies and follow-ups have no daily cap), new leads left otherwise.
+ */
+async function remainingForSend(line, { isReply = false, isNewRecipient = false } = {}) {
   const limits = limitsFor(line);
   const cap = effectiveDailyCap(line);
+  if (countsNewLeadsOnly(line) && !isNewRecipient) return Infinity;
   const capToUse = isReply ? cap : coldCapOf(cap, limits);
   const day = dayKey();
   const usage = await VtextLineUsage.findOne({ lineId: line._id, day });
-  return Math.max(0, capToUse - (usage?.assigned || 0));
+  return Math.max(0, capToUse - countedToday(line, usage));
 }
 
 /** Non-consuming peek at a line's current new-recipient-this-hour count — for eligibility checks during line SELECTION, where reserving a slot speculatively (before a line is actually chosen) would waste it. */
@@ -218,14 +238,6 @@ async function peekNewRecipientCount(lineId) {
   const now = Date.now();
   await redis.zremrangebyscore(key, 0, now - 60 * 60 * 1000);
   return redis.zcard(key);
-}
-
-/** True when the line has used up today's new conversations (only for channels that set newRecipientsPerDay). */
-async function newRecipientsFullToday(line) {
-  const limit = limitsFor(line).newRecipientsPerDay;
-  if (!(limit > 0)) return false;
-  const usage = await VtextLineUsage.findOne({ lineId: line._id, day: dayKey() }).select("newRecipients").lean();
-  return (usage?.newRecipients || 0) >= limit;
 }
 
 module.exports = {
@@ -246,5 +258,6 @@ module.exports = {
   remainingToday,
   remainingForSend,
   peekNewRecipientCount,
-  newRecipientsFullToday,
+  countsNewLeadsOnly,
+  countedToday,
 };

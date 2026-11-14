@@ -40,7 +40,7 @@ async function cancelPendingOutbound(contactId, { onlyFollowUps = false } = {}) 
 
     if (message.status === "assigned" && message.lineId) {
       const line = await VtextLine.findById(message.lineId);
-      if (line) await capacity.release(line, capacity.dayKey(message.updatedAt), { wasReply: message.isReplyToInbound });
+      if (line) await capacity.release(line, capacity.dayKey(message.updatedAt), { wasReply: message.isReplyToInbound, wasNewRecipient: message.reservedNewLead });
     }
 
     message.status = "cancelled";

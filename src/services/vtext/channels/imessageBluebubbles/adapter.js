@@ -161,12 +161,12 @@ module.exports = {
   },
   defaultLimits: {
     perMinute: 3,
+    // perDay counts NEW LEADS only (first texts to someone this line has never texted): replies, AI replies
+    // and follow-ups don't count and have no daily cap (vtextCapacityService, "new-leads").
     perDay: 100,
+    capCounts: "new-leads",
     newRecipientsPerHour: 15,
-    // First texts to people the line has never texted, per day. Linq and Photon both cap a line at 50;
-    // without this, 15 an hour could add up to ~85 cold texts in a day.
-    newRecipientsPerDay: 50,
-    replyReservePct: 15,
+    replyReservePct: 0, // nothing to reserve: replies don't use the daily cap
     jitterMs: { min: 5000, max: 15000 },
     warmupSchedule: [
       { fromDay: 1, perDay: 10 },

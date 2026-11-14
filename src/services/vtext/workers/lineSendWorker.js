@@ -76,12 +76,12 @@ async function processSendJob(lineId, job) {
   if (!complianceResult.allowed) {
     message.status = "cancelled";
     await message.save();
-    await capacity.release(line, reservationDay, { wasReply: message.isReplyToInbound });
+    await capacity.release(line, reservationDay, { wasReply: message.isReplyToInbound, wasNewRecipient: message.reservedNewLead });
     return;
   }
 
   if (!line || !ROUTABLE_STATUSES.includes(line.status)) {
-    await capacity.release(line || { _id: lineId }, reservationDay, { wasReply: message.isReplyToInbound });
+    await capacity.release(line || { _id: lineId }, reservationDay, { wasReply: message.isReplyToInbound, wasNewRecipient: message.reservedNewLead });
     await rerouteExcluding(message, lineId);
     return;
   }
@@ -94,7 +94,7 @@ async function processSendJob(lineId, job) {
     message.error = { kind: "recipient", code: "UNCERTAIN", message: "The send was interrupted, so the text may or may not have reached Twilio. It was not retried, to avoid texting the person twice." };
     message.failedAt = new Date();
     await message.save();
-    await capacity.release(line, reservationDay, { wasReply: message.isReplyToInbound });
+    await capacity.release(line, reservationDay, { wasReply: message.isReplyToInbound, wasNewRecipient: message.reservedNewLead });
     publishEvent({ type: "message.updated", messageId: String(message._id), conversationId: message.conversationId ? String(message.conversationId) : null, status: message.status });
     await reportTextProblem(message);
     return;
@@ -163,7 +163,7 @@ async function processSendJob(lineId, job) {
       message.error = { kind: "recipient", code: err.code, message: err.message };
       message.failedAt = new Date();
       await message.save();
-      await capacity.release(line, reservationDay, { wasReply: message.isReplyToInbound });
+      await capacity.release(line, reservationDay, { wasReply: message.isReplyToInbound, wasNewRecipient: message.reservedNewLead });
       publishEvent({ type: "message.updated", messageId: String(message._id), conversationId: message.conversationId ? String(message.conversationId) : null, status: message.status });
       // Twilio refused the send because this number opted out of it (21610): record that here too, so no line texts them.
       // And "not a valid mobile number" (21614) is a definite no: mark it a landline so the compliance gate stops further tries.
@@ -201,7 +201,7 @@ async function processSendJob(lineId, job) {
       // "line" goes through the normal threshold evaluation (§7.4).
       await evaluateAndMaybeQuarantine(line, err.kind === "config" ? `config error: ${err.message}` : undefined);
 
-      await capacity.release(line, reservationDay, { wasReply: message.isReplyToInbound });
+      await capacity.release(line, reservationDay, { wasReply: message.isReplyToInbound, wasNewRecipient: message.reservedNewLead });
       await rerouteExcluding(message, lineId);
       return;
     }
@@ -213,7 +213,7 @@ async function processSendJob(lineId, job) {
     if (line.channelType === smsFallback.IMESSAGE && LINE_DOWN_CODES.has(err.code) && smsFallback.isEnabled()) {
       message.error = { kind: "line", code: err.code, message: err.message };
       message.statusHistory.push({ status: "queued", detail: `iMessage line unreachable (${err.code}), routed again without it` });
-      await capacity.release(line, reservationDay, { wasReply: message.isReplyToInbound });
+      await capacity.release(line, reservationDay, { wasReply: message.isReplyToInbound, wasNewRecipient: message.reservedNewLead });
       await rerouteExcluding(message, lineId);
       return;
     }

@@ -28,7 +28,7 @@ async function drainLine(lineId) {
     const message = await VtextMessage.findById(messageId);
     if (!message || !["assigned", "sending"].includes(message.status)) continue;
 
-    await capacity.release({ _id: lineId }, reservationDay, { wasReply: message.isReplyToInbound });
+    await capacity.release({ _id: lineId }, reservationDay, { wasReply: message.isReplyToInbound, wasNewRecipient: message.reservedNewLead });
 
     message.excludeLineIds = [...(message.excludeLineIds || []), lineId];
     message.lineId = undefined;
