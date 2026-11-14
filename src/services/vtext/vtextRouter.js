@@ -108,6 +108,7 @@ async function pickInChannel(channel, message, contact) {
       const used = await capacity.peekNewRecipientCount(line._id);
       const limit = capacity.limitsFor(line).newRecipientsPerHour;
       if (used >= limit) continue;
+      if (await capacity.newRecipientsFullToday(line)) continue;
     }
 
     const cap = capacity.effectiveDailyCap(line);

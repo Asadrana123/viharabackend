@@ -163,6 +163,9 @@ module.exports = {
     perMinute: 3,
     perDay: 100,
     newRecipientsPerHour: 15,
+    // First texts to people the line has never texted, per day. Linq and Photon both cap a line at 50;
+    // without this, 15 an hour could add up to ~85 cold texts in a day.
+    newRecipientsPerDay: 50,
     replyReservePct: 15,
     jitterMs: { min: 5000, max: 15000 },
     warmupSchedule: [

@@ -124,3 +124,27 @@ test("activation needs the limits set by hand: it names what is missing, and wor
   const imessage = await saved("imessage-bluebubbles");
   assert.equal((await call(imessage._id)).code, 200);
 });
+
+test("an iMessage line takes at most 50 new conversations a day by default; texts to people it already knows don't count", async (t) => {
+  assert.equal(capacity.limitsFor(plain("imessage-bluebubbles")).newRecipientsPerDay, 50);
+  assert.equal(capacity.limitsFor(plain("twilio-sms")).newRecipientsPerDay, undefined, "SMS lines have no such cap");
+
+  if (!mongoUp) return t.skip("no local Mongo");
+  const line = await saved("imessage-bluebubbles", {
+    limits: { perDay: 100, perMinute: 10, newRecipientsPerHour: 1000, newRecipientsPerDay: 3 },
+    warmup: { enabled: false },
+    status: "active",
+  });
+
+  let fresh = 0;
+  for (let i = 0; i < 5; i += 1) {
+    if ((await capacity.reserve(line, { isReply: false, isNewRecipient: true })).ok) fresh += 1;
+  }
+  assert.equal(fresh, 3);
+  assert.equal(await capacity.newRecipientsFullToday(line), true);
+  const refused = await capacity.reserve(line, { isReply: false, isNewRecipient: true });
+  assert.equal(refused.reason, "new-conversations-per-day limit reached");
+
+  assert.equal((await capacity.reserve(line, { isReply: false, isNewRecipient: false })).ok, true, "a follow-up still goes");
+  assert.equal((await capacity.reserve(line, { isReply: true, isNewRecipient: false })).ok, true, "a reply still goes");
+});

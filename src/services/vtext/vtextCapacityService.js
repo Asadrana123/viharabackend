@@ -150,13 +150,23 @@ async function reserve(line, { isReply = false, isNewRecipient = false } = {}) {
     { upsert: true }
   );
 
+  // New conversations per day (iMessage: 50, what Linq and Photon use per line). Only a first text to
+  // someone the line has never texted counts; follow-ups and replies don't.
+  const newPerDay = isNewRecipient && limits.newRecipientsPerDay > 0 ? limits.newRecipientsPerDay : null;
+  const filter = { lineId: line._id, day, assigned: { $lt: capToUse } };
+  if (newPerDay) filter.newRecipients = { $lt: newPerDay };
+
   const updated = await VtextLineUsage.findOneAndUpdate(
-    { lineId: line._id, day, assigned: { $lt: capToUse } },
+    filter,
     { $inc: { assigned: 1, replyAssigned: isReply ? 1 : 0, newRecipients: isNewRecipient ? 1 : 0 } },
     { new: true }
   );
 
   if (!updated) {
+    if (newPerDay) {
+      const usage = await VtextLineUsage.findOne({ lineId: line._id, day }).select("newRecipients").lean();
+      if ((usage?.newRecipients || 0) >= newPerDay) return { ok: false, reason: "new-conversations-per-day limit reached" };
+    }
     return { ok: false, reason: isReply ? "daily cap reached" : "cold-send cap reached (reply reserve exhausted)" };
   }
 
@@ -210,6 +220,14 @@ async function peekNewRecipientCount(lineId) {
   return redis.zcard(key);
 }
 
+/** True when the line has used up today's new conversations (only for channels that set newRecipientsPerDay). */
+async function newRecipientsFullToday(line) {
+  const limit = limitsFor(line).newRecipientsPerDay;
+  if (!(limit > 0)) return false;
+  const usage = await VtextLineUsage.findOne({ lineId: line._id, day: dayKey() }).select("newRecipients").lean();
+  return (usage?.newRecipients || 0) >= limit;
+}
+
 module.exports = {
   DAY_TZ,
   THROTTLE_MULTIPLIER,
@@ -228,4 +246,5 @@ module.exports = {
   remainingToday,
   remainingForSend,
   peekNewRecipientCount,
+  newRecipientsFullToday,
 };

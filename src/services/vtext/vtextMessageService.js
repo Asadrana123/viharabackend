@@ -13,6 +13,7 @@ const { canSend, logGateDecision } = require("./vtextComplianceService");
 const { getSettings, isConsentRequired } = require("./vtextSettingsService");
 const { normalizeInternationalPhone } = require("../../utils/internationalPhone");
 const { findLeadRefs, consentFromRef, applyLeadConsent } = require("./vtextLeadLookupService");
+const { applyRichContentRule } = require("./vtextRichContentGate");
 const Errorhandler = require("../../utils/errorhandler");
 
 function normalizeAddress(raw) {
@@ -25,6 +26,8 @@ function normalizeAddress(raw) {
  * @param {object} params
  * @param {string} params.to - phone (any format) or email
  * @param {string} params.body
+ * @param {string} [params.bodyWithoutLinks] - what to send instead when `body` has a link and the person has never replied (vtextRichContentGate); without it such a text is blocked
+ * @param {{file: string, label?: string}} [params.media] - an image; only sent once the person has replied, otherwise `body` goes alone
  * @param {object} [params.origin] - { kind, sentBy, batchId, campaignId, replyToMessageId }
  * @param {object} [params.channelPolicy] - { mode, channels }
  * @param {boolean} [params.isReplyToInbound]
@@ -34,12 +37,12 @@ function normalizeAddress(raw) {
  * @param {string} [params.contactName] - admin-provided name (e.g. typed into a bulk-send row), takes priority over a lead-lookup match when a NEW contact is created
  * @returns {Promise<{ message: object, blocked: boolean, reason?: string }>}
  */
-async function enqueueOutbound({ to: rawTo, body, media, origin, channelPolicy, isReplyToInbound, idempotencyKey, scheduledFor, contactName, fallbackOf }) {
+async function enqueueOutbound({ to: rawTo, body: givenBody, bodyWithoutLinks, media: givenMedia, origin, channelPolicy, isReplyToInbound, idempotencyKey, scheduledFor, contactName, fallbackOf }) {
   const to = normalizeAddress(rawTo);
   if (!to) {
     throw new Errorhandler("to is not a valid US phone number or email address", 400);
   }
-  if (!body || typeof body !== "string") {
+  if (!givenBody || typeof givenBody !== "string") {
     throw new Errorhandler("body is required", 400);
   }
 
@@ -74,13 +77,20 @@ async function enqueueOutbound({ to: rawTo, body, media, origin, channelPolicy, 
     await applyLeadConsent(contact, await findLeadRefs(to));
   }
 
+  // No links or images before the person has written back (vtextRichContentGate.js).
+  const rich = await applyRichContentRule({ contact, body: givenBody, bodyWithoutLinks, media: givenMedia });
+  const { body, media } = rich;
+  if (rich.changes.length) console.log(`[vtext enqueue] ${contact._id}: ${rich.changes.join(", ")}`);
+
   // See routeWorker.js's matching call for why lastInboundAt is passed here too.
   const settings = await getSettings();
-  const complianceResult = canSend(
-    contact,
-    { isReplyToInbound, origin },
-    { lastInboundAt: contact.lastInboundAt, requireConsent: isConsentRequired(settings) }
-  );
+  const complianceResult = rich.blockReason
+    ? { allowed: false, reason: rich.blockReason, errorKind: "compliance", errorCode: "link-before-reply" }
+    : canSend(
+        contact,
+        { isReplyToInbound, origin },
+        { lastInboundAt: contact.lastInboundAt, requireConsent: isConsentRequired(settings) }
+      );
 
   const message = await VtextMessage.create({
     direction: "out",
@@ -97,7 +107,9 @@ async function enqueueOutbound({ to: rawTo, body, media, origin, channelPolicy, 
     fallbackOf: fallbackOf || undefined,
     scheduledFor: scheduledFor || undefined,
     queuedAt: complianceResult.allowed ? new Date() : undefined,
-    error: complianceResult.allowed ? undefined : { kind: complianceResult.errorKind, message: complianceResult.reason },
+    error: complianceResult.allowed
+      ? undefined
+      : { kind: complianceResult.errorKind, code: complianceResult.errorCode, message: complianceResult.reason },
   });
   logGateDecision("enqueue", contact, complianceResult, message._id);
 

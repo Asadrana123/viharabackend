@@ -39,6 +39,7 @@ const vtextLineSchema = new mongoose.Schema(
       perMinute: { type: Number },
       perDay: { type: Number },
       newRecipientsPerHour: { type: Number },
+      newRecipientsPerDay: { type: Number }, // unset -> the channel's default (iMessage 50; SMS channels have none)
       replyReservePct: { type: Number },
       jitterMs: {
         min: { type: Number },
