@@ -10,6 +10,7 @@
 //   - no delivery confirmation and the fallback waits for a person ("verify" mode): ✋ with what to click.
 //   - a Twilio send that may or may not have gone out: ⚠️.
 //   - a text that was never sent (its send job was lost) or gave up after its retries: 🔴.
+//   - a text blocked because it has a link and the lead has never replied (link-before-reply): ✋.
 //   - Twilio's "opted out" (21610) posts nothing here: the opt-out alert already covers it.
 //
 // Each text is claimed once, atomically (problemAlert.at), so a repeated receipt or a second trigger never posts
@@ -26,6 +27,7 @@ const unconfirmedMinutes = () => Number(process.env.VTEXT_UNCONFIRMED_MIN || 10)
 
 const NO_RECEIPT = "no-receipt";
 const STUCK_ASSIGNED = "stuck-assigned";
+const LINK_BEFORE_REPLY = "link-before-reply"; // blocked in enqueueOutbound (vtextRichContentGate)
 const NOT_ALERTED_CODES = new Set(["OPTED_OUT", "21610"]); // the opt-out alert says it
 
 /** Which text this was, in words: "First text: Partner Program form", "Cal.com call reminder", "Sent by hand by Adi"... */
@@ -68,6 +70,8 @@ function whatWentWrong(message) {
     MESSAGE_SEND_ERROR: "The Mac's Messages app could not send it. This usually means the number is not on iMessage.",
     INVALID_RECIPIENT: "iMessage would not accept this number.",
     [NO_RECEIPT]: `iMessage sent it, but no delivery confirmation came back within ${unconfirmedMinutes()} minutes. Usually the number is not on iMessage, or the phone is off.`,
+    [LINK_BEFORE_REPLY]:
+      "It has a link, and links only go to people who have replied to us. This lead hasn't replied yet. Sending links to strangers is one of the main things that gets an iMessage line flagged by Apple.",
     [STUCK_ASSIGNED]: "It was never sent: its send job was lost (a Redis outage or restart) and it waited too long to send late.",
     UNCERTAIN: "The send to Twilio was cut off, so the SMS may or may not have gone out. It was not retried, so they are not texted twice.",
     30003: "SMS not delivered: the phone is off or out of service (Twilio 30003).",
@@ -109,6 +113,15 @@ async function describe(message, { fallback } = {}) {
   const wentWrong = whatWentWrong(message);
   const failedTab = `<${adminTabUrl("failed")}|Vtext → Failed>`;
 
+  if (code === LINK_BEFORE_REPLY) {
+    return {
+      icon: ICON.needsPerson,
+      level: "warning",
+      title: "Text blocked: it has a link and the lead hasn't replied yet",
+      wentWrong,
+      todo: "Nothing was sent. Send it again without the link, or wait until they reply, then send the link.",
+    };
+  }
   if (code === "UNCERTAIN") {
     return { icon: ICON.uncertain, level: "warning", title: "Text may or may not have gone out", wentWrong, todo: `Check the thread. If they did not get it, resend it by hand from ${failedTab}.` };
   }

@@ -119,6 +119,10 @@ async function enqueueOutbound({ to: rawTo, body: givenBody, bodyWithoutLinks, m
   }
 
   if (!complianceResult.allowed) {
+    // A link held back for a lead who hasn't replied goes to Slack, so someone sees it. Not awaited; never throws.
+    if (rich.blockReason) {
+      require("./vtextTextProblemAlert").reportTextProblem(message._id);
+    }
     return { message, blocked: true, reason: complianceResult.reason };
   }
 

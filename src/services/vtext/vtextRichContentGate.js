@@ -25,7 +25,7 @@ const LINK_RE =
 const REACTION_RE =
   /^\s*(?:Loved|Liked|Disliked|Laughed at|Emphasized|Questioned|Reacted .{1,12} to|Removed an? .{1,30} from) [“"]/;
 
-const BLOCK_REASON = "has a link, and links only go to someone who has replied to us";
+const BLOCK_REASON = "it has a link, and links only go to people who have replied to us (this lead hasn't yet)";
 
 /** True when the text has something Messages or a carrier would treat as a link. */
 function hasLink(body) {

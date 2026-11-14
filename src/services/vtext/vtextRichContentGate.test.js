@@ -93,7 +93,7 @@ test("Cal.com reminder: the link-free version has no links", () => {
   assert.equal(hasLink(reminderText({ ...base, meetingUrl: "https://meet.google.com/abc", uid: "xyz" })), true);
   const plain = reminderText({ ...base, meetingUrl: "", uid: "" });
   assert.equal(hasLink(plain), false);
-  assert.match(plain, /video link is in your calendar invite/);
+  assert.match(plain, /Your video call link is in your calendar invite\./);
 });
 
 test("follow-ups: 3 text-only steps on days 1, 3 and 6, no links, no images", () => {
@@ -123,4 +123,21 @@ test("follow-ups: a sequence already 2 old steps in only has the day-6 text left
     { step: 1, day: "2026-11-11" },
     { step: 2, day: "2026-11-13" },
   ]);
+});
+
+test("a blocked link text gets a clear Slack alert", async () => {
+  const { describe: describeProblem, whatWentWrong } = require("./vtextTextProblemAlert");
+  const message = {
+    direction: "out",
+    status: "blocked",
+    body: "Register: https://vihara.ai/listing/x",
+    origin: { kind: "automation", templateKey: "toorak-nov15-update" },
+    error: { kind: "compliance", code: "link-before-reply", message: BLOCK_REASON },
+  };
+  const info = await describeProblem(message);
+  assert.equal(info.title, "Text blocked: it has a link and the lead hasn't replied yet");
+  assert.match(info.wentWrong, /links only go to people who have replied/);
+  assert.match(info.todo, /without the link/);
+  assert.equal(info.sms, undefined);
+  assert.match(whatWentWrong(message), /hasn't replied yet/);
 });
