@@ -578,7 +578,7 @@ function cleanChats(list) {
   });
 }
 
-const CHAT_ACTIONS = new Set(["maya", "timeline", "music", "shot"]);
+const CHAT_ACTIONS = new Set(["maya", "timeline", "music", "shot", "sound"]);
 
 /**
  * A change Claude wrote in the chat that the Studio can make at once, after the editor clicks Apply (D-051): what
@@ -589,6 +589,7 @@ function cleanChatAction(a) {
   if (!a || typeof a !== "object" || !CHAT_ACTIONS.has(a.type)) return null;
   const label = clip(a.label, 200) || "Apply this change";
   if (a.type === "maya") return { type: "maya", label, beat: clip(a.beat, 40), id: clip(a.id, 40), ...(a.pose ? { pose: clip(a.pose, 300) } : {}), ...(a.gesture ? { gesture: clip(a.gesture, 300) } : {}), ...(MAYA_ENERGY.includes(a.energy) ? { energy: a.energy } : {}) };
+  if (a.type === "sound") return typeof a.sfx === "boolean" ? { type: "sound", label, sfx: a.sfx } : null;
   if (a.type === "music") return { type: "music", label, track: a.track ? clip(a.track, 80) : null, ...(a.volume != null ? { volume: Number(a.volume) || 0.16 } : {}) };
   if (a.type === "shot") return { type: "shot", label, ref: clip(a.ref, 120), ...(a.camera ? { camera: clip(a.camera, 40) } : {}), ...(a.image ? { image: clip(a.image, 40) } : {}) };
   const beats = Array.isArray(a.beats) ? a.beats.slice(0, 20).map((b) => ({ id: clip(b?.id, 40), ...(b?.pause != null ? { pause: Number(b.pause) } : {}), ...(Array.isArray(b?.shots) ? { shots: b.shots.slice(0, 20).map((s) => ({ id: clip(s?.id, 40), seconds: Number(s?.seconds) })) } : {}) })) : [];
