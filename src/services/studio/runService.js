@@ -75,6 +75,8 @@ function cleanTimeline(t) {
       pause: secs(b?.pause),
       hold: secs(b?.hold),
       line: clip(b?.line, 800),
+      captionText: clip(b?.caption_text ?? b?.line, 800),
+      headline: Array.isArray(b?.headline) && b.headline.length === 2 ? [clip(b.headline[0], 120), clip(b.headline[1], 120)] : null,
       shots: Array.isArray(b?.shots)
         ? b.shots.slice(0, 20).map((s) => ({ id: clip(s?.id, 40), ref: clip(s?.ref, 120), kind: SHOT_KINDS.has(s?.kind) ? s.kind : "photo", label: clip(s?.label, 120), start: secs(s?.start), duration: secs(s?.duration), clipSeconds: s?.clip_seconds == null ? null : secs(s.clip_seconds), movable: Boolean(s?.movable), trimIn: secs(s?.trim_in) }))
         : [],
@@ -121,6 +123,8 @@ function cleanUpdate(u) {
         : [],
       // The last cut scene by scene, for the timeline (Dinesh, 2026-11-12); null before it is built.
       timeline: cleanTimeline(u?.timeline),
+      // The last change, which Undo takes back (Dinesh, 2026-11-14); null when there is none.
+      undo: u?.undo && typeof u.undo === "object" ? { what: clip(u.undo.what, 400), at: clip(u.undo.at, 40), by: clip(u.undo.by, 80), count: Math.max(0, Math.min(999, Number(u.undo.count) || 0)) } : null,
       // The music now and the tracks to choose from (D-051).
       music: cleanMusic(u?.music),
       framesPrice: Number(u?.framesPrice) || 0,
@@ -328,7 +332,20 @@ function timelineCommand(run, body) {
         return { id: String(s.id), seconds: Math.round(seconds * 100) / 100, trim_in: Math.round(trimIn * 10) / 10 };
       });
     }
-    if (out.pause !== undefined || out.shots) beats.push(out);
+    // The words on screen (Dinesh, 2026-11-14: "we want to change spelling also"): the captions and the headline.
+    // The Creative OS checks them like any line (no typed figures, no restricted words) before the plan changes.
+    if (typeof b.captions === "string") {
+      const text = b.captions.replace(/\s+/g, " ").trim();
+      if (!text || text.length > 600) throw new Error("The captions of a scene are 1 to 600 characters.");
+      if (text !== known.captionText) out.captions = text;
+    }
+    if (Array.isArray(b.headline)) {
+      if (!known.headline) throw new Error("This scene has no headline to change.");
+      const lines = b.headline.slice(0, 2).map((l) => String(l ?? "").replace(/\s+/g, " ").trim());
+      if (lines.length !== 2 || lines.some((l) => !l || l.length > 80)) throw new Error("A headline is two lines of 1 to 80 characters.");
+      if (lines[0] !== known.headline[0] || lines[1] !== known.headline[1]) out.headline = lines;
+    }
+    if (out.pause !== undefined || out.shots || out.captions !== undefined || out.headline) beats.push(out);
   }
   if (!beats.length) throw new Error("Nothing was changed on the timeline. Change a shot's length, its order or a pause, then apply.");
   return { command: { type: "timeline", data: { beats } }, state: "building" };
@@ -473,8 +490,14 @@ function clipCommand(run, body) {
   const ref = String(body?.ref ?? "");
   const target = list.find((c) => c.ref === ref);
   if (!target) throw new Error(`There is no ${board ? "frame" : "clip"} ${ref}.`);
-  if (target.state !== "pending") throw new Error(`This ${board ? "frame" : "clip"} is already ${target.state}.`);
   const decision = String(body?.decision ?? "");
+  if (decision === "undo") {
+    // Dinesh, 2026-11-14: "there's no undo option. Or i can't cancel". Back to "to check", until it is made again.
+    if (target.state === "pending") throw new Error(`This ${board ? "frame" : "clip"} has no decision to take back.`);
+    const updated = list.map((c) => (c.ref === ref ? { ...c, state: "pending", note: null } : c));
+    return { command: { type: "clip", choice: ref, decision: "undo" }, state: run.state, ...(board ? { frames: updated } : { clips: updated }) };
+  }
+  if (target.state !== "pending") throw new Error(`This ${board ? "frame" : "clip"} is already ${target.state}.`);
   if (decision !== "approve" && decision !== "reject") throw new Error("Approve or reject.");
   const words = String(body?.words ?? "").trim();
   if (decision === "reject" && !words) throw new Error(`Say what is wrong with this ${board ? "frame" : "clip"}.`);
@@ -482,6 +505,19 @@ function clipCommand(run, body) {
   // Shown at once; the server records it and confirms on its next round.
   const updated = list.map((c) => (c.ref === ref ? { ...c, state, note: words || null } : c));
   return { command: { type: "clip", choice: ref, decision, words: words.slice(0, MAX_WORDS) }, state: run.state, ...(board ? { frames: updated } : { clips: updated }) };
+}
+
+/** States where the last change can be undone: after the plan is approved, before the video is finished. */
+const UNDO_STATES = ["approved", "frames", "storyboard", "clips", "ready-to-build", "cut"];
+
+/**
+ * Undo (Dinesh, 2026-11-14: "if we have done some changes and we don't like it, and we think the previous version
+ * was better, there's no undo option"): back to the version before the last change.
+ */
+function undoCommand(run) {
+  if (!UNDO_STATES.includes(run.state)) throw new Error("A change can be undone after the plan is approved and before the video is finished.");
+  if (!run.undo) throw new Error("There is no earlier version of this video to go back to.");
+  return { command: { type: "undo" }, state: "updating" };
 }
 
 /** Make the rejected clips again, in the words of their rejection, at the price shown (D-046). */
@@ -638,4 +674,4 @@ function cleanSlot(slot) {
   return s;
 }
 
-module.exports = { cleanTrack, trackRightsCommand, musicCommand, cleanMusic, mayaCommand, timelineCommand, cleanMaya, cleanTimeline, chatMessage, cleanChats, CHAT_TYPES, layersCommand, reopenCommand, REOPEN_FROM, soundCommand, CUT_LAYERS, viewCommand, retryCommand, cleanCraft, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, VIDEO_LIMIT_USD, CLAUDE_MODELS, cleanModel, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };
+module.exports = { undoCommand, UNDO_STATES, cleanTrack, trackRightsCommand, musicCommand, cleanMusic, mayaCommand, timelineCommand, cleanMaya, cleanTimeline, chatMessage, cleanChats, CHAT_TYPES, layersCommand, reopenCommand, REOPEN_FROM, soundCommand, CUT_LAYERS, viewCommand, retryCommand, cleanCraft, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, VIDEO_LIMIT_USD, CLAUDE_MODELS, cleanModel, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };

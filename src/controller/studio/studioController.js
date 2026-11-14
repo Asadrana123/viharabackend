@@ -21,7 +21,7 @@ const { keyMatches, cleanBatch, cleanFeedback, undelivered } = require("../../se
 const { storage, cleanCut, uploadUrl, viewUrl, storedBytes, putObject } = require("../../services/studio/cutStorage");
 const { cleanProposals, decideProblem, canSee, cleanDecision, undeliveredDecisions } = require("../../services/studio/proposalService");
 const { cleanProblem, cleanReply, problemView } = require("../../services/studio/problemService");
-const { cleanTrack, trackRightsCommand, musicCommand, mayaCommand, timelineCommand, chatMessage, cleanChats, layersCommand, reopenCommand, soundCommand, viewCommand, retryCommand, newRunId, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, cleanModel, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage } = require("../../services/studio/runService");
+const { undoCommand, cleanTrack, trackRightsCommand, musicCommand, mayaCommand, timelineCommand, chatMessage, cleanChats, layersCommand, reopenCommand, soundCommand, viewCommand, retryCommand, newRunId, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, cleanModel, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage } = require("../../services/studio/runService");
 
 const KEY = /^[a-z][a-z0-9-]{1,30}$/;
 
@@ -361,6 +361,7 @@ const clipForRun = runStep(clipCommand);
 const buildForRun = runStep(buildCommand);
 const cutForRun = runStep(cutCommand);
 const soundForRun = runStep(soundCommand);
+const undoForRun = runStep(undoCommand);
 const reopenForRun = runStep(reopenCommand);
 const layersForRun = runStep(layersCommand);
 // D-047: the editor's own concept, craft, hook, voiceover lines and camera moves.
@@ -660,4 +661,4 @@ const syncVideos = catchAsyncError(async (req, res, next) => {
   res.status(200).json({ success: true, stored: rows.length, feedback: undelivered(pending), decisions });
 });
 
-module.exports = { trackForRun, trackRightsForRun, musicForRun, mayaForRun, timelineForRun, chatForRun, layersForRun, reopenForRun, soundForRun, viewForRun, retryForRun, me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, importInterview, updateQuestions, listVideos, addVideoFeedback, syncVideos, requireSyncKey, cutLink, confirmCut, listProposals, decideStudioProposal, listRuns, startRun, setRunModel, pickForRun, gateForRun, generateForRun, framesForRun, remakeForRun, clipForRun, buildForRun, cutForRun, ideaForRun, craftForRun, hookForRun, voForRun, shotForRun, imageForRun, pollRuns, fileLink, confirmFile, listProblems, reportProblem, resolveProblem };
+module.exports = { undoForRun, trackForRun, trackRightsForRun, musicForRun, mayaForRun, timelineForRun, chatForRun, layersForRun, reopenForRun, soundForRun, viewForRun, retryForRun, me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, importInterview, updateQuestions, listVideos, addVideoFeedback, syncVideos, requireSyncKey, cutLink, confirmCut, listProposals, decideStudioProposal, listRuns, startRun, setRunModel, pickForRun, gateForRun, generateForRun, framesForRun, remakeForRun, clipForRun, buildForRun, cutForRun, ideaForRun, craftForRun, hookForRun, voForRun, shotForRun, imageForRun, pollRuns, fileLink, confirmFile, listProblems, reportProblem, resolveProblem };

@@ -123,3 +123,25 @@ test("a moving clip is trimmed at its start; a photograph is not (Dinesh, 2026-1
   assert.throws(() => timelineCommand(r, { beats: [{ id: "b2", shots: [{ id: "s1", seconds: 2, trimIn: 4.8 }, { id: "s2", seconds: 2 }] }] }), /0 to 4.5 s/);
   assert.throws(() => timelineCommand(r, { beats: [{ id: "b2", shots: [{ id: "s1", seconds: 2 }, { id: "s2", seconds: 2, trimIn: 1 }] }] }), /Only a moving clip/);
 });
+
+test("the captions' spelling and the headline change on the timeline (Dinesh, 2026-11-14)", () => {
+  const words = { ...timeline, beats: [{ id: "hook", captionText: "Think you cant afford it?", headline: ["Big house", "Small price"], shots: [{ id: "presenter", movable: false }] }, timeline.beats[1]] };
+  const r = run({ state: "cut", timeline: words });
+  const step = timelineCommand(r, { beats: [{ id: "hook", captions: "Think you can't  afford it?", headline: ["Big house", "Smaller price"] }] });
+  assert.deepEqual(step.command.data.beats, [{ id: "hook", captions: "Think you can't afford it?", headline: ["Big house", "Smaller price"] }]);
+  assert.throws(() => timelineCommand(r, { beats: [{ id: "hook", captions: "Think you cant afford it?" }] }), /Nothing was changed/);
+  assert.throws(() => timelineCommand(r, { beats: [{ id: "b2", headline: ["a", "b"] }] }), /no headline/);
+  assert.throws(() => timelineCommand(r, { beats: [{ id: "hook", headline: ["a", ""] }] }), /two lines/);
+});
+
+test("undo takes back the last change, and a clip's decision can be taken back (Dinesh, 2026-11-14)", () => {
+  const { undoCommand, clipCommand } = require("./runService");
+  assert.deepEqual(undoCommand(run({ state: "cut", undo: { what: "x", at: "t", by: "Dinesh", count: 1 } })), { command: { type: "undo" }, state: "updating" });
+  assert.throws(() => undoCommand(run({ state: "cut", undo: null })), /no earlier version/);
+  assert.throws(() => undoCommand(run({ state: "done", undo: { what: "x" } })), /before the video is finished/);
+  const frames = [{ ref: "hook/still", state: "rejected", note: "can she be inside the house" }];
+  const step = clipCommand(run({ state: "storyboard", frames }), { ref: "hook/still", decision: "undo" });
+  assert.equal(step.command.decision, "undo");
+  assert.deepEqual(step.frames, [{ ref: "hook/still", state: "pending", note: null }]);
+  assert.throws(() => clipCommand(run({ state: "storyboard", frames: [{ ref: "hook/still", state: "pending" }] }), { ref: "hook/still", decision: "undo" }), /no decision to take back/);
+});

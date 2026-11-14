@@ -10,7 +10,7 @@ const mongoose = require("mongoose");
 
 const commandSchema = new mongoose.Schema(
   {
-    type: { type: String, enum: ["open", "pick", "gate", "frames", "generate", "remake", "clip", "build", "cut", "idea", "craft", "hook", "vo", "shot", "image", "retry", "view", "sound", "reopen", "layers", "chat", "maya", "timeline", "music", "track"], required: true },
+    type: { type: String, enum: ["open", "pick", "gate", "frames", "generate", "remake", "clip", "build", "cut", "idea", "craft", "hook", "vo", "shot", "image", "retry", "view", "sound", "reopen", "layers", "chat", "maya", "timeline", "music", "track", "undo"], required: true },
     what: { type: String, default: null },
     choice: { type: String, default: null },
     decision: { type: String, default: null },
@@ -71,6 +71,8 @@ const runSchema = new mongoose.Schema(
     chat: { type: [mongoose.Schema.Types.Mixed], default: [] },
     // The last cut scene by scene, for the Studio's timeline (Dinesh, 2026-11-12); null before it is built.
     timeline: { type: mongoose.Schema.Types.Mixed, default: null },
+    // The last change, which Undo takes back (Dinesh, 2026-11-14); null when there is none.
+    undo: { type: mongoose.Schema.Types.Mixed, default: null },
     // The music now and the tracks to choose from (D-051).
     music: { type: mongoose.Schema.Types.Mixed, default: null },
     // The stuck error last reported to the Problems page, so it is reported once.

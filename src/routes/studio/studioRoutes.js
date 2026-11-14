@@ -46,6 +46,7 @@ router.post("/runs/:id/cut", c.cutForRun);
 router.post("/runs/:id/idea", c.ideaForRun);
 router.post("/runs/:id/craft", c.craftForRun);
 router.post("/runs/:id/sound", c.soundForRun);
+router.post("/runs/:id/undo", c.undoForRun);
 router.post("/runs/:id/reopen", c.reopenForRun);
 router.post("/runs/:id/layers", c.layersForRun);
 router.post("/runs/:id/chat", chatUpload.array("files", 5), c.chatForRun);
