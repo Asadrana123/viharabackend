@@ -298,6 +298,11 @@ function mayaCommand(run, body) {
 }
 
 const TIMELINE_STATES = ["cut", "revision", "ready-to-build"];
+/** The free moves of a still photograph (the Creative OS's MOVES). */
+const PHOTO_MOVES = ["push-in", "pull-out", "pan-left", "pan-right", "rise"];
+/** How long the editor may hold the logo end screen (D-054). */
+const OUTRO_MIN = 2.2;
+const OUTRO_MAX = 5;
 
 /**
  * The editor's timing on the timeline (Dinesh, 2026-11-12): each changed scene's pause and its shots' lengths and
@@ -318,11 +323,23 @@ function timelineCommand(run, body) {
     }
     if (Array.isArray(b.shots)) {
       const movable = known.shots.filter((s) => s.movable).map((s) => s.id);
-      const ids = b.shots.map((s) => String(s?.id ?? ""));
-      if (ids.length !== movable.length || new Set(ids).size !== ids.length || ids.some((id) => !movable.includes(id))) throw new Error(`The shots of "${known.id}" have changed. Click Refresh from server, then make your change again.`);
-      out.shots = b.shots.map((s) => {
+      const ids = b.shots.slice(0, 20).map((s) => String(s?.id ?? ""));
+      // A shot added on the timeline has an id starting "new-" (Dinesh, 2026-11-16); one left out is taken out.
+      const isNew = (id) => /^new-\d{1,3}$/.test(id);
+      if (new Set(ids).size !== ids.length || ids.some((id) => !movable.includes(id) && !isNew(id))) throw new Error(`The shots of "${known.id}" have changed. Click Refresh from server, then make your change again.`);
+      if (!ids.length) throw new Error("A scene keeps at least one shot.");
+      if (!movable.length && ids.some(isNew)) throw new Error("This scene is Maya's alone, so a shot cannot be added to it.");
+      const photos = new Set((run.photos ?? []).map((p) => p.id));
+      out.shots = b.shots.slice(0, 20).map((s) => {
         const seconds = Number(s.seconds);
         if (!Number.isFinite(seconds) || seconds < 0.3 || seconds > 20) throw new Error(`A shot is 0.3 to 20 seconds long.`);
+        if (isNew(String(s.id))) {
+          const image = String(s.image ?? "");
+          if (!photos.has(image)) throw new Error("Choose one of the property's approved photographs for the new shot.");
+          const move = s.move === undefined || s.move === null ? "push-in" : String(s.move);
+          if (!PHOTO_MOVES.includes(move)) throw new Error(`A photograph's move is one of: ${PHOTO_MOVES.join(", ")}.`);
+          return { id: String(s.id), seconds: Math.round(seconds * 100) / 100, image, move };
+        }
         // The editor's trim (Dinesh, 2026-11-14): seconds cut from the start of a moving clip.
         if (s.trimIn === undefined || s.trimIn === null) return { id: String(s.id), seconds: Math.round(seconds * 100) / 100 };
         const shot = known.shots.find((x) => x.id === String(s.id));
@@ -347,8 +364,15 @@ function timelineCommand(run, body) {
     }
     if (out.pause !== undefined || out.shots || out.captions !== undefined || out.headline) beats.push(out);
   }
-  if (!beats.length) throw new Error("Nothing was changed on the timeline. Change a shot's length, its order or a pause, then apply.");
-  return { command: { type: "timeline", data: { beats } }, state: "building" };
+  // The logo end screen's length, 2.2 to 5 s (D-054, Asad Rana, 2026-11-16).
+  let outro;
+  if (body?.outro !== undefined && body?.outro !== null) {
+    outro = Math.round(Number(body.outro) * 10) / 10;
+    if (!Number.isFinite(outro) || outro < OUTRO_MIN || outro > OUTRO_MAX) throw new Error(`The logo at the end holds for ${OUTRO_MIN} to ${OUTRO_MAX} seconds.`);
+    if (Math.abs(outro - (run.timeline.outro ?? 0)) < 0.05) outro = undefined;
+  }
+  if (!beats.length && outro === undefined) throw new Error("Nothing was changed on the timeline. Change a shot's length, its order, a pause or the logo's length, then apply.");
+  return { command: { type: "timeline", data: { beats, ...(outro !== undefined ? { outro } : {}) } }, state: "building" };
 }
 
 const MUSIC_STATES = ["approved", "frames", "storyboard", "clips", "ready-to-build", "cut", "revision"];

@@ -38,7 +38,8 @@ test("the timing changes a scene's pause and its shots' lengths and order, once 
   assert.throws(() => timelineCommand(r, { beats: [{ id: "hook" }] }), /Nothing was changed/);
   assert.throws(() => timelineCommand(r, { beats: [{ id: "b9", pause: 0.2 }] }), /no scene "b9"/);
   assert.throws(() => timelineCommand(r, { beats: [{ id: "b2", pause: 3 }] }), /0 to 2 seconds/);
-  assert.throws(() => timelineCommand(r, { beats: [{ id: "b2", shots: [{ id: "s1", seconds: 2 }] }] }), /have changed/);
+  assert.throws(() => timelineCommand(r, { beats: [{ id: "b2", shots: [{ id: "s3", seconds: 2 }] }] }), /have changed/);
+  assert.throws(() => timelineCommand(r, { beats: [{ id: "b2", shots: [{ id: "s1", seconds: 2 }, { id: "s1", seconds: 2 }] }] }), /have changed/);
   assert.throws(() => timelineCommand(r, { beats: [{ id: "hook", shots: [{ id: "presenter", seconds: 2 }] }] }), /have changed/);
   assert.throws(() => timelineCommand(r, { beats: [{ id: "b2", shots: [{ id: "s1", seconds: 0.1 }, { id: "s2", seconds: 2 }] }] }), /0.3 to 20/);
   assert.throws(() => timelineCommand({ ...r, state: "storyboard" }, { beats: [{ id: "b2", pause: 0.2 }] }), /once the video is put together/);
@@ -122,6 +123,21 @@ test("a moving clip is trimmed at its start; a photograph is not (Dinesh, 2026-1
   assert.deepEqual(step.command.data.beats[0].shots, [{ id: "s1", seconds: 2, trim_in: 1.2 }, { id: "s2", seconds: 2 }]);
   assert.throws(() => timelineCommand(r, { beats: [{ id: "b2", shots: [{ id: "s1", seconds: 2, trimIn: 4.8 }, { id: "s2", seconds: 2 }] }] }), /0 to 4.5 s/);
   assert.throws(() => timelineCommand(r, { beats: [{ id: "b2", shots: [{ id: "s1", seconds: 2 }, { id: "s2", seconds: 2, trimIn: 1 }] }] }), /Only a moving clip/);
+});
+
+test("a shot is added from an approved photograph or taken out, and the logo holds 2.2 to 5 s (Dinesh, 2026-11-16; D-054)", () => {
+  const r = run({ state: "cut", timeline, photos: [{ id: "img-03", kind: "original", slot: "photo-img-03" }] });
+  const step = timelineCommand(r, { beats: [{ id: "b2", shots: [{ id: "s1", seconds: 2 }, { id: "new-1", seconds: 1.5, image: "img-03", move: "pan-left" }] }], outro: 3.46 });
+  assert.deepEqual(step.command.data, { beats: [{ id: "b2", shots: [{ id: "s1", seconds: 2 }, { id: "new-1", seconds: 1.5, image: "img-03", move: "pan-left" }] }], outro: 3.5 });
+  assert.equal(timelineCommand(r, { beats: [{ id: "b2", shots: [{ id: "new-1", seconds: 2, image: "img-03" }] }] }).command.data.beats[0].shots[0].move, "push-in");
+  assert.throws(() => timelineCommand(r, { beats: [{ id: "b2", shots: [{ id: "new-1", seconds: 2, image: "img-09" }] }] }), /approved photographs/);
+  assert.throws(() => timelineCommand(r, { beats: [{ id: "b2", shots: [{ id: "new-1", seconds: 2, image: "img-03", move: "spin" }] }] }), /move is one of/);
+  assert.throws(() => timelineCommand(r, { beats: [{ id: "b2", shots: [] }] }), /at least one shot/);
+  assert.throws(() => timelineCommand(r, { beats: [{ id: "hook", shots: [{ id: "new-1", seconds: 2, image: "img-03" }] }] }), /Maya's alone/);
+  assert.deepEqual(timelineCommand(r, { beats: [], outro: 5 }).command.data, { beats: [], outro: 5 });
+  assert.throws(() => timelineCommand(r, { beats: [], outro: 2.2 }), /Nothing was changed/);
+  assert.throws(() => timelineCommand(r, { beats: [], outro: 6 }), /2.2 to 5 seconds/);
+  assert.throws(() => timelineCommand(r, { beats: [], outro: 1 }), /2.2 to 5 seconds/);
 });
 
 test("the captions' spelling and the headline change on the timeline (Dinesh, 2026-11-14)", () => {
