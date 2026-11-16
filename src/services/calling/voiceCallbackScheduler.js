@@ -58,7 +58,7 @@ async function sweepDueCallbacks() {
       if (num && dialedNumbers.has(num)) {
         await CallbackRequest.updateOne(
           { _id: cb._id, status: "pending" },
-          { $set: { nextCallAt: nextDailyCallAt(cb.timezone) } }
+          { $set: { nextCallAt: nextDailyCallAt(cb.timezone, cb.phone) } }
         );
         continue;
       }
@@ -69,7 +69,7 @@ async function sweepDueCallbacks() {
       const claimed = await CallbackRequest.findOneAndUpdate(
         { _id: cb._id, status: "pending", nextCallAt: { $lte: now } },
         {
-          $set: { nextCallAt: nextDailyCallAt(cb.timezone), lastCallAt: now },
+          $set: { nextCallAt: nextDailyCallAt(cb.timezone, cb.phone), lastCallAt: now },
           $inc: { attempts: 1 },
         },
         { new: true }

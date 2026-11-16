@@ -19,6 +19,7 @@
 
 const { DateTime } = require("luxon");
 const CallbackRequest = require("../../model/calling/callbackRequestModel");
+const { callTimezone } = require("../../utils/areaCodeTimezone");
 const { resolvePromptConfig } = require("./vapiPromptService");
 
 // Static funnel prompts for the brand-building pages. These funnels have NO
@@ -80,8 +81,9 @@ const BUYER_MATCH_SOURCE_PREFIX = "buyer-match:";
  * Next 1:32 PM in the given timezone, as a UTC Date. Today if it is still before
  * 1:32 PM there, otherwise tomorrow. DST-correct. Same helper as the schedulers.
  */
-function nextDailyCallAt(timezone) {
-  const zone = timezone || DEFAULT_TZ;
+function nextDailyCallAt(timezone, phone) {
+  // A US number's area code decides the zone (utils/areaCodeTimezone.callTimezone).
+  const zone = callTimezone(phone, timezone) || DEFAULT_TZ;
   let now = DateTime.now().setZone(zone);
   if (!now.isValid) now = DateTime.now().setZone(DEFAULT_TZ);
 
@@ -369,7 +371,7 @@ async function applyOutcome(cb, connected) {
   } else {
     await CallbackRequest.updateOne(
       { _id: cb._id },
-      { $set: { status: "pending", nextCallAt: nextDailyCallAt(cb.timezone) } }
+      { $set: { status: "pending", nextCallAt: nextDailyCallAt(cb.timezone, cb.phone) } }
     );
   }
 }

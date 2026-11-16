@@ -14,6 +14,7 @@
 // or, for everyone else, the lead's createdAt. N = CALL_FOLLOW_UP_DAYS (default 7).
 
 const { DateTime } = require("luxon");
+const { callTimezone } = require("../../utils/areaCodeTimezone");
 
 const CALL_SLOTS = [
   { hour: 11, minute: 0 },  // 11:00 AM
@@ -26,9 +27,10 @@ const FOLLOW_UP_DAYS = Math.max(1, parseInt(process.env.CALL_FOLLOW_UP_DAYS, 10)
 // Every call is a single dial — no 60s re-ring (only requested callbacks do that).
 const FOLLOW_UP_CALL_OPTS = { maxCalls: 1 };
 
-/** "now" in the lead's timezone, falling back to the page's, then Eastern. */
+/** "now" in the lead's timezone (a US phone's area code first, then the saved one), falling back to the page's, then Eastern. */
 function localNow(lead, defaultTz, now = new Date()) {
-  for (const zone of [lead.timezone, defaultTz, FALLBACK_TZ]) {
+  const leadTz = callTimezone(lead.phoneNormalized || lead.phone, lead.timezone);
+  for (const zone of [leadTz, defaultTz, FALLBACK_TZ]) {
     if (!zone) continue;
     const dt = DateTime.fromJSDate(now).setZone(zone);
     if (dt.isValid) return dt;

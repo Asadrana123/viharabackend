@@ -40,6 +40,7 @@ const { pollCallOutcome, DID_NOT_CONNECT_REASONS } = require("../calling/registr
 const { enqueueJob, PRIORITY } = require("../calling/callDispatchQueue");
 const { getUsageToday } = require("../calling/callerNumberPoolService");
 const { resolvePropertyTimezone } = require("../../utils/resolveTimezone");
+const { callTimezone } = require("../../utils/areaCodeTimezone");
 const { maskPhone } = require("../../utils/maskPii");
 
 // ─── Settings ──────────────────────────────────────────────────────────────
@@ -70,7 +71,9 @@ const validZone = (tz) => !!tz && DateTime.now().setZone(tz).isValid;
  * property's state (they're usually buying near home) → Eastern.
  */
 function buyerTimezone(leadDoc, property) {
-  if (validZone(leadDoc?.timezone)) return { tz: leadDoc.timezone, assumed: false };
+  // A US phone's area code wins over the browser zone (utils/areaCodeTimezone.callTimezone).
+  const tz = callTimezone(leadDoc?.phoneNormalized || leadDoc?.phone, leadDoc?.timezone);
+  if (validZone(tz)) return { tz, assumed: false };
   if (leadDoc?.state) return { tz: resolvePropertyTimezone({ state: leadDoc.state }), assumed: true };
   if (property?.state) return { tz: resolvePropertyTimezone({ state: property.state, zipCode: property.zipCode }), assumed: true };
   return { tz: DEFAULT_TZ, assumed: true };
