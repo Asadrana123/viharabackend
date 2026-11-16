@@ -232,6 +232,22 @@ export async function callIsLive() {
   }
 }
 
+/**
+ * Is the call still on? For watching a call in progress.
+ * Uses FaceTime's menu when it works (macOS 15). On macOS 27 the call runs in the Notification
+ * Center banner with the FaceTime app not running at all, so the menu always says "no call" and
+ * Maya was cut off 4 s into the call: there the banner is read instead (slow, up to ~25 s).
+ * @returns {Promise<boolean|null>} null = couldn't tell (the banner couldn't be read in time)
+ */
+export async function callStillOn() {
+  if (await callIsLive()) return true;
+  if (!lastLiveNote) return false; // the menu works on this Mac and says the call is over
+  const els = await dumpAll(callScreenTimeoutMs());
+  if (lastSkipped.includes("NotificationCenter")) return null;
+  const { state } = classify(els);
+  return state === "connected" || state === "ringing";
+}
+
 /** A live call whose ringing screen is gone means the person picked up. */
 export function withCallLive(read, live) {
   return live && read.state === "idle" ? { state: "connected", texts: read.texts } : read;
@@ -326,7 +342,9 @@ export async function dial(phone, { timeoutMs = Math.min(secondsFromEnv("DIAL_TI
         return;
       }
       const room = (deadline - Date.now() - 1000) / CALL_PROCESSES.length;
-      if (checks % 3 !== 0 || room < 1500) {
+      // A plain "false" from a working menu: check again soon. An error ("FaceTime not running" on
+      // macOS 27, where the call lives in the banner): the menu can't tell, so read the banner now.
+      if ((checks % 3 !== 0 && !lastLiveNote) || room < 1500) {
         log(`   ${at()} no live call yet${lastLiveNote ? ` [${lastLiveNote}]` : ""}`);
         await sleep(700);
         continue;
@@ -358,13 +376,20 @@ export async function quitFaceTime() {
 
 /** Ends the call: the End button if it can find it, quitting FaceTime either way. */
 export async function hangUp() {
+  let how = "no End button found";
   try {
     for (const proc of CALL_PROCESSES) {
-      if (await clickLabel(proc, defaultSignals.endButtonLabels)) break;
+      // 25 s: on macOS 27 the End button is in the Notification Center banner, which is slow to search,
+      // and a search cut off part-way jams macOS's screen reading.
+      if (await clickLabel(proc, defaultSignals.endButtonLabels, 25000)) {
+        how = `pressed End (in ${proc})`;
+        break;
+      }
     }
   } catch {
     // permissions problems surface elsewhere; quitting still ends the call
   }
   await sleep(800);
   await quitFaceTime();
+  return how;
 }

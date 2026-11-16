@@ -10,6 +10,7 @@ const defaults = {
   maxCallMs: 20 * 60 * 1000,
   watchEveryMs: 1000,
   goneAfterReads: 3, // this many "not connected" reads in a row = the call is gone
+  hangUpAfterReads: 2, // during the call: this many "call over" checks in a row = the person hung up
   answeredAfterReads: 2, // this many "connected" reads in a row = the person really picked up
 };
 
@@ -55,22 +56,30 @@ async function bridgeCall(job, link, { ui, backend, connect, log }, o) {
       if (!watching) return;
       if (Date.now() - startedAt > o.maxCallMs) return call.hangUp(`call reached the ${Math.round(o.maxCallMs / 60000)} minute limit`);
       try {
-        // During the call only "is it still live" matters. The quick menu check (callIsLive) is used
-        // when there is one: reading the call screen is slow then, and the load costs audio.
-        const live = ui.callIsLive ? await ui.callIsLive() : (await ui.readCallState()).state === "connected";
-        notConnected = live ? 0 : notConnected + 1;
+        // During the call only "is it still on" matters. callStillOn uses the quick menu check where
+        // it works and the call banner where it doesn't (macOS 27); null = couldn't tell, not counted.
+        const on = ui.callStillOn
+          ? await ui.callStillOn()
+          : ui.callIsLive
+            ? await ui.callIsLive()
+            : (await ui.readCallState()).state === "connected";
+        if (on === true) notConnected = 0;
+        if (on === false) notConnected += 1;
       } catch {
         notConnected += 1;
       }
-      if (notConnected >= o.goneAfterReads) return call.hangUp("the person hung up");
+      // Two "over" answers in a row: a banner read takes up to ~25 s on macOS 27, so three would
+      // leave Maya talking to no one for over a minute.
+      if (notConnected >= o.hangUpAfterReads) return call.hangUp("the person hung up");
     }
   })();
 
   const why = await call.done;
   watching = false;
   await watch;
-  await ui.hangUp(); // Maya ended it (or audio failed): end FaceTime too
-  log(`📴 Call over: ${why}`);
+  log(`📴 Call over: ${why}. Ending FaceTime…`);
+  const how = await ui.hangUp(); // Maya ended it (or audio failed): end FaceTime too
+  if (how) log(`   FaceTime: ${how}`);
   await backend.reportStatus(job.id, "ended", why);
   return { outcome: "ended", note: why };
 }
