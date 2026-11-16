@@ -29,6 +29,9 @@ async function waitForAnswer(ui, o, log = () => {}) {
     if (state !== lastState && ui.describeRead) log(`   ${ui.describeRead(read)}`);
     lastState = state;
     connectedReads = state === "connected" ? connectedReads + 1 : 0;
+    // The call timer next to End is only there once the person picked up: one read is enough.
+    // (A screen read on macOS 27 takes up to ~25 s, so waiting for a second one keeps them in silence.)
+    if (state === "connected" && read.byScreen) return { outcome: "connected", note: "" };
     if (connectedReads >= o.answeredAfterReads) return { outcome: "connected", note: "" };
     if (state === "declined") return { outcome: "declined", note: "FaceTime showed declined/busy" };
     if (state === "unavailable") return { outcome: "no-answer", note: "FaceTime showed unavailable" };

@@ -296,7 +296,7 @@ Once the Mac test passes, the agent can talk to the live backend instead of the 
 | Setting | Default | What it does |
 |---|---|---|
 | `DIAL_TIMEOUT_SECONDS` | 40 | How long dialling may take, from opening FaceTime to ringing. Capped at 42: after 45 s the backend sends a normal phone call instead, and the person would get both. |
-| `SCREEN_READ_SECONDS` | 3 | How long one read of a call screen may take. On macOS 27 reading Notification Center is slow (4-25 s); a higher value sees the ringing banner, but makes "answered" slower to notice. |
+| `SCREEN_READ_SECONDS` | 3 | How long one read of a call screen may take. **On macOS 27 set 25**: reading Notification Center takes 4-25 s there, and a read cut off part-way jams macOS's screen reading (the live-call check then says "no call" during a call, and soon nothing can be read). |
 | `RING_TIMEOUT_SECONDS` | 45 | How long it rings before counting as no answer. |
 | `MAX_CALL_MINUTES` | 20 | Longest call. |
 
