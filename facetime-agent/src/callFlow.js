@@ -16,13 +16,18 @@ const defaults = {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** @returns {Promise<{outcome: "connected"|"declined"|"no-answer", note: string}>} */
-async function waitForAnswer(ui, o) {
+async function waitForAnswer(ui, o, log = () => {}) {
   const deadline = Date.now() + o.ringTimeoutMs;
   let idleReads = 0;
   let connectedReads = 0;
+  let lastState = "";
   while (Date.now() < deadline) {
     await sleep(o.watchEveryMs);
-    const { state } = await ui.readCallState();
+    const read = await ui.readCallState();
+    const { state } = read;
+    // Each change of state, so a wrong "answered" / "no answer" can be traced afterwards.
+    if (state !== lastState && ui.describeRead) log(`   ${ui.describeRead(read)}`);
+    lastState = state;
     connectedReads = state === "connected" ? connectedReads + 1 : 0;
     if (connectedReads >= o.answeredAfterReads) return { outcome: "connected", note: "" };
     if (state === "declined") return { outcome: "declined", note: "FaceTime showed declined/busy" };
@@ -84,12 +89,12 @@ export async function runCall(job, deps, options = {}) {
   try {
     await ui.quitFaceTime(); // start from a clean FaceTime every time
     await report("dialing");
-    await ui.dial(job.phone);
+    await ui.dial(job.phone, { log });
     rang = true;
     await report("ringing");
     log("🔔 Ringing…");
 
-    const { outcome, note } = await waitForAnswer(ui, o);
+    const { outcome, note } = await waitForAnswer(ui, o, log);
     if (outcome !== "connected") {
       await ui.hangUp();
       log(`🙈 ${outcome} (${note})`);

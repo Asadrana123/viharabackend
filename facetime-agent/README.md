@@ -214,7 +214,7 @@ BlackHole isn't installed, or the Mac hasn't restarted since. Run `brew install 
 FaceTime's prompt looks different on this macOS version. Run `npm run inspect -- --all`, then in another tab `open facetime-audio://+1XXXXXXXXXX`, and send `inspect-log.txt`. The backend has already sent a normal phone call instead, so nothing is lost.
 
 **`Pressed Call, but FaceTime never started ringing`**
-The agent clicked something, but didn't recognise the ringing screen. Send `inspect-log.txt` from step 5.
+The agent clicked something, but didn't recognise the ringing screen. The lines above the error show every check it made while dialling (`ringing (read 3.1s, call live, could not read: NotificationCenter) …`): send those, and `inspect-log.txt` from step 5 if you have one. "could not read: NotificationCenter" on every line means the reads are too short for this Mac: raise `SCREEN_READ_SECONDS` (see "Optional settings" below).
 
 **The iPhone answered, but the agent kept "Ringing" and then said no-answer**
 The agent didn't recognise the "connected" screen: no End button or call timer was found. Send `inspect-log.txt` from step 5, call 2.
@@ -290,6 +290,15 @@ Once the Mac test passes, the agent can talk to the live backend instead of the 
    - Turn FaceTime **on** for the Mac.
    - Add the test numbers, and switch the test **on**.
 3. Run `npm start` on the Mac. Calls to the test numbers then go over FaceTime, and everyone else gets normal phone calls.
+
+### Optional settings (`facetime-agent/.env`)
+
+| Setting | Default | What it does |
+|---|---|---|
+| `DIAL_TIMEOUT_SECONDS` | 40 | How long dialling may take, from opening FaceTime to ringing. Capped at 42: after 45 s the backend sends a normal phone call instead, and the person would get both. |
+| `SCREEN_READ_SECONDS` | 3 | How long one read of a call screen may take. On macOS 27 reading Notification Center is slow (4-25 s); a higher value sees the ringing banner, but makes "answered" slower to notice. |
+| `RING_TIMEOUT_SECONDS` | 45 | How long it rings before counting as no answer. |
+| `MAX_CALL_MINUTES` | 20 | Longest call. |
 
 To start the agent at login and restart it if it stops, use launchd:
 
