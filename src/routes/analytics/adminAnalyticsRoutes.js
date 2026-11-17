@@ -1,6 +1,6 @@
 const express = require("express");
 const { isAuthenticated, authorizeRoles } = require("../../middleware/auth");
-const { getSiteAnalytics, getPageAnalytics, getAudienceAnalytics, getMarketingPerformance } = require("../../controller/analytics/adminAnalyticsController");
+const { getSiteAnalytics, getPageAnalytics, getAudienceAnalytics, getMarketingPerformance, getMarketingSimulation } = require("../../controller/analytics/adminAnalyticsController");
 const { getPropertyFunnel, getFunnelAdLinks, setFunnelAdLinks, setFunnelAdSetStage } = require("../../controller/propertyFunnel/propertyFunnelController");
 
 const router = express.Router();
@@ -11,6 +11,7 @@ router.get("/site", getSiteAnalytics);
 router.get("/page", getPageAnalytics);
 router.get("/audience", getAudienceAnalytics);
 router.get("/marketing", getMarketingPerformance);
+router.get("/marketing/simulation", getMarketingSimulation);
 router.get("/property-funnel", getPropertyFunnel); // Prajwal's Property Funnel tab
 // Funnel Ad Links tab: marketing links ads to properties and sets Cold / Warm / Hot.
 router.get("/property-funnel/ad-links", getFunnelAdLinks);

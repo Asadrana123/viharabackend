@@ -5,13 +5,15 @@
 //   GET /api/v1/admin-analytics/page?range=1d|7d|30d&path=/some/page
 //   GET /api/v1/admin-analytics/audience?range=1d|7d|30d
 //   GET /api/v1/admin-analytics/marketing?range=1d|7d|30d|90d   (Zernio: paid ads + organic posts)
+//   GET /api/v1/admin-analytics/marketing/simulation             (Zernio: what a dollar of ads buys)
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const Errorhandler = require("../../utils/errorhandler");
 const { gaConfigured, fetchGaRangeData, fetchGaPageData, fetchGaAudienceData } = require("../../services/analytics/gaInsightsService");
 const { rangeWindows, buildDashboardModel, buildPageModel, buildAudienceModel, RANGES } = require("../../services/analytics/gaDashboardModel");
 const cache = require("../../services/analytics/gaDashboardCache").shared;
 const { createCache } = require("../../services/analytics/gaDashboardCache");
-const { zernioConfigured, fetchMarketingData } = require("../../services/marketing/zernioMarketingService");
+const { zernioConfigured, fetchMarketingData, fetchAdsTimeline } = require("../../services/marketing/zernioMarketingService");
+const { buildSimulationBasis } = require("../../services/marketing/adSimulationModel");
 const { leadsReceivedBetween } = require("../../services/marketing/marketingLeadsService");
 const marketingModel = require("../../services/marketing/marketingDashboardModel");
 const { getAdsLoopConfig } = require("../../config/adsLoop/adsLoopConfig");
@@ -70,6 +72,25 @@ exports.getAudienceAnalytics = catchAsyncError(async (req, res, next) => {
         range,
         ...buildAudienceModel(await fetchGaAudienceData(windows), windows),
     }));
+});
+
+// Simulate view: what a dollar of Meta ads bought over the last 90 days, a range around it,
+// and a week-by-week backtest. The page multiplies by the budget typed in.
+exports.getMarketingSimulation = catchAsyncError(async (req, res, next) => {
+    if (!zernioConfigured()) {
+        return res.status(200).json({ success: true, configured: false, message: "Zernio is not connected on this server (ZERNIO_API_KEY / ZERNIO_AD_ACCOUNT_ID)." });
+    }
+    const windows = marketingModel.rangeWindows("90d", getAdsLoopConfig().accountTimeZone);
+    try {
+        const { value, cached } = await marketingCache.get(`simulation:${windows.current.until}`, async () => {
+            const { rows } = await fetchAdsTimeline(windows.current);
+            return buildSimulationBasis(rows, windows.current);
+        });
+        res.status(200).json({ success: true, configured: true, ...value, cached, generatedAt: new Date().toISOString() });
+    } catch (error) {
+        console.error("[admin-analytics] Marketing simulation failed:", error.message);
+        next(new Errorhandler("Could not load numbers from Zernio right now. Try again in a minute.", 502));
+    }
 });
 
 exports.getMarketingPerformance = catchAsyncError(async (req, res, next) => {
