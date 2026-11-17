@@ -221,10 +221,31 @@ function toParsedShape(p) {
     };
 }
 
+/**
+ * Parcel number (APN) from the rendered page. The property JSON often has no
+ * parcelNumber (e.g. new construction) and the markdown scrape sometimes misses
+ * the facts section, but the HTML still carries the "Parcel number: ..." fact
+ * and/or the county-assessor link with PARCEL_NUM=...
+ */
+function apnFromHtml(html) {
+    const fact = html.match(/Parcel number:\s*([^<\n]+?)\s*</i);
+    if (fact) return toText(fact[1]);
+    const link = html.match(/[?&;]PARCEL_NUM=([^&"'\s]+)/i);
+    if (!link) return null;
+    try {
+        return toText(decodeURIComponent(link[1]));
+    } catch {
+        return toText(link[1]);
+    }
+}
+
 /** Firecrawl raw-HTML payload -> parsed shape, or null when no property JSON is found. */
 function parseMarketDataPropertyJson(payload) {
     const property = extractMarketDataProperty(payload);
-    return property ? toParsedShape(property) : null;
+    if (!property) return null;
+    const parsed = toParsedShape(property);
+    if (!parsed.details.apn) parsed.details.apn = apnFromHtml(getRawHtml(payload));
+    return parsed;
 }
 
 module.exports = { parseMarketDataPropertyJson, extractMarketDataProperty, isNotForSale };
