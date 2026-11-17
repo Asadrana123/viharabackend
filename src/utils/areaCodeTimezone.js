@@ -50,6 +50,7 @@ const AREA_CODE_TIMEZONES = {
   "303": "America/Denver", "720": "America/Denver", "970": "America/Denver", // Denver
   "801": "America/Denver", // Salt Lake City
   "505": "America/Denver", // Albuquerque
+  "915": "America/Denver", // El Paso (West Texas is Mountain time)
   "406": "America/Denver", // Montana
   "307": "America/Denver", // Wyoming
   // Mountain, NO DST (Arizona, except the Navajo Nation — close enough for a soft gate)

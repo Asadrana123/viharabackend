@@ -7,7 +7,8 @@
 // propertyVoicePromptBuilder) and hands the burst to the shared callDispatchQueue.
 //
 // Behaviour is identical to the old per-property schedulers:
-//   Signup (with consent): one signup call → picked up = "connected" (STOP),
+//   Signup (with consent): one signup call, only 9 AM-9 PM in the lead's zone (utils/callingHours.js;
+//     outside that it waits as "pending" + nextCallAt for the sweep) → picked up = "connected" (STOP),
 //     no pickup = "no-answer" + next daily slot.
 //   Then ONE call a day for 7 days (followUpCadence.js), rotating 11:00 AM /
 //     2:30 PM / 6:00 PM local; picked up = STOP, after day 7 = "not-reached".
@@ -28,6 +29,13 @@ const { FOLLOW_UP_DAYS, FOLLOW_UP_CALL_OPTS, nextFollowUpAt, noAnswerUpdate, ski
 const { dollarsToWords } = require("./vapiPropertyService");
 // The loan they need, spoken ({{prospect_loan_type}} in the prompt).
 const { loanTypeSpoken } = require("../leads/buyBox");
+const { callTimezone } = require("../../utils/areaCodeTimezone");
+const { nextCallingTime } = require("../../utils/callingHours");
+const { toUsSmsNumber } = require("../../utils/usPhone");
+
+// The sweep dials leads in these states once nextCallAt is due. "pending" + nextCallAt = a sign-up call held
+// until 9 AM in the lead's time zone (scheduleSignupCall); "no-answer" = the daily follow-up.
+const DUE_STATUSES = ["pending", "no-answer"];
 
 // How they'll pay, spoken for TTS ({{prospect_financing}} in the prompt):
 // "cash" | "financing, pre-approved, with about ten to twenty percent down" | "not sure yet" | "".
@@ -116,7 +124,9 @@ function callPayload(lead, promptConfig) {
     fullName: lead.fullName,
     email: lead.email,
     phone: lead.phoneNormalized || lead.phone,
-    timezone: lead.timezone || "", // caller's tz: Maya's clock + callback times
+    // Maya's clock + callback times: a US phone's area code first, then the browser zone saved at sign-up
+    // (a US buyer on a browser set to India would otherwise hear India time).
+    timezone: callTimezone(lead.phoneNormalized || lead.phone, lead.timezone) || "",
     buyerType: lead.buyerType,
     // Buyer's price quote, spelled out for TTS ("" when the lead did not quote).
     quote: dollarsToWords(lead.quotePrice),
@@ -176,6 +186,18 @@ async function scheduleSignupCall(lead = {}) {
   }
   const fallbackTz = resolvePropertyTimezone(product);
 
+  // Only 9 AM to 9 PM in the lead's time zone. Ads run all night, so a sign-up at 1 AM is held and the
+  // per-minute sweep rings them at 9 AM their time (with the follow-up opening, not "you just told us").
+  const hold = nextCallingTime(toUsSmsNumber(lead.phoneNormalized) || toUsSmsNumber(lead.phone) || "", new Date());
+  if (hold.waited) {
+    await PropertyLead.updateOne(
+      { _id: lead.leadId, callStatus: "pending" },
+      { $set: { nextCallAt: hold.at } }
+    );
+    console.log(`[property-call] signup call for lead ${lead.leadId} held until ${hold.at.toISOString()} (outside 9 AM-9 PM in ${hold.zones.join(" / ")})`);
+    return;
+  }
+
   await PropertyLead.updateOne(
     { _id: lead.leadId },
     { $set: { lastCallAt: new Date() }, $inc: { callAttempts: 1 } }
@@ -208,7 +230,7 @@ async function sweepDueCalls() {
   try {
     const now = new Date();
     const due = await PropertyLead.find({
-      callStatus: "no-answer",
+      callStatus: { $in: DUE_STATUSES },
       nextCallAt: { $ne: null, $lte: now },
       callingStopped: { $ne: true },
       isQaTest: { $ne: true }, // QA agent test leads are never dialed
@@ -238,7 +260,7 @@ async function sweepDueCalls() {
       // 7-day window over / already called today → no dial, just reschedule.
       const skip = skipUpdate(lead, fallbackTz, now);
       if (skip) {
-        await PropertyLead.updateOne({ _id: lead._id, callStatus: "no-answer" }, { $set: skip });
+        await PropertyLead.updateOne({ _id: lead._id, callStatus: lead.callStatus }, { $set: skip });
         continue;
       }
 
@@ -246,7 +268,7 @@ async function sweepDueCalls() {
       // rest to the next day so they don't pile up.
       if (num && dialed.has(key)) {
         await PropertyLead.updateOne(
-          { _id: lead._id, callStatus: "no-answer" },
+          { _id: lead._id, callStatus: lead.callStatus },
           { $set: noAnswerUpdate(lead, fallbackTz) }
         );
         continue;
@@ -261,7 +283,7 @@ async function sweepDueCalls() {
       // Atomic claim: advance nextCallAt + stamp lastCallAt so an overlapping
       // tick can't re-dial the lead today.
       const claimed = await PropertyLead.findOneAndUpdate(
-        { _id: lead._id, callStatus: "no-answer", nextCallAt: { $lte: now } },
+        { _id: lead._id, callStatus: lead.callStatus, nextCallAt: { $lte: now } },
         {
           $set: { nextCallAt: nextFollowUpAt(lead, fallbackTz, now), lastCallAt: now },
           $inc: { callAttempts: 1 },
