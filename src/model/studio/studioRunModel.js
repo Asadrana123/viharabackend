@@ -64,6 +64,8 @@ const runSchema = new mongoose.Schema(
     story: { type: [mongoose.Schema.Types.Mixed], default: [] },
     photos: { type: [mongoose.Schema.Types.Mixed], default: [] },
     todo: { type: [String], default: [] },
+    // D-057: who the video is for, chosen by the editor at the start ({ icpId, stage, label }); null on older videos.
+    buyer: { type: mongoose.Schema.Types.Mixed, default: null },
     // D-056: the property's photos nobody has checked yet ({ id, slot }), for the editor to check in the Studio, and
     // how many photos a video may use now. A new property's photos all start unchecked.
     unchecked: { type: [mongoose.Schema.Types.Mixed], default: [] },
