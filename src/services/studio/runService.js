@@ -147,6 +147,8 @@ function cleanUpdate(u) {
       unchecked: Array.isArray(u?.unchecked) ? u.unchecked.slice(0, 60).map((p) => ({ id: clip(p?.id, 40), slot: clip(p?.slot, 90) })) : [],
       // D-057: the buyer the editor chose, as the server has it; null on videos started before.
       buyer: u?.buyer && typeof u.buyer === "object" ? cleanBuyerOrNull(u.buyer) : null,
+      // D-058: the property's new values waiting for the editor; null when the update does not say (kept as it was).
+      priceChange: Array.isArray(u?.priceChange) ? u.priceChange.slice(0, 20).map((c) => ({ label: clip(c?.label, 80), factId: clip(c?.factId, 80), from: clip(c?.from, 80), to: clip(c?.to, 80) })) : null,
       usablePhotos: Number.isFinite(Number(u?.usablePhotos)) && u?.usablePhotos !== null && u?.usablePhotos !== undefined ? Math.max(0, Number(u.usablePhotos)) : null,
     },
   };
@@ -760,10 +762,29 @@ function photosCommand(run, body) {
   return { command: { type: "photos", data: { photos } }, state: replan ? "package" : run.state };
 }
 
+/**
+ * The editor confirms the property's new starting price, estimate or sale dates (D-058, Adarsh Raut, 2026-11-18),
+ * exactly as they were shown: the Creative OS refuses when the numbers changed again since. Recorded under their
+ * name on the property; a video that stopped for it is written again.
+ */
+function priceCommand(run, body) {
+  if (!run.coreId) throw new Error("This video has not started yet.");
+  if (["building", "generating"].includes(run.state)) throw new Error("Wait until this step has finished, then confirm the new price.");
+  const waiting = run.priceChange ?? [];
+  if (!waiting.length) throw new Error("There is no price change waiting to be confirmed. Click Refresh from server to see the video as it is now.");
+  const list = Array.isArray(body?.expected) ? body.expected : [];
+  const same = list.length === waiting.length && waiting.every((c) => list.some((e) => String(e?.factId ?? "") === c.factId && String(e?.to ?? "") === c.to));
+  if (!same) throw new Error("The new numbers on this page are out of date. Click Refresh from server, check them, then confirm.");
+  const expected = waiting.map((c) => ({ fact_id: c.factId, to: c.to }));
+  // A stopped video is written again from the step that stopped: the plan once there are hooks, else the hooks, else the concepts.
+  const next = run.plan || (run.hooks ?? []).length ? "package" : (run.concepts ?? []).length ? "hooks" : "concepts";
+  return { command: { type: "price", data: { expected } }, state: run.state === "failed" ? next : run.state };
+}
+
 function cleanSlot(slot) {
   const s = String(slot ?? "");
   if (!SLOT.test(s)) throw new Error(`"${s}" is not a file slot.`);
   return s;
 }
 
-module.exports = { BUYER_TYPES, AWARENESS_STAGES, cleanBuyer, photosCommand, PHOTO_CHOICES, undoCommand, UNDO_STATES, cleanTrack, trackRightsCommand, musicCommand, cleanMusic, mayaCommand, timelineCommand, cleanMaya, cleanTimeline, chatMessage, cleanChats, CHAT_TYPES, layersCommand, reopenCommand, REOPEN_FROM, soundCommand, CUT_LAYERS, viewCommand, retryCommand, cleanCraft, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, VIDEO_LIMIT_USD, CLAUDE_MODELS, cleanModel, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };
+module.exports = { priceCommand, BUYER_TYPES, AWARENESS_STAGES, cleanBuyer, photosCommand, PHOTO_CHOICES, undoCommand, UNDO_STATES, cleanTrack, trackRightsCommand, musicCommand, cleanMusic, mayaCommand, timelineCommand, cleanMaya, cleanTimeline, chatMessage, cleanChats, CHAT_TYPES, layersCommand, reopenCommand, REOPEN_FROM, soundCommand, CUT_LAYERS, viewCommand, retryCommand, cleanCraft, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, VIDEO_LIMIT_USD, CLAUDE_MODELS, cleanModel, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };

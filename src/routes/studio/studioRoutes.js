@@ -48,6 +48,8 @@ router.post("/runs/:id/craft", c.craftForRun);
 router.post("/runs/:id/sound", c.soundForRun);
 // D-056: the editor checks the property's photos.
 router.post("/runs/:id/photos", c.photosForRun);
+// D-058: the editor confirms the property's new price.
+router.post("/runs/:id/price", c.priceForRun);
 router.post("/runs/:id/undo", c.undoForRun);
 router.post("/runs/:id/reopen", c.reopenForRun);
 router.post("/runs/:id/layers", c.layersForRun);
