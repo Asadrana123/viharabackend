@@ -92,7 +92,7 @@ function formatTimestamp(date) {
  * Build a Slack Block Kit message from a normalized lead shape. Only fields that
  * actually have a value are rendered (no empty rows / placeholders — matches the
  * "no invented data" convention). Slack allows max 10 fields per section, so the
- * list is capped.
+ * fields are split over as many sections as needed.
  *
  * @param {object} lead
  * @param {string} lead.leadType      Human label, e.g. "Early Access".
@@ -141,9 +141,9 @@ function buildLeadMessage(lead) {
     },
   ];
 
-  const sectionFields = fields.slice(0, 10); // Slack hard limit
-  if (sectionFields.length) {
-    blocks.push({ type: "section", fields: sectionFields });
+  // Slack allows at most 10 fields per section, so longer leads get more sections — nothing is dropped.
+  for (let i = 0; i < fields.length; i += 10) {
+    blocks.push({ type: "section", fields: fields.slice(i, i + 10) });
   }
 
   blocks.push({
