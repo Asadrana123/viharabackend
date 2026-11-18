@@ -251,7 +251,27 @@ function extractFromMarkdown(rawMarkdown) {
     const out = [];
     const seen = {};
 
-    // Try pipe-table format first: "| 2025 | $1,228 +2.5% | $118,742 +2% |"
+    // Cell by cell: "| 2025 | $1,228 +2.5% | $118,742 +2% |". A row is kept when EITHER the tax or the
+    // assessment has an amount ("--" is just empty) — the regex below needs an assessment, so rows like
+    // "| 2021 | $1,519 +0.9% | -- |" were dropped (6 of 11 years on 5643 Chew Ave, Nov 2026).
+    const money = (cell) => {
+      const m = String(cell || '').match(/\$([\d,]+)/);
+      return m ? parseFloat(m[1].replace(/,/g, '')) : null;
+    };
+    tableRows(text).forEach((cols) => {
+      const ym = (cols[0] || '').match(/^((?:19|20)\d{2})$/);
+      if (!ym || cols.length < 3) return;
+      const year = Number(ym[1]);
+      if (seen[year]) return;
+      const propertyTax = money(cols[1]);
+      const taxAssessment = money(cols[2]);
+      if (propertyTax == null && taxAssessment == null) return;
+      seen[year] = true;
+      out.push({ year, propertyTax, taxAssessment });
+    });
+    if (out.length > 0) return out;
+
+    // Older layout, pipe-table read by regex: "| 2025 | $1,228 +2.5% | $118,742 +2% |"
     const tableRegex = /\|\s*((?:19|20)\d{2})\s*\|\s*(--|\$[\d,]+(?:\s*[+-][\d.]+%)?)\s*\|\s*\$([\d,]+)/g;
     let tm;
     while ((tm = tableRegex.exec(text)) !== null) {

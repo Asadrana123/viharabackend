@@ -16,7 +16,8 @@ firecrawlService.scrapePropertyDetails = async () => {
   scrapes += 1;
   current = queue.shift();
   if (current === "fail") throw new Error("All scraping engines failed");
-  return { data: { markdown: "x" } };
+  // A fully loaded page by default; a test sets `markdown` to simulate a half-loaded scrape.
+  return { data: { markdown: current.markdown ?? "## Facts & features\n- Bedrooms: 2" } };
 };
 firecrawlService.scrapePropertyImages = async () => {
   if (current === "fail") throw new Error("All scraping engines failed");
@@ -165,4 +166,68 @@ test("photos: a later scrape with more photos wins, a fetch failure is reported"
   const r = await fetchMarketDataListing("https://www.zillow.com/homedetails/x/1_zpid/");
   assert.deepEqual(r.photoUrls, ["a.jpg", "b.jpg"]);
   assert.deepEqual(r.warnings, []);
+});
+
+// ── half-loaded pages and partial lists (5401 Pine St, 5643 Chew Ave, Nov 2026) ───────────────────
+test("a half-loaded page (\"## Loading...\") is scraped again even when nothing looks missing", async () => {
+  queue = [scrape(full(), { markdown: "## Loading...\n\n## Price history\n\nPrice history is unavailable." }), scrape(full())];
+  const r = await fetchMarketDataListing("https://www.zillow.com/homedetails/x/1_zpid/");
+  assert.equal(scrapes, 2);
+  assert.deepEqual(r.missing, []);
+});
+
+test("a page that never shows Facts & features is retried up to maxAttempts, then kept", async () => {
+  queue = [scrape(full(), { markdown: "## Loading..." }), scrape(full(), { markdown: "## Loading..." })];
+  const r = await fetchMarketDataListing("https://www.zillow.com/homedetails/x/1_zpid/", { maxAttempts: 2 });
+  assert.equal(scrapes, 2);
+  assert.equal(r.marketData.address.street, "960 Larrabee St");
+});
+
+test("the longer tax table from a later scrape replaces the first rows from the HTML", async () => {
+  const firstRows = full();
+  firstRows.taxHistory = [{ year: 2025 }, { year: 2024 }, { year: 2023 }];
+  const fullTable = full();
+  fullTable.taxHistory = Array.from({ length: 11 }, (_, i) => ({ year: 2025 - i }));
+  queue = [scrape(firstRows, { markdown: "## Loading..." }), scrape(fullTable)];
+  const r = await fetchMarketDataListing("https://www.zillow.com/homedetails/x/1_zpid/");
+  assert.equal(r.marketData.taxHistory.length, 11);
+});
+
+test("fillGaps keeps the longer list", () => {
+  assert.equal(fillGaps({ t: [1, 2, 3] }, { t: [1, 2, 3, 4, 5] }).t.length, 5);
+  assert.equal(fillGaps({ t: [1, 2, 3, 4] }, { t: [1] }).t.length, 4);
+});
+
+test("a for-sale listing with no price history counts as missing (retry)", () => {
+  const m = full();
+  m.priceHistory = [];
+  assert.deepEqual(missingFields(m, ["a.jpg"]).map((f) => [f.key, f.retry]), [["priceHistory", true]]);
+});
+
+// ── a fully loaded page that says a section is unavailable is believed (960 Larrabee St, Nov 2026) ──
+test("a fully loaded page saying \"Tax history is unavailable.\" is not scraped again", async () => {
+  const noTax = full();
+  noTax.taxHistory = [];
+  queue = [scrape(noTax, { markdown: "## Facts & features\n\n## Public tax history\n\nTax history is unavailable." }), scrape(full())];
+  const r = await fetchMarketDataListing("https://www.zillow.com/homedetails/x/1_zpid/");
+  assert.equal(scrapes, 1);
+  assert.deepEqual(r.missing.map((f) => f.key), ["taxHistory"]);
+});
+
+test("a half-loaded page saying \"Tax history is unavailable.\" is not believed (5401 Pine St)", async () => {
+  const noTax = full();
+  noTax.taxHistory = [];
+  queue = [scrape(noTax, { markdown: "## Loading...\n\n## Public tax history\n\nTax history is unavailable." }), scrape(full())];
+  const r = await fetchMarketDataListing("https://www.zillow.com/homedetails/x/1_zpid/");
+  assert.equal(scrapes, 2);
+  assert.equal(r.marketData.taxHistory.length, 1);
+});
+
+test("a missing rent estimate alone doesn't trigger another scrape", async () => {
+  const noRent = full();
+  noRent.financials.rentEstimate = null;
+  queue = [scrape(noRent), scrape(full())];
+  const r = await fetchMarketDataListing("https://www.zillow.com/homedetails/x/1_zpid/");
+  assert.equal(scrapes, 1);
+  assert.deepEqual(r.missing.map((f) => f.key), ["rentEstimate"]);
 });

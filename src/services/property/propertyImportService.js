@@ -26,7 +26,7 @@ const { parseMarketDataPropertyJson, isNotForSale } = require("./parsers/marketD
 const { extractMarketDataImages } = require("./parsers/marketDataImageParser");
 const { generatePropertyDescription } = require("./propertyDescriptionService");
 const { createTweakPercent, tweakAmount, createEstimateUpliftPercent } = require("./priceTweakService");
-const { missingFields, fillGaps, worthRetry } = require("./listingCompleteness");
+const { missingFields, fillGaps, isForSale } = require("./listingCompleteness");
 const crypto = require("crypto");
 
 // Starting bid = this share of the (tweaked) market data list price.
@@ -394,7 +394,41 @@ async function scrapeAndParseOnce(marketDataUrl) {
         processMarketDataResponse(detailsPayload)
     );
     const photos = extractMarketDataImages(imagesPayload);
-    return { marketData, photoUrls: compact([photos.image, ...photos.otherImages]), imagesPayload, scrapeWarnings };
+    return {
+        marketData,
+        photoUrls: compact([photos.image, ...photos.otherImages]),
+        imagesPayload,
+        scrapeWarnings,
+        markdownComplete: isMarkdownComplete(markdownOf(detailsPayload)),
+        saysUnavailable: unavailableSections(markdownOf(detailsPayload)),
+    };
+}
+
+const markdownOf = (payload) => payload?.data?.markdown || payload?.markdown || "";
+
+/**
+ * Checklist keys the page itself says it doesn't have ("Tax history is unavailable."). Trusted only from a
+ * fully loaded scrape (isMarkdownComplete) — a half-loaded one says the same for data that is there.
+ */
+function unavailableSections(markdown) {
+    const md = String(markdown || "");
+    const keys = [];
+    if (/Tax history is unavailable/i.test(md)) keys.push("taxHistory");
+    if (/Price history is unavailable/i.test(md)) keys.push("priceHistory");
+    return keys;
+}
+
+/**
+ * False when the markdown scrape caught the page before it finished loading: a "## Loading..." placeholder
+ * is still there, or the "Facts & features" section never rendered. Such a scrape can also claim
+ * "Tax history is unavailable." for a home that has one (5401 Pine St, Nov 2026), so it is retried even
+ * when the checklist looks complete.
+ */
+function isMarkdownComplete(markdown) {
+    const md = String(markdown || "");
+    if (!md.trim()) return false;
+    if (/^#{1,3}\s*Loading\.\.\.\s*$/m.test(md)) return false;
+    return /Facts (?:&|and) features/i.test(md);
 }
 
 const isReadable = ({ address = {}, specs = {} } = {}) => Boolean(address.street || specs.beds || specs.sqft);
@@ -435,17 +469,32 @@ async function fetchMarketDataListing(marketDataUrl, { maxAttempts = DEFAULT_MAX
         }
 
         if (!best) {
-            best = { marketData: scraped.marketData, photoUrls: scraped.photoUrls, photosFetched: Boolean(scraped.imagesPayload), photoError: scraped.scrapeWarnings };
+            best = {
+                marketData: scraped.marketData,
+                photoUrls: scraped.photoUrls,
+                photosFetched: Boolean(scraped.imagesPayload),
+                photoError: scraped.scrapeWarnings,
+                markdownComplete: scraped.markdownComplete,
+                confirmedAbsent: new Set(),
+            };
         } else {
             best.marketData = fillGaps(best.marketData, scraped.marketData);
             if (scraped.photoUrls.length > best.photoUrls.length) best.photoUrls = scraped.photoUrls;
             if (scraped.imagesPayload) best.photosFetched = true;
+            if (scraped.markdownComplete) best.markdownComplete = true;
         }
+        if (scraped.markdownComplete) scraped.saysUnavailable.forEach((k) => best.confirmedAbsent.add(k));
 
         missing = missingFields(best.marketData, best.photoUrls);
-        if (!worthRetry(best.marketData, missing)) break;
+        // Retry while a field the page normally has is missing — unless a fully loaded scrape says the page
+        // doesn't have it — or while no scrape has caught the page fully loaded (a half-loaded page can show
+        // partial tables or "unavailable" for data that's there).
+        const retryable = missing.filter((f) => f.retry && !best.confirmedAbsent.has(f.key));
+        const halfLoaded = !best.markdownComplete && isForSale(best.marketData);
+        if (!(isForSale(best.marketData) && retryable.length) && !halfLoaded) break;
         if (i < maxAttempts - 1) {
-            console.log(`[market-data] try ${attempts} for ${marketDataUrl} is missing ${missing.filter((f) => f.retry).map((f) => f.key).join(", ")} — scraping again`);
+            const why = [...retryable.map((f) => f.key), ...(halfLoaded ? ["page still loading"] : [])];
+            console.log(`[market-data] try ${attempts} for ${marketDataUrl}: ${why.join(", ")} — scraping again`);
         }
     }
 

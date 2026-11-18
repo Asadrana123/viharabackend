@@ -20,9 +20,11 @@ const isPlainObject = (v) => v !== null && typeof v === "object" && !Array.isArr
 
 /**
  * `primary` with its empty spots (null / "" / [] / NaN) filled from `secondary`. Objects merge key by key;
- * a filled value in `primary` always wins. Pure.
+ * a filled value in `primary` always wins — except lists, where the longer one wins: a half-loaded scrape
+ * gives the first 3 tax rows from the HTML, a later full one the whole table. Pure.
  */
 function fillGaps(primary, secondary) {
+    if (Array.isArray(primary) && Array.isArray(secondary)) return secondary.length > primary.length ? secondary : primary;
     if (isPlainObject(primary) || isPlainObject(secondary)) {
         const a = isPlainObject(primary) ? primary : {};
         const b = isPlainObject(secondary) ? secondary : {};
@@ -60,10 +62,13 @@ const CHECKS = [
     { key: "homeType", label: "home type", get: (m) => m.details?.homeType, retry: true },
     { key: "apn", label: "APN (parcel number)", get: (m) => m.details?.apn, retry: true },
     { key: "description", label: "description", get: (m) => m.description, retry: true },
-    { key: "rentEstimate", label: "rent estimate", get: (m) => m.financials?.rentEstimate, retry: true },
+    // Comes from the page JSON, which is complete on every scrape — a re-scrape never finds a missing one
+    // (live test, Nov 2026: 3 tries each on homes Zillow has no Rent Zestimate for).
+    { key: "rentEstimate", label: "rent estimate", get: (m) => m.financials?.rentEstimate, retry: false },
     { key: "estimate", label: "home value estimate", get: (m) => m.financials?.estimate, retry: false },
     { key: "taxHistory", label: "tax history", get: (m) => m.taxHistory, retry: true },
-    { key: "priceHistory", label: "price history", get: (m) => m.priceHistory, retry: false },
+    // A home for sale has at least its "Listed for sale" row, so an empty list means the scrape missed it.
+    { key: "priceHistory", label: "price history", get: (m) => m.priceHistory, retry: true, when: (m) => isForSale(m) },
     { key: "coordinates", label: "map location", get: (m) => m.coordinates, retry: true },
     { key: "agentName", label: "listing agent", get: (m) => m.listingAgent?.name, retry: true, when: (m) => isForSale(m) },
     {

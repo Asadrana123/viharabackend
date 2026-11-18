@@ -252,12 +252,81 @@ function apnFromHtml(html) {
     }
 }
 
+/** The page's visible text: tags dropped, entities decoded, whitespace collapsed. */
+function visibleText(html) {
+    return String(html || "")
+        .replace(/<script[\s\S]*?<\/script>/gi, " ")
+        .replace(/<style[\s\S]*?<\/style>/gi, " ")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/&amp;/g, "&")
+        .replace(/&#x27;|&#39;/g, "'")
+        .replace(/&quot;/g, '"')
+        .replace(/&nbsp;/g, " ")
+        .replace(/\s+/g, " ");
+}
+
+/** Text from `start` up to the first of `stops` (or `max` chars), "" when `start` isn't there. */
+function textSection(text, start, stops, max = 5000) {
+    const i = text.indexOf(start);
+    if (i < 0) return "";
+    let s = text.slice(i + start.length, i + start.length + max);
+    for (const stop of stops) {
+        const j = s.indexOf(stop);
+        if (j >= 0) s = s.slice(0, j);
+    }
+    return s;
+}
+
+const money = (s) => (s && s !== "--" ? Number(String(s).replace(/[$,]/g, "")) : null);
+
+/**
+ * Tax and price history from the rendered page text. The markdown scrape sometimes renders before these load
+ * and says "Price history is unavailable." / "Tax history is unavailable." while the raw HTML of the same
+ * visit has the rows (5401 Pine St, Nov 2026). Only the rows shown before "Show more" are in the HTML, so
+ * this is a fallback; the importer re-scrapes for the full tables.
+ *   "Public tax history Year Property taxes Tax assessment 2025 $2,716 -15.5% $194,000 -15.5% 2024 $3,215 $229,700 …"
+ *   "Price history Date Event Price 5/30/2023 Sold $107,000 -23% $51/sqft Source: … 4/30/2023 Pending sale $139,000 …"
+ */
+function historyFromHtml(html) {
+    const text = visibleText(html);
+    const taxText = textSection(text, "Public tax history Year Property taxes Tax assessment", ["Show more", "Find assessor", "BuyAbility"]);
+    const taxHistory = [];
+    const seenYears = new Set();
+    for (const m of taxText.matchAll(/\b((?:19|20)\d{2})\s+(--|\$[\d,]+)(?:\s*[+-][\d.,]+%)?\s+(--|\$[\d,]+)/g)) {
+        const year = Number(m[1]);
+        const propertyTax = money(m[2]);
+        const taxAssessment = money(m[3]);
+        if (seenYears.has(year) || (propertyTax == null && taxAssessment == null)) continue;
+        seenYears.add(year);
+        taxHistory.push({ year, propertyTax, taxAssessment });
+    }
+
+    const priceText = textSection(text, "Price history Date Event Price", ["Public tax history", "Show more", "BuyAbility"]);
+    const priceHistory = [];
+    for (const m of priceText.matchAll(/(\d{1,2}\/\d{1,2}\/\d{4})\s+([A-Za-z][A-Za-z ()-]{1,40}?)\s+(\$[\d,]+|--)(?:\s*[+-][\d.,]+%)?(?:\s+\$([\d,]+)\/sqft)?/g)) {
+        priceHistory.push({
+            date: m[1],
+            year: Number(m[1].split("/")[2]),
+            event: m[2].trim(),
+            price: money(m[3]),
+            pricePerSqft: m[4] ? Number(m[4].replace(/,/g, "")) : null,
+        });
+    }
+    return { taxHistory, priceHistory };
+}
+
 /** Firecrawl raw-HTML payload -> parsed shape, or null when no property JSON is found. */
 function parseMarketDataPropertyJson(payload) {
     const property = extractMarketDataProperty(payload);
     if (!property) return null;
     const parsed = toParsedShape(property);
-    if (!parsed.details.apn) parsed.details.apn = apnFromHtml(getRawHtml(payload));
+    const html = getRawHtml(payload);
+    if (!parsed.details.apn) parsed.details.apn = apnFromHtml(html);
+    if (!parsed.taxHistory.length || !parsed.priceHistory.length) {
+        const fromHtml = historyFromHtml(html);
+        if (!parsed.taxHistory.length) parsed.taxHistory = fromHtml.taxHistory;
+        if (!parsed.priceHistory.length) parsed.priceHistory = fromHtml.priceHistory;
+    }
     return parsed;
 }
 
