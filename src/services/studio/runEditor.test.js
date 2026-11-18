@@ -1,16 +1,27 @@
 // D-047: the editor's own hand on a Studio video - their idea, craft, hook, voiceover lines, camera moves and images.
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { cleanUpdate, cleanCraft, cleanStart, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, cleanSlot } = require("./runService");
+const { BUYER_TYPES, cleanUpdate, cleanCraft, cleanStart, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, cleanSlot } = require("./runService");
 
 const run = (over = {}) => ({ runId: "1793500000.000001", state: "concept-choice", spent: 0, ...over });
 
 test("a video starts with the editor's idea and craft, both optional", () => {
-  assert.deepEqual(cleanStart({}), { idea: null, craft: null });
-  assert.deepEqual(cleanStart({ idea: "  Maya opens the door  ", craft: { seconds: 30, pace: "fast", voiceSpeed: 1.1 } }), { idea: "Maya opens the door", craft: { seconds: 30, pace: "fast", voiceSpeed: 1.1 } });
+  assert.deepEqual(cleanStart({}), { idea: null, craft: null, buyer: null });
+  assert.deepEqual(cleanStart({ idea: "  Maya opens the door  ", craft: { seconds: 30, pace: "fast", voiceSpeed: 1.1 } }), { idea: "Maya opens the door", craft: { seconds: 30, pace: "fast", voiceSpeed: 1.1 }, buyer: null });
   assert.throws(() => cleanCraft({ seconds: 33, pace: "fast", voiceSpeed: 1 }), /length/);
   assert.throws(() => cleanCraft({ seconds: 30, pace: "slowest", voiceSpeed: 1 }), /pace/);
   assert.throws(() => cleanCraft({ seconds: 30, pace: "calm", voiceSpeed: 2 }), /speed/);
+});
+
+test("D-057: the editor picks one buyer; the stage is the matrix's unless they chose another", () => {
+  assert.deepEqual(cleanStart({ buyer: { icpId: "first_time_investor" } }).buyer, { icpId: "first_time_investor", stage: "unaware", label: "First-time Investor" });
+  assert.deepEqual(cleanStart({ buyer: { icpId: "homeowner", stage: "most_aware" } }).buyer, { icpId: "homeowner", stage: "most_aware", label: "First-time Homeowner/Repeat Homeowner" });
+  assert.equal(BUYER_TYPES.length, 8);
+  assert.throws(() => cleanStart({ buyer: { icpId: "wholesaler" } }), /one buyer type/);
+  assert.throws(() => cleanStart({ buyer: { icpId: "homeowner", stage: "curious" } }), /awareness stage/);
+  // What the server reports is kept when it checks out, and dropped otherwise.
+  assert.deepEqual(cleanUpdate({ runId: "1793500000.000001", state: "concepts", buyer: { icpId: "realtor", stage: "solution_aware" } }).fields.buyer, { icpId: "realtor", stage: "solution_aware", label: "Realtors/Buyer's Agents" });
+  assert.equal(cleanUpdate({ runId: "1793500000.000001", state: "concepts", buyer: { icpId: "nobody" } }).fields.buyer, null);
 });
 
 test("the editor tells their own story instead of picking a concept", () => {

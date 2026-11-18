@@ -145,6 +145,8 @@ function cleanUpdate(u) {
       sfx: typeof u?.sfx === "boolean" ? u.sfx : null,
       // D-056: the property's photos still to check, and how many a video may use now.
       unchecked: Array.isArray(u?.unchecked) ? u.unchecked.slice(0, 60).map((p) => ({ id: clip(p?.id, 40), slot: clip(p?.slot, 90) })) : [],
+      // D-057: the buyer the editor chose, as the server has it; null on videos started before.
+      buyer: u?.buyer && typeof u.buyer === "object" ? cleanBuyerOrNull(u.buyer) : null,
       usablePhotos: Number.isFinite(Number(u?.usablePhotos)) && u?.usablePhotos !== null && u?.usablePhotos !== undefined ? Math.max(0, Number(u.usablePhotos)) : null,
     },
   };
@@ -196,11 +198,42 @@ const cleanCraftOrNull = (c) => {
   }
 };
 
-/** What an editor gives when starting a video (D-047): an idea for the story and craft choices, both optional. */
+// D-057 (Preetham, 2026-11-18): who a video is for, from the Creative OS's ICP x awareness matrix (the editors'
+// buyer segmentation matrix), with the matrix's awareness stage for each. The Creative OS checks it again.
+const AWARENESS_STAGES = ["unaware", "problem_aware", "solution_aware", "product_aware", "most_aware"];
+const BUYER_TYPES = [
+  { id: "fix_and_flip", label: "Fix and Flippers/Uppers", stage: "solution_aware" },
+  { id: "first_time_investor", label: "First-time Investor", stage: "unaware" },
+  { id: "serial_investor", label: "Serial Investor", stage: "problem_aware" },
+  { id: "buy_and_hold", label: "Buy & Hold / Buy and Rent", stage: "problem_aware" },
+  { id: "institutional_buyer", label: "Institutional Buyer", stage: "product_aware" },
+  { id: "developer_construction", label: "Developers/Construction", stage: "solution_aware" },
+  { id: "homeowner", label: "First-time Homeowner/Repeat Homeowner", stage: "problem_aware" },
+  { id: "realtor", label: "Realtors/Buyer's Agents", stage: "solution_aware" },
+];
+
+/** The buyer the editor chose, checked; the stage is the matrix's unless they chose another. */
+function cleanBuyer(b) {
+  const type = BUYER_TYPES.find((t) => t.id === String(b?.icpId ?? ""));
+  if (!type) throw new Error("Choose who this video is for: one buyer type.");
+  const stage = b?.stage ? String(b.stage) : type.stage;
+  if (!AWARENESS_STAGES.includes(stage)) throw new Error("Choose an awareness stage: Unaware, Problem aware, Solution aware, Product aware or Most aware.");
+  return { icpId: type.id, stage, label: type.label };
+}
+
+const cleanBuyerOrNull = (b) => {
+  try {
+    return cleanBuyer(b);
+  } catch {
+    return null;
+  }
+};
+
+/** What an editor gives when starting a video (D-047, D-057): an idea for the story and craft choices, both optional, and the buyer. */
 function cleanStart(body) {
   const idea = String(body?.idea ?? "").trim();
   if (idea.length > MAX_WORDS) throw new Error(`Keep the idea to ${MAX_WORDS} characters.`);
-  return { idea: idea || null, craft: body?.craft ? cleanCraft(body.craft) : null };
+  return { idea: idea || null, craft: body?.craft ? cleanCraft(body.craft) : null, buyer: body?.buyer ? cleanBuyer(body.buyer) : null };
 }
 /** The craft as the Creative OS reads it. */
 const craftData = (c) => ({ seconds: c.seconds, pace: c.pace, voice_speed: c.voiceSpeed });
@@ -733,4 +766,4 @@ function cleanSlot(slot) {
   return s;
 }
 
-module.exports = { photosCommand, PHOTO_CHOICES, undoCommand, UNDO_STATES, cleanTrack, trackRightsCommand, musicCommand, cleanMusic, mayaCommand, timelineCommand, cleanMaya, cleanTimeline, chatMessage, cleanChats, CHAT_TYPES, layersCommand, reopenCommand, REOPEN_FROM, soundCommand, CUT_LAYERS, viewCommand, retryCommand, cleanCraft, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, VIDEO_LIMIT_USD, CLAUDE_MODELS, cleanModel, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };
+module.exports = { BUYER_TYPES, AWARENESS_STAGES, cleanBuyer, photosCommand, PHOTO_CHOICES, undoCommand, UNDO_STATES, cleanTrack, trackRightsCommand, musicCommand, cleanMusic, mayaCommand, timelineCommand, cleanMaya, cleanTimeline, chatMessage, cleanChats, CHAT_TYPES, layersCommand, reopenCommand, REOPEN_FROM, soundCommand, CUT_LAYERS, viewCommand, retryCommand, cleanCraft, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, VIDEO_LIMIT_USD, CLAUDE_MODELS, cleanModel, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };

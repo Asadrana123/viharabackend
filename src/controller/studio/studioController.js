@@ -272,12 +272,12 @@ const decideStudioProposal = catchAsyncError(async (req, res, next) => {
 });
 
 const runView = async (r) => {
-  const { runId, propertyId, requestedByName, coreId, model, state, concepts, hooks, plan, error, frames, framesPrice, clips, cut, spent, costs, remakePrice, media, idea, craft, story, photos, unchecked, usablePhotos, todo, uploads, chat, commands, updatedAt, sfx, timeline, music } = r;
+  const { buyer, runId, propertyId, requestedByName, coreId, model, state, concepts, hooks, plan, error, frames, framesPrice, clips, cut, spent, costs, remakePrice, media, idea, craft, story, photos, unchecked, usablePhotos, todo, uploads, chat, commands, updatedAt, sfx, timeline, music } = r;
   const urls = Object.fromEntries(await Promise.all(Object.entries(media ?? {}).map(async ([slot, m]) => [slot, await viewUrl(m.key)])));
   // The person's steps the server has not finished yet, oldest first, so the page shows a click as sent and
   // keeps its button from being clicked again while it runs.
   const pending = (commands ?? []).filter((c) => !c.doneAt).map((c) => ({ type: c.type, at: c.at, ...(c.choice ? { choice: c.choice } : {}) }));
-  return { runId, propertyId, requestedByName, coreId, model: model ?? null, state, concepts, hooks, plan, error, frames: frames ?? [], framesPrice: framesPrice ?? 0, clips, cut, spent, costs: costs ?? null, remakePrice: remakePrice ?? null, urls, idea: idea ?? null, craft: craft ?? null, story: story ?? [], photos: photos ?? [], unchecked: unchecked ?? [], usablePhotos: usablePhotos ?? 0, todo: todo ?? [], uploads: (uploads ?? []).map(({ name, kind, byName, at }) => ({ name, kind, byName, at })), pending, sfx: sfx !== false, chat: (chat ?? []).map(({ role, byName, text, change = null, action = null, attachments = [], at }) => ({ role, byName, text, change, action, attachments: attachments.map((x) => x.name), at })), timeline: timeline ?? null, music: music ?? null, updatedAt: updatedAt ?? null };
+  return { buyer: buyer ?? null, runId, propertyId, requestedByName, coreId, model: model ?? null, state, concepts, hooks, plan, error, frames: frames ?? [], framesPrice: framesPrice ?? 0, clips, cut, spent, costs: costs ?? null, remakePrice: remakePrice ?? null, urls, idea: idea ?? null, craft: craft ?? null, story: story ?? [], photos: photos ?? [], unchecked: unchecked ?? [], usablePhotos: usablePhotos ?? 0, todo: todo ?? [], uploads: (uploads ?? []).map(({ name, kind, byName, at }) => ({ name, kind, byName, at })), pending, sfx: sfx !== false, chat: (chat ?? []).map(({ role, byName, text, change = null, action = null, attachments = [], at }) => ({ role, byName, text, change, action, attachments: attachments.map((x) => x.name), at })), timeline: timeline ?? null, music: music ?? null, updatedAt: updatedAt ?? null };
 };
 
 /** GET /api/v1/studio/runs - the videos in progress, newest first, and the properties ready for one. */
@@ -288,7 +288,7 @@ const listRuns = catchAsyncError(async (req, res) => {
   res.status(200).json({ success: true, isAdmin, runs: await Promise.all(runs.map(runView)), ready: ready?.rows ?? [], checkedAt: ready?.checkedAt ?? null });
 });
 
-/** POST /api/v1/studio/runs  { propertyId, model } - starts a video for a property the server says is ready, written by the Claude model the editor chose. */
+/** POST /api/v1/studio/runs  { propertyId, model, buyer: { icpId, stage? } } - starts a video for a property the server says is ready, written by the Claude model the editor chose. */
 const startRun = catchAsyncError(async (req, res, next) => {
   const propertyId = String(req.body?.propertyId ?? "");
   let model;
@@ -299,12 +299,14 @@ const startRun = catchAsyncError(async (req, res, next) => {
   } catch (e) {
     return next(new ErrorHandler(e.message, 400));
   }
+  // D-057 (Preetham, 2026-11-18): every new video is made for exactly one buyer, chosen by the editor.
+  if (!inputs.buyer) return next(new ErrorHandler("Choose who this video is for: one buyer type.", 400));
   const ready = await StudioReady.findOne({ key: "videos" }).lean();
   if (!ready?.rows.some((r) => r.propertyId === propertyId && r.ready)) return next(new ErrorHandler("That property is not ready for a video.", 400));
   const { name } = await decider(req.user);
-  // D-047: the editor's own idea and craft, if given, go with the opening step.
-  const data = inputs.idea || inputs.craft ? { ...(inputs.idea ? { idea: inputs.idea } : {}), ...(inputs.craft ? { craft: craftData(inputs.craft) } : {}) } : undefined;
-  const run = await StudioRun.create({ runId: newRunId(), propertyId, requestedBy: req.user._id, requestedByName: name, model, state: "queued", idea: inputs.idea, craft: inputs.craft, commands: [{ type: "open", byName: name, ...(data ? { data } : {}) }] });
+  // D-047, D-057: the editor's own idea and craft, if given, and the buyer go with the opening step.
+  const data = { ...(inputs.idea ? { idea: inputs.idea } : {}), ...(inputs.craft ? { craft: craftData(inputs.craft) } : {}), buyer: { icp_id: inputs.buyer.icpId, awareness_stage: inputs.buyer.stage } };
+  const run = await StudioRun.create({ runId: newRunId(), propertyId, requestedBy: req.user._id, requestedByName: name, model, state: "queued", idea: inputs.idea, craft: inputs.craft, buyer: inputs.buyer, commands: [{ type: "open", byName: name, data }] });
   res.status(201).json({ success: true, run: await runView(run.toObject()) });
 });
 
