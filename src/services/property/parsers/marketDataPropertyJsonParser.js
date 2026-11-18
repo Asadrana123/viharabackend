@@ -121,16 +121,29 @@ function mapTaxHistory(history) {
         .filter((e) => e.year != null);
 }
 
+// The listing agent's license from property.listedBy, the "Listed by:" block:
+//   [{ id: "LISTING_AGENT", elements: [{ id: "LICENSE", text: "DRE #01177161" }, ...] }, ...]
+// attributionInfo.agentLicenseNumber is often empty (960 Larrabee St, Nov 2026) while this has it.
+// Returns the number without its "DRE #" / "Lic." prefix, or null.
+function licenseFromListedBy(listedBy) {
+    if (!Array.isArray(listedBy)) return null;
+    const agent = listedBy.find((g) => g && g.id === "LISTING_AGENT");
+    const el = (agent?.elements || []).find((e) => e && e.id === "LICENSE");
+    const text = toText(el?.text);
+    if (!text) return null;
+    return text.replace(/^(?:DRE|Lic(?:ense)?\.?)\s*#?\s*/i, "").trim() || null;
+}
+
 // attributionInfo = the MLS listing credit; agent_module = Zillow's card for the
 // same listing agent (photo, profile). Other contact-form agents are paid
 // "Premier Agents", not the listing agent, so they are ignored.
-function mapListingAgent(info, agentModule) {
+function mapListingAgent(info, agentModule, listedBy) {
     if (!info || !info.agentName) return null;
     const card = agentModule && agentModule.badge_type === "Listing Agent" ? agentModule : null;
     const photo = card?.image_data?.url || null;
     return {
         name: String(info.agentName).trim(),
-        licenseNumber: info.agentLicenseNumber || null,
+        licenseNumber: info.agentLicenseNumber || licenseFromListedBy(listedBy),
         phone: info.agentPhoneNumber || null,
         email: info.agentEmail || null,
         company: info.brokerName ? String(info.brokerName).replace(/,s*$/, "").trim() : null,
@@ -210,7 +223,7 @@ function toParsedShape(p) {
         taxHistory: mapTaxHistory(p.taxHistory),
         foreclosureHistory: [],
         walkScores: { walkScore: null, bikeScore: null, transitScore: null },
-        listingAgent: mapListingAgent(p.attributionInfo, p.contactFormRenderData?.data?.agent_module),
+        listingAgent: mapListingAgent(p.attributionInfo, p.contactFormRenderData?.data?.agent_module, p.listedBy),
         mlsNumber: p.attributionInfo?.mlsId || p.mlsid || null,
         mlsSource: p.attributionInfo?.mlsName || null,
         marketActivity: {

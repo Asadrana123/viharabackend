@@ -378,7 +378,9 @@ function extractFromMarkdown(rawMarkdown) {
       const phoneMatch = text.match(/(\(?\d{3}\)?[-.\s]?\d{3}-\d{4})/);
       const phone = phoneMatch ? phoneMatch[1] : null;
       if (phoneMatch) text = text.slice(0, phoneMatch.index).trim();
-      const licenseMatch = text.match(/(?:(?:DRE|Lic(?:ense)?\.?)\s*#?\s*)?([A-Z]{0,3}\d{5,10})\s*$/i);
+      // \b: the license is its own word, so the end of a name isn't swallowed ("Alfred Younan 01718008"
+      // used to give "nan01718008", "Ramon Jaimes 0525249" gave "mes0525249").
+      const licenseMatch = text.match(/(?:(?:DRE|Lic(?:ense)?\.?)\s*#?\s*)?\b([A-Z]{0,3}\d{5,10})\s*$/i);
       const licenseNumber = licenseMatch ? licenseMatch[1] : null;
       if (licenseMatch) text = text.slice(0, licenseMatch.index).trim();
       return { text: text || null, phone, licenseNumber };
