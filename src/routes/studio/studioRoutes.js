@@ -3,12 +3,15 @@ const express = require("express");
 const multer = require("multer");
 const { isAuthenticated, authorizeRoles } = require("../../middleware/auth");
 const c = require("../../controller/studio/studioController");
+const estimates = require("../../controller/studio/estimateController");
 
 const router = express.Router();
 // An editor's image of the property (D-047): held in memory, checked, then stored in the private bucket.
 // A chat message's photos and documents (D-050).
 const chatUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024, files: 5 } });
 const imageUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024, files: 1 } });
+// The Estimate page's video, static or carousel: on disk, not in memory (a video can be big).
+const estimateUpload = multer({ storage: multer.diskStorage({}), limits: { fileSize: 300 * 1024 * 1024, files: 10 } });
 
 // The Creative OS, with its shared key, before the sign-in check below.
 router.post("/videos/sync", c.requireSyncKey, c.syncVideos);
@@ -69,6 +72,13 @@ router.post("/runs/:id/image", imageUpload.single("image"), c.imageForRun);
 router.get("/problems", c.listProblems);
 router.post("/problems", c.reportProblem);
 router.post("/problems/:id/resolve", authorizeRoles("admin"), c.resolveProblem);
+// How a new video, static or carousel may do on Meta before it goes live.
+router.get("/estimates", estimates.listEstimates);
+router.get("/estimates/ads", estimates.listLinkableAds);
+router.post("/estimates", estimateUpload.array("files", 10), estimates.createFromUpload);
+router.post("/estimates/video/:coreId", estimates.createFromStudioVideo);
+router.get("/estimates/:id", estimates.getEstimate);
+router.post("/estimates/:id/link", estimates.linkEstimate);
 router.get("/proposals", c.listProposals);
 router.post("/proposals/:id/decide", c.decideStudioProposal);
 
