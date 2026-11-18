@@ -46,6 +46,8 @@ router.post("/runs/:id/cut", c.cutForRun);
 router.post("/runs/:id/idea", c.ideaForRun);
 router.post("/runs/:id/craft", c.craftForRun);
 router.post("/runs/:id/sound", c.soundForRun);
+// D-056: the editor checks the property's photos.
+router.post("/runs/:id/photos", c.photosForRun);
 router.post("/runs/:id/undo", c.undoForRun);
 router.post("/runs/:id/reopen", c.reopenForRun);
 router.post("/runs/:id/layers", c.layersForRun);

@@ -188,3 +188,30 @@ test("a chat message carries the editor's words and their photos or documents (D
   assert.deepEqual(cleanChats([{ runId: "1793500000.000001", text: "Sure.", change: null }]), [{ runId: "1793500000.000001", text: "Sure.", change: null, action: null }]);
   assert.throws(() => cleanChats([{ runId: "x" }]), /not a run id/);
 });
+
+test("the editor checks the property's unchecked photos in the Studio (D-056)", () => {
+  const { photosCommand } = require("./runService");
+  const unchecked = [{ id: "img-01", slot: "photo-img-01" }, { id: "img-02", slot: "photo-img-02" }];
+  const stopped = run({ state: "failed", coreId: "LH960-V01", unchecked });
+  const all = [{ id: "img-01", choice: "original" }, { id: "img-02", choice: "enhanced", alterations: " sky replaced " }];
+  // Every photo checked on a video that stopped at the plan: it goes back to writing the plan.
+  assert.deepEqual(photosCommand(stopped, { photos: all }), { command: { type: "photos", data: { photos: [{ id: "img-01", choice: "original" }, { id: "img-02", choice: "enhanced", alterations: "sky replaced" }] } }, state: "package" });
+  // Some still to check: saved, and the video stays where it is.
+  assert.equal(photosCommand(stopped, { photos: [{ id: "img-01", choice: "skip" }] }).state, "failed");
+  assert.equal(photosCommand(run({ state: "hook-choice", coreId: "LH960-V01", unchecked }), { photos: all }).state, "hook-choice");
+  assert.throws(() => photosCommand(stopped, { photos: [{ id: "img-02", choice: "enhanced" }] }), /say what was changed/);
+  assert.throws(() => photosCommand(stopped, { photos: [{ id: "img-09", choice: "original" }] }), /not waiting to be checked/);
+  assert.throws(() => photosCommand(stopped, { photos: [{ id: "img-01", choice: "maybe" }] }), /Choose what photo img-01 is/);
+  assert.throws(() => photosCommand(stopped, { photos: [{ id: "img-01", choice: "original" }, { id: "img-01", choice: "skip" }] }), /twice/);
+  assert.throws(() => photosCommand(stopped, { photos: [] }), /Choose what each photo is/);
+  assert.throws(() => photosCommand(run({ state: "failed", coreId: "LH960-V01", unchecked: [] }), { photos: all }), /all been checked/);
+  assert.throws(() => photosCommand(run({ state: "generating", coreId: "LH960-V01", unchecked }), { photos: all }), /Wait until/);
+});
+
+test("keeps the photos to check from the server, and an empty list once all are checked (D-056)", () => {
+  const { fields } = cleanUpdate({ runId: "1793500000.000001", state: "failed", unchecked: [{ id: "img-01", slot: "photo-img-01", file: "secret/path.jpg" }], usablePhotos: 0 });
+  assert.deepEqual(fields.unchecked, [{ id: "img-01", slot: "photo-img-01" }]);
+  assert.equal(fields.usablePhotos, 0);
+  assert.deepEqual(cleanUpdate({ runId: "1793500000.000001", state: "package", unchecked: [], usablePhotos: 9 }).fields.unchecked, []);
+  assert.equal(cleanUpdate({ runId: "1793500000.000001", state: "package" }).fields.usablePhotos, null);
+});
