@@ -215,3 +215,36 @@ test("keeps the photos to check from the server, and an empty list once all are 
   assert.deepEqual(cleanUpdate({ runId: "1793500000.000001", state: "package", unchecked: [], usablePhotos: 9 }).fields.unchecked, []);
   assert.equal(cleanUpdate({ runId: "1793500000.000001", state: "package" }).fields.usablePhotos, null);
 });
+
+test("the editor confirms the property's new price, exactly as shown (D-058)", () => {
+  const { priceCommand } = require("./runService");
+  const priceChange = [
+    { label: "Starting price", factId: "starting-bid-2", from: "$841,500", to: "$795,000" },
+    { label: "Sale ends", factId: "auction-end-2", from: "Nov 7, 2026", to: "Nov 25, 2026" },
+  ];
+  const shown = priceChange.map(({ factId, to }) => ({ factId, to }));
+  // SF241-V02 stopped while writing the plan: it goes back to writing the plan, with the values sent on as shown.
+  const stopped = run({ state: "failed", coreId: "SF241-V02", priceChange, plan: { beats: [] }, hooks: [{ id: "H1" }], concepts: [{ id: "C1" }] });
+  assert.deepEqual(priceCommand(stopped, { expected: shown }), { command: { type: "price", data: { expected: [{ fact_id: "starting-bid-2", to: "$795,000" }, { fact_id: "auction-end-2", to: "Nov 25, 2026" }] } }, state: "package" });
+  // A video stopped before its plan or hooks goes back to the step it stopped at.
+  assert.equal(priceCommand(run({ state: "failed", coreId: "SF241-V02", priceChange, plan: null, hooks: [{ id: "H1" }], concepts: [{ id: "C1" }] }), { expected: shown }).state, "package");
+  assert.equal(priceCommand(run({ state: "failed", coreId: "SF241-V02", priceChange, plan: null, hooks: [], concepts: [{ id: "C1" }] }), { expected: shown }).state, "hooks");
+  assert.equal(priceCommand(run({ state: "failed", coreId: "SF241-V02", priceChange, plan: null, hooks: [], concepts: [] }), { expected: shown }).state, "concepts");
+  // A video that had not stopped stays where it is.
+  assert.equal(priceCommand(run({ state: "gate-a", coreId: "SF241-V02", priceChange }), { expected: shown }).state, "gate-a");
+  // Out of date: a value missing, changed, or one too many.
+  assert.throws(() => priceCommand(stopped, { expected: shown.slice(0, 1) }), /out of date/);
+  assert.throws(() => priceCommand(stopped, { expected: [{ factId: "starting-bid-2", to: "$790,000" }, shown[1]] }), /out of date/);
+  assert.throws(() => priceCommand(stopped, { expected: [...shown, { factId: "x", to: "y" }] }), /out of date/);
+  assert.throws(() => priceCommand(stopped, {}), /out of date/);
+  assert.throws(() => priceCommand(run({ state: "failed", coreId: "SF241-V02", priceChange: [] }), { expected: [] }), /no price change waiting/);
+  assert.throws(() => priceCommand(run({ state: "generating", coreId: "SF241-V02", priceChange }), { expected: shown }), /Wait until/);
+  assert.throws(() => priceCommand(run({ state: "queued", priceChange }), { expected: shown }), /has not started/);
+});
+
+test("keeps the new price waiting from the server, an empty list once confirmed, and nothing when not said (D-058)", () => {
+  const { fields } = cleanUpdate({ runId: "1795014626.330508", state: "failed", priceChange: [{ label: "Starting price", factId: "starting-bid-2", from: "$841,500", to: "$795,000", source: { id: "S3" } }] });
+  assert.deepEqual(fields.priceChange, [{ label: "Starting price", factId: "starting-bid-2", from: "$841,500", to: "$795,000" }]);
+  assert.deepEqual(cleanUpdate({ runId: "1795014626.330508", state: "package", priceChange: [] }).fields.priceChange, []);
+  assert.equal(cleanUpdate({ runId: "1795014626.330508", state: "package" }).fields.priceChange, null);
+});
