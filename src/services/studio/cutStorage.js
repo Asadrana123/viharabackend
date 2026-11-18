@@ -66,6 +66,24 @@ async function putObject(key, body, contentType, env = process.env) {
   await s.client.send(new PutObjectCommand({ Bucket: s.bucket, Key: key, Body: body, ContentType: contentType }));
 }
 
+/** Stores a file from disk without reading it all into memory (a Studio estimate's video). */
+async function putFile(key, path, contentType, bytes, env = process.env) {
+  const s = storage(env);
+  if (!s) throw new Error("Storage is not set up.");
+  const fs = require("fs");
+  await s.client.send(new PutObjectCommand({ Bucket: s.bucket, Key: key, Body: fs.createReadStream(path), ContentType: contentType, ContentLength: bytes }));
+}
+
+/** Saves a stored file to disk (a Studio video's cut, for the estimate's AI check). */
+async function downloadTo(key, path, env = process.env) {
+  const s = storage(env);
+  if (!s) throw new Error("Storage is not set up.");
+  const fs = require("fs");
+  const { pipeline } = require("stream/promises");
+  const res = await s.client.send(new GetObjectCommand({ Bucket: s.bucket, Key: key }));
+  await pipeline(res.Body, fs.createWriteStream(path));
+}
+
 /** The uploaded file's size, or null when it is not there. */
 async function storedBytes(key, env = process.env) {
   const s = storage(env);
@@ -79,4 +97,4 @@ async function storedBytes(key, env = process.env) {
   }
 }
 
-module.exports = { storage, cleanCut, uploadUrl, viewUrl, storedBytes, putObject };
+module.exports = { storage, cleanCut, uploadUrl, viewUrl, storedBytes, putObject, putFile, downloadTo };
