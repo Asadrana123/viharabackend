@@ -23,6 +23,7 @@ const { DID_NOT_CONNECT_REASONS } = require("./registrationCallService");
 const { enqueueBurst, PRIORITY } = require("./callDispatchQueue");
 const { facebookFormPayload } = require("./newDealsCallScheduler");
 const { writebackLeadStatus } = require("../leads/toorakStatusWriteback");
+const { callTimezone } = require("../../utils/areaCodeTimezone");
 
 const FALLBACK_TZ = "America/New_York";
 const WINDOW_START = 8; // 8 AM
@@ -38,8 +39,9 @@ const BURST_OPTS = {
   maxCalls: 1, // one dial per attempt
 };
 
+// The phone's area code first (that's where the phone rings), then the saved zone, then Eastern.
 const zoneOf = (lead) => {
-  const zone = lead?.timezone || FALLBACK_TZ;
+  const zone = callTimezone(lead?.phoneNormalized || lead?.phone, lead?.timezone) || FALLBACK_TZ;
   return DateTime.now().setZone(zone).isValid ? zone : FALLBACK_TZ;
 };
 

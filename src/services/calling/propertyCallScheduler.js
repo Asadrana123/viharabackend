@@ -7,11 +7,11 @@
 // propertyVoicePromptBuilder) and hands the burst to the shared callDispatchQueue.
 //
 // Behaviour is identical to the old per-property schedulers:
-//   Signup (with consent): one signup call, only 9 AM-9 PM in the lead's zone (utils/callingHours.js;
-//     outside that it waits as "pending" + nextCallAt for the sweep) → picked up = "connected" (STOP),
-//     no pickup = "no-answer" + next daily slot.
+//   Signup (with consent): one signup call right away, at any hour — they just asked for it
+//     → picked up = "connected" (STOP), no pickup = "no-answer" + next daily slot.
 //   Then ONE call a day for 7 days (followUpCadence.js), rotating 11:00 AM /
-//     2:30 PM / 6:00 PM local; picked up = STOP, after day 7 = "not-reached".
+//     2:30 PM / 6:00 PM local, and never outside 9 AM-9 PM local (followUpCadence.skipUpdate);
+//     picked up = STOP, after day 7 = "not-reached".
 //
 // The prompt is generated per property (not authored), so a new property needs
 // NO new scheduler, model, or prompt file — uploading it and flagging
@@ -30,11 +30,10 @@ const { dollarsToWords } = require("./vapiPropertyService");
 // The loan they need, spoken ({{prospect_loan_type}} in the prompt).
 const { loanTypeSpoken } = require("../leads/buyBox");
 const { callTimezone } = require("../../utils/areaCodeTimezone");
-const { nextCallingTime } = require("../../utils/callingHours");
-const { toUsSmsNumber } = require("../../utils/usPhone");
 
-// The sweep dials leads in these states once nextCallAt is due. "pending" + nextCallAt = a sign-up call held
-// until 9 AM in the lead's time zone (scheduleSignupCall); "no-answer" = the daily follow-up.
+// The sweep dials leads in these states once nextCallAt is due: "no-answer" = the daily follow-up.
+// "pending" + nextCallAt only exists for sign-ups whose call was held overnight while that rule was live
+// (17-18 Nov 2026, since reverted); kept so those leads still get their call.
 const DUE_STATUSES = ["pending", "no-answer"];
 
 // How they'll pay, spoken for TTS ({{prospect_financing}} in the prompt):
@@ -186,18 +185,8 @@ async function scheduleSignupCall(lead = {}) {
   }
   const fallbackTz = resolvePropertyTimezone(product);
 
-  // Only 9 AM to 9 PM in the lead's time zone. Ads run all night, so a sign-up at 1 AM is held and the
-  // per-minute sweep rings them at 9 AM their time (with the follow-up opening, not "you just told us").
-  const hold = nextCallingTime(toUsSmsNumber(lead.phoneNormalized) || toUsSmsNumber(lead.phone) || "", new Date());
-  if (hold.waited) {
-    await PropertyLead.updateOne(
-      { _id: lead.leadId, callStatus: "pending" },
-      { $set: { nextCallAt: hold.at } }
-    );
-    console.log(`[property-call] signup call for lead ${lead.leadId} held until ${hold.at.toISOString()} (outside 9 AM-9 PM in ${hold.zones.join(" / ")})`);
-    return;
-  }
-
+  // No calling-hours check here: they just filled the form and asked for the call, so it goes now at any
+  // hour. Only the later automatic calls wait for daytime (followUpCadence.skipUpdate).
   await PropertyLead.updateOne(
     { _id: lead.leadId },
     { $set: { lastCallAt: new Date() }, $inc: { callAttempts: 1 } }

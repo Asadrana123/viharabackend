@@ -1,8 +1,9 @@
 // utils/callingHours.js
 //
-// The earliest moment an automated SIGN-UP call may ring, in the lead's own time zone: 9 AM to 9 PM local
-// (inside the federal 8 AM-9 PM calling hours). Ads run around the clock, so someone who signs up at 1 AM
-// gets Maya's call at 9 AM their time instead of in the middle of the night (Nov 2026).
+// The earliest moment an AUTOMATIC follow-up call may ring, in the lead's own time zone: 9 AM to 9 PM local
+// (inside the federal 8 AM-9 PM calling hours). Used by followUpCadence.skipUpdate, so every daily
+// follow-up sweep waits for daytime. The sign-up call is NOT held: the person just filled the form and
+// asked for it, so it goes out right away at any hour (owner's rule, Nov 2026).
 //
 // Same zone rules as texts (utils/textingHours.js): the phone's area code decides the zone; for an area code
 // not in the table the time must be inside the hours in both Eastern and Pacific (noon to 9 PM Eastern).

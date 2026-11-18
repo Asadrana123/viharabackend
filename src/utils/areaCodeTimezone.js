@@ -85,11 +85,17 @@ function timezoneForPhone(phoneE164) {
  * The time zone a scheduled CALL should follow. The phone that rings is where the person is, so a US number
  * with a known area code wins over the browser time zone saved at signup (a +1 916 number signed up from a
  * browser set to India was being rung at 1:32 PM India time = midnight in California, Nov 2026).
- * Unknown area code / non-US number -> the saved time zone (may be "", callers apply their own fallback).
+ * Unknown area code -> the saved time zone, but for a US number only when it is a US zone (an area code missing
+ * from the table must not bring the India-browser problem back). Non-US number -> the saved time zone.
+ * May return "" — callers apply their own fallback (the property's zone, then Eastern).
  */
+const US_ZONE = /^(America\/|Pacific\/Honolulu$|US\/)/;
 function callTimezone(phone, savedTimezone) {
   const match = /^\+1(\d{3})\d{7}$/.exec(String(phone || "").replace(/[^\d+]/g, ""));
-  return (match && AREA_CODE_TIMEZONES[match[1]]) || savedTimezone || "";
+  if (match && AREA_CODE_TIMEZONES[match[1]]) return AREA_CODE_TIMEZONES[match[1]];
+  const saved = String(savedTimezone || "").trim();
+  if (match && !US_ZONE.test(saved)) return "";
+  return saved;
 }
 
 module.exports = { timezoneForPhone, callTimezone, AREA_CODE_TIMEZONES, DEFAULT_TIMEZONE };

@@ -15,6 +15,8 @@
 
 const { DateTime } = require("luxon");
 const { callTimezone } = require("../../utils/areaCodeTimezone");
+const { nextCallingTime } = require("../../utils/callingHours");
+const { toUsSmsNumber } = require("../../utils/usPhone");
 
 const CALL_SLOTS = [
   { hour: 11, minute: 0 },  // 11:00 AM
@@ -74,6 +76,7 @@ function noAnswerUpdate(lead, defaultTz) {
  * to apply instead of calling:
  *   • window already over          → "not-reached"
  *   • already called today (local) → move to the next day's slot
+ *   • outside 9 AM–9 PM local      → wait for the next 9 AM (utils/callingHours.js)
  * Also moves leads from the old 3-calls-a-day loop onto this cadence.
  */
 function skipUpdate(lead, defaultTz, now = new Date()) {
@@ -86,6 +89,11 @@ function skipUpdate(lead, defaultTz, now = new Date()) {
     const last = DateTime.fromJSDate(new Date(lead.lastCallAt)).setZone(zoneNow.zone).startOf("day");
     if (+last === +today) return noAnswerUpdate(lead, defaultTz);
   }
+  // Never at night: an automatic follow-up only rings 9 AM-9 PM in the lead's zone (area code; an unknown
+  // code must fit both Eastern and Pacific). Outside that it waits for the next 9 AM. The sign-up call
+  // itself is not held — the person just asked for it (Nov 2026).
+  const hold = nextCallingTime(toUsSmsNumber(lead.phoneNormalized || lead.phone) || "", now);
+  if (hold.waited) return { nextCallAt: hold.at };
   return null;
 }
 
