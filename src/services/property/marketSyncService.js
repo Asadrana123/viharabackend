@@ -72,7 +72,8 @@ async function syncProduct(product) {
         ? sync.estimateUpliftPercent
         : createEstimateUpliftPercent();
 
-    const { marketData } = await fetchMarketDataListing(sync.url);
+    // 2 tries: the sync runs every week and only fills gaps, so a field missed today is picked up next time.
+    const { marketData } = await fetchMarketDataListing(sync.url, { maxAttempts: 2 });
     const fresh = buildMarketDataFields(marketData, tweakPercent, estimateUpliftPercent);
 
     // Market data fields — merged so empty market data never wipes existing data.

@@ -26,10 +26,13 @@ const { parseMarketDataPropertyJson, isNotForSale } = require("./parsers/marketD
 const { extractMarketDataImages } = require("./parsers/marketDataImageParser");
 const { generatePropertyDescription } = require("./propertyDescriptionService");
 const { createTweakPercent, tweakAmount, createEstimateUpliftPercent } = require("./priceTweakService");
+const { missingFields, fillGaps, worthRetry } = require("./listingCompleteness");
 const crypto = require("crypto");
 
 // Starting bid = this share of the (tweaked) market data list price.
 const START_BID_RATIO = 0.9;
+// A yearly property tax below this is a placeholder, not a real bill (same floor as vihara-next taxPlausible.ts).
+const MIN_PLAUSIBLE_ANNUAL_TAX = 100;
 
 // productModel fields that are required but the source may not provide.
 const REQUIRED_CORE_FIELDS = [
@@ -257,8 +260,9 @@ function buildInvestmentData(z, tweakPercent, upliftPercent) {
     }));
     const latestTax = taxHistory[0] || {};
     // The newest year is often assessed but not billed yet ("--"), so take the
-    // tax amount from the newest year that has one.
-    const latestPaidTax = taxHistory.find((t) => t.propertyTax != null) || {};
+    // tax amount from the newest year that has one. A tax under MIN_PLAUSIBLE_ANNUAL_TAX is a county
+    // placeholder (Zillow shows "$1" a year for 703 59th Ave, Capitol Heights), not a bill — skipped.
+    const latestPaidTax = taxHistory.find((t) => Number(t.propertyTax) >= MIN_PLAUSIBLE_ANNUAL_TAX) || {};
     const rent = tweak(financials.rentEstimate ?? null);
 
     return {
@@ -376,42 +380,98 @@ async function uploadListingImages(imageUrls, folder, warnings) {
 // ---------------------------------------------------------------------------
 // Shared steps (importer + weekly sync)
 // ---------------------------------------------------------------------------
-/**
- * Scrape + parse one market data listing. No uploads, no database.
- *
- * @param {string} marketDataUrl  Validated market data homedetails URL.
- * @returns {Promise<{ marketData:object, photoUrls:string[], photoSignature:string|null,
- *                     photosFetched:boolean, warnings:string[] }>}
- *          marketData = merged parsed listing (see mergeParsedListing).
- */
-async function fetchMarketDataListing(marketDataUrl) {
-    const warnings = [];
-    const { detailsPayload, imagesPayload } = await scrapeListing(marketDataUrl, warnings);
+// Scrapes per listing while a field the page normally has is still missing (listingCompleteness.js).
+const DEFAULT_MAX_ATTEMPTS = Math.max(1, Number(process.env.MARKET_SCRAPE_MAX_ATTEMPTS) || 3);
+const UNREADABLE_MESSAGE =
+    "Could not read property details from this market data page. Check the URL or try again in a minute.";
 
+/** One scrape (markdown + raw HTML) parsed into the merged listing shape + its photo URLs. */
+async function scrapeAndParseOnce(marketDataUrl) {
+    const scrapeWarnings = [];
+    const { detailsPayload, imagesPayload } = await scrapeListing(marketDataUrl, scrapeWarnings);
     const marketData = mergeParsedListing(
         parseMarketDataPropertyJson(imagesPayload),
         processMarketDataResponse(detailsPayload)
     );
-    const { address = {}, specs = {} } = marketData;
-    if (!address.street && !specs.beds && !specs.sqft) {
-        throw new Errorhandler(
-            "Could not read property details from this market data page. Check the URL or try again in a minute.",
-            422
-        );
+    const photos = extractMarketDataImages(imagesPayload);
+    return { marketData, photoUrls: compact([photos.image, ...photos.otherImages]), imagesPayload, scrapeWarnings };
+}
+
+const isReadable = ({ address = {}, specs = {} } = {}) => Boolean(address.street || specs.beds || specs.sqft);
+
+/**
+ * Scrape + parse one market data listing. No uploads, no database.
+ *
+ * A Zillow page loads in pieces, so one scrape can miss a section that is there (APN, tax history, the
+ * agent's license). While the checklist in listingCompleteness.js finds a field the page normally has,
+ * the page is scraped again (up to maxAttempts) and only the empty spots are filled from the new scrape.
+ * What is still missing after the last try comes back in `missing` and as a warning naming each field.
+ *
+ * @param {string} marketDataUrl  Validated market data homedetails URL.
+ * @param {{ maxAttempts?: number }} [opts]
+ * @returns {Promise<{ marketData:object, photoUrls:string[], photoSignature:string|null,
+ *                     photosFetched:boolean, warnings:string[], missing:{key,label,retry}[], attempts:number }>}
+ *          marketData = merged parsed listing (see mergeParsedListing).
+ */
+async function fetchMarketDataListing(marketDataUrl, { maxAttempts = DEFAULT_MAX_ATTEMPTS } = {}) {
+    let best = null;
+    let lastError = null;
+    let attempts = 0;
+    let missing = [];
+
+    for (let i = 0; i < Math.max(1, maxAttempts); i++) {
+        attempts += 1;
+        let scraped;
+        try {
+            scraped = await scrapeAndParseOnce(marketDataUrl);
+        } catch (err) {
+            lastError = err; // a failed scrape (blocked, timed out) is retried like a partial one
+            console.warn(`[market-data] try ${attempts} failed for ${marketDataUrl}: ${err.message}`);
+            continue;
+        }
+        if (!isReadable(scraped.marketData)) {
+            lastError = new Errorhandler(UNREADABLE_MESSAGE, 422);
+            continue;
+        }
+
+        if (!best) {
+            best = { marketData: scraped.marketData, photoUrls: scraped.photoUrls, photosFetched: Boolean(scraped.imagesPayload), photoError: scraped.scrapeWarnings };
+        } else {
+            best.marketData = fillGaps(best.marketData, scraped.marketData);
+            if (scraped.photoUrls.length > best.photoUrls.length) best.photoUrls = scraped.photoUrls;
+            if (scraped.imagesPayload) best.photosFetched = true;
+        }
+
+        missing = missingFields(best.marketData, best.photoUrls);
+        if (!worthRetry(best.marketData, missing)) break;
+        if (i < maxAttempts - 1) {
+            console.log(`[market-data] try ${attempts} for ${marketDataUrl} is missing ${missing.filter((f) => f.retry).map((f) => f.key).join(", ")} — scraping again`);
+        }
     }
 
-    const photos = extractMarketDataImages(imagesPayload);
-    const photoUrls = compact([photos.image, ...photos.otherImages]);
-    if (imagesPayload && !photoUrls.length) {
+    if (!best) throw lastError || new Errorhandler(UNREADABLE_MESSAGE, 422);
+
+    const warnings = [];
+    if (!best.photosFetched) {
+        warnings.push(best.photoError[0] || "Photos could not be fetched. Add them manually.");
+    } else if (!best.photoUrls.length) {
         warnings.push("No photos found on the market data page — add them manually.");
+    }
+    // Only the fields that matter (retry ones) — optional extras like the home value estimate are left out
+    // of the warning so the admin sees what to act on; all of them stay in `missing`.
+    const notFound = missing.filter((f) => f.retry && f.key !== "photos").map((f) => f.label);
+    if (notFound.length) {
+        warnings.push(`Not found on the market data page (${attempts} ${attempts === 1 ? "try" : "tries"}): ${notFound.join(", ")}. Fill them in if you have them.`);
     }
 
     return {
-        marketData,
-        photoUrls,
-        photoSignature: photoSignatureFor(photoUrls),
-        photosFetched: Boolean(imagesPayload),
+        marketData: best.marketData,
+        photoUrls: best.photoUrls,
+        photoSignature: photoSignatureFor(best.photoUrls),
+        photosFetched: best.photosFetched,
         warnings,
+        missing,
+        attempts,
     };
 }
 
