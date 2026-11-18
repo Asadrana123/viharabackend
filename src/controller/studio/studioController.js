@@ -21,7 +21,7 @@ const { keyMatches, cleanBatch, cleanFeedback, undelivered } = require("../../se
 const { storage, cleanCut, uploadUrl, viewUrl, storedBytes, putObject } = require("../../services/studio/cutStorage");
 const { cleanProposals, decideProblem, canSee, cleanDecision, undeliveredDecisions } = require("../../services/studio/proposalService");
 const { cleanProblem, cleanReply, problemView } = require("../../services/studio/problemService");
-const { undoCommand, cleanTrack, trackRightsCommand, musicCommand, mayaCommand, timelineCommand, chatMessage, cleanChats, layersCommand, reopenCommand, soundCommand, viewCommand, retryCommand, newRunId, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, cleanModel, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage } = require("../../services/studio/runService");
+const { photosCommand, undoCommand, cleanTrack, trackRightsCommand, musicCommand, mayaCommand, timelineCommand, chatMessage, cleanChats, layersCommand, reopenCommand, soundCommand, viewCommand, retryCommand, newRunId, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, cleanModel, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage } = require("../../services/studio/runService");
 
 const KEY = /^[a-z][a-z0-9-]{1,30}$/;
 
@@ -272,12 +272,12 @@ const decideStudioProposal = catchAsyncError(async (req, res, next) => {
 });
 
 const runView = async (r) => {
-  const { runId, propertyId, requestedByName, coreId, model, state, concepts, hooks, plan, error, frames, framesPrice, clips, cut, spent, costs, remakePrice, media, idea, craft, story, photos, todo, uploads, chat, commands, updatedAt, sfx, timeline, music } = r;
+  const { runId, propertyId, requestedByName, coreId, model, state, concepts, hooks, plan, error, frames, framesPrice, clips, cut, spent, costs, remakePrice, media, idea, craft, story, photos, unchecked, usablePhotos, todo, uploads, chat, commands, updatedAt, sfx, timeline, music } = r;
   const urls = Object.fromEntries(await Promise.all(Object.entries(media ?? {}).map(async ([slot, m]) => [slot, await viewUrl(m.key)])));
   // The person's steps the server has not finished yet, oldest first, so the page shows a click as sent and
   // keeps its button from being clicked again while it runs.
   const pending = (commands ?? []).filter((c) => !c.doneAt).map((c) => ({ type: c.type, at: c.at, ...(c.choice ? { choice: c.choice } : {}) }));
-  return { runId, propertyId, requestedByName, coreId, model: model ?? null, state, concepts, hooks, plan, error, frames: frames ?? [], framesPrice: framesPrice ?? 0, clips, cut, spent, costs: costs ?? null, remakePrice: remakePrice ?? null, urls, idea: idea ?? null, craft: craft ?? null, story: story ?? [], photos: photos ?? [], todo: todo ?? [], uploads: (uploads ?? []).map(({ name, kind, byName, at }) => ({ name, kind, byName, at })), pending, sfx: sfx !== false, chat: (chat ?? []).map(({ role, byName, text, change = null, action = null, attachments = [], at }) => ({ role, byName, text, change, action, attachments: attachments.map((x) => x.name), at })), timeline: timeline ?? null, music: music ?? null, updatedAt: updatedAt ?? null };
+  return { runId, propertyId, requestedByName, coreId, model: model ?? null, state, concepts, hooks, plan, error, frames: frames ?? [], framesPrice: framesPrice ?? 0, clips, cut, spent, costs: costs ?? null, remakePrice: remakePrice ?? null, urls, idea: idea ?? null, craft: craft ?? null, story: story ?? [], photos: photos ?? [], unchecked: unchecked ?? [], usablePhotos: usablePhotos ?? 0, todo: todo ?? [], uploads: (uploads ?? []).map(({ name, kind, byName, at }) => ({ name, kind, byName, at })), pending, sfx: sfx !== false, chat: (chat ?? []).map(({ role, byName, text, change = null, action = null, attachments = [], at }) => ({ role, byName, text, change, action, attachments: attachments.map((x) => x.name), at })), timeline: timeline ?? null, music: music ?? null, updatedAt: updatedAt ?? null };
 };
 
 /** GET /api/v1/studio/runs - the videos in progress, newest first, and the properties ready for one. */
@@ -361,6 +361,8 @@ const clipForRun = runStep(clipCommand);
 const buildForRun = runStep(buildCommand);
 const cutForRun = runStep(cutCommand);
 const soundForRun = runStep(soundCommand);
+// D-056: the editor says what each of the property's unchecked photos is.
+const photosForRun = runStep(photosCommand);
 const undoForRun = runStep(undoCommand);
 const reopenForRun = runStep(reopenCommand);
 const layersForRun = runStep(layersCommand);
@@ -486,7 +488,8 @@ const pollRuns = catchAsyncError(async (req, res, next) => {
     // A saved length or an added image moves nothing on: it never holds back the server's news.
     const waiting = open.filter((c) => !QUIET_STEPS.has(c.type)).length;
     const { state, ...rest } = fields;
-    const given = Object.fromEntries(Object.entries(rest).filter(([k, v]) => (Array.isArray(v) ? v.length : v !== null) || k === "error" || k === "remakePrice" || k === "todo"));
+    // An empty list is news for "unchecked" (D-056): every photo has been checked, so the panel goes away.
+    const given = Object.fromEntries(Object.entries(rest).filter(([k, v]) => (Array.isArray(v) ? v.length : v !== null) || k === "error" || k === "remakePrice" || k === "todo" || k === "unchecked"));
     // Only a picture or clip decision still waiting shows the person something newer than this update (its
     // approve or reject is set at once); any other waiting step leaves the server's frames and clips as sent.
     // Before, any waiting step kept stale frames, so a storyboard could show nothing to approve.
@@ -661,4 +664,4 @@ const syncVideos = catchAsyncError(async (req, res, next) => {
   res.status(200).json({ success: true, stored: rows.length, feedback: undelivered(pending), decisions });
 });
 
-module.exports = { undoForRun, trackForRun, trackRightsForRun, musicForRun, mayaForRun, timelineForRun, chatForRun, layersForRun, reopenForRun, soundForRun, viewForRun, retryForRun, me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, importInterview, updateQuestions, listVideos, addVideoFeedback, syncVideos, requireSyncKey, cutLink, confirmCut, listProposals, decideStudioProposal, listRuns, startRun, setRunModel, pickForRun, gateForRun, generateForRun, framesForRun, remakeForRun, clipForRun, buildForRun, cutForRun, ideaForRun, craftForRun, hookForRun, voForRun, shotForRun, imageForRun, pollRuns, fileLink, confirmFile, listProblems, reportProblem, resolveProblem };
+module.exports = { photosForRun, undoForRun, trackForRun, trackRightsForRun, musicForRun, mayaForRun, timelineForRun, chatForRun, layersForRun, reopenForRun, soundForRun, viewForRun, retryForRun, me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, importInterview, updateQuestions, listVideos, addVideoFeedback, syncVideos, requireSyncKey, cutLink, confirmCut, listProposals, decideStudioProposal, listRuns, startRun, setRunModel, pickForRun, gateForRun, generateForRun, framesForRun, remakeForRun, clipForRun, buildForRun, cutForRun, ideaForRun, craftForRun, hookForRun, voForRun, shotForRun, imageForRun, pollRuns, fileLink, confirmFile, listProblems, reportProblem, resolveProblem };

@@ -143,6 +143,9 @@ function cleanUpdate(u) {
       photos: Array.isArray(u?.photos) ? u.photos.slice(0, 60).map((p) => ({ id: clip(p?.id, 40), kind: clip(p?.kind, 20), slot: clip(p?.slot, 90) })) : [],
       todo: Array.isArray(u?.todo) ? u.todo.slice(0, 40).map((t) => clip(t, 200)) : [],
       sfx: typeof u?.sfx === "boolean" ? u.sfx : null,
+      // D-056: the property's photos still to check, and how many a video may use now.
+      unchecked: Array.isArray(u?.unchecked) ? u.unchecked.slice(0, 60).map((p) => ({ id: clip(p?.id, 40), slot: clip(p?.slot, 90) })) : [],
+      usablePhotos: Number.isFinite(Number(u?.usablePhotos)) && u?.usablePhotos !== null && u?.usablePhotos !== undefined ? Math.max(0, Number(u.usablePhotos)) : null,
     },
   };
 }
@@ -692,10 +695,42 @@ function soundCommand(run, body) {
   return { command: { type: "sound", data: { sfx: body.sfx, rebuild } }, state: rebuild ? "building" : run.state, sfx: body.sfx };
 }
 
+/** What an editor may say a photo is (D-056); "skip" is Don't use. */
+const PHOTO_CHOICES = ["original", "enhanced", "generated", "skip"];
+
+/**
+ * The editor says what each of the property's unchecked photos is (D-056, Adarsh Raut, 2026-11-18): a real
+ * photo, an edited one (with what was changed), an AI image, or Don't use. The Creative OS records it under
+ * their name. When the plan had stopped for the photos and none is left to check, it is written again.
+ */
+function photosCommand(run, body) {
+  if (!run.coreId) throw new Error("This video has not started yet.");
+  if (["building", "generating"].includes(run.state)) throw new Error("Wait until this step has finished, then check the photos.");
+  const open = new Set((run.unchecked ?? []).map((p) => p.id));
+  if (!open.size) throw new Error("This property's photos have all been checked. Click Refresh from server to see the video as it is now.");
+  const list = Array.isArray(body?.photos) ? body.photos : [];
+  if (!list.length || list.length > 60) throw new Error("Choose what each photo is, then save.");
+  const seen = new Set();
+  const photos = list.map((p) => {
+    const id = clip(p?.id, 40);
+    if (!open.has(id)) throw new Error(`Photo ${id || "?"} is not waiting to be checked. Click Refresh from server and check the rest.`);
+    if (seen.has(id)) throw new Error(`Photo ${id} is in the list twice.`);
+    seen.add(id);
+    const choice = String(p?.choice ?? "");
+    if (!PHOTO_CHOICES.includes(choice)) throw new Error(`Choose what photo ${id} is: a real photo, edited, an AI image, or Don't use.`);
+    const alterations = String(p?.alterations ?? "").trim();
+    if (choice === "enhanced" && !alterations) throw new Error(`You marked photo ${id} as edited: say what was changed in it (for example "sky replaced").`);
+    return { id, choice, ...(choice === "enhanced" ? { alterations: alterations.slice(0, 300) } : {}) };
+  });
+  // Every photo checked on a video that stopped at the plan: the plan is written again (see the Creative OS).
+  const replan = run.state === "failed" && photos.length === open.size;
+  return { command: { type: "photos", data: { photos } }, state: replan ? "package" : run.state };
+}
+
 function cleanSlot(slot) {
   const s = String(slot ?? "");
   if (!SLOT.test(s)) throw new Error(`"${s}" is not a file slot.`);
   return s;
 }
 
-module.exports = { undoCommand, UNDO_STATES, cleanTrack, trackRightsCommand, musicCommand, cleanMusic, mayaCommand, timelineCommand, cleanMaya, cleanTimeline, chatMessage, cleanChats, CHAT_TYPES, layersCommand, reopenCommand, REOPEN_FROM, soundCommand, CUT_LAYERS, viewCommand, retryCommand, cleanCraft, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, VIDEO_LIMIT_USD, CLAUDE_MODELS, cleanModel, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };
+module.exports = { photosCommand, PHOTO_CHOICES, undoCommand, UNDO_STATES, cleanTrack, trackRightsCommand, musicCommand, cleanMusic, mayaCommand, timelineCommand, cleanMaya, cleanTimeline, chatMessage, cleanChats, CHAT_TYPES, layersCommand, reopenCommand, REOPEN_FROM, soundCommand, CUT_LAYERS, viewCommand, retryCommand, cleanCraft, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, VIDEO_LIMIT_USD, CLAUDE_MODELS, cleanModel, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };
