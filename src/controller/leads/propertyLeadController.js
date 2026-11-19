@@ -249,9 +249,10 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
     // Vtext's own automated signup text — independent of and in addition to
     // the Brevo sync above. A quoted price gets the "Quote your price" text
     // (VTEXT_AUTO_SIGNUP_TEXT_ENABLED, see vtextAutoSignupService.js). A
-    // financing buyer with no price (the /deal financing path) gets the
+    // financing buyer with no price, or from the /deal financing path (it
+    // always sends a loanType, and now asks for a price too), gets the
     // financing text instead (vtextFormIntroService.js, form "dealFinancing").
-    if (!(Number(lead.quotePrice) > 0) && lead.needsFinancing === "yes") {
+    if (lead.needsFinancing === "yes" && (lead.loanType || !(Number(lead.quotePrice) > 0))) {
       maybeSendFormIntroText({
         form: "dealFinancing",
         leadType: "property",
