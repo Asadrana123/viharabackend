@@ -76,6 +76,8 @@ function makeCommand(c, body) {
   const angles = ids.map((id) => angleOf(c, id));
   const made = angles.filter((a) => a.picked);
   if (made.length) throw new Error(`${made.map((a) => a.id).join(", ")} ${made.length === 1 ? "is" : "are"} already made.`);
+  const held = angles.find((a) => a.problem);
+  if (held) throw new Error(held.problem);
   const price = angles.reduce((n, a) => n + (Number(a.usd) || 0), 0);
   const limit = c.limit ?? CREATIVE_LIMIT_USD;
   if ((c.spent ?? 0) + price > limit + 1e-9) throw new Error(`Making these would take this creative over its limit of $${limit}. Tick fewer designed angles, or ask an admin.`);
@@ -180,6 +182,7 @@ function cleanCreativeUpdate(u) {
       creativeId: a?.creativeId ? clip(a.creativeId, 40) : null,
       note: clip(a?.note, 600),
       warnings: strings(a?.warnings, 5, 400),
+      problem: a?.problem ? clip(a.problem, 400) : null,
     }));
   if (Array.isArray(u.creatives))
     fields.creatives = u.creatives.slice(0, 40).map((x) => ({
