@@ -142,9 +142,14 @@ function priceCommand(c, body) {
   return { command: { type: "price", data: { changes: waiting.map((w) => ({ fact_id: w.factId, to: w.to })) } }, state: c.state };
 }
 
+/**
+ * Try again on a stopped request. It carries the start's own details, so a request the server refused to open (a
+ * property that was not available yet) is opened then; one already open is only tried again.
+ */
 function retryCommand(c) {
   if (c.state !== "failed") throw new Error("Only a stopped creative can be tried again.");
-  return { command: { type: "retry" }, state: c.state };
+  const open = (c.commands ?? []).find((x) => x.type === "open")?.data;
+  return { command: { type: "retry", ...(open ? { data: { open } } : {}) }, state: c.state };
 }
 
 const viewCommand = (c) => ({ command: { type: "view" }, state: c.state });

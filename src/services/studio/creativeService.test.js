@@ -68,6 +68,9 @@ test("photos and a new price are checked against what the page showed", () => {
   assert.throws(() => s.priceCommand(r, { expected: [{ factId: "starting-bid-2", to: "$800,000" }] }), /out of date/);
   assert.throws(() => s.retryCommand(r), /Only a stopped creative/);
   assert.deepEqual(s.retryCommand(req({ state: "failed" })).command, { type: "retry" });
+  // A request the server refused to open (the property was not available yet) is opened by Try again.
+  const open = { format: "static", buyer: { icpId: "fix_and_flip", stage: "solution_aware" } };
+  assert.deepEqual(s.retryCommand(req({ state: "failed", commands: [{ type: "open", data: open, doneAt: new Date() }] })).command, { type: "retry", data: { open } });
 });
 
 test("an update is kept to what the page needs, and refused when it cannot be read", () => {
