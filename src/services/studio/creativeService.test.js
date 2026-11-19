@@ -11,7 +11,7 @@ test("a start names the property, the format and one buyer; carousels wait for n
   assert.deepEqual(s.cleanCreativeStart({ propertyId: "449-georgia-st", format: "static", buyer: { icpId: "fix_and_flip" }, idea: "  Rent day  " }), { propertyId: "449-georgia-st", format: "static", buyer: { icpId: "fix_and_flip", stage: "solution_aware", label: "Fix and Flippers/Uppers" }, idea: "Rent day" });
   assert.throws(() => s.cleanCreativeStart({ propertyId: "../x", format: "static", buyer: { icpId: "fix_and_flip" } }), /Choose a property/);
   assert.throws(() => s.cleanCreativeStart({ propertyId: "a-b", format: "video", buyer: { icpId: "fix_and_flip" } }), /Static or Carousel/);
-  assert.throws(() => s.cleanCreativeStart({ propertyId: "a-b", format: "carousel", buyer: { icpId: "fix_and_flip" } }), /Carousels are not ready/);
+  assert.equal(s.cleanCreativeStart({ propertyId: "a-b", format: "carousel", buyer: { icpId: "fix_and_flip" } }).format, "carousel");
   assert.throws(() => s.cleanCreativeStart({ propertyId: "a-b", format: "static", buyer: { icpId: "astronaut" } }), /these creatives are for/);
 });
 
@@ -30,6 +30,24 @@ test("Make takes only angles on offer and not made yet, within the limit, and mo
   assert.throws(() => s.makeCommand(req({ state: "making" }), { angles: ["A2"] }), /being made/);
   assert.throws(() => s.makeCommand(req({ commands: [{ type: "make", doneAt: null }] }), { angles: ["A2"] }), /being made/);
   assert.throws(() => s.makeCommand(req({ state: "waiting" }), { angles: ["A1"] }), /nothing to make/);
+});
+
+test("a carousel's Make takes one option that passed its check, and write again goes back to Claude (D-059)", () => {
+  const option = (id, over = {}) => ({ id, title: "T", problems: [], made: false, ...over });
+  const car = (over = {}) => req({ format: "carousel", state: "options", angles: [], options: [option("O1"), option("O2", { problems: ["O2: types a figure"] }), option("O3", { made: true })], ...over });
+  assert.deepEqual(s.makeCommand(car(), { option: "O1" }), { command: { type: "make", data: { option: "O1" } }, state: "making" });
+  assert.throws(() => s.makeCommand(car(), { option: "O2" }), /cannot be made as it stands/);
+  assert.throws(() => s.makeCommand(car(), { option: "O3" }), /already made/);
+  assert.throws(() => s.makeCommand(car(), {}), /Pick one of the options/);
+  assert.throws(() => s.makeCommand(car({ state: "writing" }), { option: "O1" }), /Claude is writing/);
+  assert.throws(() => s.makeCommand(car({ spent: 1.999 }), { option: "O1" }), /over its limit/);
+  assert.deepEqual(s.writeCommand(car(), { words: " Lead with the rent " }), { command: { type: "write", data: { words: "Lead with the rent" } }, state: "writing" });
+  assert.throws(() => s.writeCommand(req(), { words: "x" }), /Only a carousel/);
+  assert.throws(() => s.writeCommand(car({ spent: 2 }), {}), /spending limit/);
+  assert.throws(() => s.writeCommand(car({ commands: [{ type: "write", doneAt: null }] }), {}), /Claude is writing/);
+  const { fields } = s.cleanCreativeUpdate({ creativeId: "1795000000.000001", state: "options", options: [{ id: "O1", title: "T", hook: "H", slides: [{ role: "hook", text: "H", facts: 0 }], problems: [], made: false, secret: 1 }], ideas: [{ words: "w", by: "Dinesh", at: "t" }] });
+  assert.equal("secret" in fields.options[0], false);
+  assert.deepEqual(fields.ideas, [{ words: "w", by: "Dinesh", at: "t" }]);
 });
 
 test("an own hook is one short line for an angle not made yet", () => {

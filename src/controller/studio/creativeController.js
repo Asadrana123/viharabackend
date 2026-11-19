@@ -24,8 +24,9 @@ async function nameOf(user) {
 const creativeView = async (c) => {
   const urls = Object.fromEntries(await Promise.all(Object.entries(c.media ?? {}).map(async ([slot, m]) => [slot, await viewUrl(m.key)])));
   const pending = (c.commands ?? []).filter((x) => !x.doneAt).map((x) => ({ type: x.type, at: x.at, ...(x.data?.creative ? { creative: x.data.creative } : {}), ...(x.data?.angle ? { angle: x.data.angle } : {}) }));
+  const { options, ideas } = c;
   const { creativeId, propertyId, format, requestedByName, buyer, idea, state, angles, creatives, unchecked, usablePhotos, priceChange, spent, limit, error, notice, answer, notes, updatedAt, createdAt } = c;
-  return { creativeId, propertyId, format, requestedByName, buyer, idea: idea ?? null, state, angles: angles ?? [], creatives: creatives ?? [], unchecked: unchecked ?? [], usablePhotos: usablePhotos ?? 0, priceChange: priceChange ?? [], spent: spent ?? 0, limit: limit ?? s.CREATIVE_LIMIT_USD, error: error ?? null, notice: notice ?? null, answer: answer ?? null, notes: notes ?? [], urls, pending, updatedAt: updatedAt ?? null, createdAt: createdAt ?? null };
+  return { options: options ?? [], ideas: ideas ?? [], creativeId, propertyId, format, requestedByName, buyer, idea: idea ?? null, state, angles: angles ?? [], creatives: creatives ?? [], unchecked: unchecked ?? [], usablePhotos: usablePhotos ?? 0, priceChange: priceChange ?? [], spent: spent ?? 0, limit: limit ?? s.CREATIVE_LIMIT_USD, error: error ?? null, notice: notice ?? null, answer: answer ?? null, notes: notes ?? [], urls, pending, updatedAt: updatedAt ?? null, createdAt: createdAt ?? null };
 };
 
 /** GET /api/v1/studio/creatives - the editor's creative requests, newest first (an admin sees all), and the properties to start from. */
@@ -77,6 +78,7 @@ const creativeStep = (build) =>
 
 const hookForCreative = creativeStep(s.hookCommand);
 const makeForCreative = creativeStep(s.makeCommand);
+const writeForCreative = creativeStep(s.writeCommand);
 const decideForCreative = creativeStep(s.decideCommand);
 const reviseForCreative = creativeStep(s.reviseCommand);
 const photosForCreative = creativeStep(s.photosCommand);
@@ -104,8 +106,9 @@ const pollCreatives = catchAsyncError(async (req, res, next) => {
     const waiting = c.commands.filter((x) => !x.doneAt && x.type !== "view").length;
     const { state, ...rest } = fields;
     Object.assign(c, rest, waiting > 0 && state !== "failed" ? {} : { state });
-    // A Make still waiting keeps the page on "making" until its own result arrives.
+    // A Make or a write still waiting keeps the page on "making" or "writing" until its own result arrives.
     if (waiting > 0 && c.commands.some((x) => !x.doneAt && x.type === "make")) c.state = "making";
+    else if (waiting > 0 && c.commands.some((x) => !x.doneAt && x.type === "write")) c.state = "writing";
     await c.save();
   }
   const open = await StudioCreative.find({ commands: { $elemMatch: { doneAt: null } } }).lean();
@@ -147,4 +150,4 @@ const confirmCreativeFile = catchAsyncError(async (req, res, next) => {
   res.status(200).json({ success: true });
 });
 
-module.exports = { listCreatives, startCreative, hookForCreative, makeForCreative, decideForCreative, reviseForCreative, photosForCreative, priceForCreative, retryForCreative, viewForCreative, pollCreatives, creativeFileLink, confirmCreativeFile };
+module.exports = { writeForCreative, listCreatives, startCreative, hookForCreative, makeForCreative, decideForCreative, reviseForCreative, photosForCreative, priceForCreative, retryForCreative, viewForCreative, pollCreatives, creativeFileLink, confirmCreativeFile };

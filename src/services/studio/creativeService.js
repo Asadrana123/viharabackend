@@ -9,8 +9,11 @@ const { cleanBuyer } = require("./runService");
 
 /** What one creative request may spend across its designs and Claude runs (the Creative OS's limit). */
 const CREATIVE_LIMIT_USD = 2;
+/** One generated design (MiniMax image-01 through treg, catalog price), what a carousel's Make adds. */
+const DESIGN_USD = 0.0035;
 const FORMATS = ["static", "carousel"];
-const STATES = ["queued", "waiting", "angles", "making", "review", "failed"];
+// writing: Claude writes a carousel's options; options: the editor picks one (D-059).
+const STATES = ["queued", "waiting", "angles", "writing", "options", "making", "review", "failed"];
 const REVIEW_TAGS = ["headline", "image", "numbers", "cta", "look"];
 const PHOTO_CHOICES = ["original", "enhanced", "generated", "skip"];
 const CREATIVE_ID = /^\d{6,}\.\d{1,9}$/;
@@ -25,7 +28,6 @@ function cleanCreativeStart(body) {
   if (!/^[a-z0-9][a-z0-9-]*$/.test(propertyId)) throw new Error("Choose a property.");
   const format = String(body?.format ?? "");
   if (!FORMATS.includes(format)) throw new Error("Choose Static or Carousel.");
-  if (format === "carousel") throw new Error("Carousels are not ready in the Studio yet. Choose Static for now.");
   let buyer;
   try {
     buyer = cleanBuyer(body?.buyer);
@@ -44,6 +46,7 @@ const openSteps = (c, type) => (c.commands ?? []).filter((x) => !x.doneAt && (!t
 const busy = (c) => {
   if (c.state === "making" || openSteps(c, "make").length) throw new Error("These creatives are being made. Wait for them, then try again.");
   if (c.state === "queued") throw new Error("This creative has not started yet. Wait a moment, then click Refresh from server.");
+  if (c.state === "writing" || openSteps(c, "write").length) throw new Error("Claude is writing the carousel options. Wait for them, then try again.");
 };
 const angleOf = (c, id) => {
   const a = (c.angles ?? []).find((x) => x.id === String(id ?? ""));
@@ -67,9 +70,19 @@ function hookCommand(c, body) {
   return { command: { type: "hook", data: { angle: a.id, words } }, state: c.state };
 }
 
-/** The editor's Make click on the ticked angles, at the price shown, within the limit. */
+/** The editor's Make click on the ticked angles (a static) or on one option (a carousel), at the price shown, within the limit. */
 function makeCommand(c, body) {
   busy(c);
+  if (c.format === "carousel") {
+    if (!["options", "review"].includes(c.state)) throw new Error("There is no carousel option to make yet. Click Refresh from server.");
+    const option = (c.options ?? []).find((o) => o.id === String(body?.option ?? ""));
+    if (!option) throw new Error("Pick one of the options, then click Make.");
+    if (option.made) throw new Error(`${option.id} is already made.`);
+    if ((option.problems ?? []).length) throw new Error(`${option.id} cannot be made as it stands. Ask Claude to write again.`);
+    const limit = c.limit ?? CREATIVE_LIMIT_USD;
+    if ((c.spent ?? 0) + DESIGN_USD > limit + 1e-9) throw new Error(`Making this would take the carousel over its limit of $${limit}. Ask an admin.`);
+    return { command: { type: "make", data: { option: option.id } }, state: "making" };
+  }
   if (!["angles", "review"].includes(c.state)) throw new Error("There is nothing to make yet. Click Refresh from server.");
   const ids = [...new Set(strings(body?.angles, 7, 8))];
   if (!ids.length) throw new Error("Tick at least one angle, then click Make.");
@@ -148,6 +161,17 @@ function priceCommand(c, body) {
  * Try again on a stopped request. It carries the start's own details, so a request the server refused to open (a
  * property that was not available yet) is opened then; one already open is only tried again.
  */
+/** A carousel's options written again by Claude, around the editor's own words (optional). */
+function writeCommand(c, body) {
+  if (c.format !== "carousel") throw new Error("Only a carousel's options are written again.");
+  busy(c);
+  if (!["options", "review", "failed"].includes(c.state)) throw new Error("Wait until this step has finished, then write again.");
+  if ((c.spent ?? 0) >= (c.limit ?? CREATIVE_LIMIT_USD)) throw new Error("This creative has reached its spending limit, so Claude cannot write again. Ask an admin.");
+  const words = String(body?.words ?? "").trim();
+  if (words.length > 1000) throw new Error("Keep your idea to 1000 characters.");
+  return { command: { type: "write", data: { words } }, state: "writing" };
+}
+
 function retryCommand(c) {
   if (c.state !== "failed") throw new Error("Only a stopped creative can be tried again.");
   const open = (c.commands ?? []).find((x) => x.type === "open")?.data;
@@ -199,6 +223,20 @@ function cleanCreativeUpdate(u) {
       hook: { text: clip(x?.hook?.text, 300), live: x?.hook?.live === true, note: x?.hook?.note ? clip(x.hook.note, 400) : null },
       history: (Array.isArray(x?.history) ? x.history : []).slice(-20).map((h) => ({ action: clip(h?.action, 30), by: clip(h?.by, 80), at: clip(h?.at, 40), note: h?.note ? clip(h.note, 600) : null })),
     }));
+  if (Array.isArray(u.options))
+    fields.options = u.options.slice(0, 3).map((o) => ({
+      id: ["O1", "O2", "O3"].includes(o?.id) ? o.id : "O1",
+      title: clip(o?.title, 120),
+      why: clip(o?.why, 600),
+      architecture: clip(o?.architecture, 40),
+      hook: clip(o?.hook, 300),
+      hookApproved: o?.hookApproved === true,
+      photoSlot: SLOT.test(String(o?.photoSlot ?? "")) ? o.photoSlot : null,
+      slides: (Array.isArray(o?.slides) ? o.slides : []).slice(0, 8).map((s) => ({ role: clip(s?.role, 30), text: clip(s?.text, 300), facts: Number(s?.facts) || 0 })),
+      problems: strings(o?.problems, 10, 600),
+      made: o?.made === true,
+    }));
+  if (Array.isArray(u.ideas)) fields.ideas = u.ideas.slice(-10).map((i) => ({ words: clip(i?.words, 1000), by: clip(i?.by, 80), at: clip(i?.at, 40) }));
   if (Array.isArray(u.unchecked)) fields.unchecked = u.unchecked.slice(0, 60).map((p) => ({ id: clip(p?.id, 40), slot: SLOT.test(String(p?.slot ?? "")) ? p.slot : null }));
   if (has("usablePhotos")) fields.usablePhotos = Number(u.usablePhotos) || 0;
   if (Array.isArray(u.priceChange)) fields.priceChange = u.priceChange.slice(0, 10).map((p) => ({ label: clip(p?.label, 80), factId: clip(p?.factId, 80), from: clip(p?.from, 80), to: clip(p?.to, 80) }));
@@ -220,4 +258,4 @@ function cleanCreativeSlot(slot) {
   return s;
 }
 
-module.exports = { CREATIVE_LIMIT_USD, REVIEW_TAGS, cleanCreativeStart, actProblem, hookCommand, makeCommand, decideCommand, reviseCommand, photosCommand, priceCommand, retryCommand, viewCommand, cleanCreativeUpdate, cleanCreativeUpdates, cleanCreativeSlot };
+module.exports = { CREATIVE_LIMIT_USD, REVIEW_TAGS, cleanCreativeStart, actProblem, hookCommand, makeCommand, writeCommand, decideCommand, reviseCommand, photosCommand, priceCommand, retryCommand, viewCommand, cleanCreativeUpdate, cleanCreativeUpdates, cleanCreativeSlot };

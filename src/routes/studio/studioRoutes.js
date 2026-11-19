@@ -79,6 +79,8 @@ router.get("/creatives", cr.listCreatives);
 router.post("/creatives", cr.startCreative);
 router.post("/creatives/:id/hook", cr.hookForCreative);
 router.post("/creatives/:id/make", cr.makeForCreative);
+// A carousel's options written again by Claude, around the editor's own words (D-059).
+router.post("/creatives/:id/write", cr.writeForCreative);
 router.post("/creatives/:id/decide", cr.decideForCreative);
 router.post("/creatives/:id/revise", cr.reviseForCreative);
 router.post("/creatives/:id/photos", cr.photosForCreative);

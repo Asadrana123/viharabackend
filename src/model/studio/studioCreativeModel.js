@@ -10,7 +10,7 @@ const mongoose = require("mongoose");
 
 const commandSchema = new mongoose.Schema(
   {
-    type: { type: String, enum: ["open", "view", "retry", "hook", "make", "decide", "revise", "photos", "price"], required: true },
+    type: { type: String, enum: ["open", "view", "retry", "hook", "make", "write", "decide", "revise", "photos", "price"], required: true },
     data: { type: mongoose.Schema.Types.Mixed, default: undefined },
     byName: { type: String, required: true },
     at: { type: Date, default: Date.now },
@@ -30,9 +30,13 @@ const creativeSchema = new mongoose.Schema(
     // Who the creatives are for, chosen by the editor ({ icpId, stage, label }), as D-057 for video.
     buyer: { type: mongoose.Schema.Types.Mixed, required: true },
     idea: { type: String, default: null },
-    // queued: waiting for the server; waiting: photos or a new price to check first; angles; making; review; failed.
+    // queued: waiting for the server; waiting: photos or a new price to check first; angles (a static); writing and
+    // options (a carousel: Claude writes, the editor picks); making; review; failed.
     state: { type: String, required: true },
     angles: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    // A carousel's options as Claude wrote and the Creative OS checked them, and the editor's ideas for it (D-059).
+    options: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    ideas: { type: [mongoose.Schema.Types.Mixed], default: [] },
     creatives: { type: [mongoose.Schema.Types.Mixed], default: [] },
     // The property's photos nobody has checked yet (D-056) and its new price waiting for a person (D-058).
     unchecked: { type: [mongoose.Schema.Types.Mixed], default: [] },
