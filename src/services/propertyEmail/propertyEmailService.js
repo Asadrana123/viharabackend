@@ -75,7 +75,7 @@ async function isBlocked(email) {
  * @param {object} [p.lead]     PropertyEmailLead to stamp lastEmailAt on
  * @returns {Promise<{ sent: boolean, skipped?: string, error?: string, messageId?: string }>}
  */
-async function sendPropertyEmail({ code, property, to, name, extra = {}, dedupKey, lead }) {
+async function sendPropertyEmail({ code, property, to, name, extra = {}, dedupKey, lead, attachment = [], subject = "" }) {
   const email = normEmail(to);
   const templateId = PROPERTY_EMAIL_TEMPLATES[code];
   const tag = `[property-email:${code}] ${email} / ${propertyKeyOf(property)}`;
@@ -128,6 +128,8 @@ async function sendPropertyEmail({ code, property, to, name, extra = {}, dedupKe
     name,
     params,
     tags: [`property:${propertyKeyOf(property)}`, code],
+    attachment,
+    subject,
   });
   if (!result.success) return fail(result.error || "Brevo send failed");
 
@@ -203,6 +205,46 @@ async function onPropertyLeadSignup({ property, lead }) {
     });
   } catch (err) {
     console.error(`[property-email] E1 trigger failed for ${maskEmail(lead?.email)}:`, err.message);
+  }
+}
+
+/**
+ * /deal form: the confirmation email (E1, template 198) carrying the private deal sheet. Goes on EVERY deal,
+ * whether or not the property's email sequence is on (Prajwal, 21 Nov 2026); the sequence's lead record is
+ * still only made when it is on. Never throws.
+ * @param {object} p.property  productModel doc
+ * @param {object} p.lead      PropertyLead doc
+ * @param {object} p.params    the deal sheet parameters (dealSheetData.emailParams)
+ * @param {string} [p.pdfUrl]  the PDF, attached when it's ready
+ * @param {string} p.dedupKey  one send per key (a resend uses a new key)
+ */
+async function sendDealSheetEmail({ property, lead, params, pdfUrl, dedupKey }) {
+  try {
+    let record = null;
+    if (isSequenceOn(property)) {
+      record = await upsertLeadRecord({
+        email: lead.email,
+        propertyId: property._id,
+        fullName: lead.fullName,
+        source: "property_lead",
+        set: lead.quotePrice ? { quoteAmount: lead.quotePrice } : {},
+      });
+    }
+    const street = property.street || property.productName || "this home";
+    return await sendPropertyEmail({
+      code: "E1",
+      property,
+      to: lead.email,
+      name: lead.fullName,
+      extra: { FIRSTNAME: firstNameOf(lead.fullName), QUOTE_AMOUNT: lead.quotePrice || undefined, ...params },
+      lead: record,
+      dedupKey,
+      subject: `Your deal sheet for ${street}`,
+      attachment: pdfUrl ? [{ url: pdfUrl, name: `Vihara deal sheet - ${street}.pdf` }] : [],
+    });
+  } catch (err) {
+    console.error(`[property-email] deal sheet email failed for ${maskEmail(lead?.email)}:`, err.message);
+    return { sent: false, error: err.message };
   }
 }
 
@@ -335,6 +377,7 @@ module.exports = {
   isSequenceOn,
   sendPropertyEmail,
   onPropertyLeadSignup,
+  sendDealSheetEmail,
   onAuctionRegistration,
   sendPartnerReferralEmail,
   onVerificationChange,

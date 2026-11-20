@@ -26,7 +26,10 @@ const { listingPageUrl } = require("../../config/siteUrls");
 // dropped, so an email never carries fields its template doesn't use.
 const TEMPLATE_FIELDS = {
   E1: ["PROPERTY_SHORT", "PROPERTY_NAME", "LISTING_URL", "OPENING_BID", "IMAGE_URL",
-    "FACT_1", "FACT_2", "FACT_3", "AUCTION_DATE", "AUCTION_TIME", "QUOTE_AMOUNT", "NOTE"],
+    "FACT_1", "FACT_2", "FACT_3", "AUCTION_DATE", "AUCTION_TIME", "QUOTE_AMOUNT", "NOTE",
+    // /deal form deal sheet (services/dealSheet/dealSheetData.js emailParams). Left out for other sign-ups.
+    "DEAL_SHEET_URL", "BOOK_URL", "BOOK_BY", "HOOK_LINE", "ADVISOR_NAME", "ADVISOR_FIRST", "ADVISOR_TITLE",
+    "ADVISOR_PHOTO", "SALE_TIME_TZ", "TIMELINE", "REF"],
   R1: ["PROPERTY_SHORT", "PROPERTY_NAME", "LISTING_URL", "OPENING_BID", "FACT_1", "FACT_2", "FACT_3",
     "AUCTION_DATE", "AUCTION_TIME", "MULTI_DAY", "AUCTION_CLOSE_TEXT"],
   R2: ["PROPERTY_SHORT", "PROPERTY_NAME", "LISTING_URL", "OPENING_BID", "FACT_1", "FACT_2", "FACT_3",

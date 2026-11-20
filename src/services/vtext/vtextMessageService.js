@@ -78,7 +78,7 @@ async function enqueueOutbound({ to: rawTo, body: givenBody, bodyWithoutLinks, m
   }
 
   // No links or images before the person has written back (vtextRichContentGate.js).
-  const rich = await applyRichContentRule({ contact, body: givenBody, bodyWithoutLinks, media: givenMedia });
+  const rich = await applyRichContentRule({ contact, body: givenBody, bodyWithoutLinks, media: givenMedia, origin });
   const { body, media } = rich;
   if (rich.changes.length) console.log(`[vtext enqueue] ${contact._id}: ${rich.changes.join(", ")}`);
 
