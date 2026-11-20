@@ -81,8 +81,13 @@ function decideRichContent({ body, bodyWithoutLinks, media, replied }) {
  * Looks the reply up only when the message carries a link or an image.
  * @returns {Promise<ReturnType<typeof decideRichContent>>}
  */
-async function applyRichContentRule({ contact, body, bodyWithoutLinks, media }) {
+// Texts that must carry their link even before a reply: the /deal deal sheet text (its link IS the sheet the buyer
+// asked for). They go only through the Twilio A2P SMS line, never the iMessage lines, so Apple never sees the link.
+const LINK_ALLOWED_TEMPLATES = new Set(["deal-sheet-code"]);
+
+async function applyRichContentRule({ contact, body, bodyWithoutLinks, media, origin }) {
   if (!media?.file && !hasLink(body)) return { body, media, changes: [] };
+  if (!media?.file && LINK_ALLOWED_TEMPLATES.has(origin?.templateKey)) return { body, media, changes: [] };
   const replied = await hasWrittenReply(contact);
   return decideRichContent({ body, bodyWithoutLinks, media, replied });
 }

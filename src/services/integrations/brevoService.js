@@ -801,7 +801,8 @@ const getContactBlockStatus = async (email) => {
  * string"). Retries 5xx / 429 / network errors up to 3 times. Non-throwing.
  * @returns {Promise<{ success: boolean, messageId?: string, error?: string }>}
  */
-const sendTransactionalEmail = async ({ templateId, email, name, params = {}, tags = [] }) => {
+// attachment: [{ url, name }] (Brevo fetches the file); subject: overrides the template's subject line.
+const sendTransactionalEmail = async ({ templateId, email, name, params = {}, tags = [], attachment = [], subject = "" }) => {
   if (!BREVO_API_KEY) return { success: false, error: "BREVO_API_KEY not configured" };
   if (!email || !templateId) return { success: false, error: "missing email or templateId" };
 
@@ -813,6 +814,8 @@ const sendTransactionalEmail = async ({ templateId, email, name, params = {}, ta
     to: [{ email, ...(name ? { name } : {}) }],
     params: cleanParams,
     ...(tags.length ? { tags } : {}),
+    ...(attachment.length ? { attachment } : {}),
+    ...(subject ? { subject } : {}),
   };
 
   let lastError = "";

@@ -23,6 +23,10 @@
 // record it: "system" | "opted-in" | "reply" | "consent-not-required".
 const CONVERSATIONAL_WINDOW_DAYS = Number(process.env.VTEXT_CONVERSATIONAL_WINDOW_DAYS || 30);
 const SYSTEM_BYPASS_TEMPLATES = new Set(["stop-confirm", "help"]);
+// One-off texts the person asked for themselves, sent without the SMS consent box. Opt-outs and bad numbers still
+// block them. "deal-sheet-code": the /deal form's deal sheet link + 6-digit code; the buyer gave their number to get
+// the sheet on their phone (Prajwal, 21 Nov 2026). Every other text still needs the box.
+const TRANSACTIONAL_TEMPLATES = new Set(["deal-sheet-code"]);
 
 /**
  * @param {object} contact - a vtextContactModel document (or plain object with the same shape)
@@ -53,6 +57,10 @@ function canSend(contact, message = {}, context = {}) {
 
   if (contact?.consent?.status === "opted-in") {
     return { allowed: true, basis: "opted-in" };
+  }
+
+  if (message.origin?.kind === "automation" && TRANSACTIONAL_TEMPLATES.has(message.origin?.templateKey)) {
+    return { allowed: true, basis: "transactional" };
   }
 
   if (message.isReplyToInbound && context.lastInboundAt) {
@@ -145,4 +153,5 @@ function detectKeyword(body) {
   return { type: null, matched: null, method: null };
 }
 
-module.exports = { canSend, detectKeyword, logGateDecision, CONVERSATIONAL_WINDOW_DAYS };
+module.exports = {
+  TRANSACTIONAL_TEMPLATES, canSend, detectKeyword, logGateDecision, CONVERSATIONAL_WINDOW_DAYS };

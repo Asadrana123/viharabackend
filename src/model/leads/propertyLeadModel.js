@@ -124,9 +124,50 @@ const propertyLeadSchema = new mongoose.Schema(
     // never get calls, Slack posts, enrichment, Brevo sync or texts, are hidden
     // from admin lead lists and Buyer Match, and are deleted by QA cleanup.
     isQaTest: { type: Boolean, default: false },
+
+    // ── /deal form: the private deal sheet (config/dealSheet.js, services/dealSheet/) ──────────────
+    // "deal" for sign-ups from the /deal form; "" for /auction/:slug and the finder.
+    form: { type: String, default: "", trim: true },
+    // What they'd do with it (live_in | rental | house_hack | fix_flip) and when they're ready to buy
+    // (30d = now, at this sale | 90d | 180d | looking). "" when not asked.
+    purpose: { type: String, default: "", trim: true },
+    timeline: { type: String, enum: ["", "30d", "90d", "180d", "looking"], default: "" },
+    // Short code shown on the sheet and used in the booking link (vihara.ai/b/<ref>), e.g. "VH-8F2K".
+    ref: { type: String, default: undefined, trim: true },
+    // Secret the form gets back at sign-up; the phone / email endpoints need it (a lead id alone isn't enough).
+    accessKey: { type: String, default: "", select: false },
+    // The number is confirmed: the texted code was entered ("code") or the texted link was opened ("sms_link").
+    phoneVerifiedAt: { type: Date, default: null },
+    phoneVerifyMethod: { type: String, enum: ["", "code", "sms_link"], default: "" },
+    // The /deal sign-up call: placed once, when the number is confirmed, or 30 minutes after sign-up without it
+    // (then signupCallUnverified = true, the call task's "phone_unverified" flag).
+    signupCallAt: { type: Date, default: null },
+    signupCallUnverified: { type: Boolean, default: false },
+    // "Change number" to a number that already has a lead for this deal: the code confirms that lead, and this
+    // one points at it (no calls of its own).
+    duplicateOf: { type: mongoose.Schema.Types.ObjectId, default: null },
+    dealSheet: {
+      token: { type: String, default: undefined }, // vihara.ai/s/<token>
+      marker: { type: String, default: "" }, // ?v=<marker> on the texted link only: opening it confirms the number
+      version: { type: Number, default: 0 }, // +1 on every rebuild (phone confirmed, email changed)
+      pdfUrl: { type: String, default: "" },
+      builtAt: { type: Date, default: null },
+      buildError: { type: String, default: "" },
+      sentAt: { type: Date, default: null }, // deal_sheet.sent: the email went out
+      emailedTo: { type: String, default: "" },
+      openCount: { type: Number, default: 0 }, // deal_sheet.opened: /s/<token> views
+      firstOpenedAt: { type: Date, default: null },
+      lastOpenedAt: { type: Date, default: null },
+      bookClicks: { type: Number, default: 0 }, // vihara.ai/b/<ref> visits
+    },
   },
   { timestamps: true }
 );
+
+propertyLeadSchema.index({ ref: 1 }, { unique: true, sparse: true });
+propertyLeadSchema.index({ "dealSheet.token": 1 }, { unique: true, sparse: true });
+// The 30-minute unverified-call sweep.
+propertyLeadSchema.index({ form: 1, signupCallAt: 1, phoneVerifiedAt: 1, createdAt: 1 });
 
 // One registration per phone PER property (the dedup gate).
 propertyLeadSchema.index({ propertySlug: 1, phoneNormalized: 1 }, { unique: true });

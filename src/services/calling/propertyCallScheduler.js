@@ -55,6 +55,14 @@ function financingSpoken({ needsFinancing, downPayment, preApproved } = {}) {
   return ["financing", approval, down].filter(Boolean).join(", ");
 }
 
+// /deal form "When are you ready to buy?", spoken ({{prospect_timeline}}); the prompt branches on it.
+const TIMELINE_SPOKEN = {
+  "30d": "ready now, at this sale",
+  "90d": "buying in the next three months",
+  "180d": "buying in three to six months",
+  looking: "just looking for now",
+};
+
 const SWEEP_BATCH = 200; // max leads evaluated per minute
 
 const BURST_OPTS = {
@@ -133,6 +141,8 @@ function callPayload(lead, promptConfig) {
     financing: financingSpoken(lead),
     // The loan they need: "a rental loan, D S C R", their own words for "other", or "" (cash / not asked).
     loanType: loanTypeSpoken(lead),
+    // /deal form: when they're ready to buy ({{prospect_timeline}}), which steers Maya's script. "" otherwise.
+    timeline: TIMELINE_SPOKEN[lead.timeline] || "",
     promptConfig, // { systemPrompt, firstMessage, voicemailMessage, endCallMessage }
     source: `auction-${lead.propertySlug}`,
   };
