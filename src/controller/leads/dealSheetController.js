@@ -157,7 +157,24 @@ const getDealSheet = catchAsyncError(async (req, res, next) => {
   const found = await dealSheetService.sheetFor(lead);
   if (!found) return next(new ErrorHandler(NOT_FOUND, 404));
   res.set("Cache-Control", "no-store");
-  res.json({ success: true, sheet: found.sheet, pdfUrl: lead.dealSheet.pdfUrl || "" });
+  // Download PDF goes through vihara.ai/s/<token>/pdf (Cloudinary won't deliver PDFs directly).
+  res.json({ success: true, sheet: found.sheet, pdfUrl: lead.dealSheet.pdfUrl ? `${sheetUrl(token)}/pdf` : "" });
+});
+
+/** GET /deal-sheet/:token/pdf — the latest PDF's bytes, for vihara.ai/s/<token>/pdf. */
+const getDealSheetPdf = catchAsyncError(async (req, res, next) => {
+  const token = String(req.params.token || "");
+  if (!/^[A-Za-z0-9_-]{16,40}$/.test(token)) return next(new ErrorHandler(NOT_FOUND, 404));
+  const lead = await PropertyLead.findOne({ "dealSheet.token": token }).lean();
+  const pdf = lead && (await dealSheetService.latestPdf(lead));
+  if (!pdf) return next(new ErrorHandler(NOT_FOUND, 404));
+  const street = (await streetOf(lead.propertySlug)).replace(/[^A-Za-z0-9 .-]/g, "");
+  res.set({
+    "Content-Type": "application/pdf",
+    "Content-Disposition": `inline; filename="Vihara deal sheet - ${street}.pdf"`,
+    "Cache-Control": "private, no-store",
+  });
+  res.send(pdf);
 });
 
 /** GET /deal-sheet/book/:ref — where vihara.ai/b/<ref> sends the buyer. */
@@ -192,4 +209,4 @@ const getBookingLink = catchAsyncError(async (req, res) => {
   res.json({ success: true, url: `${late ? WALKTHROUGH_URL : STRATEGY_CALL_URL}?${q}` });
 });
 
-module.exports = { sendPhoneCode, verifyPhoneCode, changeEmail, getDealSheet, getBookingLink };
+module.exports = { sendPhoneCode, verifyPhoneCode, changeEmail, getDealSheet, getDealSheetPdf, getBookingLink };

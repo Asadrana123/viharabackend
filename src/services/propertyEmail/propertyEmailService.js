@@ -215,10 +215,10 @@ async function onPropertyLeadSignup({ property, lead }) {
  * @param {object} p.property  productModel doc
  * @param {object} p.lead      PropertyLead doc
  * @param {object} p.params    the deal sheet parameters (dealSheetData.emailParams)
- * @param {string} [p.pdfUrl]  the PDF, attached when it's ready
+ * @param {string} [p.pdfBase64]  the PDF's bytes (base64), attached when it's ready
  * @param {string} p.dedupKey  one send per key (a resend uses a new key)
  */
-async function sendDealSheetEmail({ property, lead, params, pdfUrl, dedupKey }) {
+async function sendDealSheetEmail({ property, lead, params, pdfBase64, dedupKey }) {
   try {
     let record = null;
     if (isSequenceOn(property)) {
@@ -240,7 +240,7 @@ async function sendDealSheetEmail({ property, lead, params, pdfUrl, dedupKey }) 
       lead: record,
       dedupKey,
       subject: `Your deal sheet for ${street}`,
-      attachment: pdfUrl ? [{ url: pdfUrl, name: `Vihara deal sheet - ${street}.pdf` }] : [],
+      attachment: pdfBase64 ? [{ content: pdfBase64, name: `Vihara deal sheet - ${street}.pdf` }] : [],
     });
   } catch (err) {
     console.error(`[property-email] deal sheet email failed for ${maskEmail(lead?.email)}:`, err.message);

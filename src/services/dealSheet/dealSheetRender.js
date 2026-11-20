@@ -36,6 +36,20 @@ async function renderPdf(sheet, { timeoutMs = 55000 } = {}) {
   return buf;
 }
 
+const publicIdOf = (token, version) => `vihara/deal-sheets/${token}-v${version}.pdf`;
+
+/**
+ * The stored PDF's bytes, through a signed Cloudinary API download. The plain delivery URL answers 401: this
+ * Cloudinary account doesn't allow PDF delivery, so the email attaches the bytes and /s/<token>/pdf serves them.
+ */
+async function fetchStoredPdf({ token, version }) {
+  const url = cloudinary.utils.private_download_url(publicIdOf(token, version), "", { resource_type: "raw", type: "upload" });
+  const res = await axios.get(url, { responseType: "arraybuffer", timeout: 20000, validateStatus: () => true });
+  const buf = Buffer.from(res.data || []);
+  if (res.status !== 200 || buf.slice(0, 4).toString() !== "%PDF") throw new Error(`stored PDF not available (${res.status})`);
+  return buf;
+}
+
 /** Upload the PDF; returns its https URL. Stored as a raw file (Cloudinary blocks PDF delivery as images by default). */
 async function storePdf(buf, { token, version }) {
   const result = await cloudinary.uploader.upload(`data:application/pdf;base64,${buf.toString("base64")}`, {
@@ -47,4 +61,4 @@ async function storePdf(buf, { token, version }) {
   return result.secure_url;
 }
 
-module.exports = { renderPdf, storePdf };
+module.exports = { renderPdf, storePdf, fetchStoredPdf };

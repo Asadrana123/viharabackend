@@ -13,7 +13,7 @@ const crypto = require("crypto");
 const PropertyLead = require("../../model/leads/propertyLeadModel");
 const productModel = require("../../model/property/productModel");
 const { buildSheetData, emailParams } = require("./dealSheetData");
-const { renderPdf, storePdf } = require("./dealSheetRender");
+const { renderPdf, storePdf, fetchStoredPdf } = require("./dealSheetRender");
 const { sendDealSheetEmail } = require("../propertyEmail/propertyEmailService");
 const { PDF_WAIT_MS } = require("../../config/dealSheet");
 
@@ -65,7 +65,7 @@ async function buildSheet(leadId) {
         { $set: { "dealSheet.pdfUrl": pdfUrl, "dealSheet.version": version, "dealSheet.builtAt": new Date(), "dealSheet.buildError": "" } }
       );
       console.log(`${tag} built v${version} in ${Math.round((Date.now() - started) / 1000)}s`);
-      return { pdfUrl };
+      return { pdfUrl, pdf };
     } catch (err) {
       await PropertyLead.updateOne({ _id: lead._id }, { $set: { "dealSheet.buildError": String(err.message).slice(0, 300) } });
       console.error(`${tag} build failed:`, err.message);
@@ -77,8 +77,22 @@ async function buildSheet(leadId) {
   }
 }
 
-/** Email the sheet to the lead's address. */
-async function emailSheet(leadId, { pdfUrl, dedupKey }) {
+/** The latest PDF's bytes (signed download), or null. */
+async function latestPdf(lead) {
+  if (!lead?.dealSheet?.pdfUrl || !lead.dealSheet.version) return null;
+  try {
+    return await fetchStoredPdf({ token: lead.dealSheet.token, version: lead.dealSheet.version });
+  } catch (err) {
+    console.error(`[deal-sheet] lead ${lead._id}: ${err.message}`);
+    return null;
+  }
+}
+
+/**
+ * Email the sheet to the lead's address, with the PDF attached as bytes (Brevo can't download it from Cloudinary).
+ * Without the bytes it goes with the link only.
+ */
+async function emailSheet(leadId, { pdf, dedupKey }) {
   const lead = await PropertyLead.findById(leadId).lean();
   if (!lead) return { sent: false };
   const product = await loadProduct(lead.propertySlug);
@@ -88,7 +102,7 @@ async function emailSheet(leadId, { pdfUrl, dedupKey }) {
     property: product,
     lead,
     params: emailParams(sheet, lead),
-    pdfUrl: pdfUrl || lead.dealSheet?.pdfUrl || "",
+    pdfBase64: (pdf || (await latestPdf(lead)))?.toString("base64") || "",
     dedupKey,
   });
   if (result.sent) {
@@ -105,7 +119,7 @@ async function onDealSignup(leadId) {
   try {
     const built = await withTimeout(buildSheet(leadId), PDF_WAIT_MS);
     const lead = await PropertyLead.findById(leadId).select("email").lean();
-    await emailSheet(leadId, { pdfUrl: built.pdfUrl, dedupKey: `deal-sheet|${leadId}|${lead?.email || ""}` });
+    await emailSheet(leadId, { pdf: built.pdf, dedupKey: `deal-sheet|${leadId}|${lead?.email || ""}` });
   } catch (err) {
     console.error(`[deal-sheet] sign-up flow failed for lead ${leadId}:`, err.message);
   }
@@ -121,7 +135,7 @@ async function onEmailChanged(leadId) {
   try {
     const built = await withTimeout(buildSheet(leadId), PDF_WAIT_MS);
     const lead = await PropertyLead.findById(leadId).select("email").lean();
-    await emailSheet(leadId, { pdfUrl: built.pdfUrl, dedupKey: `deal-sheet|${leadId}|${lead?.email || ""}` });
+    await emailSheet(leadId, { pdf: built.pdf, dedupKey: `deal-sheet|${leadId}|${lead?.email || ""}|v${Date.now()}` });
   } catch (err) {
     console.error(`[deal-sheet] email change flow failed for lead ${leadId}:`, err.message);
   }
@@ -132,13 +146,12 @@ async function resendExisting(leadId) {
   try {
     const lead = await PropertyLead.findById(leadId).lean();
     if (!lead?.dealSheet?.token) return;
-    let pdfUrl = lead.dealSheet.pdfUrl;
-    if (!pdfUrl) pdfUrl = (await withTimeout(buildSheet(leadId), PDF_WAIT_MS)).pdfUrl;
+    const pdf = lead.dealSheet.pdfUrl ? null : (await withTimeout(buildSheet(leadId), PDF_WAIT_MS)).pdf;
     const day = new Date().toISOString().slice(0, 10);
-    await emailSheet(leadId, { pdfUrl, dedupKey: `deal-sheet-again|${leadId}|${day}` });
+    await emailSheet(leadId, { pdf, dedupKey: `deal-sheet-again|${leadId}|${day}` });
   } catch (err) {
     console.error(`[deal-sheet] resend failed for lead ${leadId}:`, err.message);
   }
 }
 
-module.exports = { newIdentifiers, newRef, sheetFor, buildSheet, onDealSignup, onPhoneVerified, onEmailChanged, resendExisting, PRODUCT_FIELDS };
+module.exports = { emailSheet, latestPdf, newIdentifiers, newRef, sheetFor, buildSheet, onDealSignup, onPhoneVerified, onEmailChanged, resendExisting, PRODUCT_FIELDS };
