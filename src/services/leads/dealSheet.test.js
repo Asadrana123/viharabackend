@@ -39,9 +39,17 @@ test("the West Hollywood sample: the opening line, book-by and sale time match t
   const sheet = buildSheetData(lead(), weho);
   assert.equal(hookLine(sheet), "At $465,000 you'd buy this home about $53,866 under its market value.");
   const p = emailParams(sheet, lead());
-  assert.equal(p.BOOK_BY, "Friday, Dec 4");
-  assert.equal(p.SALE_TIME_TZ, "Sunday, Dec 6, 11:00 AM PST (Pacific Time)");
-  assert.match(p.BOOK_URL, /\/b\/VH-3QW7\?k=abcdefgh&utm_source=email/);
+  assert.equal(p.CALL_HOLD_DATE, "Friday, Dec 4");
+  assert.equal(p.AUCTION_DATE, "Sunday, December 6");
+  assert.equal(p.AUCTION_TIME, "11:00 AM PST");
+  assert.equal(p.BOOKING_URL, "https://www.vihara.ai/b/VH-3QW7.abcdefgh");
+  assert.equal(p.CALL_OFFER, true);
+  assert.equal(p.HEADLINE_VALUE, "$53,866");
+  assert.equal(p.YOUR_PRICE, "$465,000");
+  assert.equal(p.PROOF_OF_FUNDS, "$465,000");
+  assert.equal(p.FIGURES_DATE, "November 20, 2026");
+  assert.equal(p.LISTING_URL, "https://www.vihara.ai/listing/960-larrabee-st-west-hollywood");
+  for (const url of [p.SHEET_URL, p.BOOKING_URL, p.LISTING_URL]) assert.ok(!url.includes("?"), url);
   assert.equal(sheet.deal.type, "condo");
   assert.equal(sheet.deal.saleType, "Bank-owned");
   assert.equal(sheet.buyer.phone, "(310) 555-0122");
@@ -52,10 +60,24 @@ test("later and just-looking buyers get no booking link or book-by date", () => 
   for (const timeline of ["90d", "180d", "looking"]) {
     const l = lead({ timeline });
     const p = emailParams(buildSheetData(l, weho), l);
-    assert.equal(p.BOOK_URL, undefined);
-    assert.equal(p.BOOK_BY, undefined);
+    assert.equal(p.BOOKING_URL, undefined);
+    assert.equal(p.CALL_HOLD_DATE, undefined);
+    assert.equal(p.CALL_OFFER, undefined); // left out, never the text "false"
     assert.equal(p.TIMELINE, timeline);
   }
+});
+
+test("El Paso flip at $95,000 matches Prajwal's example (MST, built-in equity)", () => {
+  const l = lead({ purpose: "fix_flip", quotePrice: 95000 });
+  const elPaso = { ...weho, slug: "8206-loma-vista-pl-el-paso", street: "8206 Loma Vista Pl", city: "El Paso", state: "TX", zipCode: "79912", startBid: 110000,
+    investmentData: { valuation: { ViharaValue: 139888 }, rental: { estimatedMonthlyRent: 2263 } }, auctionStartDate: "2026-12-06T18:00:00Z" };
+  const p = emailParams(buildSheetData(l, elPaso), l);
+  assert.equal(p.HEADLINE_VALUE, "$44,888");
+  assert.equal(p.HEADLINE_LABEL, "Built-in equity at your price, before renovation");
+  assert.equal(p.AUCTION_TIME, "11:00 AM MST");
+  assert.equal(p.CITY, "El Paso, TX");
+  assert.equal(p.STARTING_BID, "$110,000");
+  assert.equal(p.MARKET_VALUE, "$139,888");
 });
 
 test("rental buyers lead with rent and yield", () => {

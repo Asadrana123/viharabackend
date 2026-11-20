@@ -75,7 +75,7 @@ async function isBlocked(email) {
  * @param {object} [p.lead]     PropertyEmailLead to stamp lastEmailAt on
  * @returns {Promise<{ sent: boolean, skipped?: string, error?: string, messageId?: string }>}
  */
-async function sendPropertyEmail({ code, property, to, name, extra = {}, dedupKey, lead, attachment = [], subject = "" }) {
+async function sendPropertyEmail({ code, property, to, name, extra = {}, dedupKey, lead, attachment = [], subject = "", extraTags = [] }) {
   const email = normEmail(to);
   const templateId = PROPERTY_EMAIL_TEMPLATES[code];
   const tag = `[property-email:${code}] ${email} / ${propertyKeyOf(property)}`;
@@ -127,7 +127,7 @@ async function sendPropertyEmail({ code, property, to, name, extra = {}, dedupKe
     email,
     name,
     params,
-    tags: [`property:${propertyKeyOf(property)}`, code],
+    tags: [`property:${propertyKeyOf(property)}`, code, ...extraTags],
     attachment,
     subject,
   });
@@ -231,17 +231,26 @@ async function sendDealSheetEmail({ property, lead, params, pdfBase64, dedupKey 
       });
     }
     const street = property.street || property.productName || "this home";
-    return await sendPropertyEmail({
-      code: "E1",
-      property,
-      to: lead.email,
-      name: lead.fullName,
-      extra: { FIRSTNAME: firstNameOf(lead.fullName), QUOTE_AMOUNT: lead.quotePrice || undefined, ...params },
-      lead: record,
-      dedupKey,
-      subject: `Your deal sheet for ${street}`,
-      attachment: pdfBase64 ? [{ content: pdfBase64, name: `Vihara deal sheet - ${street}.pdf` }] : [],
-    });
+    const send = (code, key) =>
+      sendPropertyEmail({
+        code,
+        property,
+        to: lead.email,
+        name: lead.fullName,
+        extra: { FIRSTNAME: firstNameOf(lead.fullName), QUOTE_AMOUNT: lead.quotePrice || undefined, ...params },
+        lead: record,
+        dedupKey: key,
+        // 293 has its own subject ("Your private deal sheet for {PROPERTY_SHORT}"); only the 198 fallback sets one.
+        subject: code === "E1v2" ? "" : `Your deal sheet for ${street}`,
+        attachment: pdfBase64 ? [{ content: pdfBase64, name: `Vihara deal sheet - ${street}.pdf` }] : [],
+        extraTags: [`timeline:${params.TIMELINE || "30d"}`],
+      });
+    // Template 293 (E1 v2). If Brevo refuses it (e.g. still inactive), the same email goes on 198 so the buyer
+    // still gets their sheet.
+    const v2 = await send("E1v2", dedupKey);
+    if (v2.sent || v2.skipped) return v2;
+    console.warn(`[property-email] E1v2 (293) failed (${v2.error}); sending the deal sheet on E1 (198) instead`);
+    return send("E1", `${dedupKey}|198`);
   } catch (err) {
     console.error(`[property-email] deal sheet email failed for ${maskEmail(lead?.email)}:`, err.message);
     return { sent: false, error: err.message };

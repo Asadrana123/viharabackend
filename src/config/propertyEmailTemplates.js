@@ -29,6 +29,9 @@ const PROPERTY_EMAIL_TEMPLATES = {
   X1: 205,
   WD1: 212,
   PT1: 208,
+  // The /deal form's deal sheet email ("Backend · Property · E1 v2 Deal sheet", Prajwal 21 Nov 2026). Deal-sheet
+  // sends only; everything else stays on E1 (198). While 293 is inactive in Brevo the send falls back to 198.
+  E1v2: Number(process.env.DEAL_SHEET_TEMPLATE_ID) || 293,
 };
 
 module.exports = { PROPERTY_EMAIL_TEMPLATES };

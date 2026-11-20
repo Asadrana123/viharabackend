@@ -6,7 +6,8 @@
 // market value = investmentData.valuation.ViharaValue, rent = investmentData.rental.estimatedMonthlyRent.
 const { DateTime } = require("luxon");
 const { resolvePropertyTimezone } = require("../../utils/resolveTimezone");
-const { advisorFor, isCashOnly, sheetUrl, bookUrl, bookKey } = require("../../config/dealSheet");
+const { advisorFor, isCashOnly, sheetUrl, bookKey } = require("../../config/dealSheet");
+const { getSiteUrl, listingPageUrl } = require("../../config/siteUrls");
 
 const pos = (n) => (Number.isFinite(Number(n)) && Number(n) > 0 ? Number(n) : null);
 
@@ -135,22 +136,59 @@ function saleTimeLabel(deal) {
   return `${dt.toFormat("cccc, LLL d, h:mm a ZZZZ")}${zone ? ` (${zone})` : ""}`;
 }
 
-/** The new E1 (template 198) parameters for a deal sheet email. */
+/** The sheet's headline number and its words, at their price (same maths as hookLine). */
+function headline(sheet) {
+  const d = sheet.deal;
+  const a = sheet.answers;
+  const p = a.offerPrice || d.startingBid;
+  if (!p) return {};
+  if ((a.purpose === "rental" || a.purpose === "house_hack") && d.rentEstimate)
+    return { value: `${money(d.rentEstimate)}/mo`, label: `Estimated rent at your price, a ${pct((d.rentEstimate * 12) / p)} gross yield` };
+  if (a.purpose === "fix_flip" && d.marketEstimate > p) return { value: money(d.marketEstimate - p), label: "Built-in equity at your price, before renovation" };
+  if (d.marketEstimate > p) return { value: money(d.marketEstimate - p), label: "Under market value at your price" };
+  return {};
+}
+
+/**
+ * The deal sheet email's parameters: template 293 "E1 v2 Deal sheet", Prajwal's field list (21 Nov 2026).
+ * Ready-to-print strings; URLs carry no query string (the template adds UTM + ref); CALL_OFFER is a real true for
+ * ready-now (30d) buyers and left out otherwise. No advisor photo. Names not on 293's list are dropped by
+ * propertyEmailParams.
+ */
 function emailParams(sheet, lead) {
   const v = sheet.advisor;
-  const timeline = sheet.answers.timeline || "30d";
+  const d = sheet.deal;
+  const a = sheet.answers;
+  const timeline = a.timeline || "30d";
+  const now = timeline === "30d";
+  const sale = d.saleStart ? DateTime.fromISO(d.saleStart, { zone: d.timezone }) : null;
+  const price = a.offerPrice || d.startingBid;
+  const fmt = (n) => (Number.isFinite(n) && n > 0 ? money(n) : undefined);
+  const head = headline(sheet);
   return {
-    DEAL_SHEET_URL: sheetUrl(lead.dealSheet.token),
-    BOOK_URL: timeline === "30d" ? `${bookUrl(lead.ref, lead.dealSheet.token)}&utm_source=email&utm_medium=confirmation` : undefined,
-    BOOK_BY: timeline === "30d" ? bookByLabel(sheet.deal) : undefined,
-    HOOK_LINE: hookLine(sheet),
-    ADVISOR_NAME: v?.name,
-    ADVISOR_FIRST: v?.name ? v.name.split(" ")[0] : undefined,
-    ADVISOR_TITLE: v?.title,
-    ADVISOR_PHOTO: v?.photoUrl,
-    SALE_TIME_TZ: saleTimeLabel(sheet.deal),
-    TIMELINE: timeline,
+    TIMELINE: timeline, // for the timeline:<value> tag
+    PROPERTY_SHORT: d.street,
+    PROPERTY_NAME: [d.street, d.city, d.state].filter(Boolean).join(", "),
+    CITY: [d.city, d.state].filter(Boolean).join(", "),
+    IMAGE_URL: d.imageUrl || undefined,
+    SLUG: d.slug,
+    LISTING_URL: listingPageUrl(d.slug),
+    AUCTION_DATE: sale ? sale.toFormat("cccc, LLLL d") : undefined,
+    AUCTION_TIME: sale ? sale.toFormat("h:mm a ZZZZ") : undefined,
+    SHEET_URL: sheetUrl(lead.dealSheet.token),
     REF: lead.ref,
+    CALL_OFFER: now ? true : undefined,
+    // The key rides in the path (ref.key), so the link has no "?" and /b/ can still fill in name and email.
+    BOOKING_URL: now ? `${getSiteUrl()}/b/${encodeURIComponent(lead.ref)}.${bookKey(lead.dealSheet.token)}` : undefined,
+    CALL_HOLD_DATE: now ? bookByLabel(d) || undefined : undefined,
+    ADVISOR_NAME: v?.name,
+    HEADLINE_VALUE: head.value,
+    HEADLINE_LABEL: head.label,
+    YOUR_PRICE: fmt(price),
+    STARTING_BID: fmt(d.startingBid),
+    MARKET_VALUE: fmt(d.marketEstimate),
+    PROOF_OF_FUNDS: a.pay === "cash" ? fmt(price) : undefined,
+    FIGURES_DATE: DateTime.fromISO(sheet.signedUpAt, { zone: d.timezone }).toFormat("LLLL d, yyyy"),
   };
 }
 

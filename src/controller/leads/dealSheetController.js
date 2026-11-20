@@ -179,7 +179,10 @@ const getDealSheetPdf = catchAsyncError(async (req, res, next) => {
 
 /** GET /deal-sheet/book/:ref — where vihara.ai/b/<ref> sends the buyer. */
 const getBookingLink = catchAsyncError(async (req, res) => {
-  const ref = String(req.params.ref || "").toUpperCase();
+  // "VH-ABCD" or "VH-ABCD.<key>" (the email's link carries the key in the path: it can't have a query string).
+  const [refPart, keyInPath = ""] = String(req.params.ref || "").split(".");
+  const ref = refPart.toUpperCase();
+  const linkKey = String(req.query.k || keyInPath);
   const utm = {};
   for (const k of ["utm_source", "utm_medium", "utm_campaign", "utm_content"]) {
     if (req.query[k]) utm[k] = String(req.query[k]).slice(0, 100);
@@ -195,7 +198,7 @@ const getBookingLink = catchAsyncError(async (req, res) => {
   // After the book-by date (sale − 2 days): the public walkthrough instead of the founder call.
   const late = by && Date.now() > by.getTime();
   const q = new URLSearchParams(utm);
-  if (sameSecret(req.query.k, bookKey(lead.dealSheet?.token))) {
+  if (sameSecret(linkKey, bookKey(lead.dealSheet?.token))) {
     q.set("name", lead.fullName);
     q.set("email", lead.email);
   }
