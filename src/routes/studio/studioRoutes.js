@@ -3,6 +3,7 @@ const express = require("express");
 const multer = require("multer");
 const { isAuthenticated, authorizeRoles } = require("../../middleware/auth");
 const c = require("../../controller/studio/studioController");
+const cr = require("../../controller/studio/creativeController");
 const estimates = require("../../controller/studio/estimateController");
 
 const router = express.Router();
@@ -20,6 +21,10 @@ router.post("/videos/:coreId/cut", c.requireSyncKey, c.confirmCut);
 router.post("/runs/poll", c.requireSyncKey, c.pollRuns);
 router.post("/runs/:id/file-link", c.requireSyncKey, c.fileLink);
 router.post("/runs/:id/file", c.requireSyncKey, c.confirmFile);
+// Statics made in the Studio: the Creative OS asks for these on their own route.
+router.post("/creatives/poll", c.requireSyncKey, cr.pollCreatives);
+router.post("/creatives/:id/file-link", c.requireSyncKey, cr.creativeFileLink);
+router.post("/creatives/:id/file", c.requireSyncKey, cr.confirmCreativeFile);
 
 // Editors and admins.
 router.use(isAuthenticated, authorizeRoles("editor", "admin"));
@@ -69,6 +74,19 @@ router.post("/runs/:id/music", c.musicForRun);
 router.post("/runs/:id/track", imageUpload.single("track"), c.trackForRun);
 router.post("/runs/:id/track-rights", c.trackRightsForRun);
 router.post("/runs/:id/image", imageUpload.single("image"), c.imageForRun);
+// Statics made in the Studio (vihara.ai/studio/creatives).
+router.get("/creatives", cr.listCreatives);
+router.post("/creatives", cr.startCreative);
+router.post("/creatives/:id/hook", cr.hookForCreative);
+router.post("/creatives/:id/make", cr.makeForCreative);
+// A carousel's options written again by Claude, around the editor's own words (D-059).
+router.post("/creatives/:id/write", cr.writeForCreative);
+router.post("/creatives/:id/decide", cr.decideForCreative);
+router.post("/creatives/:id/revise", cr.reviseForCreative);
+router.post("/creatives/:id/photos", cr.photosForCreative);
+router.post("/creatives/:id/price", cr.priceForCreative);
+router.post("/creatives/:id/retry", cr.retryForCreative);
+router.post("/creatives/:id/view", cr.viewForCreative);
 router.get("/problems", c.listProblems);
 router.post("/problems", c.reportProblem);
 router.post("/problems/:id/resolve", authorizeRoles("admin"), c.resolveProblem);
