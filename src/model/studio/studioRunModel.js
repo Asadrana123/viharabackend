@@ -10,7 +10,7 @@ const mongoose = require("mongoose");
 
 const commandSchema = new mongoose.Schema(
   {
-    type: { type: String, enum: ["open", "pick", "gate", "frames", "generate", "remake", "clip", "build", "cut", "idea", "craft", "hook", "vo", "shot", "image", "retry", "view", "sound", "reopen", "layers", "chat", "maya", "timeline", "music", "track", "undo", "photos", "price"], required: true },
+    type: { type: String, enum: ["open", "pick", "gate", "frames", "generate", "remake", "clip", "build", "cut", "idea", "craft", "hook", "vo", "shot", "image", "retry", "view", "sound", "reopen", "layers", "chat", "maya", "timeline", "music", "track", "undo", "photos", "price", "provider"], required: true },
     what: { type: String, default: null },
     choice: { type: String, default: null },
     decision: { type: String, default: null },
@@ -83,6 +83,8 @@ const runSchema = new mongoose.Schema(
     undo: { type: mongoose.Schema.Types.Mixed, default: null },
     // The music now and the tracks to choose from (D-051).
     music: { type: mongoose.Schema.Types.Mixed, default: null },
+    // Who makes the clips, treg or Higgsfield, and each choice with its price (D-060).
+    clipProvider: { type: mongoose.Schema.Types.Mixed, default: null },
     // The stuck error last reported to the Problems page, so it is reported once.
     stuckReported: { type: String, default: null },
     commands: { type: [commandSchema], default: [] },

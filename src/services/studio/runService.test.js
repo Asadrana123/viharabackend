@@ -242,6 +242,27 @@ test("the editor confirms the property's new price, exactly as shown (D-058)", (
   assert.throws(() => priceCommand(run({ state: "queued", priceChange }), { expected: shown }), /has not started/);
 });
 
+test("the editor chooses who makes the clips, from what the server offers and within the limit (D-060)", () => {
+  const { providerCommand } = require("./runService");
+  const clipProvider = { id: "treg", options: [{ id: "treg", label: "treg", ready: true, usd: 2.1 }, { id: "higgsfield", label: "Higgsfield", ready: true, usd: 3.14 }] };
+  const approved = run({ state: "clips", coreId: "BB449-V09", spent: 1, clipProvider });
+  assert.deepEqual(providerCommand(approved, { provider: "higgsfield" }), { command: { type: "provider", data: { provider: "higgsfield" } }, state: "updating" });
+  assert.throws(() => providerCommand(approved, { provider: "treg" }), /already made with treg/);
+  assert.throws(() => providerCommand(approved, { provider: "runway" }), /not a clip maker this video can use/);
+  assert.throws(() => providerCommand(approved, {}), /not a clip maker/);
+  const notSetUp = { ...clipProvider, options: [clipProvider.options[0], { ...clipProvider.options[1], ready: false }] };
+  assert.throws(() => providerCommand(run({ state: "clips", spent: 1, clipProvider: notSetUp }), { provider: "higgsfield" }), /not set up on the video server/);
+  assert.throws(() => providerCommand(run({ state: "clips", spent: 12, clipProvider }), { provider: "higgsfield" }), /over the \$15 limit/);
+  assert.throws(() => providerCommand(run({ state: "gate-a", clipProvider }), { provider: "higgsfield" }), /once the plan is approved/);
+  assert.throws(() => providerCommand(run({ state: "done", clipProvider }), { provider: "higgsfield" }), /once the plan is approved/);
+});
+
+test("keeps who makes the clips and each choice's price from the server, and nothing when not said (D-060)", () => {
+  const { fields } = cleanUpdate({ runId: "1795014626.330508", state: "clips", clipProvider: { id: "higgsfield", options: [{ id: "higgsfield", label: "Higgsfield", note: "Kling 4.0", ready: 1, usd: 3.141, key: "secret" }] } });
+  assert.deepEqual(fields.clipProvider, { id: "higgsfield", options: [{ id: "higgsfield", label: "Higgsfield", note: "Kling 4.0", ready: true, usd: 3.14 }] });
+  assert.equal(cleanUpdate({ runId: "1795014626.330508", state: "clips" }).fields.clipProvider, null);
+});
+
 test("keeps the new price waiting from the server, an empty list once confirmed, and nothing when not said (D-058)", () => {
   const { fields } = cleanUpdate({ runId: "1795014626.330508", state: "failed", priceChange: [{ label: "Starting price", factId: "starting-bid-2", from: "$841,500", to: "$795,000", source: { id: "S3" } }] });
   assert.deepEqual(fields.priceChange, [{ label: "Starting price", factId: "starting-bid-2", from: "$841,500", to: "$795,000" }]);

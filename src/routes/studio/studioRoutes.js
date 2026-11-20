@@ -70,6 +70,8 @@ router.post("/runs/:id/maya", c.mayaForRun);
 router.post("/runs/:id/timeline", c.timelineForRun);
 // D-051: the editor's music.
 router.post("/runs/:id/music", c.musicForRun);
+// D-060: who makes the video's clips, treg or Higgsfield.
+router.post("/runs/:id/provider", c.providerForRun);
 // D-052: a music track the editor adds, and an editor's licence for a track in the library.
 router.post("/runs/:id/track", imageUpload.single("track"), c.trackForRun);
 router.post("/runs/:id/track-rights", c.trackRightsForRun);

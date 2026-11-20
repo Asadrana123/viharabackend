@@ -127,6 +127,8 @@ function cleanUpdate(u) {
       undo: u?.undo && typeof u.undo === "object" ? { what: clip(u.undo.what, 400), at: clip(u.undo.at, 40), by: clip(u.undo.by, 80), count: Math.max(0, Math.min(999, Number(u.undo.count) || 0)) } : null,
       // The music now and the tracks to choose from (D-051).
       music: cleanMusic(u?.music),
+      // Who makes the clips and each choice's price (D-060).
+      clipProvider: cleanClipProvider(u?.clipProvider),
       framesPrice: Number(u?.framesPrice) || 0,
       clips: Array.isArray(u?.clips) ? u.clips.slice(0, 100).map((c) => ({ ref: clip(c?.ref, 120), state: clip(c?.state, 30), note: c?.note ? clip(c.note, 500) : null, slot: clip(c?.slot, 90) })) : [],
       cut: u?.cut ? { name: clip(u.cut.name, 120), state: clip(u.cut.state, 30), seconds: Number(u.cut.seconds) || 0 } : null,
@@ -414,6 +416,32 @@ function timelineCommand(run, body) {
 }
 
 const MUSIC_STATES = ["approved", "frames", "storyboard", "clips", "ready-to-build", "cut", "revision"];
+
+/**
+ * Who makes the video's clips (D-060, Preetham, 2026-11-20: "The choice should be made for each video"): treg or
+ * Higgsfield (Kling 4.0). Free in itself: the plan is written again at the new price, within the video's limit, and
+ * clips made with the other one are kept. Only a maker the Creative OS offers, and has set up, can be chosen.
+ */
+function providerCommand(run, body) {
+  if (!MUSIC_STATES.includes(run.state)) throw new Error("Who makes the clips is chosen once the plan is approved, and before the video is finished.");
+  const provider = String(body?.provider ?? "");
+  const option = (run.clipProvider?.options ?? []).find((o) => o.id === provider);
+  if (!option) throw new Error(`"${provider}" is not a clip maker this video can use. Click Refresh from server and choose again.`);
+  if (!option.ready) throw new Error(`${option.label} is not set up on the video server yet. Keep the other one for now, or ask an admin to add its key.`);
+  if (provider === run.clipProvider?.id) throw new Error(`The clips are already made with ${option.label}.`);
+  const total = (Number(run.spent) || 0) + (Number(option.usd) || 0);
+  if (total > VIDEO_LIMIT_USD) throw new Error(`Making the clips with ${option.label} would take the video to $${total.toFixed(2)}, over the $${VIDEO_LIMIT_USD} limit for a video.`);
+  return { command: { type: "provider", data: { provider } }, state: "updating" };
+}
+
+/** Who makes the clips and each choice with what is still to make at its price, as the Creative OS reports it (D-060). */
+function cleanClipProvider(p) {
+  if (!p || typeof p !== "object") return null;
+  return {
+    id: clip(p.id, 30),
+    options: Array.isArray(p.options) ? p.options.slice(0, 10).map((o) => ({ id: clip(o?.id, 30), label: clip(o?.label, 60), note: clip(o?.note, 300), ready: Boolean(o?.ready), usd: Math.round((Number(o?.usd) || 0) * 100) / 100 })) : [],
+  };
+}
 
 /**
  * The editor's music (D-051, Asad Rana, 2026-11-13): a track from the library at a volume, or none. Free; a video
@@ -787,4 +815,4 @@ function cleanSlot(slot) {
   return s;
 }
 
-module.exports = { priceCommand, BUYER_TYPES, AWARENESS_STAGES, cleanBuyer, photosCommand, PHOTO_CHOICES, undoCommand, UNDO_STATES, cleanTrack, trackRightsCommand, musicCommand, cleanMusic, mayaCommand, timelineCommand, cleanMaya, cleanTimeline, chatMessage, cleanChats, CHAT_TYPES, layersCommand, reopenCommand, REOPEN_FROM, soundCommand, CUT_LAYERS, viewCommand, retryCommand, cleanCraft, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, VIDEO_LIMIT_USD, CLAUDE_MODELS, cleanModel, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };
+module.exports = { providerCommand, cleanClipProvider, priceCommand, BUYER_TYPES, AWARENESS_STAGES, cleanBuyer, photosCommand, PHOTO_CHOICES, undoCommand, UNDO_STATES, cleanTrack, trackRightsCommand, musicCommand, cleanMusic, mayaCommand, timelineCommand, cleanMaya, cleanTimeline, chatMessage, cleanChats, CHAT_TYPES, layersCommand, reopenCommand, REOPEN_FROM, soundCommand, CUT_LAYERS, viewCommand, retryCommand, cleanCraft, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, VIDEO_LIMIT_USD, CLAUDE_MODELS, cleanModel, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };
