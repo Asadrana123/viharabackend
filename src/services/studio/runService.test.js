@@ -253,8 +253,11 @@ test("the editor chooses who makes the clips, from what the server offers and wi
   const notSetUp = { ...clipProvider, options: [clipProvider.options[0], { ...clipProvider.options[1], ready: false }] };
   assert.throws(() => providerCommand(run({ state: "clips", spent: 1, clipProvider: notSetUp }), { provider: "higgsfield" }), /not set up on the video server/);
   assert.throws(() => providerCommand(run({ state: "clips", spent: 12, clipProvider }), { provider: "higgsfield" }), /over the \$15 limit/);
-  assert.throws(() => providerCommand(run({ state: "gate-a", clipProvider }), { provider: "higgsfield" }), /once the plan is approved/);
-  assert.throws(() => providerCommand(run({ state: "done", clipProvider }), { provider: "higgsfield" }), /once the plan is approved/);
+  assert.throws(() => providerCommand(run({ state: "gate-a", clipProvider }), { provider: "higgsfield" }), /once the storyboard is approved/);
+  assert.throws(() => providerCommand(run({ state: "done", clipProvider }), { provider: "higgsfield" }), /once the storyboard is approved/);
+  // Preetham, 2026-11-20: not while the storyboard is drawn or checked; from the Generate step on.
+  for (const state of ["frames", "storyboard"]) assert.throws(() => providerCommand(run({ state, clipProvider }), { provider: "higgsfield" }), /once the storyboard is approved/);
+  assert.equal(providerCommand(run({ state: "approved", spent: 0, clipProvider }), { provider: "higgsfield" }).command.type, "provider");
 });
 
 test("keeps who makes the clips and each choice's price from the server, and nothing when not said (D-060)", () => {

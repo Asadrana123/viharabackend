@@ -418,12 +418,19 @@ function timelineCommand(run, body) {
 const MUSIC_STATES = ["approved", "frames", "storyboard", "clips", "ready-to-build", "cut", "revision"];
 
 /**
+ * Where who makes the clips may be chosen (D-060): once the storyboard is approved (Preetham, 2026-11-20: "It is better
+ * to choose after approving the storyboard"), until the video is finished; not while the storyboard is drawn or checked.
+ */
+const PROVIDER_STATES = ["approved", "clips", "ready-to-build", "cut", "revision"];
+
+/**
  * Who makes the video's clips (D-060, Preetham, 2026-11-20: "The choice should be made for each video"): treg or
- * Higgsfield (Kling 4.0). Free in itself: the plan is written again at the new price, within the video's limit, and
- * clips made with the other one are kept. Only a maker the Creative OS offers, and has set up, can be chosen.
+ * Higgsfield (Kling 3.0 for the property and Maya's walk, Seedance for Maya talking). Free in itself: the plan is
+ * written again at the new price, within the video's limit, and clips made with the other one are kept. Only a maker
+ * the Creative OS offers, and has set up, can be chosen.
  */
 function providerCommand(run, body) {
-  if (!MUSIC_STATES.includes(run.state)) throw new Error("Who makes the clips is chosen once the plan is approved, and before the video is finished.");
+  if (!PROVIDER_STATES.includes(run.state)) throw new Error("Who makes the clips is chosen once the storyboard is approved, and before the video is finished.");
   const provider = String(body?.provider ?? "");
   const option = (run.clipProvider?.options ?? []).find((o) => o.id === provider);
   if (!option) throw new Error(`"${provider}" is not a clip maker this video can use. Click Refresh from server and choose again.`);
