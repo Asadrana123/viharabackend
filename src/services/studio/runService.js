@@ -425,7 +425,7 @@ const PROVIDER_STATES = ["approved", "clips", "ready-to-build", "cut", "revision
 
 /**
  * Who makes the video's clips (D-060, Preetham, 2026-11-20: "The choice should be made for each video"): treg or
- * Higgsfield (Kling 3.0 for the property and Maya's walk, Seedance for Maya talking). Free in itself: the plan is
+ * Higgsfield (real camera motion on Kling 4.0 for the property's moves and aerials, Kling 3.0 for Maya's walk; Maya talks on HeyGen for every video, D-062/D-064). Free in itself: the plan is
  * written again at the new price, within the video's limit, and clips made with the other one are kept. Only a maker
  * the Creative OS offers, and has set up, can be chosen.
  */
