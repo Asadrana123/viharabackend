@@ -67,6 +67,18 @@ test("later and just-looking buyers get no booking link or book-by date", () => 
   }
 });
 
+test("West Hollywood financing buyers get the loan type and pre-approval, never proof of funds", () => {
+  const notYet = lead({ needsFinancing: "yes", loanType: "residential", downPayment: "10-20%", preApproved: false });
+  const p = emailParams(buildSheetData(notYet, weho), notYet);
+  assert.equal(p.LOAN_TYPE, "home loan");
+  assert.equal(p.PRE_APPROVED, undefined);
+  assert.equal(p.PROOF_OF_FUNDS, undefined);
+  const yes = lead({ needsFinancing: "yes", loanType: "residential", downPayment: "10-20%", preApproved: true });
+  assert.equal(emailParams(buildSheetData(yes, weho), yes).PRE_APPROVED, true);
+  // Cash buyers: no loan fields.
+  assert.equal(emailParams(buildSheetData(lead(), weho), lead()).LOAN_TYPE, undefined);
+});
+
 test("El Paso flip at $95,000 matches Prajwal's example (MST, built-in equity)", () => {
   const l = lead({ purpose: "fix_flip", quotePrice: 95000 });
   const elPaso = { ...weho, slug: "8206-loma-vista-pl-el-paso", street: "8206 Loma Vista Pl", city: "El Paso", state: "TX", zipCode: "79912", startBid: 110000,
@@ -87,7 +99,7 @@ test("rental buyers lead with rent and yield", () => {
 });
 
 test("cash-only deals and advisors are matched on the start of the slug", () => {
-  assert.equal(isCashOnly({ slug: "960-larrabee-st-west-hollywood" }), true);
+  assert.equal(isCashOnly({ slug: "960-larrabee-st-west-hollywood" }), false); // back on financing, 21 Nov 2026
   assert.equal(isCashOnly({ slug: "8206-loma-vista-pl-el-paso-tx" }), true);
   assert.equal(isCashOnly({ slug: "1983-law-st-new-orleans" }), false);
   assert.equal(isCashOnly({ slug: "1983-law-st-new-orleans", cashOnly: true }), true);

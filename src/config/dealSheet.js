@@ -9,7 +9,12 @@
 const { getSiteUrl } = require("./siteUrls");
 
 // Cash-only deals: no "How will you pay?" question; pay is always cash. A deal with cashOnly: true wins over this.
-const CASH_ONLY_PREFIXES = ["960-larrabee-st", "8206-loma-vista-pl"];
+// El Paso only: West Hollywood (960 Larrabee St) is back on financing (Prajwal, 21 Nov 2026).
+const CASH_ONLY_PREFIXES = ["8206-loma-vista-pl"];
+
+// The bank's pre-approval link for home-loan buyers (template 293 PREAPPROVAL_URL). Not known yet: set it here or
+// in DEAL_PREAPPROVAL_URL and the email starts linking it, no template change. Never name the lender to buyers.
+const PREAPPROVAL_URL = process.env.DEAL_PREAPPROVAL_URL || "";
 
 // The advisor on a deal (the founder strategy call). Vin on both live deals for now (Prajwal, 21 Nov 2026);
 // editing it from the admin panel comes later. Any other deal has none: "a Vihara co-founder" / "The Vihara team".
@@ -72,6 +77,7 @@ const bookUrl = (ref, token) => `${getSiteUrl()}/b/${encodeURIComponent(ref)}?k=
 
 module.exports = {
   CASH_ONLY_PREFIXES,
+  PREAPPROVAL_URL,
   STRATEGY_CALL_URL,
   WALKTHROUGH_URL,
   CODE_TTL_MS,

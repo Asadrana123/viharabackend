@@ -6,7 +6,7 @@
 // market value = investmentData.valuation.ViharaValue, rent = investmentData.rental.estimatedMonthlyRent.
 const { DateTime } = require("luxon");
 const { resolvePropertyTimezone } = require("../../utils/resolveTimezone");
-const { advisorFor, isCashOnly, sheetUrl, bookKey } = require("../../config/dealSheet");
+const { advisorFor, isCashOnly, sheetUrl, bookKey, PREAPPROVAL_URL } = require("../../config/dealSheet");
 const { getSiteUrl, listingPageUrl } = require("../../config/siteUrls");
 
 const pos = (n) => (Number.isFinite(Number(n)) && Number(n) > 0 ? Number(n) : null);
@@ -136,6 +136,8 @@ function saleTimeLabel(deal) {
   return `${dt.toFormat("cccc, LLL d, h:mm a ZZZZ")}${zone ? ` (${zone})` : ""}`;
 }
 
+const LOAN_NAME = { residential: "home loan", dscr: "rental loan (DSCR)", fix_flip: "fix-and-flip loan" };
+
 /** The sheet's headline number and its words, at their price (same maths as hookLine). */
 function headline(sheet) {
   const d = sheet.deal;
@@ -188,6 +190,11 @@ function emailParams(sheet, lead) {
     STARTING_BID: fmt(d.startingBid),
     MARKET_VALUE: fmt(d.marketEstimate),
     PROOF_OF_FUNDS: a.pay === "cash" ? fmt(price) : undefined,
+    // Financing buyers' step 2 (Prajwal, 21 Nov 2026): the loan type only, never a lender. PRE_APPROVED is a real
+    // true (left out when not). PREAPPROVAL_URL only for buyers not yet pre-approved, once the link is configured.
+    LOAN_TYPE: a.pay === "cash" ? undefined : LOAN_NAME[a.loanType] || "loan",
+    PRE_APPROVED: a.pay !== "cash" && a.preApproved === "yes" ? true : undefined,
+    PREAPPROVAL_URL: a.pay !== "cash" && a.preApproved !== "yes" && PREAPPROVAL_URL ? PREAPPROVAL_URL : undefined,
     FIGURES_DATE: DateTime.fromISO(sheet.signedUpAt, { zone: d.timezone }).toFormat("LLLL d, yyyy"),
   };
 }
