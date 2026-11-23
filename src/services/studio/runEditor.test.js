@@ -6,8 +6,8 @@ const { BUYER_TYPES, cleanUpdate, cleanCraft, cleanStart, ideaCommand, craftComm
 const run = (over = {}) => ({ runId: "1793500000.000001", state: "concept-choice", spent: 0, ...over });
 
 test("a video starts with the editor's idea and craft, both optional", () => {
-  assert.deepEqual(cleanStart({}), { idea: null, craft: null, buyer: null });
-  assert.deepEqual(cleanStart({ idea: "  Maya opens the door  ", craft: { seconds: 30, pace: "fast", voiceSpeed: 1.1 } }), { idea: "Maya opens the door", craft: { seconds: 30, pace: "fast", voiceSpeed: 1.1 }, buyer: null });
+  assert.deepEqual(cleanStart({}), { idea: null, craft: null, buyer: null, story: null });
+  assert.deepEqual(cleanStart({ idea: "  Maya opens the door  ", craft: { seconds: 30, pace: "fast", voiceSpeed: 1.1 } }), { idea: "Maya opens the door", craft: { seconds: 30, pace: "fast", voiceSpeed: 1.1 }, buyer: null, story: null });
   assert.throws(() => cleanCraft({ seconds: 33, pace: "fast", voiceSpeed: 1 }), /length/);
   assert.throws(() => cleanCraft({ seconds: 30, pace: "slowest", voiceSpeed: 1 }), /pace/);
   assert.throws(() => cleanCraft({ seconds: 30, pace: "calm", voiceSpeed: 2 }), /speed/);
@@ -103,4 +103,17 @@ test("the server's view carries the editor's story, photographs, camera options 
   assert.deepEqual(fields.frames[0].options[0], { id: "pan-left", label: "Pan left", usd: 0, invents: false });
   assert.equal(cleanUpdate({ runId: "1793500000.000001", state: "updating" }).fields.state, "updating");
   assert.equal(cleanSlot("photo-img-01"), "photo-img-01");
+});
+
+test("D-065: a video starts with the storytelling style the editor picked, an approved one only", () => {
+  const { cleanStory, STORY_STYLES } = require("./runService");
+  assert.ok(STORY_STYLES.includes("town-title-standing"));
+  assert.deepEqual(cleanStory({ style: "town-title-standing", owl: true }), { style: "town-title-standing", owl: true, owl_place: "shoulder" });
+  assert.deepEqual(cleanStory({ style: "mini-story", owl: true, owlPlace: "hand" }), { style: "mini-story", owl: true, owl_place: "hand" });
+  assert.throws(() => cleanStory({ style: "mini-story", owl: true, owlPlace: "roof" }), /where Ollie is/);
+  assert.deepEqual(cleanStory({ style: "mini-story" }), { style: "mini-story", owl: false });
+  assert.equal(cleanStory(null), null);
+  assert.deepEqual(cleanStart({ story: { style: "seated-explainer" } }).story, { style: "seated-explainer", owl: false });
+  assert.deepEqual(cleanStory({ style: "street-interview" }), { style: "street-interview", owl: false });
+  assert.throws(() => cleanStory({ style: "made-up" }), /storytelling styles/);
 });
