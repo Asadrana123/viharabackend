@@ -108,9 +108,12 @@ test("the server's view carries the editor's story, photographs, camera options 
 test("D-065: a video starts with the storytelling style the editor picked, an approved one only", () => {
   const { cleanStory, STORY_STYLES } = require("./runService");
   assert.ok(STORY_STYLES.includes("town-title-standing"));
-  assert.deepEqual(cleanStory({ style: "town-title-standing", owl: true }), { style: "town-title-standing", owl: true });
+  assert.deepEqual(cleanStory({ style: "town-title-standing", owl: true }), { style: "town-title-standing", owl: true, owl_place: "shoulder" });
+  assert.deepEqual(cleanStory({ style: "mini-story", owl: true, owlPlace: "hand" }), { style: "mini-story", owl: true, owl_place: "hand" });
+  assert.throws(() => cleanStory({ style: "mini-story", owl: true, owlPlace: "roof" }), /where Ollie is/);
   assert.deepEqual(cleanStory({ style: "mini-story" }), { style: "mini-story", owl: false });
   assert.equal(cleanStory(null), null);
   assert.deepEqual(cleanStart({ story: { style: "seated-explainer" } }).story, { style: "seated-explainer", owl: false });
-  assert.throws(() => cleanStory({ style: "street-interview" }), /storytelling styles/);
+  assert.deepEqual(cleanStory({ style: "street-interview" }), { style: "street-interview", owl: false });
+  assert.throws(() => cleanStory({ style: "made-up" }), /storytelling styles/);
 });

@@ -237,14 +237,20 @@ const cleanBuyerOrNull = (b) => {
  * The storytelling styles Preetham approved (D-065, config/visual-hooks.json in the Creative OS, which checks the choice
  * again). Kept in step with that file: a style approved there is added here.
  */
-const STORY_STYLES = ["town-title-standing", "selfie-mic-number", "mini-story", "odd-scene-reaction", "seated-explainer"];
+const STORY_STYLES = ["town-title-standing", "selfie-mic-number", "mini-story", "odd-scene-reaction", "seated-explainer", "myth-then-twist", "street-interview", "neighbours-at-fence"];
+
+/** Where Ollie sits with Maya, the editor's choice (D-066, Preetham: "wherever the editor chooses (shoulder, beside her, in her hand, waving)"). */
+const OLLIE_PLACES = ["shoulder", "beside", "hand", "waving"];
 
 /** The editor's storytelling style and whether Maya has the owl (D-065), or null when none is chosen. */
 function cleanStory(s) {
   if (!s || !s.style) return null;
   const style = String(s.style);
   if (!STORY_STYLES.includes(style)) throw new Error("Choose one of the storytelling styles shown.");
-  return { style, owl: s.owl === true };
+  const owl = s.owl === true;
+  const place = String(s.owlPlace ?? s.owl_place ?? "shoulder");
+  if (owl && !OLLIE_PLACES.includes(place)) throw new Error("Choose where Ollie is: on her shoulder, beside her, in her hand or waving.");
+  return owl ? { style, owl, owl_place: place } : { style, owl };
 }
 
 /** What an editor gives when starting a video (D-047, D-057, D-065): an idea, craft choices and a storytelling style, all optional, and the buyer. */
@@ -836,4 +842,4 @@ function cleanSlot(slot) {
   return s;
 }
 
-module.exports = { STORY_STYLES, cleanStory, providerCommand, cleanClipProvider, priceCommand, BUYER_TYPES, AWARENESS_STAGES, cleanBuyer, photosCommand, PHOTO_CHOICES, undoCommand, UNDO_STATES, cleanTrack, trackRightsCommand, musicCommand, cleanMusic, mayaCommand, timelineCommand, cleanMaya, cleanTimeline, chatMessage, cleanChats, CHAT_TYPES, layersCommand, reopenCommand, REOPEN_FROM, soundCommand, CUT_LAYERS, viewCommand, retryCommand, cleanCraft, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, VIDEO_LIMIT_USD, CLAUDE_MODELS, cleanModel, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };
+module.exports = { STORY_STYLES, OLLIE_PLACES, cleanStory, providerCommand, cleanClipProvider, priceCommand, BUYER_TYPES, AWARENESS_STAGES, cleanBuyer, photosCommand, PHOTO_CHOICES, undoCommand, UNDO_STATES, cleanTrack, trackRightsCommand, musicCommand, cleanMusic, mayaCommand, timelineCommand, cleanMaya, cleanTimeline, chatMessage, cleanChats, CHAT_TYPES, layersCommand, reopenCommand, REOPEN_FROM, soundCommand, CUT_LAYERS, viewCommand, retryCommand, cleanCraft, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, VIDEO_LIMIT_USD, CLAUDE_MODELS, cleanModel, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };
