@@ -8,6 +8,7 @@ const careerAdminNotificationEmail = require("../../htmlPages/users/careerAdminN
 const careerMarketingAssignmentEmail = require("../../htmlPages/users/careerMarketingAssignmentEmail");
 const careerVideoEditorAssignmentEmail = require("../../htmlPages/users/careerVideoEditorAssignmentEmail");
 const careerGrowthAssignmentEmail = require("../../htmlPages/users/careerGrowthAssignmentEmail");
+const careerProductManagerAssignmentEmail = require("../../htmlPages/users/careerProductManagerAssignmentEmail");
 const path = require("path");
 const { ROLE_LABELS } = require("../../config/careerRoles");
 
@@ -23,6 +24,12 @@ const MARKETING_ASSIGNMENT_PDF = path.join(
 const GROWTH_ASSIGNMENT_PDF = path.join(
   __dirname,
   "../../assets/careers/Vihara_Growth_Lead_Assignment.pdf"
+);
+
+// Product Manager applicants get the 48-hour take-home.
+const PRODUCT_MANAGER_ASSIGNMENT_PDF = path.join(
+  __dirname,
+  "../../assets/careers/Vihara_Product_Manager_Assignment.pdf"
 );
 
 // ─── Submit application (public) ────────────────────────────────────────────
@@ -114,6 +121,20 @@ exports.submitApplication = catchAsyncError(async (req, res, next) => {
         {
           filename: "Vihara - Growth Manager Assignment.pdf",
           path: GROWTH_ASSIGNMENT_PDF,
+          contentType: "application/pdf",
+        },
+      ]
+    );
+  } else if (role === "product-manager") {
+    sendEmail(
+      email,
+      firstName,
+      "Vihara Product Manager - Your Assignment",
+      careerProductManagerAssignmentEmail(firstName),
+      [
+        {
+          filename: "Vihara - Product Manager Assignment.pdf",
+          path: PRODUCT_MANAGER_ASSIGNMENT_PDF,
           contentType: "application/pdf",
         },
       ]
