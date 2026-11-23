@@ -801,7 +801,8 @@ const getContactBlockStatus = async (email) => {
  * string"). Retries 5xx / 429 / network errors up to 3 times. Non-throwing.
  * @returns {Promise<{ success: boolean, messageId?: string, error?: string }>}
  */
-const sendTransactionalEmail = async ({ templateId, email, name, params = {}, tags = [] }) => {
+// attachment: [{ content (base64), name }] or [{ url, name }]; subject: overrides the template's subject line.
+const sendTransactionalEmail = async ({ templateId, email, name, params = {}, tags = [], attachment = [], subject = "" }) => {
   if (!BREVO_API_KEY) return { success: false, error: "BREVO_API_KEY not configured" };
   if (!email || !templateId) return { success: false, error: "missing email or templateId" };
 
@@ -813,6 +814,8 @@ const sendTransactionalEmail = async ({ templateId, email, name, params = {}, ta
     to: [{ email, ...(name ? { name } : {}) }],
     params: cleanParams,
     ...(tags.length ? { tags } : {}),
+    ...(attachment.length ? { attachment } : {}),
+    ...(subject ? { subject } : {}),
   };
 
   let lastError = "";
@@ -820,7 +823,9 @@ const sendTransactionalEmail = async ({ templateId, email, name, params = {}, ta
     try {
       const { data } = await axios.post(`${BREVO_BASE}/smtp/email`, body, {
         headers: { "api-key": BREVO_API_KEY, "Content-Type": "application/json" },
-        timeout: 10000,
+        // A base64 PDF attachment makes the request a few MB.
+        timeout: attachment.length ? 30000 : 10000,
+        maxBodyLength: Infinity,
       });
       return { success: true, messageId: data?.messageId || "" };
     } catch (err) {

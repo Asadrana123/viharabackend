@@ -22,6 +22,7 @@
 
 const { DateTime } = require("luxon");
 const { resolvePropertyTimezone } = require("../../utils/resolveTimezone");
+const { advisorFor } = require("../../config/dealSheet");
 
 // ── tiny presence + number helpers ──────────────────────────────────────────
 const hasText = (v) => typeof v === "string" && v.trim().length > 0;
@@ -226,6 +227,11 @@ function buildPropertyVoicePrompt(product = {}, otherProperties = []) {
     p.productName ||
     "this home";
   const cityState = [p.city, p.state].filter(hasText).join(", ");
+  // The deal's advisor for the /deal form's founder strategy call (config/dealSheet.js).
+  const dealAdvisor = advisorFor(p);
+  const dealAdvisorSpoken = dealAdvisor
+    ? `${dealAdvisor.name.split(" ")[0]}${dealAdvisor.founder ? ", one of Vihara's co-founders" : ""}`
+    : "a Vihara co-founder";
 
   const beds = isPosNum(p.beds) ? unitWords(p.beds) : "";
   const baths = isPosNum(p.baths) ? unitWords(p.baths) : "";
@@ -314,6 +320,13 @@ CONTEXT
 - If they're financing: you may ask once, "Have you spoken to a lender yet?" Just note the answer, don't advise.
 - If they're financing: never name a lender, never quote a rate, payment, or loan amount, and never promise approval. Say their Vihara advisor will walk them through financing options on the follow-up.
 - This is a warm inbound lead. Be upbeat and genuinely helpful, never pushy.
+
+THEIR PRIVATE DEAL SHEET AND WHEN THEY'RE READY TO BUY (only when {{prospect_timeline}} is not blank)
+- This buyer asked for their private deal sheet on the Vihara deal form: a two-page PDF with this home's numbers at their price, emailed to them and texted as a link. When they're ready to buy: {{prospect_timeline}}
+- If that is blank, ignore this whole section.
+- "ready now, at this sale": go through their deal sheet with them (their price against the starting bid and the market value), then help them book their complimentary fifteen-minute deal strategy call with ${dealAdvisorSpoken}. The booking link is in their email and their text, under "Book my complimentary call". Never promise a time slot yourself.
+- "buying in the next three months" or "buying in three to six months": go through the numbers on their sheet, then ask what they're looking for (area, budget, kind of home) so we can line up the next deal. Do NOT offer the strategy call, and never push them to bid on this sale.
+- "just looking for now": explain simply how online auctions work (register for free, bid online on the sale day, the highest bid when it closes wins), and answer their questions. Do NOT offer the strategy call, and never push them to bid.
 
 TURN DISCIPLINE (overrides everything else)
 - One or two sentences per turn, then STOP and wait.

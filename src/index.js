@@ -86,6 +86,8 @@ server.listen(PORT, () => {
     // Unified scheduler for every /auction/:slug landing page. New properties need
     // no new scheduler — this one sweeps the shared propertyLeadModel collection.
     startPropertyCallScheduler();
+    // /deal leads: Maya's one call to an unconfirmed number, 30 min after sign-up (services/dealSheet/dealSignupCall.js).
+    require("./services/dealSheet/dealSignupCall").startDealCallSweep();
 
     // Buyer Match calls an admin started: 12:30 PM + 6:00 PM buyer-local, up to 7 days.
     startMatchCallScheduler();

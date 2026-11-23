@@ -27,6 +27,13 @@ const { listingPageUrl } = require("../../config/siteUrls");
 const TEMPLATE_FIELDS = {
   E1: ["PROPERTY_SHORT", "PROPERTY_NAME", "LISTING_URL", "OPENING_BID", "IMAGE_URL",
     "FACT_1", "FACT_2", "FACT_3", "AUCTION_DATE", "AUCTION_TIME", "QUOTE_AMOUNT", "NOTE"],
+  // Template 293 "E1 v2 Deal sheet" (/deal form only; services/dealSheet/dealSheetData.js emailParams). Prajwal's
+  // field list, 21 Nov 2026: ready-to-print strings, URLs with no query string (the template adds UTM + ref),
+  // CALL_OFFER a real true (left out otherwise).
+  E1v2: ["PROPERTY_SHORT", "PROPERTY_NAME", "CITY", "IMAGE_URL", "SLUG", "LISTING_URL", "AUCTION_DATE", "AUCTION_TIME",
+    "SHEET_URL", "REF", "CALL_OFFER", "BOOKING_URL", "CALL_HOLD_DATE", "ADVISOR_NAME", "HEADLINE_VALUE",
+    "HEADLINE_LABEL", "YOUR_PRICE", "STARTING_BID", "MARKET_VALUE", "PROOF_OF_FUNDS", "FIGURES_DATE",
+    "LOAN_TYPE", "PRE_APPROVED", "PREAPPROVAL_URL"],
   R1: ["PROPERTY_SHORT", "PROPERTY_NAME", "LISTING_URL", "OPENING_BID", "FACT_1", "FACT_2", "FACT_3",
     "AUCTION_DATE", "AUCTION_TIME", "MULTI_DAY", "AUCTION_CLOSE_TEXT"],
   R2: ["PROPERTY_SHORT", "PROPERTY_NAME", "LISTING_URL", "OPENING_BID", "FACT_1", "FACT_2", "FACT_3",

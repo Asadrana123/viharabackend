@@ -28,6 +28,12 @@ const {
   loanTypeFrom, loanTypeOtherFrom, preApprovedFrom, loanLine, loanTypeBrevo, advisorFlags,
 } = require("../../services/leads/buyBox");
 const { maskPhone } = require("../../utils/maskPii");
+const { TIMELINES, PURPOSES, isCashOnly, sheetUrl, bookUrl } = require("../../config/dealSheet");
+const dealSheetService = require("../../services/dealSheet/dealSheetService");
+const { sendCode } = require("../../services/dealSheet/phoneCodeService");
+
+// "When are you ready to buy?" on the /deal form, for Slack.
+const DEAL_READY = { "30d": "Now, at this sale", "90d": "In the next 3 months", "180d": "In 3 to 6 months", looking: "Just looking for now" };
 
 // Single note discriminator for all property-auction leads. Lead ids are unique,
 // so one type is enough to keep notes from bleeding into other lead systems.
@@ -76,7 +82,13 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
     fullName, phone, email, buyerType, needsFinancing, downPayment, timezone,
     consent, consentText, consentTimestamp, eventId, quotePrice,
     smsConsent, smsConsentText, loanType, loanTypeOther, preApproved,
+    form, purpose, timeline,
   } = req.body;
+  // The /deal form: the private deal sheet, the phone code, and Maya calling once the number is confirmed
+  // (config/dealSheet.js, services/dealSheet/). Other forms on this endpoint are unchanged.
+  const isDeal = form === "deal";
+  // Cash-only deals never take financing answers, whatever the page sends.
+  const cashOnly = isDeal && isCashOnly(property);
   // Extra questions added to the form in Admin → Landing Pages (services/leads/formAnswers.js).
   const extraAnswers = sanitizeFormAnswers(req.body.extraAnswers);
 
@@ -106,7 +118,10 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
   const { firstTouch, lastTouch } = touchesFrom(req.body);
 
   // ── Create the lead — compound unique (propertySlug, phoneNormalized) gate ──
+  const finance = cashOnly ? "no" : needsFinancing;
   let lead;
+  let ids = isDeal ? dealSheetService.newIdentifiers() : null;
+  for (let attempt = 1; ; attempt++) {
   try {
     lead = await PropertyLead.create({
       extraAnswers,
@@ -116,12 +131,12 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       phoneNormalized,
       email: normalizedEmail,
       buyerType: buyerType || "",
-      needsFinancing: needsFinancingFrom(needsFinancing),
-      downPayment: downPaymentFrom(downPayment, needsFinancing),
+      needsFinancing: needsFinancingFrom(finance),
+      downPayment: downPaymentFrom(downPayment, finance),
       // /deal form, financing buyers only (buyBox.js drops them for cash and unknown values).
-      loanType: loanTypeFrom(loanType, needsFinancing),
-      loanTypeOther: loanTypeOtherFrom(loanTypeOther, loanType, needsFinancing),
-      preApproved: preApprovedFrom(preApproved, needsFinancing),
+      loanType: loanTypeFrom(loanType, finance),
+      loanTypeOther: loanTypeOtherFrom(loanTypeOther, loanType, finance),
+      preApproved: preApprovedFrom(preApproved, finance),
       quotePrice: hasQuote ? quoteNum : null,
       timezone: timezone || "",
       consent: consent === true,
@@ -135,12 +150,34 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       firstTouch,
       lastTouch,
       isQaTest: req.isQaTest === true,
+      ...(isDeal && {
+        form: "deal",
+        purpose: PURPOSES.includes(purpose) ? purpose : "",
+        timeline: TIMELINES.includes(timeline) ? timeline : "",
+        ref: ids.ref,
+        accessKey: ids.accessKey,
+        dealSheet: { token: ids.token, marker: ids.marker },
+      }),
     });
+    break;
   } catch (err) {
+    // A ref collision (1 in ~900k): try again with a new one.
+    if (err && err.code === 11000 && isDeal && attempt < 4 && (err.keyPattern?.ref || err.keyPattern?.["dealSheet.token"])) {
+      ids = dealSheetService.newIdentifiers();
+      continue;
+    }
     if (err && err.code === 11000) {
+      // /deal: the same number already asked for this deal's sheet. Send that sheet again to the email ON THE LEAD
+      // (never the one just typed), at most once a day. The page shows "already sent".
+      if (isDeal && !req.isQaTest) {
+        PropertyLead.findOne({ propertySlug: slug, phoneNormalized }).select("_id").lean()
+          .then((existing) => existing && dealSheetService.resendExisting(existing._id))
+          .catch((e) => console.error(`[deal-sheet:${slug}] resend on repeat sign-up failed:`, e.message));
+      }
       return next(new ErrorHandler("This phone number is already registered.", 409));
     }
     throw err;
+  }
   }
 
   // ── Schedule the call (fire-and-forget, only with consent) ──────────────────
@@ -149,6 +186,10 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
   let call = { attempted: false };
   if (consent === true && lead.isQaTest) {
     call = { attempted: false, suppressedForQaTest: true };
+  } else if (isDeal) {
+    // /deal: Maya calls once the number is confirmed (services/dealSheet/phoneVerified.js), or after 30 minutes
+    // without it, 9 AM–8 PM deal time (dealSignupCall.js). Only with the consent box ticked.
+    call = { attempted: false, afterPhoneConfirmed: consent === true };
   } else if (consent === true) {
     scheduleSignupCall({
       leadId: lead._id,
@@ -178,11 +219,25 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       ? "Registered — Maya will call you shortly."
       : "Registered. (No calls — consent not given.)",
     call,
+    ...(isDeal && {
+      leadId: lead._id,
+      ref: lead.ref,
+      key: ids.accessKey, // the phone / email endpoints need it
+      bookUrl: bookUrl(lead.ref, ids.token),
+      sheetUrl: sheetUrl(ids.token),
+      cashOnly,
+    }),
     ...(lead.isQaTest && { qaTest: { suppressed: [...(consent === true ? ["call"] : []), "slack", "enrichment", "brevo", "vtext"] } }),
   });
 
   // QA test leads stop here: no Slack post, paid enrichment, Brevo contact or text.
   if (lead.isQaTest) return;
+
+  // /deal: ONE text with the sheet link and the code, to everyone who gave a number (it replaces the sign-up text).
+  if (isDeal) {
+    sendCode(lead, { phone: lead.phoneNormalized, street: property.street || property.productName, propertyId: property._id })
+      .catch((e) => console.error(`[deal-sheet:${slug}] code text failed:`, e.message));
+  }
 
   // ── Slack notification (fire-and-forget) ───────────────────────────────────
   notifyNewLead({
@@ -202,14 +257,24 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       // Lender matching: our bank partner only does home loans; anything else needs an investor lender.
       ...(loanLine(lead) ? [{ label: "Loan", value: loanLine(lead) }] : []),
       ...(advisorFlags(lead, property).length ? [{ label: "Flags", value: advisorFlags(lead, property).join(", ") }] : []),
-      { label: "Quote", value: hasQuote ? `$${quoteNum.toLocaleString("en-US")}` : "—" },
+      { label: isDeal ? "Their price" : "Quote", value: hasQuote ? `$${quoteNum.toLocaleString("en-US")}` : "—" },
+      ...(isDeal
+        ? [
+            { label: "Ready to buy", value: DEAL_READY[lead.timeline] || "—" },
+            { label: "Phone", value: "Not confirmed yet (code texted)" },
+            { label: "Deal sheet", value: sheetUrl(ids.token) },
+            { label: "Ref", value: lead.ref },
+            ...(lead.timeline === "30d" ? [{ label: "Founder call", value: "Offer to book" }] : []),
+          ]
+        : []),
       ...answersAsFields(lead.extraAnswers),
     ],
   }).catch((e) => console.error(`[slack] property notify failed (${slug}):`, e.message));
 
-  // E1 confirmation from the backend email sequence (only when it's on for
-  // this property — see propertyEmailService). Never throws.
-  onPropertyLeadSignup({ property, lead });
+  // /deal: the deal sheet email (E1 with the PDF, on every deal). Otherwise the E1 confirmation from the backend
+  // email sequence (only when it's on for this property — see propertyEmailService). Never throws.
+  if (isDeal) dealSheetService.onDealSignup(lead._id);
+  else onPropertyLeadSignup({ property, lead });
 
   // ── Enrich + Brevo sync in the background; update the lead in place ─────────
   (async () => {
@@ -252,7 +317,9 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
     // financing buyer with no price, or from the /deal financing path (it
     // always sends a loanType, and now asks for a price too), gets the
     // financing text instead (vtextFormIntroService.js, form "dealFinancing").
-    if (lead.needsFinancing === "yes" && (lead.loanType || !(Number(lead.quotePrice) > 0))) {
+    if (isDeal) {
+      // The deal sheet text above is their only sign-up text.
+    } else if (lead.needsFinancing === "yes" && (lead.loanType || !(Number(lead.quotePrice) > 0))) {
       maybeSendFormIntroText({
         form: "dealFinancing",
         leadType: "property",

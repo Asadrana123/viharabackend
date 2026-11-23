@@ -61,6 +61,7 @@ const leadDeleteRoutes = require("./routes/leads/leadDeleteRoutes");
 const propertyImportRoutes = require("./routes/property/propertyImportRoutes");
 // Unified property auction landing pages (/auction/:slug) — one route for every property.
 const propertyLeadRoutes = require("./routes/leads/propertyLeadRoutes");
+const dealSheetRoutes = require("./routes/leads/dealSheetRoutes");
 const realtorRoutes = require("./routes/users/realtorRoutes");
 // Outbound SMS + Email admin campaigns — new, separate feature. Does not
 // touch/import anything under routes/calling.
@@ -201,6 +202,7 @@ app.use("/api/v1/admin-leads", leadDeleteRoutes);
 app.use("/api/v1/property-import", propertyImportRoutes);
 // Unified property auction leads (every /auction/:slug page). One mount, forever.
 app.use("/api/v1/property-lead", propertyLeadRoutes);
+app.use("/api/v1/deal-sheet", dealSheetRoutes);
 app.use("/api/v1/realtor", realtorRoutes);
 app.use("/api/v1/outbound", outboundRoutes);
 app.use("/api/v1/enrichment", enrichmentRoutes);
