@@ -13,6 +13,7 @@ const { drainLine } = require("../../services/vtext/vtextLineDrainService");
 const { statusBeforeOffline } = require("../../services/vtext/vtextLineHealthService");
 const { normalizeInternationalPhone } = require("../../utils/internationalPhone");
 const { buildWebhookUrl } = require("../../services/vtext/vtextWebhookUrl");
+const { validateLimits } = require("../../services/vtext/vtextLimitsValidation");
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -75,6 +76,11 @@ const createLine = catchAsyncError(async (req, res) => {
 
   if (!name || !channelType || !address) {
     return res.status(400).json({ success: false, message: "name, channelType and address are required" });
+  }
+
+  const createLimitsCheck = validateLimits(limits);
+  if (!createLimitsCheck.ok) {
+    return res.status(400).json({ success: false, message: createLimitsCheck.errors.join(". "), errors: createLimitsCheck.errors });
   }
 
   const adapter = getAdapter(channelType); // throws if channelType isn't registered — caught by catchAsyncError -> 500 is fine here, it's an admin tool
@@ -154,6 +160,10 @@ const getLine = catchAsyncError(async (req, res) => {
 /** PATCH /api/v1/vtext/lines/:id — name/config/limits/notes/hardware edits only, no status transitions here (Phase 4). */
 const updateLine = catchAsyncError(async (req, res) => {
   const { name, config, credentials, limits, warmup, hardware, notes } = req.body;
+  const limitsCheck = validateLimits(limits);
+  if (!limitsCheck.ok) {
+    return res.status(400).json({ success: false, message: limitsCheck.errors.join(". "), errors: limitsCheck.errors });
+  }
   const update = {};
   if (name !== undefined) update.name = name;
   if (config !== undefined) update.config = config;
