@@ -12,7 +12,7 @@
 //     is BLOCKED (and shown as blocked). Switch OFF: it goes out (opt-outs and bad numbers still block).
 //   - Line: iMessage first (info / Emily lines, least used first), Twilio SMS if iMessage can't take it.
 //   - Opt-outs, bad numbers: blocked as always.
-// Leah (hot, pre-approved) is first in the queue; the others follow 30 seconds apart.
+// Leah (hot, pre-approved) is first in the queue; each next one follows 3 to 5 minutes after the one before (so all 5 are out by about 10:20).
 //
 // Safe to run twice: each person's text has a fixed key, so a second run adds nothing. A number that already got
 // any other text from us is left alone.
@@ -30,7 +30,9 @@ const { toUsSmsNumber } = require("../utils/usPhone");
 const { nextTextingTime } = require("../utils/textingHours");
 
 const SEND_AT = "2026-11-25T18:00:00Z"; // 10:00 AM PT (PST, UTC-8) = 11:30 PM IST
-const STAGGER_MS = 30_000;
+// Gap between one person and the next: a random 3 to 5 minutes, so it reads as one person texting, not a blast.
+const GAP_MIN_MS = 3 * 60_000;
+const GAP_MAX_MS = 5 * 60_000;
 const TEMPLATE_KEY = "sf-241-auction-text";
 const BATCH_ID = "sf-241-10th-st-2026-11-25";
 
@@ -76,8 +78,8 @@ function liveDeps() {
   };
 }
 
-/** @param {object} [opts] - { argv, clock, gapMs, log, deps } (tests inject them; the CLI passes none) */
-async function run({ argv = process.argv.slice(2), clock = () => new Date(), gapMs = 1000, log = console.log, deps = liveDeps() } = {}) {
+/** @param {object} [opts] - { argv, clock, random, gapMs, log, deps } (tests inject them; the CLI passes none) */
+async function run({ argv = process.argv.slice(2), clock = () => new Date(), random = Math.random, gapMs = 1000, log = console.log, deps = liveDeps() } = {}) {
   const now = clock();
   const SEND = argv.includes("--send");
   const base = new Date(arg(argv, "at") || SEND_AT);
@@ -90,7 +92,7 @@ async function run({ argv = process.argv.slice(2), clock = () => new Date(), gap
   const look = await deps.lookups(good.map((p) => p.phoneE164));
   const consentOn = await deps.consentRequired();
 
-  let slot = 0;
+  let offset = 0; // ms after the first text
   for (const p of good) {
     const contact = look.byPhone.get(p.phoneE164);
     const skip = (reason) => out.skipped.push({ name: p.name, phone: p.phoneE164, reason });
@@ -99,10 +101,10 @@ async function run({ argv = process.argv.slice(2), clock = () => new Date(), gap
     if (contact?.phoneStatus === "bad" || contact?.phoneStatus === "invalid") { skip("marked as a bad number"); continue; }
     if (contact && look.anyOut.has(String(contact._id))) { skip("we already texted this number (another message)"); continue; }
     // Wanted time, pushed out only if it would land outside 9 AM-8 PM for the lead's own time zone.
-    const wanted = new Date(base.getTime() + slot * STAGGER_MS);
+    const wanted = new Date(base.getTime() + offset);
     const hold = nextTextingTime(p.phoneE164, new Date(Math.max(wanted.getTime(), now.getTime())));
     const sendAt = hold.at;
-    slot++;
+    offset += GAP_MIN_MS + Math.floor(random() * (GAP_MAX_MS - GAP_MIN_MS));
     const consent = contact?.consent?.status || "no contact yet";
     out.sendable.push({ ...p, text: textFor(p.first), sendAt, consent });
   }

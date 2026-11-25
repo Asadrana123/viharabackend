@@ -18,7 +18,7 @@ function fakeDeps(over = {}) {
     },
   };
 }
-const go = (deps, argv = [], clock = BEFORE) => run({ argv, clock: () => clock, gapMs: 0, log: () => {}, deps });
+const go = (deps, argv = [], clock = BEFORE, random = () => 0) => run({ argv, clock: () => clock, random, gapMs: 0, log: () => {}, deps });
 
 test("the text has no link and swaps in the first name", () => {
   assert.equal(
@@ -35,14 +35,14 @@ test("dry run lists 5 texts and queues nothing", async () => {
   assert.equal(calls.length, 0);
 });
 
-test("--send queues all 5, Leah first, at 10:00 AM PT, staggered 30s", async () => {
+test("--send queues all 5, Leah first, at 10:00 AM PT, 3 minutes apart (at the shortest gap)", async () => {
   const { deps, calls } = fakeDeps();
   await go(deps, ["--send"]);
   assert.equal(calls.length, 5);
   assert.equal(calls[0].to, "+16284887448");
   assert.match(calls[0].body, /^Hi Leah,/);
   assert.equal(calls[0].scheduledFor.toISOString(), "2026-11-25T18:00:00.000Z");
-  assert.equal(calls[1].scheduledFor.toISOString(), "2026-11-25T18:00:30.000Z");
+  assert.equal(calls[1].scheduledFor.toISOString(), "2026-11-25T18:03:00.000Z");
   assert.equal(new Set(calls.map((c) => c.idempotencyKey)).size, 5);
 });
 
@@ -82,4 +82,14 @@ test("does not queue when Redis is down", async () => {
   const out = await go(deps, ["--send"]);
   assert.equal(out.refused, "redis unreachable");
   assert.equal(calls.length, 0);
+});
+
+test("gaps are 3 to 5 minutes, even at the longest", async () => {
+  const { deps, calls } = fakeDeps();
+  await go(deps, ["--send"], BEFORE, () => 0.999999);
+  for (let i = 1; i < calls.length; i++) {
+    const gap = calls[i].scheduledFor - calls[i - 1].scheduledFor;
+    assert.ok(gap >= 180000 && gap <= 300000, `gap ${gap}`);
+  }
+  assert.ok(calls[4].scheduledFor <= new Date("2026-11-25T18:20:00Z"));
 });
