@@ -14,8 +14,13 @@
 //   - Opt-outs, bad numbers: blocked as always.
 // Leah (hot, pre-approved) is first in the queue; each next one follows 3 to 5 minutes after the one before (so all 5 are out by about 10:20).
 //
-// Safe to run twice: each person's text has a fixed key, so a second run adds nothing. A number that already got
-// any other text from us is left alone.
+// These 5 already got the automatic first text when they signed up, and Prajwal said yes to a follow-up anyway
+// (25 Nov), so a number with an earlier text is NOT skipped. Opt-outs and bad numbers still are.
+// Same thread: a lead whose earlier thread is on the Twilio SMS line gets this text on Twilio SMS too (pinned), so it
+// does not arrive from a different, iMessage number. A lead on iMessage stays on the same iMessage line (the router
+// keeps the line per person), and the SMS fallback still works for them.
+//
+// Safe to run twice: each person's text has a fixed key, so a second run adds nothing.
 //
 // This only QUEUES the texts. The Vtext workers deliver them at the set time. A run without --send writes nothing.
 // MUST run where DB_URI and REDIS_URL are the live ones (the Render shell).
@@ -58,6 +63,7 @@ function textFor(first) {
 function liveDeps() {
   const VtextMessage = require("../model/vtext/vtextMessageModel");
   const VtextContact = require("../model/vtext/vtextContactModel");
+  const VtextConversation = require("../model/vtext/vtextConversationModel");
   const { enqueueOutbound } = require("../services/vtext/vtextMessageService");
   const { getSettings, isConsentRequired } = require("../services/vtext/vtextSettingsService");
   const { pingRedis } = require("../services/vtext/queue/connection");
@@ -67,8 +73,11 @@ function liveDeps() {
       const byPhone = new Map(contacts.map((c) => [c.phoneE164, c]));
       const keys = phones.map(keyFor);
       const sameKey = new Set((await VtextMessage.find({ idempotencyKey: { $in: keys } }).select("idempotencyKey").lean()).map((m) => m.idempotencyKey));
-      const anyOut = new Set((await VtextMessage.find({ direction: "out", contactId: { $in: contacts.map((c) => c._id) } }).distinct("contactId")).map(String));
-      return { byPhone, sameKey, anyOut };
+      // The most recent thread each person has: which channel and which line it is on.
+      const convs = await VtextConversation.find({ contactId: { $in: contacts.map((c) => c._id) } }).sort({ lastMessageAt: 1 }).select("contactId channelType lineAddress counts").lean();
+      const threads = new Map();
+      for (const c of convs) threads.set(String(c.contactId), { channelType: c.channelType, lineAddress: c.lineAddress, inbound: c.counts?.inbound || 0 });
+      return { byPhone, sameKey, threads };
     },
     async consentRequired() {
       return isConsentRequired(await getSettings());
@@ -99,21 +108,22 @@ async function run({ argv = process.argv.slice(2), clock = () => new Date(), ran
     if (look.sameKey.has(keyFor(p.phoneE164))) { skip("already queued or sent by this script"); continue; }
     if (contact?.optOut?.isOptedOut) { skip("opted out"); continue; }
     if (contact?.phoneStatus === "bad" || contact?.phoneStatus === "invalid") { skip("marked as a bad number"); continue; }
-    if (contact && look.anyOut.has(String(contact._id))) { skip("we already texted this number (another message)"); continue; }
+    const thread = contact ? look.threads?.get(String(contact._id)) : null;
     // Wanted time, pushed out only if it would land outside 9 AM-8 PM for the lead's own time zone.
     const wanted = new Date(base.getTime() + offset);
     const hold = nextTextingTime(p.phoneE164, new Date(Math.max(wanted.getTime(), now.getTime())));
     const sendAt = hold.at;
     offset += GAP_MIN_MS + Math.floor(random() * (GAP_MAX_MS - GAP_MIN_MS));
     const consent = contact?.consent?.status || "no contact yet";
-    out.sendable.push({ ...p, text: textFor(p.first), sendAt, consent });
+    const onSms = thread?.channelType === "twilio-sms";
+    out.sendable.push({ ...p, text: textFor(p.first), sendAt, consent, thread, onSms });
   }
 
   log(consentOn
     ? "Vtext consent switch is ON: a number with no SMS consent on file will be BLOCKED."
     : "Vtext consent switch is OFF: no consent needed (opt-outs and bad numbers still block).");
   log(`\n${out.sendable.length} to text${SEND ? "" : " (DRY RUN, nothing is written)"}:`);
-  for (const s of out.sendable) log(`  ${s.name}${s.note ? ` (${s.note})` : ""}  ${masked(s.phoneE164)}  consent: ${s.consent}  goes out ${s.sendAt.toISOString()}\n      ${s.text}`);
+  for (const s of out.sendable) log(`  ${s.name}${s.note ? ` (${s.note})` : ""}  ${masked(s.phoneE164)}  consent: ${s.consent}  earlier thread: ${s.thread ? `${s.thread.channelType}${s.thread.lineAddress ? ` ${s.thread.lineAddress}` : ""}, ${s.thread.inbound} repl${s.thread.inbound === 1 ? "y" : "ies"}` : "none"}${s.onSms ? " (will go by Twilio SMS)" : ""}  goes out ${s.sendAt.toISOString()}\n      ${s.text}`);
   log(`\n${out.skipped.length} skipped:`);
   for (const s of out.skipped) log(`  ${s.name}: ${s.reason}`);
 
@@ -138,6 +148,7 @@ async function run({ argv = process.argv.slice(2), clock = () => new Date(), ran
         contactName: s.name,
         idempotencyKey: keyFor(s.phoneE164),
         scheduledFor: s.sendAt,
+        channelPolicy: s.onSms ? { mode: "only", channels: ["twilio-sms"] } : undefined,
       });
       if (blocked) {
         out.blocked.push({ name: s.name, messageId: String(message._id), reason });

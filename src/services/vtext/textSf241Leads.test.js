@@ -10,7 +10,7 @@ function fakeDeps(over = {}) {
   return {
     calls,
     deps: {
-      lookups: async () => ({ byPhone: new Map(), sameKey: new Set(), anyOut: new Set() }),
+      lookups: async () => ({ byPhone: new Map(), sameKey: new Set(), threads: new Map() }),
       consentRequired: async () => true,
       pingRedis: async () => true,
       enqueueOutbound: async (a) => { calls.push(a); return { message: { _id: `m${calls.length}` } }; },
@@ -46,7 +46,7 @@ test("--send queues all 5, Leah first, at 10:00 AM PT, 3 minutes apart (at the s
   assert.equal(new Set(calls.map((c) => c.idempotencyKey)).size, 5);
 });
 
-test("skips opted-out numbers and numbers we already texted", async () => {
+test("skips opted-out numbers, but still texts numbers that already got an earlier text", async () => {
   const { deps, calls } = fakeDeps({
     lookups: async () => ({
       byPhone: new Map([
@@ -54,17 +54,33 @@ test("skips opted-out numbers and numbers we already texted", async () => {
         ["+14153689466", { _id: "c2" }],
       ]),
       sameKey: new Set(),
-      anyOut: new Set(["c2"]),
+      threads: new Map([["c2", { channelType: "imessage-bluebubbles", lineAddress: "a@b.c", inbound: 0 }]]),
     }),
   });
   const out = await go(deps, ["--send"]);
-  assert.equal(calls.length, 3);
-  assert.equal(out.skipped.length, 2);
+  assert.equal(calls.length, 4);
+  assert.equal(out.skipped.length, 1);
+  assert.ok(calls.some((c) => c.to === "+14153689466"));
+});
+
+test("a lead whose earlier thread is on Twilio SMS is pinned to Twilio SMS; others are not pinned", async () => {
+  const { deps, calls } = fakeDeps({
+    lookups: async () => ({
+      byPhone: new Map([["+16284887448", { _id: "c1" }], ["+14153689466", { _id: "c2" }]]),
+      sameKey: new Set(),
+      threads: new Map([["c1", { channelType: "twilio-sms", inbound: 1 }], ["c2", { channelType: "imessage-bluebubbles", inbound: 0 }]]),
+    }),
+  });
+  await go(deps, ["--send"]);
+  const leah = calls.find((c) => c.to === "+16284887448");
+  const thelma = calls.find((c) => c.to === "+14153689466");
+  assert.deepEqual(leah.channelPolicy, { mode: "only", channels: ["twilio-sms"] });
+  assert.equal(thelma.channelPolicy, undefined);
 });
 
 test("a second run adds nothing (same keys)", async () => {
   const { deps, calls } = fakeDeps({
-    lookups: async () => ({ byPhone: new Map(), anyOut: new Set(), sameKey: new Set(["sf-241-auction-text-16284887448", "sf-241-auction-text-14155040959"]) }),
+    lookups: async () => ({ byPhone: new Map(), threads: new Map(), sameKey: new Set(["sf-241-auction-text-16284887448", "sf-241-auction-text-14155040959"]) }),
   });
   await go(deps, ["--send"]);
   assert.equal(calls.length, 3);
