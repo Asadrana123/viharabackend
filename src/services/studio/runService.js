@@ -359,11 +359,14 @@ function craftCommand(run, body) {
 
 const HOOK_WORDS = /\b(auctions?|bid|bids|bidding|bidders?|listings?)\b/i;
 
-/** The editor's own hook, in their words, picked by them (D-047). Hooks never say auction, bid or listing (D-031). */
+/**
+ * The editor's own hook, in their words, picked by them (D-047): what Maya says and, optionally, what the viewer sees
+ * first. No title lines (D-076, Preetham, 2026-11-26). Hooks never say auction, bid or listing (D-031).
+ */
 function hookCommand(run, body) {
   if (run.state !== "hook-choice") throw new Error("This video is not waiting for a hook now.");
-  const hook = { line1: String(body?.line1 ?? "").trim(), line2: String(body?.line2 ?? "").trim(), vo: String(body?.vo ?? "").trim(), visual: String(body?.visual ?? "").trim() };
-  if (!hook.line1 || !hook.line2 || !hook.vo) throw new Error("A hook needs both title lines and what Maya says.");
+  const hook = { vo: String(body?.vo ?? "").trim(), visual: String(body?.visual ?? "").trim() };
+  if (!hook.vo) throw new Error("A hook needs what Maya says.");
   if (Object.values(hook).some((v) => v.length > 400)) throw new Error("Keep each part under 400 characters.");
   // A figure token such as {starting-bid} shows a figure, not the word "bid": tokens are left out of the check.
   const word = HOOK_WORDS.exec(Object.values(hook).join(" ").replace(/\{[a-z0-9-]+\}/gi, " "))?.[0];
