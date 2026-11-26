@@ -42,13 +42,18 @@ test("craft changes only until the plan is written", () => {
 });
 
 test("the editor's own hook never says auction, bid or listing (D-031)", () => {
-  const ok = hookCommand(run({ state: "hook-choice" }), { line1: "This house", line2: "pays you back", vo: "What if this one paid for itself?" });
+  const ok = hookCommand(run({ state: "hook-choice" }), { vo: "What if this one paid for itself?", visual: "Maya at the door" });
   assert.equal(ok.state, "package");
-  assert.equal(ok.command.data.hook.line1, "This house");
-  assert.throws(() => hookCommand(run({ state: "hook-choice" }), { line1: "Bidding starts", line2: "now", vo: "x" }), /Bidding/);
-  assert.throws(() => hookCommand(run({ state: "hook-choice" }), { line1: "One line", line2: "", vo: "x" }), /both title lines/);
-  // A figure token is a figure on screen, not the word "bid" (the hint tells editors to write figures so).
-  assert.equal(hookCommand(run({ state: "hook-choice" }), { line1: "From {starting-bid}", line2: "in the pines", vo: "Yours from {starting-bid}." }).state, "package");
+  assert.deepEqual(ok.command.data.hook, { vo: "What if this one paid for itself?", visual: "Maya at the door" });
+  assert.throws(() => hookCommand(run({ state: "hook-choice" }), { vo: "Bidding starts now" }), /Bidding/);
+  assert.throws(() => hookCommand(run({ state: "hook-choice" }), { vo: " ", visual: "x" }), /what Maya says/);
+  // A figure token is a figure, not the word "bid" (the hint tells editors to write figures so).
+  assert.equal(hookCommand(run({ state: "hook-choice" }), { vo: "Yours from {starting-bid}." }).state, "package");
+});
+
+test("the editor's own hook has no title lines (D-076): any sent are dropped", () => {
+  const ok = hookCommand(run({ state: "hook-choice" }), { line1: "Old", line2: "title", vo: "Three things on my wishlist." });
+  assert.deepEqual(ok.command.data.hook, { vo: "Three things on my wishlist.", visual: "" });
 });
 
 test("voiceover lines change at the plan, only where the editor changed them", () => {
