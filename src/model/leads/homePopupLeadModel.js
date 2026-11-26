@@ -16,6 +16,13 @@ const homePopupLeadSchema = new mongoose.Schema(
     // E.164 from PhoneField (added 2026-11-26 — older leads have none) + canonical form.
     phone: { type: String, default: "", trim: true },
     phoneNormalized: { type: String, default: "", trim: true },
+    // Set when they type the texted code (Twilio Verify). Cleared when the number changes.
+    phoneVerifiedAt: { type: Date, default: null },
+    phoneVerifyMethod: { type: String, default: "" }, // "code"
+    // Times a code was texted, last 24 hours only (our own cap on top of Twilio's).
+    phoneCodeSends: { type: [Date], default: [] },
+    // Private key the pop-up gets back from /submit; needed to send and check the code.
+    accessKey: { type: String, select: false },
 
     // How they plan to pay.
     buyerType: { type: String, enum: ["cash", "financing", "not_sure"], required: true },
