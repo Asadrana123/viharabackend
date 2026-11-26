@@ -21,7 +21,7 @@ const { keyMatches, cleanBatch, cleanFeedback, undelivered } = require("../../se
 const { storage, cleanCut, uploadUrl, viewUrl, storedBytes, putObject } = require("../../services/studio/cutStorage");
 const { cleanProposals, decideProblem, canSee, cleanDecision, undeliveredDecisions } = require("../../services/studio/proposalService");
 const { cleanProblem, cleanReply, problemView } = require("../../services/studio/problemService");
-const { providerCommand, priceCommand, photosCommand, undoCommand, cleanTrack, trackRightsCommand, musicCommand, mayaCommand, timelineCommand, chatMessage, cleanChats, layersCommand, reopenCommand, soundCommand, viewCommand, retryCommand, newRunId, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, cleanModel, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage } = require("../../services/studio/runService");
+const { finishCommand, stagingMakeCommand, stagingDecideCommand, finishData, providerCommand, priceCommand, photosCommand, undoCommand, cleanTrack, trackRightsCommand, musicCommand, mayaCommand, timelineCommand, chatMessage, cleanChats, layersCommand, reopenCommand, soundCommand, viewCommand, retryCommand, newRunId, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, cleanModel, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage } = require("../../services/studio/runService");
 
 const KEY = /^[a-z][a-z0-9-]{1,30}$/;
 
@@ -272,12 +272,12 @@ const decideStudioProposal = catchAsyncError(async (req, res, next) => {
 });
 
 const runView = async (r) => {
-  const { storyStyle, priceChange, buyer, runId, propertyId, requestedByName, coreId, model, state, concepts, hooks, plan, error, frames, framesPrice, clips, cut, spent, costs, remakePrice, media, idea, craft, story, photos, unchecked, usablePhotos, todo, uploads, chat, commands, updatedAt, sfx, timeline, music, clipProvider } = r;
+  const { finish, staging, storyStyle, priceChange, buyer, runId, propertyId, requestedByName, coreId, model, state, concepts, hooks, plan, error, frames, framesPrice, clips, cut, spent, costs, remakePrice, media, idea, craft, story, photos, unchecked, usablePhotos, todo, uploads, chat, commands, updatedAt, sfx, timeline, music, clipProvider } = r;
   const urls = Object.fromEntries(await Promise.all(Object.entries(media ?? {}).map(async ([slot, m]) => [slot, await viewUrl(m.key)])));
   // The person's steps the server has not finished yet, oldest first, so the page shows a click as sent and
   // keeps its button from being clicked again while it runs.
   const pending = (commands ?? []).filter((c) => !c.doneAt).map((c) => ({ type: c.type, at: c.at, ...(c.choice ? { choice: c.choice } : {}) }));
-  return { storyStyle: storyStyle ?? null, priceChange: priceChange ?? [], buyer: buyer ?? null, runId, propertyId, requestedByName, coreId, model: model ?? null, state, concepts, hooks, plan, error, frames: frames ?? [], framesPrice: framesPrice ?? 0, clips, cut, spent, costs: costs ?? null, remakePrice: remakePrice ?? null, urls, idea: idea ?? null, craft: craft ?? null, story: story ?? [], photos: photos ?? [], unchecked: unchecked ?? [], usablePhotos: usablePhotos ?? 0, todo: todo ?? [], uploads: (uploads ?? []).map(({ name, kind, byName, at }) => ({ name, kind, byName, at })), pending, sfx: sfx !== false, chat: (chat ?? []).map(({ role, byName, text, change = null, action = null, attachments = [], at }) => ({ role, byName, text, change, action, attachments: attachments.map((x) => x.name), at })), timeline: timeline ?? null, music: music ?? null, clipProvider: clipProvider ?? null, updatedAt: updatedAt ?? null };
+  return { finish: finish ?? null, staging: staging ?? null, storyStyle: storyStyle ?? null, priceChange: priceChange ?? [], buyer: buyer ?? null, runId, propertyId, requestedByName, coreId, model: model ?? null, state, concepts, hooks, plan, error, frames: frames ?? [], framesPrice: framesPrice ?? 0, clips, cut, spent, costs: costs ?? null, remakePrice: remakePrice ?? null, urls, idea: idea ?? null, craft: craft ?? null, story: story ?? [], photos: photos ?? [], unchecked: unchecked ?? [], usablePhotos: usablePhotos ?? 0, todo: todo ?? [], uploads: (uploads ?? []).map(({ name, kind, byName, at }) => ({ name, kind, byName, at })), pending, sfx: sfx !== false, chat: (chat ?? []).map(({ role, byName, text, change = null, action = null, attachments = [], at }) => ({ role, byName, text, change, action, attachments: attachments.map((x) => x.name), at })), timeline: timeline ?? null, music: music ?? null, clipProvider: clipProvider ?? null, updatedAt: updatedAt ?? null };
 };
 
 /** GET /api/v1/studio/runs - the videos in progress, newest first, and the properties ready for one. */
@@ -305,8 +305,8 @@ const startRun = catchAsyncError(async (req, res, next) => {
   if (!ready?.rows.some((r) => r.propertyId === propertyId && r.ready)) return next(new ErrorHandler("That property is not ready for a video.", 400));
   const { name } = await decider(req.user);
   // D-047, D-057: the editor's own idea and craft, if given, and the buyer go with the opening step.
-  const data = { ...(inputs.idea ? { idea: inputs.idea } : {}), ...(inputs.craft ? { craft: craftData(inputs.craft) } : {}), buyer: { icp_id: inputs.buyer.icpId, awareness_stage: inputs.buyer.stage }, ...(inputs.story ? { story: inputs.story } : {}) };
-  const run = await StudioRun.create({ runId: newRunId(), propertyId, requestedBy: req.user._id, requestedByName: name, model, state: "queued", idea: inputs.idea, craft: inputs.craft, buyer: inputs.buyer, storyStyle: inputs.story, commands: [{ type: "open", byName: name, data }] });
+  const data = { ...(inputs.idea ? { idea: inputs.idea } : {}), ...(inputs.craft ? { craft: craftData(inputs.craft) } : {}), buyer: { icp_id: inputs.buyer.icpId, awareness_stage: inputs.buyer.stage }, ...(inputs.story ? { story: inputs.story } : {}), ...(inputs.finish ? { finish: finishData(inputs.finish) } : {}) };
+  const run = await StudioRun.create({ runId: newRunId(), propertyId, requestedBy: req.user._id, requestedByName: name, model, state: "queued", idea: inputs.idea, craft: inputs.craft, buyer: inputs.buyer, storyStyle: inputs.story, finish: inputs.finish, commands: [{ type: "open", byName: name, data }] });
   res.status(201).json({ success: true, run: await runView(run.toObject()) });
 });
 
@@ -333,6 +333,7 @@ const runStep = (build) =>
     if (step.frames) run.frames = step.frames;
     if (step.idea) run.idea = step.idea;
     if (step.craft) run.craft = step.craft;
+    if (step.finish) run.finish = step.finish;
     if (typeof step.sfx === "boolean") run.sfx = step.sfx;
     await run.save();
     res.status(200).json({ success: true, run: await runView(run.toObject()) });
@@ -365,6 +366,10 @@ const cutForRun = runStep(cutCommand);
 const soundForRun = runStep(soundCommand);
 // D-056: the editor says what each of the property's unchecked photos is.
 const photosForRun = runStep(photosCommand);
+// D-075: the editor's button and before and after, their Furnish click, and Use or Don't use on each furnished picture.
+const finishForRun = runStep(finishCommand);
+const stagingMakeForRun = runStep(stagingMakeCommand);
+const stagingDecideForRun = runStep(stagingDecideCommand);
 // D-058: the editor confirms the property's new starting price, estimate or sale dates.
 const priceForRun = runStep(priceCommand);
 const undoForRun = runStep(undoCommand);
@@ -671,4 +676,4 @@ const syncVideos = catchAsyncError(async (req, res, next) => {
   res.status(200).json({ success: true, stored: rows.length, feedback: undelivered(pending), decisions });
 });
 
-module.exports = { providerForRun, priceForRun, photosForRun, undoForRun, trackForRun, trackRightsForRun, musicForRun, mayaForRun, timelineForRun, chatForRun, layersForRun, reopenForRun, soundForRun, viewForRun, retryForRun, me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, importInterview, updateQuestions, listVideos, addVideoFeedback, syncVideos, requireSyncKey, cutLink, confirmCut, listProposals, decideStudioProposal, listRuns, startRun, setRunModel, pickForRun, gateForRun, generateForRun, framesForRun, remakeForRun, clipForRun, buildForRun, cutForRun, ideaForRun, craftForRun, hookForRun, voForRun, shotForRun, imageForRun, pollRuns, fileLink, confirmFile, listProblems, reportProblem, resolveProblem };
+module.exports = { finishForRun, stagingMakeForRun, stagingDecideForRun, providerForRun, priceForRun, photosForRun, undoForRun, trackForRun, trackRightsForRun, musicForRun, mayaForRun, timelineForRun, chatForRun, layersForRun, reopenForRun, soundForRun, viewForRun, retryForRun, me, start, answer, updateSection, updateName, addNote, listEditors, addEditor, removeEditor, importInterview, updateQuestions, listVideos, addVideoFeedback, syncVideos, requireSyncKey, cutLink, confirmCut, listProposals, decideStudioProposal, listRuns, startRun, setRunModel, pickForRun, gateForRun, generateForRun, framesForRun, remakeForRun, clipForRun, buildForRun, cutForRun, ideaForRun, craftForRun, hookForRun, voForRun, shotForRun, imageForRun, pollRuns, fileLink, confirmFile, listProblems, reportProblem, resolveProblem };

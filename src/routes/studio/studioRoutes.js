@@ -56,6 +56,10 @@ router.post("/runs/:id/craft", c.craftForRun);
 router.post("/runs/:id/sound", c.soundForRun);
 // D-056: the editor checks the property's photos.
 router.post("/runs/:id/photos", c.photosForRun);
+// D-075: the editor's button and before and after for empty rooms.
+router.post("/runs/:id/finish", c.finishForRun);
+router.post("/runs/:id/staging/make", c.stagingMakeForRun);
+router.post("/runs/:id/staging/decide", c.stagingDecideForRun);
 // D-058: the editor confirms the property's new price.
 router.post("/runs/:id/price", c.priceForRun);
 router.post("/runs/:id/undo", c.undoForRun);

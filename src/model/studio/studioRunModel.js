@@ -85,6 +85,9 @@ const runSchema = new mongoose.Schema(
     undo: { type: mongoose.Schema.Types.Mixed, default: null },
     // The music now and the tracks to choose from (D-051).
     music: { type: mongoose.Schema.Types.Mixed, default: null },
+    // D-075: the editor's button ({ cta, ctaWord, staging }) and the empty rooms with their furnished pictures.
+    finish: { type: mongoose.Schema.Types.Mixed, default: null },
+    staging: { type: mongoose.Schema.Types.Mixed, default: null },
     // Who makes the clips, treg or Higgsfield, and each choice with its price (D-060).
     clipProvider: { type: mongoose.Schema.Types.Mixed, default: null },
     // The stuck error last reported to the Problems page, so it is reported once.

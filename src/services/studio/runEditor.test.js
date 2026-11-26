@@ -6,8 +6,8 @@ const { BUYER_TYPES, cleanUpdate, cleanCraft, cleanStart, ideaCommand, craftComm
 const run = (over = {}) => ({ runId: "1793500000.000001", state: "concept-choice", spent: 0, ...over });
 
 test("a video starts with the editor's idea and craft, both optional", () => {
-  assert.deepEqual(cleanStart({}), { idea: null, craft: null, buyer: null, story: null });
-  assert.deepEqual(cleanStart({ idea: "  Maya opens the door  ", craft: { seconds: 30, pace: "fast", voiceSpeed: 1.1 } }), { idea: "Maya opens the door", craft: { seconds: 30, pace: "fast", voiceSpeed: 1.1 }, buyer: null, story: null });
+  assert.deepEqual(cleanStart({}), { idea: null, craft: null, buyer: null, story: null, finish: null });
+  assert.deepEqual(cleanStart({ idea: "  Maya opens the door  ", craft: { seconds: 30, pace: "fast", voiceSpeed: 1.1 } }), { idea: "Maya opens the door", craft: { seconds: 30, pace: "fast", voiceSpeed: 1.1 }, buyer: null, story: null, finish: null });
   assert.throws(() => cleanCraft({ seconds: 33, pace: "fast", voiceSpeed: 1 }), /length/);
   assert.throws(() => cleanCraft({ seconds: 30, pace: "slowest", voiceSpeed: 1 }), /pace/);
   assert.throws(() => cleanCraft({ seconds: 30, pace: "calm", voiceSpeed: 2 }), /speed/);
@@ -116,4 +116,37 @@ test("D-065: a video starts with the storytelling style the editor picked, an ap
   assert.deepEqual(cleanStart({ story: { style: "seated-explainer" } }).story, { style: "seated-explainer", owl: false });
   assert.deepEqual(cleanStory({ style: "street-interview" }), { style: "street-interview", owl: false });
   assert.throws(() => cleanStory({ style: "made-up" }), /storytelling styles/);
+});
+
+test("D-075: the editor chooses the button and before and after, before the plan is written", () => {
+  const { cleanFinish, finishData, finishCommand } = require("./runService");
+  assert.deepEqual(cleanFinish({ cta: "comment", ctaWord: " WeHo " }), { cta: "comment", ctaWord: "WeHo", staging: true });
+  assert.deepEqual(cleanFinish({ cta: "explore", staging: false }), { cta: "explore", ctaWord: null, staging: false });
+  assert.deepEqual(cleanFinish({}), { cta: null, ctaWord: null, staging: true });
+  assert.throws(() => cleanFinish({ cta: "comment" }), /word people comment/);
+  assert.throws(() => cleanFinish({ cta: "comment", ctaWord: "bid" }), /never says auction, bid or listing/);
+  assert.throws(() => cleanFinish({ cta: "see" }), /Choose the button/);
+  assert.deepEqual(finishData({ cta: "comment", ctaWord: "WeHo", staging: true }), { cta: "comment", cta_word: "WeHo", staging: true });
+  assert.deepEqual(cleanStart({ finish: { cta: "register" } }).finish, { cta: "register", ctaWord: null, staging: true });
+  const step = finishCommand(run({ state: "hook-choice" }), { finish: { cta: "explore", staging: false } });
+  assert.deepEqual(step.command, { type: "finish", data: { finish: { cta: "explore", staging: false } } });
+  assert.throws(() => finishCommand(run({ state: "gate-a" }), { finish: { cta: "explore" } }), /already written/);
+});
+
+test("D-075: furnishing the empty rooms is the editor's click within the limit, and each picture their decision", () => {
+  const { stagingMakeCommand, stagingDecideCommand } = require("./runService");
+  const staging = { on: true, usdEach: 0.075, rooms: [{ image: "img-06", room: "living room", state: "found" }, { image: "img-08", room: "bedroom", state: "made" }] };
+  assert.deepEqual(stagingMakeCommand(run({ staging }), {}).command, { type: "staging-make", data: {} });
+  assert.deepEqual(stagingMakeCommand(run({ staging }), { images: ["img-08"] }).command, { type: "staging-make", data: { images: ["img-08"] } });
+  assert.throws(() => stagingMakeCommand(run({ staging, spent: 14.99 }), {}), /limit/);
+  assert.throws(() => stagingMakeCommand(run({ staging: { ...staging, on: false } }), {}), /off/);
+  assert.throws(() => stagingMakeCommand(run({ staging, state: "gate-a" }), {}), /already written/);
+  const used = stagingDecideCommand(run({ staging }), { decisions: [{ image: "img-08", use: true, faithful: true }] });
+  assert.deepEqual(used.command.data.decisions, [{ image: "img-08", use: true, faithful: true }]);
+  assert.throws(() => stagingDecideCommand(run({ staging }), { decisions: [{ image: "img-08", use: true }] }), /adds only furniture/);
+  assert.throws(() => stagingDecideCommand(run({ staging }), { decisions: [{ image: "img-06", use: false }] }), /no furnished picture waiting/);
+  assert.equal(cleanSlot("staged-img-08"), "staged-img-08");
+  const u = cleanUpdate({ runId: "1793500000.000001", state: "hook-choice", finish: { cta: "comment", ctaWord: "WeHo", staging: true }, staging: { on: true, usdEach: 0.075, rooms: [{ image: "img-08", room: "bedroom", state: "made", photoSlot: "photo-img-08", stagedSlot: "staged-img-08" }] } });
+  assert.equal(u.fields.finish.ctaWord, "WeHo");
+  assert.equal(u.fields.staging.rooms[0].stagedSlot, "staged-img-08");
 });
