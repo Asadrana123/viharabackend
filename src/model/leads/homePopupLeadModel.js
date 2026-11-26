@@ -13,6 +13,9 @@ const homePopupLeadSchema = new mongoose.Schema(
     firstName: { type: String, required: true, trim: true },
     lastName: { type: String, default: "", trim: true },
     email: { type: String, required: true, trim: true, lowercase: true },
+    // E.164 from PhoneField (added 2026-11-26 — older leads have none) + canonical form.
+    phone: { type: String, default: "", trim: true },
+    phoneNormalized: { type: String, default: "", trim: true },
 
     // How they plan to pay.
     buyerType: { type: String, enum: ["cash", "financing", "not_sure"], required: true },

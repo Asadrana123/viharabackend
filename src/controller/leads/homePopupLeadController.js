@@ -1,6 +1,6 @@
 // controller/leads/homePopupLeadController.js
 //
-// Home page popup: name, email and cash / financing. Stored in Mongo, posted
+// Home page popup: full name, email, phone and cash / financing. Stored in Mongo, posted
 // to Slack, and listed in Admin → Leads → "Home Popup".
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const ErrorHandler = require("../../utils/errorhandler");
@@ -10,6 +10,7 @@ const { getEmailEventsForEmails } = require("../../services/integrations/emailEv
 const { getNotesForLeads } = require("../../services/leads/leadNotesService");
 const { listView, scopeQuery, unlessSummary, listSelect, shapeLeads } = require("../../services/leads/leadListView");
 const { str, isValidEmail, attributionFrom, splitName } = require("../../services/leads/buyBox");
+const { normalisePhone } = require("../../services/calling/vapiCallsService");
 
 const BUYER_TYPES = ["cash", "financing", "not_sure"];
 const BUYER_TYPE_LABELS = { cash: "Cash buyer", financing: "Financing", not_sure: "Not sure yet" };
@@ -18,7 +19,7 @@ const LEAD_NOTE_TYPE = "homePopup"; // matches leadNoteModel.LEAD_TYPES
 
 /**
  * POST /api/v1/home-popup/submit   (public)
- * Body: { full_name, email, buyer_type, trigger, page_url, attribution }
+ * Body: { full_name, email, phone, buyer_type, trigger, page_url, attribution }
  * Dedupe by email: a repeat submit updates the existing record.
  */
 const submitHomePopupLead = catchAsyncError(async (req, res, next) => {
@@ -28,9 +29,13 @@ const submitHomePopupLead = catchAsyncError(async (req, res, next) => {
   const { firstName, lastName } = splitName(fullName);
   const email = str(body.email, 200).toLowerCase();
   const buyerType = str(body.buyer_type, 20);
+  const phone = str(body.phone, 40);
+  const phoneNormalized = normalisePhone(phone);
 
-  if (!firstName) return next(new ErrorHandler("Enter your name", 400));
+  if (!firstName || !lastName) return next(new ErrorHandler("Enter your first and last name", 400));
   if (!isValidEmail(email)) return next(new ErrorHandler("Enter a valid email address", 400));
+  if (!phoneNormalized || phoneNormalized.replace(/\D/g, "").length < 10)
+    return next(new ErrorHandler("Enter a valid phone number", 400));
   if (!BUYER_TYPES.includes(buyerType)) return next(new ErrorHandler("Choose cash or financing", 400));
 
   const fields = {
@@ -38,6 +43,8 @@ const submitHomePopupLead = catchAsyncError(async (req, res, next) => {
     firstName,
     lastName,
     email,
+    phone,
+    phoneNormalized,
     buyerType,
     trigger: body.trigger === "button" ? "button" : "auto",
     pageUrl: str(body.page_url, 2000),
@@ -58,6 +65,7 @@ const submitHomePopupLead = catchAsyncError(async (req, res, next) => {
     leadType: existing ? "Home Popup (updated)" : "Home Popup",
     name: lead.fullName,
     email: lead.email,
+    phone: lead.phone,
     source: `home-popup · ${lead.attribution?.utm_source || "direct"}`,
     extraFields: [
       { label: "Buying with", value: BUYER_TYPE_LABELS[lead.buyerType] },
