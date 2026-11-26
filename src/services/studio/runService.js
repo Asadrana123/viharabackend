@@ -9,7 +9,7 @@ const crypto = require("node:crypto");
 const STATES = new Set(["queued", "concepts", "concept-choice", "hooks", "hook-choice", "package", "gate-a", "approved", "frames", "storyboard", "generating", "clips", "ready-to-build", "building", "cut", "revision", "done", "rejected", "failed", "updating"]);
 // The limit for a video (D-044). The server checks it again against what was really spent.
 const VIDEO_LIMIT_USD = 15;
-const SLOT = /^(animatic|cut|layers|clip-[a-z0-9-]{1,80}|frame-[a-z0-9-]{1,80}|photo-[a-z0-9-]{1,80}|music-[a-z0-9-]{1,80})$/;
+const SLOT = /^(animatic|cut|layers|clip-[a-z0-9-]{1,80}|frame-[a-z0-9-]{1,80}|photo-[a-z0-9-]{1,80}|music-[a-z0-9-]{1,80}|staged-[a-z0-9-]{1,80})$/;
 const FRAME_KINDS = new Set(["photo", "presenter", "generated", "later", "screen"]);
 const MAX_WORDS = 2000;
 // The Claude models an editor may choose to write a video's concepts, hooks and plan. The choice is theirs.
@@ -151,6 +151,18 @@ function cleanUpdate(u) {
       buyer: u?.buyer && typeof u.buyer === "object" ? cleanBuyerOrNull(u.buyer) : null,
       // D-058: the property's new values waiting for the editor; null when the update does not say (kept as it was).
       priceChange: Array.isArray(u?.priceChange) ? u.priceChange.slice(0, 20).map((c) => ({ label: clip(c?.label, 80), factId: clip(c?.factId, 80), from: clip(c?.from, 80), to: clip(c?.to, 80) })) : null,
+      // D-075: the editor's button and before and after, and the empty rooms with their furnished pictures.
+      finish: u?.finish && typeof u.finish === "object" ? cleanFinishOrNull(u.finish) : null,
+      staging:
+        u?.staging && typeof u.staging === "object"
+          ? {
+              on: u.staging.on !== false,
+              usdEach: Number(u.staging.usdEach) || 0,
+              rooms: Array.isArray(u.staging.rooms)
+                ? u.staging.rooms.slice(0, 6).map((r) => ({ image: clip(r?.image, 40), room: clip(r?.room, 60), state: ["found", "made", "approved", "declined"].includes(r?.state) ? r.state : "found", staged: r?.staged ? clip(r.staged, 40) : null, photoSlot: clip(r?.photoSlot, 90), stagedSlot: r?.stagedSlot ? clip(r.stagedSlot, 90) : null }))
+                : [],
+            }
+          : null,
       usablePhotos: Number.isFinite(Number(u?.usablePhotos)) && u?.usablePhotos !== null && u?.usablePhotos !== undefined ? Math.max(0, Number(u.usablePhotos)) : null,
     },
   };
@@ -253,11 +265,36 @@ function cleanStory(s) {
   return owl ? { style, owl, owl_place: place } : { style, owl };
 }
 
+/**
+ * The editor's button and before and after for empty rooms (D-075, Preetham, 2026-11-26): "Explore the deal",
+ * "Register to Bid", or "Comment" and a word of theirs; before and after on unless turned off.
+ */
+const CTA_KINDS = ["explore", "register", "comment"];
+const CTA_WORD = /^[A-Za-z0-9]{2,16}( [A-Za-z0-9]{2,16})?$/;
+function cleanFinish(f) {
+  if (!f || typeof f !== "object") return null;
+  const cta = f.cta === undefined || f.cta === null || f.cta === "" ? null : String(f.cta);
+  if (cta !== null && !CTA_KINDS.includes(cta)) throw new Error("Choose the button: Explore the deal, Register to Bid, or Comment and a word.");
+  const ctaWord = cta === "comment" ? String(f.ctaWord ?? f.cta_word ?? "").trim().replace(/\s+/g, " ") : null;
+  if (cta === "comment" && !CTA_WORD.test(ctaWord)) throw new Error('Say the word people comment, one or two short words with letters and digits only, for example "WeHo".');
+  if (ctaWord && HOOK_WORDS.test(ctaWord)) throw new Error("The comment word never says auction, bid or listing: it scares a cold reader off.");
+  return { cta, ctaWord, staging: f.staging !== false };
+}
+const cleanFinishOrNull = (f) => {
+  try {
+    return cleanFinish(f);
+  } catch {
+    return null;
+  }
+};
+/** The finish as the Creative OS reads it. */
+const finishData = (f) => ({ ...(f.cta ? { cta: f.cta } : {}), ...(f.ctaWord ? { cta_word: f.ctaWord } : {}), staging: f.staging });
+
 /** What an editor gives when starting a video (D-047, D-057, D-065): an idea, craft choices and a storytelling style, all optional, and the buyer. */
 function cleanStart(body) {
   const idea = String(body?.idea ?? "").trim();
   if (idea.length > MAX_WORDS) throw new Error(`Keep the idea to ${MAX_WORDS} characters.`);
-  return { idea: idea || null, craft: body?.craft ? cleanCraft(body.craft) : null, buyer: body?.buyer ? cleanBuyer(body.buyer) : null, story: cleanStory(body?.story) };
+  return { idea: idea || null, craft: body?.craft ? cleanCraft(body.craft) : null, buyer: body?.buyer ? cleanBuyer(body.buyer) : null, story: cleanStory(body?.story), finish: cleanFinish(body?.finish) };
 }
 /** The craft as the Creative OS reads it. */
 const craftData = (c) => ({ seconds: c.seconds, pace: c.pace, voice_speed: c.voiceSpeed });
@@ -272,6 +309,45 @@ function ideaCommand(run, body) {
   if (words.length < 10) throw new Error("Tell your story in a few lines.");
   if (words.length > MAX_WORDS) throw new Error(`At most ${MAX_WORDS} characters.`);
   return { command: { type: "idea", words }, state: "concepts", idea: words };
+}
+
+const BEFORE_PLAN = ["queued", "concepts", "concept-choice", "hooks", "hook-choice"];
+
+/** The editor changes the button or before and after, before the plan is written (D-075). */
+function finishCommand(run, body) {
+  if (!BEFORE_PLAN.includes(run.state)) throw new Error("The plan is already written: ask for the change at the plan instead.");
+  const finish = cleanFinish(body?.finish ?? body);
+  if (!finish) throw new Error("Choose the button and whether to show before and after.");
+  return { command: { type: "finish", data: { finish: finishData(finish) } }, state: run.state, finish };
+}
+
+/** The editor's Furnish click on the empty rooms, at the price shown, within the video's limit (D-075). */
+function stagingMakeCommand(run, body) {
+  if (!BEFORE_PLAN.includes(run.state)) throw new Error("The plan is already written, so rooms can no longer be furnished for it.");
+  const staging = run.staging;
+  if (!staging?.on) throw new Error("Before and after is off for this video. Turn it on first.");
+  const asked = Array.isArray(body?.images) ? body.images.map((i) => clip(i, 40)) : null;
+  const rooms = (staging.rooms ?? []).filter((r) => (asked ? asked.includes(r.image) && r.state !== "approved" : r.state === "found"));
+  if (!rooms.length) throw new Error("There is no empty room to furnish now. Click Refresh from server to see the rooms as they are.");
+  const price = rooms.length * (Number(staging.usdEach) || 0.075);
+  if ((run.spent ?? 0) + price > VIDEO_LIMIT_USD) throw new Error(`This is over the $${VIDEO_LIMIT_USD} limit for a video. An admin decides what happens next.`);
+  return { command: { type: "staging-make", data: asked ? { images: rooms.map((r) => r.image) } : {} }, state: run.state };
+}
+
+/** The editor's Use or Don't use on each furnished picture (D-075). Use needs their word that it adds only furniture. */
+function stagingDecideCommand(run, body) {
+  if (!BEFORE_PLAN.includes(run.state)) throw new Error("The plan is already written, so this can no longer change here.");
+  const made = new Set((run.staging?.rooms ?? []).filter((r) => r.state === "made").map((r) => r.image));
+  const list = Array.isArray(body?.decisions) ? body.decisions : [];
+  if (!list.length) throw new Error("Choose Use or Don't use for each furnished picture.");
+  const decisions = list.slice(0, 10).map((d) => {
+    const image = clip(d?.image, 40);
+    if (!made.has(image)) throw new Error(`${image || "?"} has no furnished picture waiting. Click Refresh from server.`);
+    const use = d?.use === true;
+    if (use && d?.faithful !== true) throw new Error("Tick the box to confirm the furnished picture adds only furniture: the room, its windows, floor and fixtures are as they are.");
+    return { image, use, ...(use ? { faithful: true } : {}) };
+  });
+  return { command: { type: "staging-decide", data: { decisions } }, state: run.state };
 }
 
 /** The editor's craft choices, changed before the plan is written (D-047). */
@@ -842,4 +918,4 @@ function cleanSlot(slot) {
   return s;
 }
 
-module.exports = { STORY_STYLES, OLLIE_PLACES, cleanStory, providerCommand, cleanClipProvider, priceCommand, BUYER_TYPES, AWARENESS_STAGES, cleanBuyer, photosCommand, PHOTO_CHOICES, undoCommand, UNDO_STATES, cleanTrack, trackRightsCommand, musicCommand, cleanMusic, mayaCommand, timelineCommand, cleanMaya, cleanTimeline, chatMessage, cleanChats, CHAT_TYPES, layersCommand, reopenCommand, REOPEN_FROM, soundCommand, CUT_LAYERS, viewCommand, retryCommand, cleanCraft, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, VIDEO_LIMIT_USD, CLAUDE_MODELS, cleanModel, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };
+module.exports = { CTA_KINDS, cleanFinish, finishData, finishCommand, stagingMakeCommand, stagingDecideCommand, STORY_STYLES, OLLIE_PLACES, cleanStory, providerCommand, cleanClipProvider, priceCommand, BUYER_TYPES, AWARENESS_STAGES, cleanBuyer, photosCommand, PHOTO_CHOICES, undoCommand, UNDO_STATES, cleanTrack, trackRightsCommand, musicCommand, cleanMusic, mayaCommand, timelineCommand, cleanMaya, cleanTimeline, chatMessage, cleanChats, CHAT_TYPES, layersCommand, reopenCommand, REOPEN_FROM, soundCommand, CUT_LAYERS, viewCommand, retryCommand, cleanCraft, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, VIDEO_LIMIT_USD, CLAUDE_MODELS, cleanModel, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };
