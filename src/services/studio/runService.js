@@ -290,11 +290,24 @@ const cleanFinishOrNull = (f) => {
 /** The finish as the Creative OS reads it. */
 const finishData = (f) => ({ ...(f.cta ? { cta: f.cta } : {}), ...(f.ctaWord ? { cta_word: f.ctaWord } : {}), staging: f.staging });
 
-/** What an editor gives when starting a video (D-047, D-057, D-065): an idea, craft choices and a storytelling style, all optional, and the buyer. */
+/**
+ * Maya's outfit, the editor's choice at the start (D-070, Preetham, 2026-11-25: "the user should have the access of
+ * choosing the outfit before working on the story"): her everyday look, or one of her outfits in the Creative OS
+ * (assets/characters/maya/outfits/outfits.json). Kept in step with that file: an outfit added there is added here.
+ */
+const OUTFITS = ["everyday", "festive-green-turtleneck", "festive-rust-blouse", "festive-tweed-blazer"];
+function cleanOutfit(o) {
+  if (o === undefined || o === null || o === "") return null;
+  const id = String(o);
+  if (!OUTFITS.includes(id)) throw new Error("Choose one of Maya's outfits shown.");
+  return id;
+}
+
+/** What an editor gives when starting a video (D-047, D-057, D-065, D-070): an idea, craft choices, a storytelling style and Maya's outfit, all optional, and the buyer. */
 function cleanStart(body) {
   const idea = String(body?.idea ?? "").trim();
   if (idea.length > MAX_WORDS) throw new Error(`Keep the idea to ${MAX_WORDS} characters.`);
-  return { idea: idea || null, craft: body?.craft ? cleanCraft(body.craft) : null, buyer: body?.buyer ? cleanBuyer(body.buyer) : null, story: cleanStory(body?.story), finish: cleanFinish(body?.finish) };
+  return { idea: idea || null, craft: body?.craft ? cleanCraft(body.craft) : null, buyer: body?.buyer ? cleanBuyer(body.buyer) : null, story: cleanStory(body?.story), finish: cleanFinish(body?.finish), outfit: cleanOutfit(body?.outfit) };
 }
 /** The craft as the Creative OS reads it. */
 const craftData = (c) => ({ seconds: c.seconds, pace: c.pace, voice_speed: c.voiceSpeed });

@@ -6,11 +6,19 @@ const { BUYER_TYPES, cleanUpdate, cleanCraft, cleanStart, ideaCommand, craftComm
 const run = (over = {}) => ({ runId: "1793500000.000001", state: "concept-choice", spent: 0, ...over });
 
 test("a video starts with the editor's idea and craft, both optional", () => {
-  assert.deepEqual(cleanStart({}), { idea: null, craft: null, buyer: null, story: null, finish: null });
-  assert.deepEqual(cleanStart({ idea: "  Maya opens the door  ", craft: { seconds: 30, pace: "fast", voiceSpeed: 1.1 } }), { idea: "Maya opens the door", craft: { seconds: 30, pace: "fast", voiceSpeed: 1.1 }, buyer: null, story: null, finish: null });
+  assert.deepEqual(cleanStart({}), { idea: null, craft: null, buyer: null, story: null, finish: null, outfit: null });
+  assert.deepEqual(cleanStart({ idea: "  Maya opens the door  ", craft: { seconds: 30, pace: "fast", voiceSpeed: 1.1 } }), { idea: "Maya opens the door", craft: { seconds: 30, pace: "fast", voiceSpeed: 1.1 }, buyer: null, story: null, finish: null, outfit: null });
   assert.throws(() => cleanCraft({ seconds: 33, pace: "fast", voiceSpeed: 1 }), /length/);
   assert.throws(() => cleanCraft({ seconds: 30, pace: "slowest", voiceSpeed: 1 }), /pace/);
   assert.throws(() => cleanCraft({ seconds: 30, pace: "calm", voiceSpeed: 2 }), /speed/);
+});
+
+test("D-070: the editor may choose Maya's outfit at the start, with or without a storytelling style", () => {
+  assert.equal(cleanStart({ outfit: "festive-rust-blouse" }).outfit, "festive-rust-blouse");
+  assert.equal(cleanStart({ outfit: "everyday" }).outfit, "everyday");
+  assert.equal(cleanStart({ outfit: "" }).outfit, null);
+  assert.equal(cleanStart({ outfit: "everyday" }).story, null);
+  assert.throws(() => cleanStart({ outfit: "pirate-costume" }), /one of Maya's outfits/);
 });
 
 test("D-057: the editor picks one buyer; the stage is the matrix's unless they chose another", () => {

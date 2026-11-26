@@ -68,6 +68,8 @@ const runSchema = new mongoose.Schema(
     buyer: { type: mongoose.Schema.Types.Mixed, default: null },
     // D-065: the editor's storytelling style { style, owl }, chosen when the video starts.
     storyStyle: { type: mongoose.Schema.Types.Mixed, default: null },
+    // D-070: Maya's outfit, chosen when the video starts: "everyday" or an outfit id; null when left to the writer.
+    outfit: { type: String, default: null },
     // D-058: the property's new starting price, estimate or sale dates, waiting for the editor to confirm (old and new).
     priceChange: { type: [mongoose.Schema.Types.Mixed], default: [] },
     // D-056: the property's photos nobody has checked yet ({ id, slot }), for the editor to check in the Studio, and
