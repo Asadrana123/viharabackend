@@ -2,6 +2,14 @@
 //
 // Home page popup: full name, email, phone and cash / financing. Stored in Mongo, posted
 // to Slack, and listed in Admin → Leads → "Home Popup".
+//
+// The phone is checked with a texted code (Twilio Verify, services/leads/twilioVerify.js).
+// The lead is saved first and stays "Not verified" until the code is typed:
+//   POST /api/v1/home-popup/submit               → { leadId, key, phoneVerified }
+//   POST /api/v1/home-popup/:id/phone/send       { key, phone? }  text a code (phone = "Change number")
+//   POST /api/v1/home-popup/:id/phone/verify     { key, code }    check it
+const crypto = require("crypto");
+const mongoose = require("mongoose");
 const catchAsyncError = require("../../middleware/catchAsyncError");
 const ErrorHandler = require("../../utils/errorhandler");
 const HomePopupLead = require("../../model/leads/homePopupLeadModel");
@@ -11,6 +19,8 @@ const { getNotesForLeads } = require("../../services/leads/leadNotesService");
 const { listView, scopeQuery, unlessSummary, listSelect, shapeLeads } = require("../../services/leads/leadListView");
 const { str, isValidEmail, attributionFrom, splitName } = require("../../services/leads/buyBox");
 const { normalisePhone } = require("../../services/calling/vapiCallsService");
+const { sendVerification, checkVerification } = require("../../services/leads/twilioVerify");
+const { postToSlack } = require("../../services/shared/slackService");
 
 const BUYER_TYPES = ["cash", "financing", "not_sure"];
 const BUYER_TYPE_LABELS = { cash: "Cash buyer", financing: "Financing", not_sure: "Not sure yet" };
@@ -52,14 +62,21 @@ const submitHomePopupLead = catchAsyncError(async (req, res, next) => {
     submittedAt: new Date(),
   };
 
-  const existing = await HomePopupLead.findOne({ email }).select("_id").lean();
+  const existing = await HomePopupLead.findOne({ email }).select("_id phoneNormalized phoneVerifiedAt").lean();
+  // A new number has to be checked again.
+  const keepVerified = !!existing?.phoneVerifiedAt && existing.phoneNormalized === phoneNormalized;
+  if (!keepVerified) Object.assign(fields, { phoneVerifiedAt: null, phoneVerifyMethod: "" });
+  // A fresh key on every submit: only this browser can send / check the code.
+  const key = crypto.randomBytes(24).toString("hex");
+  fields.accessKey = key;
+
   const lead = await HomePopupLead.findOneAndUpdate(
     { email },
     existing ? { $set: fields, $inc: { submissions: 1 } } : { $set: fields },
     { new: true, upsert: true, setDefaultsOnInsert: true }
   );
 
-  res.status(200).json({ success: true, leadId: lead._id, updated: !!existing });
+  res.status(200).json({ success: true, leadId: lead._id, key, phoneVerified: keepVerified, updated: !!existing });
 
   notifyNewLead({
     leadType: existing ? "Home Popup (updated)" : "Home Popup",
@@ -70,8 +87,98 @@ const submitHomePopupLead = catchAsyncError(async (req, res, next) => {
     extraFields: [
       { label: "Buying with", value: BUYER_TYPE_LABELS[lead.buyerType] },
       { label: "Opened by", value: lead.trigger === "button" ? "Button" : "Auto (5s)" },
+      { label: "Phone", value: keepVerified ? "Verified" : "Not verified yet (code being texted)" },
     ],
   }).catch((e) => console.error("[slack] home-popup notify failed:", e.message));
+});
+
+const sameSecret = (a, b) => {
+  const x = Buffer.from(String(a || ""));
+  const y = Buffer.from(String(b || ""));
+  return x.length > 0 && x.length === y.length && crypto.timingSafeEqual(x, y);
+};
+
+const NOT_FOUND = "We couldn't find your details. Close this and fill in the form again.";
+
+/** The lead, only when the request carries its key. */
+async function leadWithKey(req) {
+  const { id } = req.params;
+  if (!mongoose.isValidObjectId(id)) return null;
+  const lead = await HomePopupLead.findById(id).select("+accessKey").lean();
+  if (!lead || !sameSecret(req.body?.key, lead.accessKey)) return null;
+  return lead;
+}
+
+const SENDS_PER_DAY = 5;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const SEND_ERRORS = {
+  invalid: ["That number can't get texts. Check it, or use a mobile number.", 422],
+  country: ["We can only text US numbers for now.", 422],
+  blocked: ["We couldn't text that number. Check it and try again.", 422],
+  limit: ["We've sent the most codes we can for now. Try again later.", 429],
+  not_configured: ["We couldn't send the text just now. Try again in a moment.", 503],
+  error: ["We couldn't send the text just now. Try again in a moment.", 502],
+};
+
+/** POST /:id/phone/send — text a code; `phone` set = "Change number". */
+const sendHomePopupCode = catchAsyncError(async (req, res, next) => {
+  const lead = await leadWithKey(req);
+  if (!lead) return next(new ErrorHandler(NOT_FOUND, 404));
+
+  let phone = lead.phoneNormalized;
+  const set = {};
+  if (req.body.phone !== undefined) {
+    const raw = str(req.body.phone, 40);
+    phone = normalisePhone(raw);
+    if (!phone || phone.replace(/\D/g, "").length < 10) return next(new ErrorHandler("Enter a valid phone number", 400));
+    if (phone !== lead.phoneNormalized) Object.assign(set, { phone: raw, phoneNormalized: phone, phoneVerifiedAt: null, phoneVerifyMethod: "" });
+  }
+  if (lead.phoneVerifiedAt && !set.phoneNormalized) return res.json({ success: true, phoneVerified: true });
+
+  const now = Date.now();
+  const recent = (lead.phoneCodeSends || []).filter((t) => now - new Date(t).getTime() < DAY_MS);
+  if (recent.length >= SENDS_PER_DAY) return next(new ErrorHandler(SEND_ERRORS.limit[0], 429));
+
+  const result = await sendVerification(phone);
+  // Every attempt counts (Twilio charges for the text either way).
+  await HomePopupLead.updateOne({ _id: lead._id }, { $set: { ...set, phoneCodeSends: [...recent, new Date(now)] } });
+  if (!result.ok) {
+    const [message, status] = SEND_ERRORS[result.reason] || SEND_ERRORS.error;
+    return next(new ErrorHandler(message, status));
+  }
+  res.json({ success: true, phoneVerified: false });
+});
+
+const CHECK_ERRORS = {
+  mismatch: "That code doesn't match. Check the text and try again.",
+  expired: "That code has expired. Tap Resend for a new one.",
+  attempts: "Too many tries. Tap Resend for a new code.",
+  error: "We couldn't check the code just now. Try again in a moment.",
+  not_configured: "We couldn't check the code just now. Try again in a moment.",
+};
+
+/** POST /:id/phone/verify — check the code. */
+const verifyHomePopupCode = catchAsyncError(async (req, res, next) => {
+  const lead = await leadWithKey(req);
+  if (!lead) return next(new ErrorHandler(NOT_FOUND, 404));
+  if (lead.phoneVerifiedAt) return res.json({ success: true, phoneVerified: true });
+
+  const result = await checkVerification(lead.phoneNormalized, req.body.code);
+  if (!result.ok) {
+    const status = result.reason === "error" || result.reason === "not_configured" ? 502 : 400;
+    return next(new ErrorHandler(CHECK_ERRORS[result.reason] || CHECK_ERRORS.mismatch, status));
+  }
+
+  await HomePopupLead.updateOne({ _id: lead._id }, { $set: { phoneVerifiedAt: new Date(), phoneVerifyMethod: "code" } });
+  res.json({ success: true, phoneVerified: true });
+
+  const webhook = process.env.SLACK_LEADS_WEBHOOK_URL;
+  if (webhook && !TEST_NAME_REGEX.test(lead.fullName || "")) {
+    postToSlack(webhook, { text: `✅ *Phone confirmed* · ${lead.fullName} · Home Popup (entered the code)` }).catch((e) =>
+      console.error("[slack] home-popup phone confirmed post failed:", e.message)
+    );
+  }
 });
 
 /**
@@ -111,4 +218,4 @@ const getAllHomePopupLeads = catchAsyncError(async (req, res) => {
   });
 });
 
-module.exports = { submitHomePopupLead, getAllHomePopupLeads };
+module.exports = { submitHomePopupLead, sendHomePopupCode, verifyHomePopupCode, getAllHomePopupLeads };
