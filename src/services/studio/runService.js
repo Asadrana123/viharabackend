@@ -9,7 +9,7 @@ const crypto = require("node:crypto");
 const STATES = new Set(["queued", "concepts", "concept-choice", "hooks", "hook-choice", "package", "gate-a", "approved", "frames", "storyboard", "generating", "clips", "ready-to-build", "building", "cut", "revision", "done", "rejected", "failed", "updating"]);
 // The limit for a video (D-044). The server checks it again against what was really spent.
 const VIDEO_LIMIT_USD = 15;
-const SLOT = /^(animatic|cut|layers|clip-[a-z0-9-]{1,80}|frame-[a-z0-9-]{1,80}|photo-[a-z0-9-]{1,80}|music-[a-z0-9-]{1,80}|staged-[a-z0-9-]{1,80})$/;
+const SLOT = /^(animatic|cut|layers|clip-[a-z0-9-]{1,80}|frame-[a-z0-9-]{1,80}|photo-[a-z0-9-]{1,80}|music-[a-z0-9-]{1,80}|staged-[a-z0-9-]{1,80}|reuse-[a-f0-9]{16,40})$/;
 const FRAME_KINDS = new Set(["photo", "presenter", "generated", "later", "screen"]);
 const MAX_WORDS = 2000;
 // The Claude models an editor may choose to write a video's concepts, hooks and plan. The choice is theirs.
@@ -47,6 +47,33 @@ const MAYA_ENERGY = ["calm", "normal", "lively"];
 const secs = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 /** Maya's action on a presenter frame, as the server reports it; null for any other frame. */
+/**
+ * A property shot's earlier clips (Preetham, 2026-11-26; Adarsh Raut, 2026-11-27): this property's clips a person
+ * approved in earlier videos, each to play before reusing it on the shot at $0, and the one in use now.
+ */
+const REUSE_KEY = /^[a-f0-9]{16,40}$/;
+function cleanReuse(r) {
+  if (!r || typeof r !== "object") return null;
+  const options = (Array.isArray(r.options) ? r.options : [])
+    .slice(0, 40)
+    .filter((o) => REUSE_KEY.test(String(o?.key ?? "")))
+    .map((o) => ({
+      key: String(o.key),
+      from: clip(o?.from, 40),
+      shot: clip(o?.shot, 120),
+      image: clip(o?.image, 40),
+      toImage: o?.toImage ? clip(o.toImage, 40) : null,
+      motion: clip(o?.motion, 40),
+      label: clip(o?.label, 200),
+      seconds: Number(o?.seconds) || null,
+      approvedBy: clip(o?.approvedBy, 80),
+      approvedAt: o?.approvedAt ? clip(o.approvedAt, 40) : null,
+      slot: `reuse-${o.key}`,
+    }));
+  const current = REUSE_KEY.test(String(r.current ?? "")) ? String(r.current) : null;
+  return { current, options };
+}
+
 function cleanMaya(m) {
   if (!m || typeof m !== "object") return null;
   return {
@@ -119,6 +146,8 @@ function cleanUpdate(u) {
             options: Array.isArray(f?.options) ? f.options.slice(0, 12).map((o) => ({ id: clip(o?.id, 40), label: clip(o?.label, 120), usd: Number(o?.usd) || 0, invents: Boolean(o?.invents) })) : [],
             // What Maya does in her scene and what she could do instead, with its price (Dinesh, 2026-11-12).
             maya: cleanMaya(f?.maya),
+            // A clip from an earlier video of this property, at $0, or null.
+            reuse: cleanReuse(f?.reuse),
           }))
         : [],
       // The last cut scene by scene, for the timeline (Dinesh, 2026-11-12); null before it is built.
@@ -130,7 +159,7 @@ function cleanUpdate(u) {
       // Who makes the clips and each choice's price (D-060).
       clipProvider: cleanClipProvider(u?.clipProvider),
       framesPrice: Number(u?.framesPrice) || 0,
-      clips: Array.isArray(u?.clips) ? u.clips.slice(0, 100).map((c) => ({ ref: clip(c?.ref, 120), state: clip(c?.state, 30), note: c?.note ? clip(c.note, 500) : null, slot: clip(c?.slot, 90) })) : [],
+      clips: Array.isArray(u?.clips) ? u.clips.slice(0, 100).map((c) => ({ ref: clip(c?.ref, 120), state: clip(c?.state, 30), note: c?.note ? clip(c.note, 500) : null, slot: clip(c?.slot, 90), reused: c?.reused === true })) : [],
       cut: u?.cut ? { name: clip(u.cut.name, 120), state: clip(u.cut.state, 30), seconds: Number(u.cut.seconds) || 0 } : null,
       // What the video has cost so far, item by item, and by tool.
       costs: cleanCosts(u?.costs),
@@ -414,6 +443,13 @@ function shotCommand(run, body) {
   const ref = String(body?.ref ?? "");
   const frame = (run.frames ?? []).find((f) => f.ref === ref);
   if (!frame || !frame.options?.length) throw new Error(`Shot ${ref} takes no camera move.`);
+  // A clip from an earlier video of this property, at $0: one of the shot's own choices only.
+  if (body?.reuse) {
+    const key = String(body.reuse);
+    if (!(frame.reuse?.options ?? []).some((o) => o.key === key)) throw new Error("That earlier clip is not one of this shot's choices any more. Refresh and choose again.");
+    if (frame.reuse?.current === key) throw new Error("This shot already uses that clip.");
+    return { command: { type: "shot", choice: ref, data: { reuse: key } }, state: "updating" };
+  }
   const camera = body?.camera ? String(body.camera) : null;
   const image = body?.image ? String(body.image) : null;
   if (!camera && !image) throw new Error("Choose a camera move or a photograph.");
@@ -934,4 +970,4 @@ function cleanSlot(slot) {
   return s;
 }
 
-module.exports = { CTA_KINDS, cleanFinish, finishData, finishCommand, stagingMakeCommand, stagingDecideCommand, STORY_STYLES, OLLIE_PLACES, cleanStory, providerCommand, cleanClipProvider, priceCommand, BUYER_TYPES, AWARENESS_STAGES, cleanBuyer, photosCommand, PHOTO_CHOICES, undoCommand, UNDO_STATES, cleanTrack, trackRightsCommand, musicCommand, cleanMusic, mayaCommand, timelineCommand, cleanMaya, cleanTimeline, chatMessage, cleanChats, CHAT_TYPES, layersCommand, reopenCommand, REOPEN_FROM, soundCommand, CUT_LAYERS, viewCommand, retryCommand, cleanCraft, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, VIDEO_LIMIT_USD, CLAUDE_MODELS, cleanModel, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };
+module.exports = { cleanReuse, CTA_KINDS, cleanFinish, finishData, finishCommand, stagingMakeCommand, stagingDecideCommand, STORY_STYLES, OLLIE_PLACES, cleanStory, providerCommand, cleanClipProvider, priceCommand, BUYER_TYPES, AWARENESS_STAGES, cleanBuyer, photosCommand, PHOTO_CHOICES, undoCommand, UNDO_STATES, cleanTrack, trackRightsCommand, musicCommand, cleanMusic, mayaCommand, timelineCommand, cleanMaya, cleanTimeline, chatMessage, cleanChats, CHAT_TYPES, layersCommand, reopenCommand, REOPEN_FROM, soundCommand, CUT_LAYERS, viewCommand, retryCommand, cleanCraft, cleanStart, craftData, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, VIDEO_LIMIT_USD, CLAUDE_MODELS, cleanModel, generateCommand, framesCommand, remakeCommand, clipCommand, buildCommand, cutCommand, cleanSlot, newRunId, cleanUpdate, cleanUpdates, cleanReady, actProblem, pickCommand, gateCommand };

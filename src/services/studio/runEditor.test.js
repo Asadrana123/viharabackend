@@ -1,7 +1,7 @@
 // D-047: the editor's own hand on a Studio video - their idea, craft, hook, voiceover lines, camera moves and images.
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { BUYER_TYPES, cleanUpdate, cleanCraft, cleanStart, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, cleanSlot } = require("./runService");
+const { BUYER_TYPES, cleanUpdate, cleanCraft, cleanStart, ideaCommand, craftCommand, hookCommand, voCommand, shotCommand, cleanImage, cleanSlot, cleanReuse } = require("./runService");
 
 const run = (over = {}) => ({ runId: "1793500000.000001", state: "concept-choice", spent: 0, ...over });
 
@@ -70,6 +70,26 @@ test("voiceover lines change at the plan, only where the editor changed them", (
   assert.deepEqual(step.command.data.lines, { hook: "New line" });
   assert.equal(step.state, "updating");
   assert.throws(() => voCommand(r, { lines: { close: "See the deal" } }), /at least one/);
+});
+
+test("an earlier property clip is one the shot offers, at $0, even at the limit", () => {
+  const key = "cb00eac847a1e5173510bbe8";
+  const frames = [{ ref: "b2/s1", options: [{ id: "dolly-in", usd: 0.38 }], reuse: { current: null, options: [{ key, from: "LH960-V05" }] } }];
+  const r = run({ state: "storyboard", frames, spent: 15 });
+  assert.deepEqual(shotCommand(r, { ref: "b2/s1", reuse: key }).command, { type: "shot", choice: "b2/s1", data: { reuse: key } });
+  assert.throws(() => shotCommand(r, { ref: "b2/s1", reuse: "aef473ccbd3637d3a94d385a" }), /not one of this shot's choices/);
+  assert.throws(() => shotCommand(run({ state: "storyboard", frames: [{ ...frames[0], reuse: { current: key, options: frames[0].reuse.options } }] }), { ref: "b2/s1", reuse: key }), /already uses/);
+  assert.throws(() => shotCommand({ ...r, state: "revision" }, { ref: "b2/s1", reuse: key }), /storyboard/);
+});
+
+test("earlier clips are cleaned: hex keys only, a slot of their own", () => {
+  const c = cleanReuse({ current: "nope", options: [{ key: "cb00eac847a1e5173510bbe8", from: "LH960-V05", image: "img-07", motion: "dolly-in", approvedBy: "Preetham", seconds: 3.1 }, { key: "../etc" }] });
+  assert.equal(c.current, null);
+  assert.equal(c.options.length, 1);
+  assert.equal(c.options[0].slot, "reuse-cb00eac847a1e5173510bbe8");
+  assert.equal(cleanSlot("reuse-cb00eac847a1e5173510bbe8"), "reuse-cb00eac847a1e5173510bbe8");
+  assert.throws(() => cleanSlot("reuse-zz"), /not a file slot/);
+  assert.equal(cleanReuse(null), null);
 });
 
 test("a camera move is one the shot offers, within the limit", () => {
