@@ -30,7 +30,7 @@ const {
 const { maskPhone } = require("../../utils/maskPii");
 const { TIMELINES, PURPOSES, isCashOnly, sheetUrl, bookUrl } = require("../../config/dealSheet");
 const dealSheetService = require("../../services/dealSheet/dealSheetService");
-const { sendCode } = require("../../services/dealSheet/phoneCodeService");
+const { sendCode, sendSheetNotice } = require("../../services/dealSheet/phoneCodeService");
 
 // "When are you ready to buy?" on the /deal form, for Slack.
 const DEAL_READY = { "30d": "Now, at this sale", "90d": "In the next 3 months", "180d": "In 3 to 6 months", looking: "Just looking for now" };
@@ -187,9 +187,9 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
   if (consent === true && lead.isQaTest) {
     call = { attempted: false, suppressedForQaTest: true };
   } else if (isDeal) {
-    // /deal: Maya calls once the number is confirmed (services/dealSheet/phoneVerified.js), or after 30 minutes
-    // without it, 9 AM–8 PM deal time (dealSignupCall.js). Only with the consent box ticked.
-    call = { attempted: false, afterPhoneConfirmed: consent === true };
+    // /deal (v3): with the Maya box ticked, Maya calls once the code is in (phoneVerified.js), at once on "Skip"
+    // (POST /lead/:id/phone/skip), or 10 minutes later if they leave the code screen (dealSignupCall.js).
+    call = { attempted: false, afterPhoneCode: consent === true };
   } else if (consent === true) {
     scheduleSignupCall({
       leadId: lead._id,
@@ -233,10 +233,12 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
   // QA test leads stop here: no Slack post, paid enrichment, Brevo contact or text.
   if (lead.isQaTest) return;
 
-  // /deal: ONE text with the sheet link and the code, to everyone who gave a number (it replaces the sign-up text).
+  // /deal: ONE short text to everyone who gave a number (it replaces the sign-up text): the deal sheet is in their
+  // email, plus the 6-digit code when they ticked the Maya box. No link.
   if (isDeal) {
-    sendCode(lead, { phone: lead.phoneNormalized, street: property.street || property.productName, propertyId: property._id })
-      .catch((e) => console.error(`[deal-sheet:${slug}] code text failed:`, e.message));
+    const textTo = { phone: lead.phoneNormalized, street: property.street || property.productName, propertyId: property._id };
+    (lead.consent ? sendCode(lead, textTo) : sendSheetNotice(lead, textTo))
+      .catch((e) => console.error(`[deal-sheet:${slug}] sign-up text failed:`, e.message));
   }
 
   // ── Slack notification (fire-and-forget) ───────────────────────────────────
@@ -261,7 +263,7 @@ const registerAndCall = catchAsyncError(async (req, res, next) => {
       ...(isDeal
         ? [
             { label: "Ready to buy", value: DEAL_READY[lead.timeline] || "—" },
-            { label: "Phone", value: "Not confirmed yet (code texted)" },
+            { label: "Phone", value: lead.consent ? "Not confirmed yet (code texted, Maya box ticked)" : "Not asked to confirm (no Maya call)" },
             { label: "Deal sheet", value: sheetUrl(ids.token) },
             { label: "Ref", value: lead.ref },
             ...(lead.timeline === "30d" ? [{ label: "Founder call", value: "Offer to book" }] : []),

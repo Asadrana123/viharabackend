@@ -1,19 +1,18 @@
 // services/dealSheet/phoneCodeService.js
 //
-// The /deal form texts every buyer who gives a number ONE text: their deal sheet link and a 6-digit code.
-//   "Vihara: your deal sheet for 960 Larrabee St: www.vihara.ai/s/<token>?v=<marker>. Code 482913 to open it on
-//    the page. Reply STOP to opt out."
-// Entering the code on the form confirms the number (method "code"); opening the texted link does too ("sms_link",
-// the ?v= marker is only on the texted link, so opens from the email don't count).
+// The /deal form's one sign-up text (deal form v3, Prajwal 27 Nov 2026). It carries NO link:
+//   Maya box not ticked: "Vihara: your deal sheet for 960 Larrabee St is in your email. Reply STOP to opt out."
+//   Maya box ticked:     "Vihara: your deal sheet for 960 Larrabee St is in your email. Your code is 482913, so Maya
+//                         can call you. Reply STOP to opt out."
+// Entering the code on the form confirms the number (method "code"). Opening a link no longer does (sms_link dropped).
 //
-// The text replaces the old /deal sign-up text (one text, not two). It goes to everyone who gives a number, consent
-// box or not (it's the sheet they asked for), through the Twilio A2P SMS line only; opt-outs still block it.
-// Limits: the code lasts 10 minutes and allows 5 tries; 3 sends per lead and 5 per number per day.
+// It replaces the old /deal sign-up text (one text, not two), goes to everyone who gives a number, through the
+// Twilio A2P SMS line only; opt-outs still block it.
+// Code limits: it lasts 10 minutes and allows 5 tries; 3 sends per lead and 5 per number per day.
 const crypto = require("crypto");
 const PhoneCode = require("../../model/leads/phoneCodeModel");
 const PropertyLead = require("../../model/leads/propertyLeadModel");
 const { enqueueOutbound } = require("../vtext/vtextMessageService");
-const { getSiteUrl } = require("../../config/siteUrls");
 const { maskPhone } = require("../../utils/maskPii");
 const {
   CODE_TTL_MS,
@@ -25,17 +24,42 @@ const {
 const hashCode = (leadId, code) =>
   crypto.createHash("sha256").update(`${leadId}:${code}:${process.env.JWT_SECRET || "deal-sheet"}`).digest("hex");
 
-// "https://www.vihara.ai" → "www.vihara.ai": shorter, and phones still make it a link.
-const shortSite = () => getSiteUrl().replace(/^https?:\/\//, "");
+function textBody({ street, code }) {
+  const base = `Vihara: your deal sheet for ${street} is in your email.`;
+  return code ? `${base} Your code is ${code}, so Maya can call you. Reply STOP to opt out.` : `${base} Reply STOP to opt out.`;
+}
 
-function textBody({ street, token, marker, code }) {
-  const link = `${shortSite()}/s/${token}${marker ? `?v=${marker}` : ""}`;
-  return `Vihara: your deal sheet for ${street}: ${link}. Code ${code} to open it on the page. Reply STOP to opt out.`;
+async function sendText(lead, { phone, body, templateKey, propertyId }) {
+  try {
+    const { blocked, reason, message } = await enqueueOutbound({
+      to: phone,
+      body,
+      origin: { kind: "automation", templateKey, ...(propertyId ? { propertyId } : {}) },
+      // Twilio A2P SMS only: never the iMessage lines, and it reaches every US mobile.
+      channelPolicy: { mode: "only", channels: ["twilio-sms"] },
+      contactName: lead.fullName,
+      isReplyToInbound: false,
+    });
+    if (blocked) {
+      console.error(`[deal-sheet text] BLOCKED for lead ${lead._id} (${maskPhone(phone)}): ${reason}`);
+      return { ok: false, reason: "blocked" };
+    }
+    console.log(`[deal-sheet text] ${templateKey} queued for lead ${lead._id} (${maskPhone(phone)}), message ${message?._id}`);
+    return { ok: true };
+  } catch (err) {
+    console.error(`[deal-sheet text] FAILED for lead ${lead._id}:`, err.message);
+    return { ok: false, reason: "error" };
+  }
+}
+
+/** The text without a code (Maya box not ticked): the deal sheet is in their email. */
+async function sendSheetNotice(lead, { phone, street, propertyId }) {
+  return sendText(lead, { phone, body: textBody({ street: street || "your home" }), templateKey: "deal-sheet-notice", propertyId });
 }
 
 /**
- * Text a new code (and the sheet link) to `phone` for this lead.
- * @param {object} lead       PropertyLead (needs _id, fullName, dealSheet.token/marker)
+ * Text a new code to `phone` for this lead (Maya box ticked).
+ * @param {object} lead       PropertyLead (needs _id, fullName)
  * @param {object} o
  * @param {string} o.phone    E.164
  * @param {string} o.street   the deal's street, for the text
@@ -58,35 +82,7 @@ async function sendCode(lead, { phone, street, existingLeadId = null, propertyId
     expiresAt: new Date(Date.now() + CODE_TTL_MS),
   });
 
-  // The texted link confirms the number when opened, so it carries the marker only when it points at this
-  // number's own lead (not after "Change number" to a number another lead has).
-  const body = textBody({
-    street: street || "your home",
-    token: lead.dealSheet.token,
-    marker: existingLeadId ? "" : lead.dealSheet.marker,
-    code,
-  });
-
-  try {
-    const { blocked, reason, message } = await enqueueOutbound({
-      to: phone,
-      body,
-      origin: { kind: "automation", templateKey: "deal-sheet-code", ...(propertyId ? { propertyId } : {}) },
-      // Twilio A2P SMS only: never the iMessage lines (no links to strangers there), and it reaches every US mobile.
-      channelPolicy: { mode: "only", channels: ["twilio-sms"] },
-      contactName: lead.fullName,
-      isReplyToInbound: false,
-    });
-    if (blocked) {
-      console.error(`[deal-sheet text] BLOCKED for lead ${lead._id} (${maskPhone(phone)}): ${reason}`);
-      return { ok: false, reason: "blocked" };
-    }
-    console.log(`[deal-sheet text] queued for lead ${lead._id} (${maskPhone(phone)}), message ${message?._id}`);
-    return { ok: true };
-  } catch (err) {
-    console.error(`[deal-sheet text] FAILED for lead ${lead._id}:`, err.message);
-    return { ok: false, reason: "error" };
-  }
+  return sendText(lead, { phone, body: textBody({ street: street || "your home", code }), templateKey: "deal-sheet-code", propertyId });
 }
 
 /**
@@ -119,4 +115,4 @@ async function markVerified(leadId, method) {
   return res.modifiedCount === 1;
 }
 
-module.exports = { sendCode, verifyCode, markVerified, textBody };
+module.exports = { sendCode, sendSheetNotice, verifyCode, markVerified, textBody };

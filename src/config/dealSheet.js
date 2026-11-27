@@ -1,7 +1,8 @@
 // config/dealSheet.js
 //
 // The /deal form's private deal sheet (Prajwal's handover, 20 Nov 2026: PROMPT-deal-sheet-and-form-v2.md).
-// Every /deal sign-up gets a 2-page PDF at their price, emailed (E1, template 198) and texted with a 6-digit code.
+// Every /deal sign-up gets a 2-page PDF at their price, emailed (E1, template 198), and a short text saying so.
+// Buyers who tick the Maya box also get a 6-digit code in that text.
 //
 // Deals are matched on the START of the slug, so the city ending doesn't matter. The website has the same two
 // lists in components/deal-form/dealSheet.ts; change both together.
@@ -16,18 +17,9 @@ const CASH_ONLY_PREFIXES = ["8206-loma-vista-pl"];
 // in DEAL_PREAPPROVAL_URL and the email starts linking it, no template change. Never name the lender to buyers.
 const PREAPPROVAL_URL = process.env.DEAL_PREAPPROVAL_URL || "";
 
-// The advisor on a deal (the founder strategy call). Vin on both live deals for now (Prajwal, 21 Nov 2026);
-// editing it from the admin panel comes later. Any other deal has none: "a Vihara co-founder" / "The Vihara team".
-const VIN = {
-  name: "Vin",
-  title: "Co-founder, Vihara",
-  founder: true,
-  photoUrl: "https://res.cloudinary.com/drm9blcmj/image/upload/c_fill,g_face,w_160,h_160,q_auto/v1795200360/vihara/team/vin.jpg",
-};
-const ADVISOR_BY_PREFIX = [
-  ["960-larrabee-st", VIN],
-  ["8206-loma-vista-pl", VIN],
-];
+// Buyers never see an advisor's name or photo (Prajwal, 27 Nov 2026, deal form v3): the form, the result page, the PDF
+// and Maya's script all say "a Vihara advisor" / "your Vihara advisor", with a "VA" initials avatar. advisorFor()
+// stays so the sheet data keeps its shape; it always returns null. Internal call tasks can still name who calls.
 
 // The "Deal strategy call" cal.com event (founders as hosts), and the public walkthrough event used after the
 // book-by date (sale date − 2 days) and for later / just-looking buyers.
@@ -40,9 +32,10 @@ const CODE_MAX_ATTEMPTS = 5;
 const MAX_SENDS_PER_LEAD = 3;
 const MAX_SENDS_PER_NUMBER_PER_DAY = 5;
 
-// A buyer who ticked the consent box but hasn't confirmed the number gets ONE Maya call after this long,
-// within 9 AM–8 PM in the deal's time zone, flagged phone_unverified (Prajwal, 21 Nov 2026).
-const UNVERIFIED_CALL_AFTER_MS = 30 * 60 * 1000;
+// Deal form v3 (Prajwal, 27 Nov 2026): only buyers who tick the Maya box get a code, and Maya calls every one of them.
+// Code entered → verified, Maya calls at once. "Skip" → Maya calls at once, flagged phone_unverified.
+// Left the code screen without either → the same unverified call after this long, 9 AM–8 PM deal time.
+const UNVERIFIED_CALL_AFTER_MS = 10 * 60 * 1000;
 const UNVERIFIED_CALL_HOURS = { start: 9, end: 20 };
 // Older sign-ups than this never get the unverified call (stops a backlog dialling after downtime).
 const UNVERIFIED_CALL_MAX_AGE_MS = 48 * 60 * 60 * 1000;
@@ -62,11 +55,9 @@ function isCashOnly(product) {
   return startsWithAny(product.slug, CASH_ONLY_PREFIXES);
 }
 
-/** The deal's advisor ({ name, title, photoUrl, founder }) or null. */
-function advisorFor(product) {
-  if (product?.advisor?.name) return product.advisor;
-  const hit = ADVISOR_BY_PREFIX.find(([prefix]) => String(product?.slug || "").startsWith(prefix));
-  return hit ? hit[1] : null;
+/** The deal's advisor as buyers see it: always none, so every buyer-facing place says "a Vihara advisor". */
+function advisorFor() {
+  return null;
 }
 
 const sheetUrl = (token, marker) => `${getSiteUrl()}/s/${token}${marker ? `?v=${marker}` : ""}`;

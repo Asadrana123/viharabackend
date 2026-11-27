@@ -1,10 +1,10 @@
 // services/dealSheet/dealSignupCall.js
 //
-// Maya's sign-up call for /deal leads moves from "new lead" to "phone verified" (Prajwal, 21 Nov 2026):
-//   - consent box ticked + number confirmed  → the call goes straight away, at any hour (as today)
-//   - consent box ticked, not confirmed 30 minutes after sign-up → ONE call anyway, only 9 AM–8 PM in the deal's
-//     time zone, flagged phone_unverified (signupCallUnverified)
-//   - no consent box → no call
+// Maya's sign-up call for /deal leads (deal form v3, Prajwal 27 Nov 2026). Only buyers who tick the Maya box:
+//   - code entered on the form      → verified, the call goes straight away, at any hour (phoneVerified.js)
+//   - "Skip, Maya will still call"  → the call goes straight away, flagged phone_unverified (signupCallUnverified)
+//   - left the code screen          → the same unverified call 10 minutes after sign-up, 9 AM–8 PM deal time
+//   - Maya box not ticked           → no call
 // Either way the call is placed once (signupCallAt is claimed atomically). After it, the normal daily follow-ups
 // run as for every property lead (propertyCallScheduler).
 const cron = require("node-cron");
@@ -19,7 +19,7 @@ const { UNVERIFIED_CALL_AFTER_MS, UNVERIFIED_CALL_HOURS, UNVERIFIED_CALL_MAX_AGE
  * Claim and place the sign-up call. Returns true when this call placed it.
  * @param {string} leadId
  * @param {object} [o]
- * @param {boolean} [o.unverified]  the 30-minute call to an unconfirmed number
+ * @param {boolean} [o.unverified]  a call to a number that hasn't entered the code (Skip, or left the screen)
  */
 async function placeDealSignupCall(leadId, { unverified = false } = {}) {
   const lead = await PropertyLead.findOneAndUpdate(
@@ -37,7 +37,7 @@ async function placeDealSignupCall(leadId, { unverified = false } = {}) {
   ).lean();
   if (!lead) return false;
 
-  console.log(`[deal-call] ${unverified ? "unverified (30 min)" : "verified"} sign-up call for lead ${lead._id} (${lead.propertySlug}, ${lead.timeline || "no timeline"})`);
+  console.log(`[deal-call] ${unverified ? "unverified" : "verified"} sign-up call for lead ${lead._id} (${lead.propertySlug}, ${lead.timeline || "no timeline"})`);
   scheduleSignupCall({
     leadId: lead._id,
     propertySlug: lead.propertySlug,
@@ -67,7 +67,7 @@ function withinHours(zone, now = new Date()) {
 let sweeping = false;
 const zoneBySlug = new Map();
 
-/** Every minute: consenting /deal leads still unconfirmed 30 minutes after sign-up get their one call. */
+/** Every minute: Maya-box /deal leads still unconfirmed 10 minutes after sign-up (no code, no Skip) get their one call. */
 async function sweepUnverifiedCalls() {
   if (sweeping) return;
   sweeping = true;
@@ -108,7 +108,7 @@ let task = null;
 function startDealCallSweep() {
   if (task) return task;
   task = cron.schedule("* * * * *", sweepUnverifiedCalls);
-  console.log("[deal-call] sweep started — /deal leads with consent but no confirmed number get one call 30 min after sign-up, 9 AM–8 PM deal time.");
+  console.log("[deal-call] sweep started — /deal leads with the Maya box ticked but no code get one call 10 min after sign-up, 9 AM–8 PM deal time.");
   return task;
 }
 
