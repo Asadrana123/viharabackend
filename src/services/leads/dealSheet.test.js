@@ -53,7 +53,8 @@ test("the West Hollywood sample: the opening line, book-by and sale time match t
   assert.equal(sheet.deal.type, "condo");
   assert.equal(sheet.deal.saleType, "Bank-owned");
   assert.equal(sheet.buyer.phone, "(310) 555-0122");
-  assert.equal(sheet.advisor.name, "Vin");
+  assert.equal(sheet.advisor, null); // buyers never see an advisor's name (v3)
+  assert.equal(p.ADVISOR_NAME, undefined);
 });
 
 test("later and just-looking buyers get no booking link or book-by date", () => {
@@ -104,20 +105,26 @@ test("cash-only deals and advisors are matched on the start of the slug", () => 
   assert.equal(isCashOnly({ slug: "1983-law-st-new-orleans" }), false);
   assert.equal(isCashOnly({ slug: "1983-law-st-new-orleans", cashOnly: true }), true);
   assert.equal(advisorFor({ slug: "1983-law-st-new-orleans" }), null);
+  assert.equal(advisorFor({ slug: "960-larrabee-st-west-hollywood", advisor: { name: "Vin" } }), null);
   assert.equal(bookUrl("VH-3QW7", "abcdefghijk"), "https://www.vihara.ai/b/VH-3QW7?k=abcdefgh");
 });
 
 test("the deal sheet text goes without the SMS box, but never to someone who opted out", () => {
   const origin = { kind: "automation", templateKey: "deal-sheet-code" };
   assert.equal(canSend({ consent: { status: "unknown" } }, { origin }, { requireConsent: true }).allowed, true);
+  const notice = { kind: "automation", templateKey: "deal-sheet-notice" };
+  assert.equal(canSend({ consent: { status: "unknown" } }, { origin: notice }, { requireConsent: true }).allowed, true);
+  assert.equal(canSend({ optOut: { isOptedOut: true } }, { origin: notice }, { requireConsent: true }).allowed, false);
   assert.equal(canSend({ optOut: { isOptedOut: true } }, { origin }, { requireConsent: true }).allowed, false);
   assert.equal(canSend({ phoneStatus: "landline" }, { origin }, { requireConsent: true }).allowed, false);
   // Any other automated text still needs consent.
   assert.equal(canSend({ consent: { status: "unknown" } }, { origin: { kind: "automation", templateKey: "property-signup-quote" } }, { requireConsent: true }).allowed, false);
 });
 
-test("the text carries the link, the code and STOP; the link rule still blocks other texts", () => {
-  const body = textBody({ street: "960 Larrabee St", token: "tok", marker: "mk", code: "482913" });
-  assert.equal(body, "Vihara: your deal sheet for 960 Larrabee St: www.vihara.ai/s/tok?v=mk. Code 482913 to open it on the page. Reply STOP to opt out.");
-  assert.ok(decideRichContent({ body, replied: false }).blockReason, "links to non-repliers stay blocked by default");
+test("the text says the sheet is in their email, with no link; the code only for the Maya box", () => {
+  assert.equal(textBody({ street: "960 Larrabee St" }), "Vihara: your deal sheet for 960 Larrabee St is in your email. Reply STOP to opt out.");
+  const body = textBody({ street: "960 Larrabee St", code: "482913" });
+  assert.equal(body, "Vihara: your deal sheet for 960 Larrabee St is in your email. Your code is 482913, so Maya can call you. Reply STOP to opt out.");
+  assert.ok(!/https?:|www\.|vihara\.ai/.test(body));
+  assert.ok(decideRichContent({ body: "see www.vihara.ai/s/tok", replied: false }).blockReason, "links to non-repliers stay blocked by default");
 });

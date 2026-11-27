@@ -24,9 +24,10 @@
 const CONVERSATIONAL_WINDOW_DAYS = Number(process.env.VTEXT_CONVERSATIONAL_WINDOW_DAYS || 30);
 const SYSTEM_BYPASS_TEMPLATES = new Set(["stop-confirm", "help"]);
 // One-off texts the person asked for themselves, sent without the SMS consent box. Opt-outs and bad numbers still
-// block them. "deal-sheet-code": the /deal form's deal sheet link + 6-digit code; the buyer gave their number to get
-// the sheet on their phone (Prajwal, 21 Nov 2026). Every other text still needs the box.
-const TRANSACTIONAL_TEMPLATES = new Set(["deal-sheet-code"]);
+// block them. The /deal form's one sign-up text (deal form v3, Prajwal 27 Nov 2026): "deal-sheet-notice" says the
+// deal sheet is in their email; "deal-sheet-code" adds the 6-digit code for buyers who ticked the Maya box. Neither
+// carries a link. Every other text still needs the box.
+const TRANSACTIONAL_TEMPLATES = new Set(["deal-sheet-code", "deal-sheet-notice"]);
 
 /**
  * @param {object} contact - a vtextContactModel document (or plain object with the same shape)

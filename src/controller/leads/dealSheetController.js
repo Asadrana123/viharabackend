@@ -5,9 +5,10 @@
 // The form's own (it gets leadId + key back from POST /api/v1/property-lead/:slug/register with form "deal"):
 //   POST /api/v1/property-lead/lead/:id/phone         { key, phone, smsConsent, smsConsentText }  resend / new number
 //   POST /api/v1/property-lead/lead/:id/phone/verify  { key, code }                               check the code
+//   POST /api/v1/property-lead/lead/:id/phone/skip    { key }                                     "Skip, Maya will still call you"
 //   POST /api/v1/property-lead/lead/:id/email         { key, email }                              "Wrong email?"
 // The website's (vihara.ai/s/<token> and vihara.ai/b/<ref>):
-//   GET  /api/v1/deal-sheet/:token?v=<marker>   the sheet's data; ?v= (texted link only) confirms the number
+//   GET  /api/v1/deal-sheet/:token              the sheet's data (opening it no longer confirms the number: v3)
 //   GET  /api/v1/deal-sheet/book/:ref?k=...     where /b/<ref> redirects: the strategy call, then the walkthrough
 const crypto = require("crypto");
 const mongoose = require("mongoose");
@@ -19,6 +20,8 @@ const { normalisePhone } = require("../../services/calling/vapiCallsService");
 const isValidEmail = (e) => /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(e) && e.length <= 254;
 const { sendCode, verifyCode } = require("../../services/dealSheet/phoneCodeService");
 const { confirmPhone } = require("../../services/dealSheet/phoneVerified");
+const { sendSheetNotice } = require("../../services/dealSheet/phoneCodeService");
+const { placeDealSignupCall } = require("../../services/dealSheet/dealSignupCall");
 const dealSheetService = require("../../services/dealSheet/dealSheetService");
 const { bookByDate, dealFields } = require("../../services/dealSheet/dealSheetData");
 const { sheetUrl, bookKey, STRATEGY_CALL_URL, WALKTHROUGH_URL } = require("../../config/dealSheet");
@@ -51,7 +54,11 @@ const CODE_ERRORS = {
   error: ["We couldn't send the text just now. Try again in a moment.", 502],
 };
 
-/** POST /lead/:id/phone — Resend, or send to a corrected number ("Change number"). */
+/**
+ * POST /lead/:id/phone — Resend, or a corrected number ("Change number" goes back to the details screen).
+ * With the Maya box ticked it texts a new code. Unticked on the way back: no code; a changed number gets the plain
+ * "your deal sheet is in your email" text, and the response says { code: false } so the form goes to the result.
+ */
 const sendPhoneCode = catchAsyncError(async (req, res, next) => {
   const lead = await leadWithKey(req);
   if (!lead) return next(new ErrorHandler(NOT_FOUND, 404));
@@ -95,12 +102,19 @@ const sendPhoneCode = catchAsyncError(async (req, res, next) => {
     await PropertyLead.updateOne({ _id: lead._id }, { $set: consentSet });
   }
 
-  const result = await sendCode(lead, { phone, street: await streetOf(lead.propertySlug), existingLeadId });
+  const street = await streetOf(lead.propertySlug);
+  const wantsMaya = typeof req.body.smsConsent === "boolean" ? req.body.smsConsent : lead.consent === true;
+  if (!wantsMaya) {
+    if (phone !== lead.phoneNormalized && !existingLeadId) await sendSheetNotice(lead, { phone, street });
+    return res.json({ success: true, code: false });
+  }
+
+  const result = await sendCode(lead, { phone, street, existingLeadId });
   if (!result.ok) {
     const [message, status] = CODE_ERRORS[result.reason] || CODE_ERRORS.error;
     return next(new ErrorHandler(message, status));
   }
-  res.json({ success: true });
+  res.json({ success: true, code: true });
 });
 
 const VERIFY_ERRORS = {
@@ -125,6 +139,18 @@ const verifyPhoneCode = catchAsyncError(async (req, res, next) => {
   res.json({ success: true, sheetUrl: sheetUrl(lead.dealSheet.token) });
 });
 
+/**
+ * POST /lead/:id/phone/skip — "Skip, Maya will still call you": Maya calls now, flagged phone_unverified
+ * (signupCallUnverified). Only for leads with the Maya box ticked; a no-op once she has called.
+ */
+const skipPhoneCode = catchAsyncError(async (req, res, next) => {
+  const lead = await leadWithKey(req);
+  if (!lead) return next(new ErrorHandler(NOT_FOUND, 404));
+  if (!lead.consent || lead.phoneVerifiedAt || lead.isQaTest) return res.json({ success: true, calling: false });
+  const calling = await placeDealSignupCall(lead._id, { unverified: true });
+  res.json({ success: true, calling });
+});
+
 /** POST /lead/:id/email — "Wrong email?": change it, rebuild the sheet and send it again. */
 const changeEmail = catchAsyncError(async (req, res, next) => {
   const lead = await leadWithKey(req);
@@ -136,17 +162,12 @@ const changeEmail = catchAsyncError(async (req, res, next) => {
   res.json({ success: true });
 });
 
-/** GET /deal-sheet/:token — the sheet's data for vihara.ai/s/<token>. Counts the open; ?v= confirms the number. */
+/** GET /deal-sheet/:token — the sheet's data for vihara.ai/s/<token>. Counts the open. */
 const getDealSheet = catchAsyncError(async (req, res, next) => {
   const token = String(req.params.token || "");
   if (!/^[A-Za-z0-9_-]{16,40}$/.test(token)) return next(new ErrorHandler(NOT_FOUND, 404));
-  let lead = await PropertyLead.findOne({ "dealSheet.token": token }).lean();
+  const lead = await PropertyLead.findOne({ "dealSheet.token": token }).lean();
   if (!lead) return next(new ErrorHandler(NOT_FOUND, 404));
-
-  const marker = String(req.query.v || "");
-  if (marker && !lead.phoneVerifiedAt && !lead.duplicateOf && sameSecret(marker, lead.dealSheet.marker)) {
-    if (await confirmPhone(lead._id, "sms_link")) lead = await PropertyLead.findById(lead._id).lean();
-  }
 
   const now = new Date();
   await PropertyLead.updateOne(
@@ -212,4 +233,4 @@ const getBookingLink = catchAsyncError(async (req, res) => {
   res.json({ success: true, url: `${late ? WALKTHROUGH_URL : STRATEGY_CALL_URL}?${q}` });
 });
 
-module.exports = { sendPhoneCode, verifyPhoneCode, changeEmail, getDealSheet, getDealSheetPdf, getBookingLink };
+module.exports = { sendPhoneCode, verifyPhoneCode, skipPhoneCode, changeEmail, getDealSheet, getDealSheetPdf, getBookingLink };

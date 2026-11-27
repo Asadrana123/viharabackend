@@ -8,7 +8,7 @@ const { markQaTestRequest } = require("../../middleware/qaAgentAuth");
 const formRateLimit = require("../../middleware/formRateLimit");
 const { verifyRecaptcha } = require("../../middleware/recaptcha");
 const router = express.Router();
-const { sendPhoneCode, verifyPhoneCode, changeEmail } = require("../../controller/leads/dealSheetController");
+const { sendPhoneCode, verifyPhoneCode, skipPhoneCode, changeEmail } = require("../../controller/leads/dealSheetController");
 const {
   registerAndCall,
   registerForDeals,
@@ -23,6 +23,7 @@ router.post("/finder/register", formRateLimit({ name: "property-lead" }), verify
 // key the sign-up returned (dealSheetController.js).
 router.post("/lead/:id/phone", formRateLimit({ name: "deal-phone", max: 6 }), sendPhoneCode);
 router.post("/lead/:id/phone/verify", formRateLimit({ name: "deal-verify", max: 12 }), verifyPhoneCode);
+router.post("/lead/:id/phone/skip", formRateLimit({ name: "deal-skip", max: 6 }), skipPhoneCode);
 router.post("/lead/:id/email", formRateLimit({ name: "deal-email", max: 4 }), changeEmail);
 
 // Public — auction registration from /auction/:slug. markQaTestRequest flags
