@@ -24,6 +24,7 @@ const { buildPropertyVoicePrompt } = require("./propertyVoicePromptBuilder");
 const { resolvePropertyTimezone } = require("../../utils/resolveTimezone");
 const { DID_NOT_CONNECT_REASONS, WAIT_MS } = require("./registrationCallService");
 const { enqueueBurst, PRIORITY } = require("./callDispatchQueue");
+const { settleNotDialed } = require("./callNumberCheck");
 const { FOLLOW_UP_DAYS, FOLLOW_UP_CALL_OPTS, nextFollowUpAt, noAnswerUpdate, skipUpdate } = require("./followUpCadence");
 // Spoken currency for the AI call ({{prospect_quote}} in the prompt).
 const { dollarsToWords } = require("./vapiPropertyService");
@@ -202,11 +203,14 @@ async function scheduleSignupCall(lead = {}) {
     { $set: { lastCallAt: new Date() }, $inc: { callAttempts: 1 } }
   );
 
-  const { connected } = await enqueueBurst(
+  const result = await enqueueBurst(
     callPayload({ _id: lead.leadId, ...lead }, promptConfig),
     { initialDelayMs: WAIT_MS, ...BURST_OPTS },
     PRIORITY.SIGNUP
   );
+  // A bad number ends calling for this lead; a call that never went out isn't counted (callNumberCheck.js).
+  if (await settleNotDialed(PropertyLead, lead.leadId, result)) return;
+  const { connected } = result;
 
   await applyOutcome(
     {
@@ -297,7 +301,7 @@ async function sweepDueCalls() {
         { ...BURST_OPTS, ...FOLLOW_UP_CALL_OPTS },
         PRIORITY.SCHEDULED
       )
-        .then(({ connected }) => applyOutcome(claimed, connected, fallbackTz))
+        .then(async (result) => (await settleNotDialed(PropertyLead, claimed._id, result)) || applyOutcome(claimed, result.connected, fallbackTz))
         .catch((e) => console.error("[property-call] burst failed:", e.message));
     }
   } catch (e) {

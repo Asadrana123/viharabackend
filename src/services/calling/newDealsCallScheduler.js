@@ -24,6 +24,7 @@ const NewDealsLead = require("../../model/leads/newDealsLeadModel");
 const FacebookFormLead = require("../../model/leads/facebookFormLeadModel");
 const { DID_NOT_CONNECT_REASONS, WAIT_MS } = require("./registrationCallService");
 const { enqueueBurst, PRIORITY } = require("./callDispatchQueue");
+const { settleNotDialed } = require("./callNumberCheck");
 const { FOLLOW_UP_DAYS, FOLLOW_UP_CALL_OPTS, nextFollowUpAt, noAnswerUpdate, skipUpdate } = require("./followUpCadence");
 const newDealsVoicePrompt = require("../../config/newDealsVoicePrompt");
 const { facebookFormPromptFor } = require("../../config/facebookFormVoicePrompt");
@@ -116,11 +117,14 @@ function createBuyBoxCallScheduler({ Model, source, logTag, payloadFor = (lead) 
       { $set: { lastCallAt: new Date(), callStatus: "pending", nextCallAt: null }, $inc: { callAttempts: 1 } }
     );
 
-    const { connected } = await enqueueBurst(
+    const result = await enqueueBurst(
       payloadFor(lead),
       { initialDelayMs: WAIT_MS, ...BURST_OPTS },
       PRIORITY.SIGNUP
     );
+    // A bad number ends calling for this lead; a call that never went out isn't counted (callNumberCheck.js).
+    if (await settleNotDialed(Model, lead._id, result)) return;
+    const { connected } = result;
 
     await applyOutcome(lead, connected);
   }
@@ -178,7 +182,7 @@ function createBuyBoxCallScheduler({ Model, source, logTag, payloadFor = (lead) 
         if (!claimed) continue;
 
         enqueueBurst({ ...payloadFor(claimed), isFollowUp: true }, { ...BURST_OPTS, ...FOLLOW_UP_CALL_OPTS }, PRIORITY.SCHEDULED)
-          .then(({ connected }) => applyOutcome(claimed, connected))
+          .then(async (result) => (await settleNotDialed(Model, claimed._id, result)) || applyOutcome(claimed, result.connected))
           .catch((e) => console.error(`[${logTag}] burst failed:`, e.message));
       }
     } catch (e) {

@@ -82,7 +82,15 @@ async function sweepDueCallbacks() {
       // routine daily lead retries rather than queuing behind them.
       buildBurstPayload(claimed) // script rebuilt now from the live listing
         .then((payload) => enqueueBurst(payload, BURST_OPTS, PRIORITY.SIGNUP))
-        .then(({ connected }) => applyOutcome(claimed, connected))
+        .then(async ({ connected, badNumber, error }) => {
+          // A bad number (callNumberCheck.js): this callback can never be placed, so it ends as "failed".
+          if (badNumber) {
+            await CallbackRequest.updateOne({ _id: claimed._id, status: "pending" }, { $set: { status: "failed", nextCallAt: null } });
+            console.warn(`[callback] ${claimed._id} ended: ${error || "bad number"}`);
+            return;
+          }
+          return applyOutcome(claimed, connected);
+        })
         .catch((e) => console.error("[callback] burst failed:", e.message));
     }
   } catch (e) {

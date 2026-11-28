@@ -17,6 +17,12 @@ const phoneDialSchema = new mongoose.Schema(
     phone: { type: String, required: true, trim: true },
     lastDialAt: { type: Date, required: true },
     source: { type: String, default: "", trim: true },
+    // Dead-number guard (services/calling/callNumberCheck.js): calls in a row that never reached the
+    // phone network ("twilio-failed-to-connect-call"). At DEAD_AFTER_FAILED_CONNECTS no list calls the
+    // number until deadUntil. Any call that rings resets it.
+    failedConnects: { type: Number, default: 0 },
+    deadUntil: { type: Date, default: null },
+    lastResultCallId: { type: String, default: "" }, // the Vapi call last counted, so a repeated webhook isn't counted twice
   },
   { timestamps: true }
 );

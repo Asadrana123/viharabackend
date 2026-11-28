@@ -3,6 +3,7 @@ const CallLog = require("../../model/calling/callLogModel");
 const { summarizeTranscript } = require("./callSummaryService");
 const { mapCallLog } = require("./vapiCallsService");
 const { gradeCall } = require("./callGradeService");
+const { recordCallEnded } = require("./callNumberCheck");
 const { notifyNewLead } = require("../shared/slackService");
 
 // VAPI puts the same data in slightly different places depending on version and
@@ -178,6 +179,9 @@ async function saveEndOfCallReport(message = {}) {
 
   // Fire-and-forget: post to Slack if interested. Never blocks the webhook.
   notifyIfInterested(saved);
+
+  // Dead-number count: calls in a row that never reached the phone network (callNumberCheck.js). Never throws.
+  if (doc.channel === "phone") await recordCallEnded({ phone: doc.phone, endedReason: doc.endedReason, vapiCallId: doc.vapiCallId });
 
   return saved;
 }

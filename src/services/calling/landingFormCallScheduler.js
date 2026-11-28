@@ -20,6 +20,7 @@ const cron = require("node-cron");
 const LandingFormLead = require("../../model/leads/landingFormLeadModel");
 const { DID_NOT_CONNECT_REASONS, WAIT_MS } = require("./registrationCallService");
 const { enqueueBurst, PRIORITY } = require("./callDispatchQueue");
+const { settleNotDialed } = require("./callNumberCheck");
 const { FOLLOW_UP_DAYS, FOLLOW_UP_CALL_OPTS, nextFollowUpAt, noAnswerUpdate, skipUpdate } = require("./followUpCadence");
 const { buildLandingFormPrompt } = require("../../config/landingFormVoicePrompt");
 const { answersSpoken } = require("../leads/formAnswers");
@@ -78,11 +79,14 @@ async function scheduleLandingFormSignupCall(lead) {
     { $set: { lastCallAt: new Date(), callStatus: "pending", nextCallAt: null }, $inc: { callAttempts: 1 } }
   );
 
-  const { connected } = await enqueueBurst(
+  const result = await enqueueBurst(
     callPayload(lead),
     { initialDelayMs: WAIT_MS, ...BURST_OPTS },
     PRIORITY.SIGNUP
   );
+  // A bad number ends calling for this lead; a call that never went out isn't counted (callNumberCheck.js).
+  if (await settleNotDialed(LandingFormLead, lead._id, result)) return;
+  const { connected } = result;
 
   await applyOutcome(lead, connected);
 }
@@ -139,7 +143,7 @@ async function sweepDueCalls() {
       if (!claimed) continue;
 
       enqueueBurst({ ...callPayload(claimed), isFollowUp: true }, { ...BURST_OPTS, ...FOLLOW_UP_CALL_OPTS }, PRIORITY.SCHEDULED)
-        .then(({ connected }) => applyOutcome(claimed, connected))
+        .then(async (result) => (await settleNotDialed(LandingFormLead, claimed._id, result)) || applyOutcome(claimed, result.connected))
         .catch((e) => console.error("[landing-form-daily] burst failed:", e.message));
     }
   } catch (e) {

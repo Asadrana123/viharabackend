@@ -506,6 +506,16 @@ async function placeCall(campaign) {
     source: `buyer-match:${campaign._id}`,
   });
 
+  if (!res.success && res.badNumber) {
+    // Not a real number, Twilio says it doesn't exist, or its calls never connect (calling/callNumberCheck.js):
+    // no point in the rest of the schedule.
+    await MatchCallCampaign.updateOne(
+      { _id: campaign._id, status: "active" },
+      { $push: { calls: { at: new Date(), connected: false, error: res.error } }, $inc: { attempts: -1 } }
+    );
+    await endCampaign(campaign, "no-phone");
+    return;
+  }
   if (!res.success) {
     // Out of caller numbers, or this person was already called today by
     // another loop → try tomorrow, and don't count it as an attempt.

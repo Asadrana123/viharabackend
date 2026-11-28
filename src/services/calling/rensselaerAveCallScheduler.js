@@ -38,6 +38,7 @@ const { loadPropertyBundle } = require("./propertyCallScheduler");
 const PROPERTY_SLUG = "449-rensselaer-ave";
 const { DID_NOT_CONNECT_REASONS, WAIT_MS } = require("./registrationCallService");
 const { enqueueBurst, PRIORITY } = require("./callDispatchQueue");
+const { settleNotDialed } = require("./callNumberCheck");
 const { FOLLOW_UP_DAYS, FOLLOW_UP_CALL_OPTS, nextFollowUpAt, noAnswerUpdate, skipUpdate } = require("./followUpCadence");
 
 const DEFAULT_TZ = "America/New_York"; // property is in NY; used only when a lead has no/invalid tz
@@ -116,11 +117,14 @@ async function scheduleRensselaerAveSignupCall(lead = {}) {
     { $set: { lastCallAt: new Date() }, $inc: { callAttempts: 1 } }
   );
 
-  const { connected } = await enqueueBurst(
+  const result = await enqueueBurst(
     callPayload({ _id: lead.leadId, ...lead }, promptConfig),
     { initialDelayMs: WAIT_MS, ...BURST_OPTS },
     PRIORITY.SIGNUP
   );
+  // A bad number ends calling for this lead; a call that never went out isn't counted (callNumberCheck.js).
+  if (await settleNotDialed(RensselaerAveLead, lead.leadId, result)) return;
+  const { connected } = result;
 
   await applyOutcome(
     { _id: lead.leadId, phoneNormalized: lead.phoneNormalized, timezone: lead.timezone },
@@ -198,7 +202,7 @@ async function sweepDueCalls() {
       // Hand the burst to the shared queue (scheduled lane — paced behind any
       // signup bursts, no initial delay since it's already a call slot in their time).
      enqueueBurst({ ...callPayload(claimed, promptConfig), isFollowUp: true }, { ...BURST_OPTS, ...FOLLOW_UP_CALL_OPTS }, PRIORITY.SCHEDULED)
-        .then(({ connected }) => applyOutcome(claimed, connected))
+        .then(async (result) => (await settleNotDialed(RensselaerAveLead, claimed._id, result)) || applyOutcome(claimed, result.connected))
         .catch((e) => console.error("[raa-daily] burst failed:", e.message));
     }
   } catch (e) {

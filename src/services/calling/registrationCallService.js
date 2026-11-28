@@ -160,6 +160,14 @@ async function pollCallOutcome(callId, noPickupReasons, treatErrorsAsNoPickup, r
   return { connected: true };
 }
 
+/** A burst whose first call never went out. */
+const notDialed = (res = {}) => ({
+  connected: false,
+  notDialed: true,
+  ...(res.badNumber ? { badNumber: true } : {}),
+  error: res.error || "not dialed",
+});
+
 /**
  * Reusable burst for ONE lead:
  *   [optional initial wait] → call → if no pickup, wait 60s → call once more.
@@ -188,7 +196,8 @@ async function runCallBurst(
   // ── Attempt 1 ──────────────────────────────────────────────────────────
   const first = await dispatchRegistrationCall(lead);
   console.log(`[reg-call] attempt 1 → ${who}:`, first);
-  if (!first.success || !first.callId) return { connected: false };
+  // Not dialed: tell the list why, so a bad number ends calling and a skipped dial isn't counted (settleBurst).
+  if (!first.success || !first.callId) return notDialed(first);
 
   const firstOutcome = await pollCallOutcome(first.callId, noPickupReasons, treatErrorsAsNoPickup, requireConversation);
   if (firstOutcome.connected) {
@@ -204,7 +213,8 @@ async function runCallBurst(
   await delay(WAIT_MS);
   const second = await dispatchRegistrationCall(lead);
   console.log(`[reg-call] attempt 2 (no-answer retry) → ${who}:`, second);
-  if (!second.success || !second.callId) return { connected: false };
+  // The first call did go out, so this burst still counts as an attempt; only a bad number matters here.
+  if (!second.success || !second.callId) return { connected: false, ...(second.badNumber ? { badNumber: true, error: second.error } : {}) };
 
   const secondOutcome = await pollCallOutcome(second.callId, noPickupReasons, treatErrorsAsNoPickup, requireConversation);
   console.log(`[reg-call] ${who}: connected=${secondOutcome.connected} after burst.`);
