@@ -14,6 +14,7 @@ const { getSettings, isConsentRequired } = require("./vtextSettingsService");
 const { normalizeInternationalPhone } = require("../../utils/internationalPhone");
 const { findLeadRefs, consentFromRef, applyLeadConsent } = require("./vtextLeadLookupService");
 const { applyRichContentRule } = require("./vtextRichContentGate");
+const { checkContactPhone } = require("../leads/phoneLookupService");
 const Errorhandler = require("../../utils/errorhandler");
 
 function normalizeAddress(raw) {
@@ -76,6 +77,11 @@ async function enqueueOutbound({ to: rawTo, body: givenBody, bodyWithoutLinks, m
   if (contact.consent?.status === "unknown" && !contact.optOut?.isOptedOut && !to.includes("@")) {
     await applyLeadConsent(contact, await findLeadRefs(to));
   }
+
+  // The number's check, once per number (phoneLookupService.js): a number that can't exist or a landline is
+  // marked here, so the compliance gate below blocks the text; a VoIP number is marked not-on-iMessage, so the
+  // router sends it by SMS. Every sender comes through here (forms, follow-ups, scripts, the Inbox). Never throws.
+  if (!to.includes("@")) await checkContactPhone(contact);
 
   // No links or images before the person has written back (vtextRichContentGate.js).
   const rich = await applyRichContentRule({ contact, body: givenBody, bodyWithoutLinks, media: givenMedia, origin });

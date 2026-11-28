@@ -10,8 +10,7 @@
 //   1. the stored keys on the Vtext Twilio SMS line (Admin → Vtext → Lines), same account as the Verify Service
 //   2. TWILIO_ACCOUNT_SID + TWILIO_API_KEY_SID + TWILIO_API_KEY_SECRET  (or + TWILIO_AUTH_TOKEN), for a
 //      local DB with no Twilio line. Line first, so an old TWILIO_* value in an .env can't override it.
-const VtextLine = require("../../model/vtext/vtextLineModel");
-const { decryptCredentials } = require("../../utils/secretBox");
+const { loadTwilioCredentials, twilioClientFrom } = require("../twilio/twilioKeys");
 
 let clientFactory = null;
 /** Tests only: `fn()` returns { createVerification, createCheck }. Pass null to restore the real client. */
@@ -21,25 +20,6 @@ function setVerifyClientForTests(fn) {
 
 const SERVICE_SID = () => String(process.env.TWILIO_VERIFY_SERVICE_SID || "").trim();
 
-async function loadCredentials() {
-  const line = await VtextLine.findOne({ channelType: "twilio-sms", status: { $ne: "retired" } })
-    .select("+credentials.iv +credentials.tag +credentials.ciphertext")
-    .sort({ status: 1, createdAt: 1 })
-    .lean();
-  if (line?.credentials?.ciphertext) return decryptCredentials(line.credentials);
-
-  const env = process.env;
-  if (env.TWILIO_ACCOUNT_SID && ((env.TWILIO_API_KEY_SID && env.TWILIO_API_KEY_SECRET) || env.TWILIO_AUTH_TOKEN)) {
-    return {
-      accountSid: env.TWILIO_ACCOUNT_SID,
-      apiKeySid: env.TWILIO_API_KEY_SID,
-      apiKeySecret: env.TWILIO_API_KEY_SECRET,
-      authToken: env.TWILIO_AUTH_TOKEN,
-    };
-  }
-  return null;
-}
-
 let cached = null; // { client, at }
 const CACHE_MS = 10 * 60 * 1000;
 
@@ -47,14 +27,10 @@ async function getClient() {
   if (clientFactory) return clientFactory();
   if (cached && Date.now() - cached.at < CACHE_MS) return cached.client;
 
-  const creds = await loadCredentials();
+  const creds = await loadTwilioCredentials();
   if (!creds) throw Object.assign(new Error("No Twilio keys for Verify"), { verifyReason: "not_configured" });
 
-  const twilio = require("twilio");
-  const raw =
-    creds.apiKeySid && creds.apiKeySecret
-      ? twilio(creds.apiKeySid, creds.apiKeySecret, { accountSid: creds.accountSid })
-      : twilio(creds.accountSid, creds.authToken);
+  const raw = twilioClientFrom(creds);
   const service = () => raw.verify.v2.services(SERVICE_SID());
   const client = {
     createVerification: (params) => service().verifications.create(params),

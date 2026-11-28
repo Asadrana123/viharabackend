@@ -171,7 +171,7 @@ async function run({ argv = process.argv.slice(2), clock = () => new Date(), ran
     const skip = (reason) => out.skipped.push({ name: p.label, phone: p.phone, reason });
     if (look.sameKey.has(keyFor(p.phone))) { skip("already queued or sent by this script"); continue; }
     if (contact?.optOut?.isOptedOut) { skip("opted out"); continue; }
-    if (contact?.phoneStatus === "bad" || contact?.phoneStatus === "invalid") { skip("marked as a bad number"); continue; }
+    if (["bad", "invalid", "landline"].includes(contact?.phoneStatus)) { skip(`marked as a bad number (${contact.phoneStatus})`); continue; }
     if (limit > 0 && out.sendable.length >= limit) { skip("over --limit, left for a later run"); continue; }
     const thread = contact ? look.threads?.get(String(contact._id)) : null;
     const sendAt = nextTextingTime(p.phone, earliest).at;

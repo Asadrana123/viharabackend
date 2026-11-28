@@ -5,8 +5,9 @@
 // returns null), but every iMessage we send tells us afterwards:
 //   - Delivered / Read → the number is registered with iMessage → iPhone
 //   - error 22         → not an iMessage user → not iPhone
-// Writes only contact.iphone, never channelReachability, so the vText router
-// behaves exactly as before. Never throws: it rides along on the webhook path.
+// Writes only contact.iphone. The vText router reads it too (vtextRouter.resolveReachability): a known iPhone
+// gets iMessage, a known non-iPhone goes straight to Twilio SMS (for 180 days). Never throws: it rides along on
+// the webhook path.
 const VtextContact = require("../../../model/vtext/vtextContactModel");
 
 /**

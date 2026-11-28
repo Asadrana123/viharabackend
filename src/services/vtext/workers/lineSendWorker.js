@@ -19,6 +19,7 @@ const { publishEvent } = require("../vtextEventsBus");
 const smsFallback = require("../vtextSmsFallbackService");
 const { recordProviderOptOut } = require("../vtextOptOutService");
 const { reportTextProblem } = require("../vtextTextProblemAlert");
+const { recordTwilioNumberError } = require("../vtextPhoneFacts");
 
 // BlueBubbles could not be reached at all, so the text cannot have gone out.
 const LINE_DOWN_CODES = new Set(["CONNECTION_REFUSED"]);
@@ -166,13 +167,11 @@ async function processSendJob(lineId, job) {
       await capacity.release(line, reservationDay, { wasReply: message.isReplyToInbound, wasNewRecipient: message.reservedNewLead });
       publishEvent({ type: "message.updated", messageId: String(message._id), conversationId: message.conversationId ? String(message.conversationId) : null, status: message.status });
       // Twilio refused the send because this number opted out of it (21610): record that here too, so no line texts them.
-      // And "not a valid mobile number" (21614) is a definite no: mark it a landline so the compliance gate stops further tries.
+      // And "not a valid phone number" (21211) / "not a valid mobile number" (21614) are definite noes: mark the number
+      // invalid / a landline so the compliance gate stops every later text to it, from any sender (vtextPhoneFacts.js).
       try {
         if (err.code === "OPTED_OUT") await recordProviderOptOut(contact, { lineId: line._id, messageId: message._id, code: "21610" });
-        else if (err.code === "TWILIO_21614" && contact.phoneStatus !== "landline") {
-          contact.phoneStatus = "landline";
-          await contact.save();
-        }
+        else if (line.channelType === "twilio-sms") await recordTwilioNumberError(contact, err.code);
       } catch (e) {
         console.error(`[vtext line-send] couldn't record the provider outcome for ${message._id}:`, e.message);
       }

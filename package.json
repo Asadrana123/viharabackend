@@ -28,6 +28,7 @@
   "google-auth-library": "^10.9.1",
   "ioredis": "^6.0.0",
   "jsonwebtoken": "^9.0.2",
+  "libphonenumber-js": "^1.13.17",
   "luxon": "^3.7.2",
   "mongoose": "^8.4.1",
   "multer": "^2.2.0",

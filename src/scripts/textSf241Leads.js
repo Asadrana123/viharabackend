@@ -107,7 +107,7 @@ async function run({ argv = process.argv.slice(2), clock = () => new Date(), ran
     const skip = (reason) => out.skipped.push({ name: p.name, phone: p.phoneE164, reason });
     if (look.sameKey.has(keyFor(p.phoneE164))) { skip("already queued or sent by this script"); continue; }
     if (contact?.optOut?.isOptedOut) { skip("opted out"); continue; }
-    if (contact?.phoneStatus === "bad" || contact?.phoneStatus === "invalid") { skip("marked as a bad number"); continue; }
+    if (["bad", "invalid", "landline"].includes(contact?.phoneStatus)) { skip(`marked as a bad number (${contact.phoneStatus})`); continue; }
     const thread = contact ? look.threads?.get(String(contact._id)) : null;
     // Wanted time, pushed out only if it would land outside 9 AM-8 PM for the lead's own time zone.
     const wanted = new Date(base.getTime() + offset);
