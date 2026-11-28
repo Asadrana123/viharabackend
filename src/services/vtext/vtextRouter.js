@@ -17,6 +17,8 @@ const { getSettings } = require("./vtextSettingsService");
 const SMS_CHANNEL = "twilio-sms";
 
 const REACHABILITY_STALE_DAYS = 30;
+const NOT_REACHABLE_KEEP_DAYS = 180; // people do switch to an iPhone, so look again after half a year
+const IMESSAGE_CHANNEL = "imessage-bluebubbles";
 
 /** Resolves message.channelPolicy to an ordered list of channel types to try. */
 function resolveChannelCandidates(channelPolicy) {
@@ -31,8 +33,22 @@ function resolveChannelCandidates(channelPolicy) {
 
 /** True/false/null per the adapter's own checkReachability contract; refreshes a stale or never-checked cache entry. Only called for channels that don't reach every US number (capabilities.reachesAllUsNumbers === false). */
 async function resolveReachability(contact, channelType, adapter) {
+  // iMessage: what our own iMessages proved about the number wins (iphoneLearning.js: "Delivered" = on iMessage,
+  // error 22 = not). A number known not to be on iMessage goes straight to Twilio SMS, never to the Mac.
+  // A "no" is kept NOT_REACHABLE_KEEP_DAYS (an error 22 during a line-wide outage must not lock them out for good).
+  if (channelType === IMESSAGE_CHANNEL) {
+    const learned = contact.iphone?.isIphone;
+    if (learned === true) return true;
+    const age = Date.now() - new Date(contact.iphone?.learnedAt || 0).getTime();
+    if (learned === false && age < NOT_REACHABLE_KEEP_DAYS * 24 * 60 * 60 * 1000) return false;
+  }
+
   const cached = contact.channelReachability?.find((r) => r.channelType === channelType);
-  const isStale = !cached || !cached.checkedAt || Date.now() - new Date(cached.checkedAt).getTime() > REACHABILITY_STALE_DAYS * 24 * 60 * 60 * 1000;
+  // A confirmed "not on iMessage" (a failed iMessage, or a VoIP/landline line from Twilio Lookup) is kept for
+  // NOT_REACHABLE_KEEP_DAYS. It used to go stale after 30 days, when BlueBubbles' check (always "unknown")
+  // wiped it and the Mac was tried, and failed, again.
+  const keepDays = cached?.reachable === false ? NOT_REACHABLE_KEEP_DAYS : REACHABILITY_STALE_DAYS;
+  const isStale = !cached || !cached.checkedAt || Date.now() - new Date(cached.checkedAt).getTime() > keepDays * 24 * 60 * 60 * 1000;
 
   if (!isStale) return cached.reachable;
   if (!adapter.checkReachability) return cached?.reachable ?? null;
@@ -200,7 +216,6 @@ async function selectLine(message, contact, deps = {}) {
   return { line: null, waitingOnStickyLine: false };
 }
 
-const IMESSAGE_CHANNEL = "imessage-bluebubbles";
 const replyWaitMs = () => {
   const min = Number(process.env.VTEXT_SMS_FALLBACK_REPLY_WAIT_MIN);
   return (Number.isFinite(min) && min >= 0 && process.env.VTEXT_SMS_FALLBACK_REPLY_WAIT_MIN !== "" && process.env.VTEXT_SMS_FALLBACK_REPLY_WAIT_MIN !== undefined ? min : 30) * 60_000;

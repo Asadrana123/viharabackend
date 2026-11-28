@@ -17,6 +17,16 @@ const vtextContactSchema = new mongoose.Schema(
     email: { type: String, trim: true },
     timezone: { type: String }, // resolvePropertyTimezone(state,zip) if lead-linked, else areaCodeTimezone (Phase 2+)
     phoneStatus: { type: String, enum: ["unknown", "valid", "invalid", "landline"], default: "unknown" },
+    // The number's check before our first text (services/leads/phoneLookupService.js): the free format check,
+    // then Twilio Lookup's line type. Drives phoneStatus and, for VoIP/landlines, skipping iMessage.
+    lookup: {
+      source: { type: String, enum: ["format", "twilio"] },
+      valid: { type: Boolean },
+      country: { type: String },
+      lineType: { type: String }, // mobile | landline | fixedVoip | nonFixedVoip | tollFree | …
+      carrierName: { type: String },
+      checkedAt: { type: Date },
+    },
 
     consent: {
       status: { type: String, enum: ["unknown", "opted-in", "opted-out"], default: "unknown", index: true },
@@ -60,8 +70,8 @@ const vtextContactSchema = new mongoose.Schema(
 
     stickyLines: { type: Map, of: mongoose.Schema.Types.ObjectId, default: {} }, // channelType -> lineId
     // Is this number on iPhone (FaceTime test)? Learned from our own iMessages:
-    // "Delivered" = yes, error 22 = no. Kept apart from channelReachability on
-    // purpose so it never changes how the vText router picks a channel.
+    // "Delivered" = yes, error 22 = no. The vText router uses it: yes = iMessage,
+    // no = straight to Twilio SMS for 180 days (vtextRouter.resolveReachability).
     iphone: {
       isIphone: { type: Boolean, default: null },
       learnedAt: { type: Date },

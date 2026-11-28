@@ -27,6 +27,7 @@ const { notifyOptOut } = require("../vtextOptOutService");
 const { notifyInboundNoDraft } = require("../vtextAlertService");
 const { learnFromMessageStatus } = require("../../calling/facetime/iphoneLearning");
 const smsFallback = require("../vtextSmsFallbackService");
+const { recordTwilioNumberError, markTextable } = require("../vtextPhoneFacts");
 
 const HELP_TEXT = process.env.VTEXT_HELP_TEXT || "This is Vihara. Reply STOP to opt out, or visit vihara.ai for more info.";
 const STOP_CONFIRM_TEXT = process.env.VTEXT_STOP_CONFIRM_TEXT || "You're unsubscribed and won't receive more messages from Vihara. Reply START to resubscribe.";
@@ -131,6 +132,7 @@ async function handleMessageReceived(event, line) {
 
   contact.stickyLines.set(line.channelType, line._id);
   contact.lastInboundAt = event.receivedAt || new Date();
+  if (from) markTextable(contact); // they texted us, so the number takes texts, whatever we guessed before
   await contact.save();
 
   let keyword = detectKeyword(event.body);
@@ -321,6 +323,17 @@ async function handleMessageStatus(event, line) {
       await recordProviderOptOut(contact, { lineId: message.lineId, messageId: message._id, code: "21610" });
     } catch (err) {
       console.error(`[vtext inbound] couldn't record the provider opt-out for message ${message._id}:`, err.message);
+    }
+  }
+
+  // Twilio says the number doesn't exist (30005) or can't take texts (30006): mark it, so no later text from any
+  // sender (follow-ups, bulk scripts) tries it again. 30003 (phone off) passes, so it's left alone.
+  if (event.status === "failed" && message.status === "failed" && message.channelType === "twilio-sms") {
+    try {
+      const contact = await VtextContact.findById(message.contactId);
+      await recordTwilioNumberError(contact, event.errorCode);
+    } catch (err) {
+      console.error(`[vtext inbound] couldn't record the bad number for message ${message._id}:`, err.message);
     }
   }
 
