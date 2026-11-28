@@ -15,6 +15,7 @@ test("a video starts with the editor's idea and craft, both optional", () => {
 
 test("D-070: the editor may choose Maya's outfit at the start, with or without a storytelling style", () => {
   assert.equal(cleanStart({ outfit: "festive-rust-blouse" }).outfit, "festive-rust-blouse");
+  assert.equal(cleanStart({ outfit: "professional-navy-dress" }).outfit, "professional-navy-dress");
   assert.equal(cleanStart({ outfit: "everyday" }).outfit, "everyday");
   assert.equal(cleanStart({ outfit: "" }).outfit, null);
   assert.equal(cleanStart({ outfit: "everyday" }).story, null);
