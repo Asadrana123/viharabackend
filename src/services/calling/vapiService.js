@@ -3,6 +3,7 @@ const { buildVariableValues } = require("./vapiPromptService");
 const { buildPriorContext } = require("./callMemoryService");
 const { pickCallerNumberId } = require("./callerNumberPoolService");
 const { claimDailyDial, ALREADY_CALLED_TODAY } = require("./dailyDialGuard");
+const { checkCallNumber } = require("./callNumberCheck");
 const { pickFacetimeLine } = require("./facetime/facetimeRouter");
 const { queueFacetimeCall, isFacetimeCallId, getFacetimeCall } = require("./facetime/facetimeCallService");
 const { maskPhone } = require("../../utils/maskPii");
@@ -434,6 +435,13 @@ const dispatchCall = async (
     console.log(`⏭️  Call skipped (OUTBOUND_DISABLED): ${person.fullName} → ${maskPhone(phoneNumber)}`);
     return { success: false, phone: phoneNumber, error: OUTBOUND_DISABLED_ERROR };
   }
+  // A number that can't exist, that Twilio says doesn't exist, or whose calls never connect: no call, and
+  // badNumber tells the caller's list to stop calling this lead (callNumberCheck.js). Never throws.
+  const numberCheck = await checkCallNumber(phoneNumber);
+  if (!numberCheck.ok) {
+    console.warn(`⏭️  Call skipped (${numberCheck.message}): ${person.fullName} → ${maskPhone(phoneNumber)}`);
+    return { success: false, phone: phoneNumber, error: numberCheck.message, badNumber: true, badNumberReason: numberCheck.reason };
+  }
   // One call per number per day (dailyDialGuard). oncePerDay=false is for calls
   // the person asked for (callbacks, a fresh sign-up) and the admin single-call
   // form — they still count as today's call.
@@ -542,7 +550,9 @@ const dispatchCall = async (
       (Array.isArray(err.response?.data?.error) ? err.response.data.error.join(", ") : err.response?.data?.error) ||
       err.message;
     console.error(`❌ Call failed: ${person.fullName} → ${maskPhone(phoneNumber)}:`, err.response?.data || err.message);
-    return { success: false, phone: phoneNumber, error: String(reason) };
+    // Vapi refusing the number itself ("customer.number must be a valid phone number …") is a bad number too.
+    const badNumber = err.response?.status === 400 && /customer\.number/i.test(String(reason));
+    return { success: false, phone: phoneNumber, error: String(reason), ...(badNumber ? { badNumber: true, badNumberReason: "not-a-real-number" } : {}) };
   }
 };
 

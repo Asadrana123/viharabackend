@@ -25,7 +25,7 @@ const loadUniversalPrompt = async () => {
 const dispatchRegistrationCall = async (lead = {}) => {
   const phones = parsePhones(lead.phone);
   if (!phones.length) {
-    return { success: false, error: "Invalid or unreachable phone number" };
+    return { success: false, error: "Invalid or unreachable phone number", badNumber: true };
   }
 
   const contact = {

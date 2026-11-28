@@ -21,6 +21,7 @@ const { DateTime } = require("luxon");
 const FacebookFormLead = require("../../model/leads/facebookFormLeadModel");
 const { DID_NOT_CONNECT_REASONS } = require("./registrationCallService");
 const { enqueueBurst, PRIORITY } = require("./callDispatchQueue");
+const { settleNotDialed } = require("./callNumberCheck");
 const { facebookFormPayload } = require("./newDealsCallScheduler");
 const { writebackLeadStatus } = require("../leads/toorakStatusWriteback");
 const { callTimezone } = require("../../utils/areaCodeTimezone");
@@ -121,7 +122,15 @@ async function sweepToorakCalls() {
 
       const priority = claimed.callAttempts === 1 || claimed.hot ? PRIORITY.SIGNUP : PRIORITY.SCHEDULED;
       enqueueBurst({ ...facebookFormPayload(claimed), isFollowUp: claimed.callAttempts > 1 }, BURST_OPTS, priority)
-        .then(({ connected }) => applyOutcome(claimed, connected))
+        // A bad number ends the 3 tries (callNumberCheck.js). The attempt count drives Toorak's timing, so a
+        // call that didn't go out for another reason still counts as one try.
+        .then(async (result) => {
+          if (await settleNotDialed(FacebookFormLead, claimed._id, result, { undoAttempt: false })) {
+            writebackLeadStatus(claimed, "unreachable").catch(() => {});
+            return;
+          }
+          return applyOutcome(claimed, result.connected);
+        })
         .catch((e) => console.error("[toorak-calls] burst failed:", e.message));
     }
   } catch (e) {

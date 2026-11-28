@@ -29,6 +29,7 @@ const cron = require("node-cron");
 const EarlyAccessLead = require("../../model/leads/earlyAccessLeadModel");
 const { DID_NOT_CONNECT_REASONS, WAIT_MS } = require("./registrationCallService");
 const { enqueueBurst, PRIORITY } = require("./callDispatchQueue");
+const { settleNotDialed } = require("./callNumberCheck");
 const { FOLLOW_UP_DAYS, FOLLOW_UP_CALL_OPTS, nextFollowUpAt, noAnswerUpdate, skipUpdate } = require("./followUpCadence");
 const earlyAccessVoicePrompt = require("../../config/earlyAccessVoicePrompt");
 
@@ -106,11 +107,14 @@ async function scheduleEarlyAccessSignupCall(lead = {}) {
     { $set: { lastCallAt: new Date() }, $inc: { callAttempts: 1 } }
   );
 
-  const { connected } = await enqueueBurst(
+  const result = await enqueueBurst(
     callPayload({ _id: lead.leadId, ...lead }),
     { initialDelayMs: WAIT_MS, ...BURST_OPTS },
     PRIORITY.SIGNUP
   );
+  // A bad number ends calling for this lead; a call that never went out isn't counted (callNumberCheck.js).
+  if (await settleNotDialed(EarlyAccessLead, lead.leadId, result)) return;
+  const { connected } = result;
 
   await applyOutcome(
     { _id: lead.leadId, phoneNormalized: lead.phoneNormalized, timezone: lead.timezone },
@@ -177,7 +181,7 @@ async function sweepDueCalls() {
       // Hand the burst to the shared queue (scheduled lane — paced behind any
       // signup bursts, no initial delay since it's already a call slot in their time).
       enqueueBurst({ ...callPayload(claimed), isFollowUp: true }, { ...BURST_OPTS, ...FOLLOW_UP_CALL_OPTS }, PRIORITY.SCHEDULED)
-        .then(({ connected }) => applyOutcome(claimed, connected))
+        .then(async (result) => (await settleNotDialed(EarlyAccessLead, claimed._id, result)) || applyOutcome(claimed, result.connected))
         .catch((e) => console.error("[ea-daily] burst failed:", e.message));
     }
   } catch (e) {
