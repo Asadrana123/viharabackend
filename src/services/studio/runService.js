@@ -324,7 +324,8 @@ const finishData = (f) => ({ ...(f.cta ? { cta: f.cta } : {}), ...(f.ctaWord ? {
  * choosing the outfit before working on the story"): her everyday look, or one of her outfits in the Creative OS
  * (assets/characters/maya/outfits/outfits.json). Kept in step with that file: an outfit added there is added here.
  */
-const OUTFITS = ["everyday", "festive-green-turtleneck", "festive-rust-blouse", "festive-tweed-blazer"];
+// Professional outfits for normal days (Preetham, 2026-11-28: "he can pick outfits that looks professional").
+const OUTFITS = ["everyday", "festive-green-turtleneck", "festive-rust-blouse", "festive-tweed-blazer", "professional-ivory-bow-blouse", "professional-green-sweater-skirt", "professional-navy-dress", "professional-knit-vest"];
 function cleanOutfit(o) {
   if (o === undefined || o === null || o === "") return null;
   const id = String(o);
